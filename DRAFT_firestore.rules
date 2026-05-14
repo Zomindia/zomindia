@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- ENTITY VALIDATIONS ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'role']) &&
+             data.keys().size() >= 4 &&
+             data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['customer', 'partner'] &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 500));
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['name', 'icon']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.icon is string && data.icon.size() <= 50;
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll(['categoryId', 'name', 'basePrice']) &&
+             data.categoryId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.basePrice is number && data.basePrice >= 0;
+    }
+
+    function isValidPartner(data) {
+      return data.keys().hasAll(['userId', 'categories', 'status']) &&
+             data.userId == request.auth.uid &&
+             data.categories is list && data.categories.size() > 0 &&
+             data.status in ['active', 'inactive', 'pending'];
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['customerId', 'serviceId', 'status', 'scheduledAt', 'address', 'totalPrice']) &&
+             data.customerId == request.auth.uid &&
+             data.status in ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'] &&
+             data.totalPrice is number && data.totalPrice >= 0 &&
+             data.scheduledAt is timestamp && data.scheduledAt > request.time;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['bookingId', 'customerId', 'partnerId', 'rating']) &&
+             data.customerId == request.auth.uid &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5;
+    }
+
+    // --- RULES ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isOwner(userId) && isValidUser(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'address']);
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /partners/{partnerId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidPartner(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().userId) || isAdmin()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['categories', 'status']);
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().partnerId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.partnerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidBooking(incoming()) && exists(/databases/$(database)/documents/services/$(incoming().serviceId));
+      allow update: if isSignedIn() && (
+        // Customer can cancel
+        (isOwner(existing().customerId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'cancelled') ||
+        // Partner can update status
+        (isOwner(existing().partnerId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status in ['confirmed', 'in_progress', 'completed']) ||
+        isAdmin()
+      );
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidReview(incoming()) &&
+                    get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.customerId == request.auth.uid &&
+                    get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.status == 'completed';
+      allow delete: if isAdmin();
+    }
+  }
+}

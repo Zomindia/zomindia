@@ -1,0 +1,8 @@
+{
+  "name": "zomindia",
+  "description": "India's premium service marketplace connecting homeowners with professional service partners for cleaning, repairs, beauty, and maintenance.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}

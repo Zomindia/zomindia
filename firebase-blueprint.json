@@ -1,0 +1,287 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile for customers, partners, and admins.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The Firebase Auth UID" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "partner", "admin"] },
+        "phoneNumber": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "address": { "type": "string" },
+        "bio": { "type": "string" },
+        "notificationPreferences": {
+          "type": "object",
+          "properties": {
+            "bookingUpdates": { "type": "boolean" },
+            "promotionalMessages": { "type": "boolean" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Service categories (e.g., Cleaning, Repair, Beauty).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "icon": { "type": "string" },
+        "description": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "icon"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Individual services within a category.",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "basePrice": { "type": "number" },
+        "duration": { "type": "string" },
+        "imageURL": { "type": "string" },
+        "priceListPDF": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" }
+      },
+      "required": ["categoryId", "name", "basePrice"]
+    },
+    "Partner": {
+      "title": "Partner",
+      "description": "Specific information for service partners.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "bio": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "isVerified": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "inactive", "pending"] },
+        "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "Offline"] },
+        "kycStatus": { "type": "string", "enum": ["not_submitted", "pending", "verified", "rejected"] },
+        "kycDocuments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "url": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        },
+        "totalEarnings": { "type": "number" },
+        "rewardCredits": { "type": "number" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "categories", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Service booking details.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "on_the_way", "in_progress", "completed", "cancelled", "finalized"] },
+        "paymentStatus": { "type": "string", "enum": ["unpaid", "paid"] },
+        "paymentMethod": { "type": "string", "enum": ["online", "cash"] },
+        "paymentIntentId": { "type": "string" },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "address": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "additionalCharges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "amount": { "type": "number" },
+              "reason": { "type": "string" },
+              "createdAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "promoCode": { "type": "string" },
+        "discountApplied": { "type": "number" },
+        "cancellationReason": { "type": "string" },
+        "serviceOtp": { "type": "string", "description": "4-digit random OTP for service start" },
+        "otpVerified": { "type": "boolean", "description": "Whether the OTP has been verified by the partner" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "serviceId", "status", "scheduledAt", "address", "totalPrice"]
+    },
+    "Promotion": {
+      "title": "Promotion",
+      "description": "Promotional campaigns and discount codes.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "discountType": { "type": "string", "enum": ["percent", "flat"] },
+        "discountValue": { "type": "number" },
+        "description": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "applicableCategoryId": { "type": "string", "description": "Optional category filter" },
+        "applicableServiceId": { "type": "string", "description": "Optional service filter" },
+        "usageLimit": { "type": "number" },
+        "usageCount": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "code", "discountType", "discountValue"]
+    },
+    "FAQ": {
+      "title": "FAQ",
+      "description": "Help center articles and FAQs.",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "category": { "type": "string" },
+        "order": { "type": "number" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["question", "answer", "category"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System and user notifications.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "read"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer reviews for partners and services.",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "customerId", "partnerId", "rating"]
+    },
+    "EarningsHistory": {
+      "title": "Earnings History",
+      "description": "Records of earnings and reward credits for partners.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["booking_earning", "reward_credit", "adjustment"] },
+        "amount": { "type": "number" },
+        "credits": { "type": "number" },
+        "reason": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat messages between customer and partner.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "text", "createdAt"]
+    },
+    "Redemption": {
+      "title": "Redemption",
+      "description": "Redeemed promotions by users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "promotionId": { "type": "string" },
+        "redeemedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "used"] },
+        "appliedCategoryId": { "type": "string" },
+        "appliedServiceId": { "type": "string" }
+      },
+      "required": ["userId", "promotionId", "redeemedAt", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Public and private user profiles."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Service categories."
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Available services."
+    },
+    "/partners/{partnerId}": {
+      "schema": "Partner",
+      "description": "Service partner profiles."
+    },
+    "/partners/{partnerId}/earningsHistory/{historyId}": {
+      "schema": "EarningsHistory",
+      "description": "Detailed history of earnings and rewards for a partner."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "All service bookings."
+    },
+    "/bookings/{bookingId}/secrets/otp": {
+      "schema": "object",
+      "description": "Sensitive OTP for service start.",
+      "properties": {
+        "code": { "type": "string" }
+      }
+    },
+    "/bookings/{bookingId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages for a specific booking."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Partner reviews."
+    },
+    "/promotions/{promoId}": {
+      "schema": "Promotion",
+      "description": "Active and past promotional campaigns."
+    },
+    "/faqs/{faqId}": {
+      "schema": "FAQ",
+      "description": "Help center content."
+    },
+    "/notifications/{notifId}": {
+      "schema": "Notification",
+      "description": "User specific push notifications."
+    },
+    "/redemptions/{redemptionId}": {
+      "schema": "Redemption",
+      "description": "User promotion redemptions."
+    }
+  }
+}
