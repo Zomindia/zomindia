@@ -3,25 +3,44 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Inter", sans-serif;
+  --font-display: "Outfit", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
-  --font-serif: "Inter", serif;
-  --font-editorial: "Inter", serif;
+  --font-serif: "Baskervville", serif;
+  --font-editorial: "Playfair Display", serif;
   
-  --color-brand-accent: #1C1917;
-  --color-brand-muted: #78716C;
-  --color-brand-surface: #F5F5F4;
+  --color-blue-50: #f0f1ff;
+  --color-blue-100: #e3e4ff;
+  --color-blue-200: #cdd0ff;
+  --color-blue-300: #aeb2ff;
+  --color-blue-400: #888dff;
+  --color-blue-500: #6265fa;
+  --color-blue-600: #423deb;
+  --color-blue-700: #050ca6;
+  --color-blue-800: #060ba1;
+  --color-blue-900: #080d85;
+  --color-blue-950: #02054a;
+
+  --color-brand-accent: var(--color-blue-700);
+  --color-brand-muted: #64748B;
+  --color-brand-surface: #F8FAFC;
   --color-brand-gold: #EAB308;
   --color-luxury-gold: #C5A059;
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
   body {
-    @apply antialiased text-stone-900 bg-[#fafaf9];
+    @apply antialiased text-slate-900 bg-slate-50 selection:bg-blue-700 selection:text-white leading-relaxed;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight text-stone-900;
+    @apply font-display tracking-tight text-slate-900 font-bold;
+  }
+
+  p {
+    @apply leading-relaxed;
   }
 }
 
@@ -35,7 +54,7 @@
 
 @layer utilities {
   .text-glow {
-    text-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    text-shadow: 0 0 20px rgba(29, 78, 216, 0.1);
   }
   
   .glass {
@@ -43,10 +62,11 @@
   }
 
   .glass-dark {
-    @apply bg-black/40 backdrop-blur-md border border-white/10;
+    @apply bg-blue-900/40 backdrop-blur-md border border-white/10;
   }
 }
 
 .logo-glow {
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 0 20px rgba(29, 78, 216, 0.05);
 }
+

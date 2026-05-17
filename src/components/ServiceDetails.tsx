@@ -38,47 +38,101 @@ interface PartnerWithUserInfo extends PartnerProfile {
   phoneNumber?: string;
 }
 
-function ImageCarousel({ images }: { images: string[] }) {
+export function ImageCarousel({ images }: { images: string[] }) {
   const [index, setIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
 
   if (!images || images.length === 0) return null;
 
+  const paginate = (newDirection: number) => {
+    setDirection(newDirection);
+    setIndex((prevIndex) => {
+      let nextIndex = prevIndex + newDirection;
+      if (nextIndex < 0) nextIndex = images.length - 1;
+      if (nextIndex >= images.length) nextIndex = 0;
+      return nextIndex;
+    });
+  };
+
+  const variants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? 1000 : -1000,
+      opacity: 0
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? 1000 : -1000,
+      opacity: 0
+    })
+  };
+
+  const swipeConfidenceThreshold = 10000;
+  const swipePower = (offset: number, velocity: number) => {
+    return Math.abs(offset) * velocity;
+  };
+
   return (
-    <div className="relative w-full aspect-video rounded-[60px] overflow-hidden mb-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.1)] border-8 border-white group">
-      <AnimatePresence mode="wait">
+    <div className="relative w-full aspect-square md:aspect-video rounded-[32px] md:rounded-[60px] overflow-hidden mb-8 md:mb-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.1)] border-4 md:border-8 border-white group touch-none">
+      <AnimatePresence initial={false} custom={direction}>
         <motion.img
-          key={images[index]}
+          key={index}
           src={images[index]}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
-          className="w-full h-full object-cover"
+          custom={direction}
+          variants={variants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{
+            x: { type: "spring", stiffness: 300, damping: 30 },
+            opacity: { duration: 0.2 }
+          }}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={1}
+          onDragEnd={(e, { offset, velocity }) => {
+            const swipe = swipePower(offset.x, velocity.x);
+
+            if (swipe < -swipeConfidenceThreshold) {
+              paginate(1);
+            } else if (swipe > swipeConfidenceThreshold) {
+              paginate(-1);
+            }
+          }}
+          className="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing"
+          referrerPolicy="no-referrer"
         />
       </AnimatePresence>
       
       {images.length > 1 && (
         <>
-          <div className="absolute inset-0 flex items-center justify-between px-6 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute inset-0 flex items-center justify-between px-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
-              onClick={() => setIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1))}
-              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-stone-900 shadow-xl hover:bg-white active:scale-90 transition-all"
+              onClick={() => paginate(-1)}
+              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 shadow-xl hover:bg-white active:scale-90 transition-all pointer-events-auto"
             >
               <ChevronLeft size={24} />
             </button>
             <button 
-              onClick={() => setIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1))}
-              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-stone-900 shadow-xl hover:bg-white active:scale-90 transition-all"
+              onClick={() => paginate(1)}
+              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 shadow-xl hover:bg-white active:scale-90 transition-all pointer-events-auto"
             >
               <ChevronRight size={24} />
             </button>
           </div>
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-10">
             {images.map((_, i) => (
               <button
                 key={i}
-                onClick={() => setIndex(i)}
-                className={`h-1.5 rounded-full transition-all duration-300 ${i === index ? 'w-8 bg-white' : 'w-2 bg-white/40 hover:bg-white/60'}`}
+                onClick={() => {
+                  setDirection(i > index ? 1 : -1);
+                  setIndex(i);
+                }}
+                className={`h-1.5 rounded-full transition-all duration-300 pointer-events-auto ${i === index ? 'w-8 bg-white' : 'w-2 bg-white/40 hover:bg-white/60'}`}
               />
             ))}
           </div>
@@ -101,10 +155,10 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
         setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       });
     }
-  }, [availablePros.length === 0]); // Only update center if no pros found initially or list changes
+  }, [availablePros.length]); // Only update center if no pros found initially or list changes
 
   return (
-    <div className="w-full h-80 rounded-[40px] overflow-hidden border border-stone-100 shadow-inner bg-stone-50 relative group">
+    <div className="w-full h-80 rounded-[40px] overflow-hidden border border-slate-100 shadow-inner bg-slate-50 relative group">
       <Map
         defaultCenter={center}
         center={center}
@@ -123,7 +177,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
               }`}>
                 <Users size={16} />
               </div>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-900 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/marker:opacity-100 transition-opacity">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-blue-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/marker:opacity-100 transition-opacity">
                 {pro.displayName} · {pro.rating}★
               </div>
             </div>
@@ -131,11 +185,11 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
         ))}
       </Map>
       <div className="absolute top-6 left-6 flex flex-col gap-2">
-         <div className="bg-white/90 backdrop-blur shadow-xl border border-stone-100 p-4 rounded-3xl">
-           <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Live Professionals</p>
+         <div className="bg-white/90 backdrop-blur shadow-xl border border-slate-100 p-4 rounded-3xl">
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Live Professionals</p>
            <div className="flex items-center gap-2">
              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-             <span className="text-xs font-bold text-stone-900">{availablePros.length} Active in Area</span>
+             <span className="text-xs font-bold text-slate-900">{availablePros.length} Active in Area</span>
            </div>
          </div>
       </div>
@@ -244,10 +298,10 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-           <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-900 rounded-full animate-spin" />
-           <p className="text-stone-500 font-medium">Loading details...</p>
+           <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
+           <p className="text-slate-500 font-medium">Loading details...</p>
         </div>
       </div>
     );
@@ -255,11 +309,11 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
   if (!service) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50 p-6 text-center">
-        <AlertCircle size={48} className="text-stone-300 mb-4" />
-        <h2 className="text-2xl font-bold text-stone-900 mb-2">Service Not Found</h2>
-        <p className="text-stone-500 mb-8 italic">The requested service might have been removed.</p>
-        <button onClick={onBack} className="bg-stone-900 text-white px-8 py-3 rounded-xl font-bold">Back to Home</button>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <AlertCircle size={48} className="text-slate-300 mb-4" />
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Service Not Found</h2>
+        <p className="text-slate-500 mb-8 italic">The requested service might have been removed.</p>
+        <button onClick={onBack} className="bg-blue-700 text-white px-8 py-3 rounded-xl font-bold">Back to Home</button>
       </div>
     );
   }
@@ -267,24 +321,24 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
   const serviceImages = service.images || (service.imageURL ? [service.imageURL] : []);
 
   return (
-    <div className="min-h-screen bg-stone-50/50">
+    <div className="min-h-screen bg-slate-50/50">
       {/* Header Sticky */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-stone-200 sticky top-16 md:top-20 z-30">
+      <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-16 md:top-20 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
            <button 
              onClick={onBack} 
-             className="flex items-center gap-2 text-stone-500 hover:text-stone-900 font-black text-xs uppercase tracking-widest transition-all hover:-translate-x-1"
+             className="flex items-center gap-2 text-slate-500 hover:text-blue-700 font-black text-xs uppercase tracking-widest transition-all hover:-translate-x-1"
            >
              <ChevronLeft size={16} /> Back to discover
            </button>
            <div className="flex items-center gap-6">
              <div className="hidden md:block text-right">
-               <p className="text-[10px] text-stone-400 font-black uppercase tracking-[0.2em] mb-0.5">Investment</p>
-               <p className="text-xl font-black text-stone-900 italic tracking-tighter">₹{service.basePrice}</p>
+               <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-0.5">Investment</p>
+               <p className="text-xl font-black text-slate-900 italic tracking-tighter">₹{service.basePrice}</p>
              </div>
              <button 
                onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-               className="bg-stone-900 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-stone-900/20 hover:bg-black transition-all active:scale-95"
+               className="bg-blue-700 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-700/20/20 hover:bg-blue-800 transition-all active:scale-95"
              >
                Book Now
              </button>
@@ -292,10 +346,10 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-16">
           {/* Main Content */}
-          <div className="lg:col-span-8 space-y-20">
+          <div className="lg:col-span-8 space-y-12 md:space-y-20">
             {/* Hero Info */}
             <motion.section 
               initial={{ opacity: 0, y: 20 }}
@@ -304,36 +358,36 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
               {serviceImages.length > 0 && (
                 <ImageCarousel images={serviceImages} />
               )}
-              <div className="flex flex-wrap items-center gap-4 mb-8">
-                <span className="px-4 py-1.5 bg-stone-900 text-white rounded-full text-[10px] font-black uppercase tracking-[0.3em]">
+              <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-6 md:mb-8">
+                <span className="px-3 md:px-4 py-1.5 bg-blue-700 text-white rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em]">
                   {category?.name || 'Expert Service'}
                 </span>
-                <span className="flex items-center gap-2 text-[10px] font-black text-stone-500 bg-white px-3 py-1.5 rounded-xl border border-stone-100 uppercase tracking-widest">
-                  <Clock size={14} className="text-stone-300" /> {service.duration || '60 mins'} session
+                <span className="flex items-center gap-2 text-[9px] md:text-[10px] font-black text-slate-500 bg-white px-2.5 md:px-3 py-1.5 rounded-xl border border-slate-100 uppercase tracking-widest">
+                  <Clock size={14} className="text-slate-300" /> {service.duration || '60 mins'} session
                 </span>
-                <span className="flex items-center gap-2 text-[10px] font-black text-stone-900 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 tracking-tighter italic">
+                <span className="flex items-center gap-2 text-[9px] md:text-[10px] font-black text-slate-900 bg-amber-50 px-2.5 md:px-3 py-1.5 rounded-xl border border-amber-100 tracking-tighter italic">
                   <Star size={14} fill="currentColor" className="text-amber-500" /> {service.rating || 4.8} rating
                 </span>
               </div>
-              <h1 className="text-6xl md:text-8xl font-black text-stone-900 mb-8 tracking-tighter leading-none uppercase italic">{service.name}</h1>
-              <p className="text-2xl text-stone-500 leading-relaxed max-w-3xl font-medium mb-12">{service.description}</p>
+              <h1 className="text-4xl md:text-6xl font-bold text-slate-900 mb-6 md:mb-8 tracking-tight leading-tight font-display">{service.name}</h1>
+              <p className="text-lg md:text-xl text-slate-500 leading-relaxed max-w-3xl font-normal mb-10 md:mb-12">{service.description}</p>
               
-              <div className="flex flex-col sm:flex-row gap-6 mb-16">
+              <div className="flex flex-col sm:flex-row gap-4 md:gap-6 mb-12 md:mb-16">
                 <button 
                   onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-                  className="bg-stone-900 text-white px-12 py-6 rounded-3xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-stone-900/30 hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-3 italic"
+                  className="bg-blue-700 text-white px-8 md:px-12 py-5 md:py-6 rounded-2xl md:rounded-3xl font-bold text-sm md:text-base tracking-tight shadow-2xl shadow-blue-700/20/10 hover:bg-blue-800 transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
-                  <Calendar size={20} /> Book This Service Now
+                  <Calendar size={20} /> Book Service Now
                 </button>
-                <div className="flex items-center gap-6 px-8 py-5 bg-stone-50 rounded-3xl border border-stone-100">
+                <div className="flex items-center gap-6 px-6 md:px-8 py-4 md:py-5 bg-slate-50 rounded-2xl md:rounded-3xl border border-slate-100">
                   <div>
-                    <p className="text-[10px] text-stone-400 font-black uppercase tracking-[0.2em] mb-1">Starting Price</p>
-                    <p className="text-2xl font-black text-stone-900 italic tracking-tighter">₹{service.basePrice}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Price</p>
+                    <p className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">₹{service.basePrice}</p>
                   </div>
-                  <div className="w-px h-10 bg-stone-200" />
+                  <div className="w-px h-10 bg-slate-200" />
                   <div>
-                    <p className="text-[10px] text-stone-400 font-black uppercase tracking-[0.2em] mb-1">Duration</p>
-                    <p className="text-2xl font-black text-stone-900 italic tracking-tighter">{service.duration || '60m'}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Time</p>
+                    <p className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">{service.duration || '60m'}</p>
                   </div>
                 </div>
               </div>
@@ -341,39 +395,39 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
             {/* Price List Section */}
             {service.priceListPDF && (
-              <section className="bg-stone-900 rounded-[50px] p-10 md:p-16 flex flex-col md:flex-row items-center justify-between gap-12 relative overflow-hidden group">
+              <section className="bg-blue-700 rounded-[32px] md:rounded-[50px] p-8 md:p-16 flex flex-col md:flex-row items-center justify-between gap-10 md:gap-12 relative overflow-hidden group">
                 {/* Decorative background */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                 
-                <div className="relative z-10 max-w-md">
-                   <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-8 border border-white/10">
+                <div className="relative z-10 max-w-md text-center md:text-left">
+                   <div className="w-12 h-12 md:w-16 md:h-16 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-6 md:mb-8 border border-white/10 mx-auto md:mx-0">
                      <FileText size={32} />
                    </div>
-                   <h2 className="text-3xl font-black text-white mb-4 tracking-tight uppercase">Rate Card.</h2>
-                   <p className="text-stone-400 text-lg leading-relaxed font-medium">
-                     Complete transparency on spares and labor. Download our verified price list for this category.
+                   <h2 className="text-2xl md:text-3xl font-black text-white mb-4 tracking-tight uppercase">Rate Card.</h2>
+                   <p className="text-slate-400 text-base md:text-lg leading-relaxed font-medium">
+                     Complete transparency on spares and labor. Download our verified price list.
                    </p>
                 </div>
                 <a 
                   href={service.priceListPDF} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="relative z-10 bg-white text-stone-900 px-10 py-5 rounded-[24px] font-black text-xs uppercase tracking-[0.2em] hover:bg-stone-100 transition-all shadow-2xl flex items-center gap-4 whitespace-nowrap italic active:scale-95"
+                  className="relative z-10 bg-white text-slate-900 px-8 md:px-10 py-4 md:py-5 rounded-xl md:rounded-[24px] font-black text-[10px] md:text-xs uppercase tracking-[0.2em] hover:bg-slate-100 transition-all shadow-2xl flex items-center gap-4 whitespace-nowrap italic active:scale-95"
                 >
-                  <FileText size={20} /> View Rate Card PDF
+                  <FileText size={20} /> View Price List
                 </a>
               </section>
             )}
 
             {/* Available Pros Section */}
-            <section className="bg-white rounded-[60px] p-10 md:p-16 border border-stone-100 shadow-sm relative overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
+            <section className="bg-white rounded-[32px] md:rounded-[60px] p-8 md:p-16 border border-slate-100 shadow-sm relative overflow-hidden">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 md:gap-8 mb-10 md:mb-12">
                 <div>
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-stone-50 rounded-full text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mb-6">
+                  <div className="inline-flex items-center gap-2 px-3 md:px-4 py-1.5 bg-slate-50 rounded-full text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] mb-4 md:mb-6">
                     Available Pros
                   </div>
-                  <h2 className="text-4xl md:text-5xl font-black text-stone-900 tracking-tighter uppercase italic">Top <span className="text-stone-300 not-italic">Experts.</span></h2>
-                  <p className="text-stone-500 font-medium text-lg mt-2">Highly rated professionals specializing in this service.</p>
+                 <h2 className="text-2xl md:text-4xl font-bold text-slate-900 tracking-tight font-display">Top Experts</h2>
+                  <p className="text-slate-500 font-medium text-sm md:text-base mt-2">Highly rated professionals specializing in this service.</p>
                 </div>
               </div>
 
@@ -383,7 +437,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {partners.slice(0, 3).map((partner) => (
-                  <div key={partner.id} className="p-8 bg-stone-50/50 rounded-[40px] border border-stone-100 flex flex-col gap-6 group hover:bg-white hover:border-stone-900 transition-all duration-500">
+                  <div key={partner.id} className="p-8 bg-slate-50/50 rounded-[40px] border border-slate-100 flex flex-col gap-6 group hover:bg-white hover:border-blue-700 transition-all duration-500">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-6">
                         <div className="relative">
@@ -392,24 +446,29 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                               src={partner.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${partner.displayName}`} 
                               alt={partner.displayName}
                               className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
                             />
                           </div>
                           <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white ${
                             partner.availabilityStatus === 'Available' ? 'bg-emerald-500' :
-                            partner.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-stone-300'
+                            partner.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-300'
                           }`} />
                         </div>
                         <div>
-                          <h4 className="text-xl font-black text-stone-900 italic tracking-tight">{partner.displayName}</h4>
+                          <div className="flex items-center gap-3">
+                            <h4 className="text-xl font-black text-slate-900 italic tracking-tight">{partner.displayName}</h4>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                              partner.availabilityStatus === 'Available' ? 'bg-emerald-100 text-emerald-700' : 
+                              partner.availabilityStatus === 'Busy' ? 'bg-amber-100 text-amber-700' : 
+                              'bg-slate-200 text-slate-600'
+                            }`}>
+                              {partner.availabilityStatus || 'Offline'}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-4 mt-1">
                             <div className="flex items-center text-amber-500 font-black text-[10px]">
                               <Star size={10} fill="currentColor" /> {partner.rating}
                             </div>
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${
-                              partner.availabilityStatus === 'Available' ? 'text-emerald-500' : 'text-stone-400'
-                            }`}>
-                               {partner.availabilityStatus || 'Offline'}
-                            </p>
                           </div>
                         </div>
                       </div>
@@ -417,7 +476,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                     {partner.phoneNumber && (
                       <button 
                         onClick={() => window.location.href = `tel:${partner.phoneNumber}`}
-                        className="w-full py-4 bg-white border border-stone-200 rounded-2xl text-[10px] font-black text-stone-900 uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-stone-900 hover:text-white transition-all shadow-sm"
+                        className="w-full py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
                       >
                         <Phone size={14} /> Contact Pro
                       </button>
@@ -425,7 +484,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                   </div>
                 ))}
                 {partners.length === 0 && (
-                   <div className="col-span-full py-20 text-center text-stone-400 font-medium bg-stone-50 rounded-[40px] border-2 border-dashed border-stone-100">
+                   <div className="col-span-full py-20 text-center text-slate-400 font-medium bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-100">
                      No experts found in this sector right now.
                    </div>
                 )}
@@ -436,32 +495,32 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
           {/* Sidebar */}
           <div className="lg:col-span-4">
              <div className="sticky top-40 space-y-8">
-               {/* Booking Summary Card */}
-               <div className="bg-stone-900 rounded-[50px] p-10 text-white shadow-2xl relative overflow-hidden group">
+                {/* Booking Summary Card */}
+                <div className="bg-blue-700 rounded-[40px] p-10 text-white shadow-2xl relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
                   
-                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-stone-500 mb-8">Summary.</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-8">Summary</p>
                   
                   <div className="space-y-6 mb-10">
-                    <div className="flex justify-between items-center text-xl font-black italic tracking-tighter">
-                       <span className="text-stone-500 not-italic uppercase text-[10px] tracking-widest">Base Rate</span>
+                    <div className="flex justify-between items-center text-xl font-bold tracking-tight">
+                       <span className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">Base Rate</span>
                        <span>₹{service.basePrice}</span>
                     </div>
-                    <div className="flex justify-between items-center text-xl font-black italic tracking-tighter">
-                       <span className="text-stone-500 not-italic uppercase text-[10px] tracking-widest">Insurance</span>
+                    <div className="flex justify-between items-center text-xl font-bold tracking-tight">
+                       <span className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">Insurance</span>
                        <span className="text-emerald-400">Included</span>
                     </div>
                   </div>
 
                   <div className="pt-8 border-t border-white/10 mb-10">
-                     <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-4">You get.</p>
+                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">You get</p>
                      <ul className="space-y-4">
                         {[
                           'Verified mastery', 
                           'Service warranty', 
                           '24/7 Priority support'
                         ].map((item, i) => (
-                           <li key={i} className="flex items-center gap-3 text-xs font-bold text-stone-300">
+                           <li key={i} className="flex items-center gap-3 text-xs font-bold text-slate-300">
                              <div className="p-1 bg-emerald-500/20 text-emerald-400 rounded-md">
                                <CheckCircle2 size={12} />
                              </div>
@@ -473,30 +532,30 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
                   <button 
                     onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-                    className="w-full bg-white text-stone-900 py-6 rounded-[28px] font-black uppercase tracking-[0.2em] text-xs italic hover:bg-stone-100 transition-all active:scale-95 shadow-xl shadow-black/20"
+                    className="w-full bg-white text-slate-900 py-5 rounded-2xl font-bold tracking-tight text-base hover:bg-slate-100 transition-all active:scale-95 shadow-xl shadow-black/20"
                   >
                     Confirm Booking
                   </button>
                </div>
 
                {/* Trust Indicators */}
-               <div className="bg-white rounded-[40px] p-8 border border-stone-100 space-y-6">
+               <div className="bg-white rounded-[40px] p-8 border border-slate-100 space-y-6">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-stone-50 rounded-2xl text-stone-900">
+                    <div className="p-3 bg-slate-50 rounded-2xl text-slate-900">
                       <ShieldCheck size={24} />
                     </div>
                     <div>
-                      <h4 className="font-black text-stone-900 text-sm uppercase">Zom-Shield.</h4>
-                      <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Premium cover active</p>
+                      <h4 className="font-black text-slate-900 text-sm uppercase">Zom-Shield.</h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Premium cover active</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-stone-50 rounded-2xl text-stone-900">
+                    <div className="p-3 bg-slate-50 rounded-2xl text-slate-900">
                       <Clock size={24} />
                     </div>
                     <div>
-                      <h4 className="font-black text-stone-900 text-sm uppercase">Priority.</h4>
-                      <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Instant assignment</p>
+                      <h4 className="font-black text-slate-900 text-sm uppercase">Priority.</h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Instant assignment</p>
                     </div>
                   </div>
                </div>
@@ -508,27 +567,27 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
         <div className="mt-32 space-y-32">
           {/* FAQs */}
           <section>
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16 px-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 md:gap-8 mb-10 md:mb-16 px-4">
               <div>
-                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-stone-100 rounded-full text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mb-6">
+                 <div className="inline-flex items-center gap-2 px-3 md:px-4 py-1.5 bg-slate-100 rounded-full text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] mb-4 md:mb-6">
                    Knowledge Base
                  </div>
-                <h2 className="text-4xl md:text-5xl font-black text-stone-900 tracking-tighter uppercase italic">Insights <span className="text-stone-200 not-italic">& Assistance.</span></h2>
+                <h2 className="text-2xl md:text-4xl font-bold text-slate-900 tracking-tight font-display">Insights & Assistance</h2>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 px-4">
               {faqs.map((faq) => (
-                <div key={faq.id} className="p-10 bg-white border border-stone-100 rounded-[48px] hover:border-stone-900 transition-all duration-500 group">
-                  <div className="w-12 h-12 bg-stone-50 rounded-2xl flex items-center justify-center text-stone-400 group-hover:bg-stone-900 group-hover:text-white transition-all duration-500 mb-8">
-                    <HelpCircle size={24} />
+                <div key={faq.id} className="p-8 md:p-10 bg-white border border-slate-100 rounded-3xl md:rounded-[48px] hover:border-blue-700 transition-all duration-500 group">
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-50 rounded-xl md:rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-700 group-hover:text-white transition-all duration-500 mb-6 md:mb-8">
+                    <HelpCircle size={20} />
                   </div>
-                  <h3 className="text-xl font-black text-stone-900 mb-4 italic tracking-tight">{faq.question}</h3>
-                  <p className="text-stone-500 font-medium leading-relaxed italic">{faq.answer}</p>
+                  <h3 className="text-lg md:text-xl font-semibold text-slate-900 mb-3 md:mb-4 tracking-tight">{faq.question}</h3>
+                  <p className="text-slate-500 text-sm md:text-base font-normal leading-relaxed">{faq.answer}</p>
                 </div>
               ))}
               {faqs.length === 0 && (
-                <div className="col-span-full py-20 text-center text-stone-400 font-medium bg-stone-50 rounded-[48px] border-2 border-dashed border-stone-100">
+                <div className="col-span-full py-20 text-center text-slate-400 font-medium bg-slate-50 rounded-[48px] border-2 border-dashed border-slate-100">
                   No FAQs curated for this specialization yet.
                 </div>
               )}
@@ -537,37 +596,50 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
           {/* Reviews */}
           <section>
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16 px-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 md:gap-8 mb-10 md:mb-16 px-4">
               <div>
-                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-stone-100 rounded-full text-stone-400 text-[10px] font-black uppercase tracking-[0.3em] mb-6">
+                 <div className="inline-flex items-center gap-2 px-3 md:px-4 py-1.5 bg-slate-100 rounded-full text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] mb-4 md:mb-6">
                    Community Voice
                  </div>
-                <h2 className="text-4xl md:text-5xl font-black text-stone-900 tracking-tighter uppercase italic">Verified <span className="text-stone-200 not-italic">Encounters.</span></h2>
+                <h2 className="text-2xl md:text-4xl font-bold text-slate-900 tracking-tight font-display">Verified Encounters</h2>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
-              {reviews.map((review) => (
-                <div key={review.id} className="p-10 bg-white border border-stone-100 rounded-[48px] shadow-sm relative group hover:border-amber-200 transition-all duration-500">
-                  <div className="flex gap-1 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 px-4">
+              {reviews.map((review: any) => (
+                <div key={review.id} className="p-8 md:p-10 bg-white border border-slate-100 rounded-3xl md:rounded-[48px] shadow-sm relative group hover:border-amber-200 transition-all duration-500">
+                  <div className="flex gap-1 mb-6 md:mb-8">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} className={i < review.rating ? "text-amber-500" : "text-stone-100"} />
+                      <Star key={i} size={12} fill={i < review.rating ? "currentColor" : "none"} className={i < review.rating ? "text-amber-500" : "text-slate-100"} />
                     ))}
                   </div>
-                  <p className="text-stone-900 text-lg font-bold italic leading-relaxed mb-10 group-hover:text-amber-700 transition-colors">"{review.comment}"</p>
-                  <div className="flex items-center gap-4 pt-8 border-t border-stone-50">
-                     <div className="w-10 h-10 rounded-2xl bg-stone-50 flex items-center justify-center text-[11px] font-black text-stone-400 border border-stone-100">
+                  {review.photoURL && (
+                    <div className="mb-6 rounded-2xl overflow-hidden max-h-40 border border-slate-100">
+                      <img src={review.photoURL} alt="Review attachment" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                  )}
+                  <p className="text-slate-900 font-semibold leading-relaxed mb-8 md:mb-10 group-hover:text-slate-700 transition-colors">"{review.comment}"</p>
+                  
+                  {review.partnerReply && (
+                    <div className="mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Partner Reply</p>
+                      <p className="text-sm font-medium text-slate-700">"{review.partnerReply}"</p>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-4 pt-6 md:pt-8 border-t border-slate-50">
+                     <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-slate-50 flex items-center justify-center text-[10px] md:text-[11px] font-black text-slate-400 border border-slate-100">
                        {review.customerId.slice(-2).toUpperCase()}
                      </div>
                      <div>
-                       <p className="text-xs font-black text-stone-900 uppercase">Authenticated User</p>
-                       <p className="text-[10px] font-black text-stone-300 uppercase tracking-widest mt-0.5">Verified Experience</p>
+                       <p className="text-[10px] md:text-xs font-black text-slate-900 uppercase">Au. User</p>
+                       <p className="text-[8px] md:text-[10px] font-black text-slate-300 uppercase tracking-widest mt-0.5">Verified</p>
                      </div>
                   </div>
                 </div>
               ))}
               {reviews.length === 0 && (
-                 <div className="col-span-full py-20 text-center text-stone-400 font-medium bg-stone-200/20 rounded-[48px] border-2 border-dashed border-stone-100">
+                 <div className="col-span-full py-20 text-center text-slate-400 font-medium bg-slate-200/20 rounded-[48px] border-2 border-dashed border-slate-100">
                    Awaiting the first expert encounter. Be the pioneer.
                  </div>
               )}

@@ -21,8 +21,8 @@ export default function BottomNav({ activeTab, setActiveTab, hasNotifications, i
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pointer-events-none">
-      <div className="bg-white/90 backdrop-blur-2xl border border-stone-200/50 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center justify-around p-2 pointer-events-auto max-w-lg mx-auto">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pointer-events-none safe-area-bottom">
+      <div className="bg-white/90 backdrop-blur-2xl border border-white/20 rounded-[32px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] flex items-center justify-between p-1.5 pointer-events-auto max-w-sm mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -31,23 +31,24 @@ export default function BottomNav({ activeTab, setActiveTab, hasNotifications, i
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className="relative flex flex-col items-center justify-center py-2 px-1 transition-all flex-1"
+              className="relative flex flex-col items-center justify-center py-2 transition-all flex-1"
             >
-              <div className={`relative p-2.5 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-stone-900 text-white shadow-xl shadow-stone-900/30 scale-110' : 'text-stone-400 hover:text-stone-600'}`}>
-                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+              <div className={`relative px-5 py-2.5 rounded-2xl transition-all duration-500 flex flex-col items-center gap-1 ${isActive ? 'text-blue-700' : 'text-slate-400 active:scale-90'}`}>
+                {isActive && (
+                  <motion.div 
+                    layoutId="active-pill"
+                    className="absolute inset-0 bg-blue-50 rounded-2xl -z-10"
+                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <Icon size={22} strokeWidth={isActive ? 2.5 : 1.5} className="transition-transform duration-300" />
+                <span className={`text-[9px] font-black uppercase tracking-[0.1em] transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-60'}`}>
+                  {item.label}
+                </span>
                 {item.badge && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white shadow-sm" />
+                  <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white shadow-sm animate-pulse" />
                 )}
               </div>
-              <span className={`text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-stone-900 opacity-100 transform translate-y-0' : 'text-stone-400 opacity-60 translate-y-1'}`}>
-                {item.label}
-              </span>
-              {isActive && (
-                <motion.span 
-                  layoutId="bottom-nav-indicator"
-                  className="absolute -bottom-1 w-8 h-1 bg-stone-900 rounded-full" 
-                />
-              )}
             </button>
           );
         })}

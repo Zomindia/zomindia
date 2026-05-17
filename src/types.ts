@@ -1,14 +1,21 @@
 export type UserRole = 'customer' | 'partner' | 'admin';
+export type AdminSubRole = 'head' | 'accounts' | 'hr';
 
 export interface UserProfile {
   uid: string;
   displayName: string;
   email: string;
   role: UserRole;
+  adminSubRole?: AdminSubRole;
   phoneNumber?: string;
   photoURL?: string;
   address?: string;
   bio?: string;
+  walletBalance?: number;
+  referralCode?: string;
+  referredBy?: string;
+  isPremium?: boolean;
+  subscriptionExpiry?: any;
   notificationPreferences?: {
     bookingUpdates: boolean;
     promotionalMessages: boolean;
@@ -20,7 +27,9 @@ export interface Category {
   id: string;
   name: string;
   icon: string;
+  iconURL?: string;
   imageURL?: string;
+  images?: string[];
   description?: string;
   order?: number;
 }
@@ -37,6 +46,7 @@ export interface Service {
   priceListPDF?: string;
   rating?: number;
   reviewCount?: number;
+  predefinedTasks?: string[];
 }
 
 export interface WorkingHours {
@@ -83,6 +93,7 @@ export interface SupportTicket {
   message: string;
   status: TicketStatus;
   priority: 'low' | 'medium' | 'high';
+  category?: string;
   adminResponse?: string;
   createdAt: any;
   updatedAt: any;
@@ -98,7 +109,7 @@ export interface EarningsHistory {
   createdAt: any;
 }
 
-export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed';
+export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending';
 
 export interface AdditionalCharge {
   amount: number;
@@ -130,6 +141,9 @@ export interface Booking {
   otpVerified?: boolean;
   createdAt: any;
   updatedAt: any;
+  partnerPriority?: 'high' | 'medium' | 'low';
+  completedTasks?: string[];
+  adminNotes?: string;
 }
 
 export interface Promotion {
@@ -146,6 +160,7 @@ export interface Promotion {
   active: boolean;
   applicableCategories?: string[];
   applicableServices?: string[];
+  targetAudience?: 'customer' | 'partner' | 'all';
   createdAt: any;
 }
 
@@ -167,6 +182,9 @@ export interface Review {
   serviceId?: string;
   rating: number;
   comment: string;
+  photos?: string[];
+  partnerReply?: string;
+  partnerReplyCreatedAt?: any;
   createdAt: any;
 }
 
@@ -184,5 +202,16 @@ export interface ChatMessage {
   id: string;
   senderId: string;
   text: string;
+  createdAt: any;
+}
+
+export interface WalletTransaction {
+  id: string;
+  userId: string;
+  amount: number;
+  type: 'credit' | 'debit';
+  reason: string;
+  referenceId?: string;
+  status: 'pending' | 'completed' | 'failed';
   createdAt: any;
 }

@@ -52,7 +52,7 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
     try {
       const messagesRef = collection(db, 'bookings', booking.id, 'messages');
       await addDoc(messagesRef, {
-        senderId: auth.currentUser.uid,
+        senderId: auth.currentUser?.uid,
         text: messageText,
         createdAt: serverTimestamp()
       });
@@ -67,10 +67,10 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
         initial={{ opacity: 0, y: 100, scale: 0.95, filter: 'blur(10px)' }}
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
-        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[420px] h-full sm:h-[650px] bg-white sm:rounded-[40px] shadow-[0_32px_64px_rgba(0,0,0,0.15)] border-t sm:border border-stone-100 flex flex-col z-[100] overflow-hidden"
+        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[420px] h-full sm:h-[650px] bg-white sm:rounded-[40px] shadow-[0_32px_64px_rgba(0,0,0,0.15)] border-t sm:border border-slate-100 flex flex-col z-[100] overflow-hidden"
       >
         {/* Header */}
-        <div className="px-6 py-5 bg-stone-900 text-white flex items-center justify-between relative overflow-hidden">
+        <div className="px-6 py-5 bg-blue-700 text-white flex items-center justify-between relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
             <div className="absolute top-[-50%] left-[-20%] w-[100%] h-[200%] bg-white/20 blur-[120px] rounded-full rotate-45 animate-pulse" />
           </div>
@@ -78,7 +78,7 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
           <div className="flex items-center gap-4 relative z-10">
             <div className="w-12 h-12 rounded-[18px] bg-white/10 flex items-center justify-center overflow-hidden border border-white/20 shadow-inner">
               {otherUser?.photoURL ? (
-                <img src={otherUser.photoURL} alt={otherUser.displayName} className="w-full h-full object-cover" />
+                <img src={otherUser.photoURL} alt={otherUser.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <User size={24} className="text-white/40" />
               )}
@@ -105,20 +105,20 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
         {/* Messages */}
         <div 
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-6 space-y-8 bg-stone-50/30 scroll-smooth"
+          className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50/30 scroll-smooth"
         >
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-full text-stone-400">
-              <div className="w-10 h-10 border-4 border-stone-100 border-t-stone-900 rounded-full animate-spin mb-6" />
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-900/40">Secure Sync...</p>
+            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+              <div className="w-10 h-10 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6" />
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900/40">Secure Sync...</p>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-stone-300 text-center px-12">
-              <div className="w-24 h-24 bg-white rounded-[32px] mb-8 shadow-2xl shadow-stone-200/50 flex items-center justify-center border border-stone-100/50 transform -rotate-6">
-                <MessageSquare size={40} className="text-stone-100" />
+            <div className="flex flex-col items-center justify-center h-full text-slate-300 text-center px-12">
+              <div className="w-24 h-24 bg-white rounded-[32px] mb-8 shadow-2xl shadow-slate-200/50 flex items-center justify-center border border-slate-100/50 transform -rotate-6">
+                <MessageSquare size={40} className="text-slate-100" />
               </div>
-              <h5 className="text-xl font-bold text-stone-900 mb-2 italic">Connect Now</h5>
-              <p className="text-xs text-stone-400 leading-relaxed font-medium">Say hello to your {auth.currentUser?.uid === booking.customerId ? 'partner' : 'customer'} to coordinate the booking.</p>
+              <h5 className="text-xl font-bold text-slate-900 mb-2 italic">Connect Now</h5>
+              <p className="text-xs text-slate-400 leading-relaxed font-medium">Say hello to your {auth.currentUser?.uid === booking.customerId ? 'partner' : 'customer'} to coordinate the booking.</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -140,8 +140,8 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
                       <div 
                         className={`relative px-5 py-3.5 rounded-[28px] text-sm leading-relaxed transition-all shadow-sm ${
                           isMe 
-                            ? `bg-stone-900 text-white shadow-xl shadow-stone-900/10 ${isLastInGroup ? 'rounded-br-none' : ''}` 
-                            : `bg-white text-stone-800 border border-stone-200/50 shadow-xl shadow-stone-200/20 ${isLastInGroup ? 'rounded-bl-none' : ''}`
+                            ? `bg-blue-700 text-white shadow-xl shadow-blue-700/20/10 ${isLastInGroup ? 'rounded-br-none' : ''}` 
+                            : `bg-white text-slate-800 border border-slate-200/50 shadow-xl shadow-slate-200/20 ${isLastInGroup ? 'rounded-bl-none' : ''}`
                         }`}
                       >
                         <p className="whitespace-pre-wrap font-medium">{msg.text}</p>
@@ -160,7 +160,7 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
         </div>
 
         {/* Input */}
-        <div className="p-8 bg-white border-t border-stone-100">
+        <div className="p-8 bg-white border-t border-slate-100">
           <form 
             onSubmit={handleSendMessage}
             className="flex gap-4 items-center"
@@ -171,21 +171,21 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Type your message..."
-                className="w-full bg-stone-50 border-2 border-stone-100 rounded-[28px] pl-6 pr-12 py-5 text-sm font-medium focus:ring-4 focus:ring-stone-900/5 focus:border-stone-900 focus:bg-white outline-none transition-all placeholder:text-stone-300 shadow-inner"
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[28px] pl-6 pr-12 py-5 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 focus:border-blue-700 focus:bg-white outline-none transition-all placeholder:text-slate-300 shadow-inner"
               />
             </div>
             <button 
               type="submit"
               disabled={!newMessage.trim()}
-              className="w-14 h-14 bg-stone-900 text-white rounded-[24px] hover:bg-black disabled:opacity-20 disabled:grayscale transition-all shadow-2xl shadow-stone-900/30 active:scale-90 shrink-0 flex items-center justify-center p-0"
+              className="w-14 h-14 bg-blue-700 text-white rounded-[24px] hover:bg-blue-800 disabled:opacity-20 disabled:grayscale transition-all shadow-2xl shadow-blue-700/20/30 active:scale-90 shrink-0 flex items-center justify-center p-0"
             >
               <Send size={22} className="transform -rotate-12 translate-x-0.5" />
             </button>
           </form>
           <div className="flex items-center justify-center gap-3 mt-6">
-            <div className="h-[1px] flex-1 bg-stone-100" />
-            <p className="text-[9px] text-stone-300 uppercase font-black tracking-[0.3em] leading-none">Security Verified</p>
-            <div className="h-[1px] flex-1 bg-stone-100" />
+            <div className="h-[1px] flex-1 bg-slate-100" />
+            <p className="text-[9px] text-slate-300 uppercase font-black tracking-[0.3em] leading-none">Security Verified</p>
+            <div className="h-[1px] flex-1 bg-slate-100" />
           </div>
         </div>
       </motion.div>

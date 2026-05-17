@@ -27,13 +27,13 @@ import {
   History,
   TicketPercent,
   Settings,
-  Zap
+  Zap,
+  MessageSquare
 } from 'lucide-react';
 
 // Modules
 import CustomerHome from './components/CustomerHome';
 import CustomerDashboard from './components/CustomerDashboard';
-import PartnerDashboard from './components/PartnerDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import SignUpAsPartner from './components/SignUpAsPartner';
 import StaticPage from './components/StaticPage';
@@ -45,32 +45,37 @@ import NotificationsView from './components/NotificationsView';
 import OffersView from './components/OffersView';
 import BookingHistory from './components/BookingHistory';
 import BottomNav from './components/BottomNav';
+import PartnerApp from './components/PartnerApp';
+
+import SupportTicketsView from './components/SupportTicketsView';
+import AiSupportChat from './components/AiSupportChat';
+import WalletView from './components/WalletView';
 
 const Logo = ({ size = 20, light = false }: { size?: number, light?: boolean }) => (
   <div className="flex items-center gap-2 group">
     <div 
-      className={`flex items-center justify-center ${light ? 'bg-white' : 'bg-stone-900'}`}
+      className={`flex items-center justify-center ${light ? 'bg-white' : 'bg-[#050CA6]'}`}
       style={{ 
         width: size * 1.4, 
         height: size * 1.4, 
         borderRadius: '8px',
       }}
     >
-      <span className={`font-black tracking-tighter ${light ? 'text-stone-900' : 'text-white'}`} style={{ fontSize: size * 0.8 }}>Z</span>
+      <span className={`font-black tracking-tighter ${light ? 'text-slate-900' : 'text-white'}`} style={{ fontSize: size * 0.8 }}>Z</span>
     </div>
     <div className="flex flex-col">
-      <span className={`font-bold tracking-tight ${light ? 'text-white' : 'text-stone-900'}`} style={{ fontSize: size }}>zomindia</span>
+      <span className={`font-bold tracking-tight ${light ? 'text-white' : 'text-slate-900'}`} style={{ fontSize: size }}>zomindia</span>
     </div>
   </div>
 );
 
-const MobileNavItem = ({ onClick, label, isActive, index }: { onClick: () => void, label: string, isActive: boolean, index: number }) => (
+const MobileNavItem = ({ onClick, label, isActive, index }: { onClick: () => void, label: string, isActive: boolean, index: number, key?: any }) => (
   <motion.button 
     initial={{ opacity: 0, x: -10 }}
     animate={{ opacity: 1, x: 0 }}
     transition={{ delay: index * 0.05 }}
     onClick={onClick} 
-    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all ${isActive ? 'bg-stone-900 text-white shadow-xl shadow-stone-900/10' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-900'}`}
+    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/20/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
   >
     <span className="tracking-tight">{label}</span>
     <ChevronRight size={16} className={`transition-transform ${isActive ? 'translate-x-0' : '-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0'}`} />
@@ -90,7 +95,39 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers'>('home');
+  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet'>('home');
+  const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
+
+  // Sync state with hash and handle popstate for browser back button
+  const setActiveTab = (tab: typeof activeTab, bId: string | null = null) => {
+    setActiveTabState(tab);
+    setTargetBookingId(bId);
+    window.history.pushState(null, '', `#${tab}`);
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as typeof activeTab;
+      if (hash) {
+        setActiveTabState(hash);
+      } else {
+        // Fallback to home when back button leads to root URL without hash
+        setActiveTabState('home');
+      }
+    };
+
+    // Set initial tab from hash if present
+    const initialHash = window.location.hash.replace('#', '') as typeof activeTab;
+    if (initialHash) {
+      setActiveTabState(initialHash);
+    } else {
+      window.history.replaceState(null, '', '#home');
+    }
+    
+    window.addEventListener('popstate', handleHashChange);
+    return () => window.removeEventListener('popstate', handleHashChange);
+  }, []);
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -125,6 +162,8 @@ export default function App() {
             phoneNumber: u.phoneNumber || '',
             role: isAdminUser ? 'admin' : 'customer',
             photoURL: u.photoURL || '', 
+            referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
+            walletBalance: 0,
             createdAt: Timestamp.now() as any, 
           };
           await setDoc(doc(db, 'users', u.uid), newProfile);
@@ -132,8 +171,11 @@ export default function App() {
           userRole = newProfile.role;
         }
 
-        if (userRole === 'partner') setActiveTab('partner');
-        if (userRole === 'admin') setActiveTab('admin');
+        setActiveTab(current => {
+          if (userRole === 'partner' && (current === 'home' || current === 'profile')) return 'partner';
+          if (userRole === 'admin' && (current === 'home' || current === 'profile')) return 'admin';
+          return current;
+        });
 
         // Global Active Booking Listener
         const q = query(
@@ -161,26 +203,26 @@ export default function App() {
 
   if (!hasValidKey) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
-        <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-stone-200 border border-stone-100">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-slate-200 border border-slate-100">
           <Logo size={32} />
-          <h2 className="text-2xl font-black text-stone-900 mt-8 mb-4 tracking-tighter italic">API Key Required</h2>
-          <p className="text-stone-500 text-sm mb-8 leading-relaxed">
+          <h2 className="text-2xl font-black text-slate-900 mt-8 mb-4 tracking-tighter italic">API Key Required</h2>
+          <p className="text-slate-500 text-sm mb-8 leading-relaxed">
             To enable location services and visual address selection, please add your Google Maps API key.
           </p>
           
           <div className="space-y-4 mb-8">
             <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-bold shrink-0">1</div>
-              <p className="text-xs text-stone-600">Get an API key from the <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener" className="text-stone-900 font-bold underline">Google Cloud Console</a></p>
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+              <p className="text-xs text-slate-600">Get an API key from the <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener" className="text-slate-900 font-bold underline">Google Cloud Console</a></p>
             </div>
             <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-bold shrink-0">2</div>
-              <p className="text-xs text-stone-600">Open <strong>Settings</strong> (⚙️ icon) → <strong>Secrets</strong></p>
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">2</div>
+              <p className="text-xs text-slate-600">Open <strong>Settings</strong> (⚙️ icon) → <strong>Secrets</strong></p>
             </div>
             <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-bold shrink-0">3</div>
-              <p className="text-xs text-stone-600">Add <code>GOOGLE_MAPS_PLATFORM_KEY</code> and paste your key</p>
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">3</div>
+              <p className="text-xs text-slate-600">Add <code>GOOGLE_MAPS_PLATFORM_KEY</code> and paste your key</p>
             </div>
           </div>
 
@@ -197,7 +239,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <motion.div 
           animate={{ scale: [1, 1.1, 1] }}
           transition={{ repeat: Infinity, duration: 1.5 }}
@@ -210,14 +252,14 @@ export default function App() {
 
   if (authError) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50 p-6 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
         <div className="bg-rose-50 text-rose-600 p-8 rounded-[32px] max-w-sm border border-rose-100 shadow-xl">
           <Logo size={24} />
           <h2 className="text-xl font-bold mt-6 mb-2">Auth Sync Error</h2>
           <p className="text-xs opacity-70 mb-8 leading-relaxed italic">{authError}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold hover:bg-black transition-all"
+            className="w-full py-4 bg-blue-700 text-white rounded-2xl font-bold hover:bg-blue-800 transition-all"
           >
             Retry Login
           </button>
@@ -245,11 +287,11 @@ export default function App() {
             <button 
               key={link.id}
               onClick={() => setActiveTab(link.id as any)} 
-              className={`text-sm font-semibold transition-all relative py-1 ${activeTab === link.id ? 'text-stone-900' : 'text-stone-500 hover:text-stone-900'}`}
+              className={`text-sm font-semibold transition-all relative py-1 ${activeTab === link.id ? 'text-slate-900' : 'text-slate-500 hover:text-blue-700'}`}
             >
               {link.label}
               {activeTab === link.id && (
-                <motion.div layoutId="nav-underline" className="absolute -bottom-1.5 left-0 right-0 h-0.5 bg-stone-900" />
+                <motion.div layoutId="nav-underline" className="absolute -bottom-1.5 left-0 right-0 h-0.5 bg-blue-700" />
               )}
             </button>
           ))}
@@ -274,7 +316,7 @@ export default function App() {
              profile={null} 
              onBack={() => setActiveTab('home')} 
              onAuthRequired={() => setIsAuthModalOpen(true)}
-             onSuccess={() => setActiveTab('bookings')}
+             onSuccess={() => setActiveTab('home')}
            />
          );
        }
@@ -288,13 +330,13 @@ export default function App() {
           profile={profile} 
           onBack={() => setActiveTab('home')} 
           onAuthRequired={() => setIsAuthModalOpen(true)}
-          onSuccess={() => setActiveTab('bookings')}
+          onSuccess={() => setActiveTab('home')}
         />
       );
     }
 
     if (activeTab === 'bookings' && profile.role === 'customer') {
-      return <CustomerDashboard profile={profile} />;
+      return <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />;
     }
 
     if (profile?.role === 'customer' && activeTab === 'partner-signup') {
@@ -347,6 +389,9 @@ Simply browse our categories, select a service, and choose a time slot that work
 What is the Quality Guarantee?
 If you're not satisfied with a service, please let us know within 24 hours. We will investigate and, if necessary, arrange for a re-service at no additional cost.
 
+What if my service partner is late?
+Our partners strive for punctuality. If a delay occurs, you will be notified and can contact support. We offer compensation for significant delays.
+
 Can I cancel my booking?
 Yes, you can cancel your booking through the 'My Bookings' tab up to 4 hours before the scheduled time for a full refund." 
           onBack={() => setActiveTab('home')} 
@@ -388,7 +433,9 @@ Marketing: We may send you promotional offers if you have opted in to receive th
     if (activeTab === 'notifications' && profile) {
       return <NotificationsView profile={profile} onNavigate={(tab, bId) => {
         if (tab === 'bookings') {
-          setActiveTab('bookings');
+          setActiveTab('bookings', bId || null);
+        } else if (tab === 'offers' || tab === 'wallet') {
+          setActiveTab(tab);
         }
       }} />;
     }
@@ -397,28 +444,47 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       return <OffersView profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} setActiveTab={setActiveTab} />;
     }
 
+    if (activeTab === 'tickets' && profile) {
+      return <SupportTicketsView profile={profile} />;
+    }
+
+    if (activeTab === 'wallet' && profile) {
+      return <WalletView profile={profile} />;
+    }
+
     if (activeTab === 'bookings' && profile) {
       return <BookingHistory profile={profile} />;
     }
 
-    if (profile?.role === 'admin' && activeTab === 'admin') {
-      return <AdminDashboard />;
+    if (profile?.role === 'admin' && (activeTab === 'admin' || activeTab === 'home')) {
+      return <AdminDashboard profile={profile} />;
     }
 
-    if (profile.role === 'partner' && (activeTab === 'partner' || activeTab === 'bookings')) {
-      return <PartnerDashboard profile={profile} />;
+    if (profile?.role === 'partner' && (activeTab === 'partner' || activeTab === 'bookings' || activeTab === 'home')) {
+      return <PartnerApp profile={profile} initialTab={activeTab === 'bookings' ? 'jobs' : 'home'} targetBookingId={targetBookingId} />;
     }
 
     // Default to Customer View
     return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
   };
 
+  if (profile?.role === 'partner') {
+    return (
+      <APIProvider apiKey={API_KEY} version="weekly">
+        <div className="min-h-screen bg-slate-100 flex justify-center">
+           <NotificationSystem />
+           <PartnerApp profile={profile} />
+        </div>
+      </APIProvider>
+    );
+  }
+
   return (
     <APIProvider apiKey={API_KEY} version="weekly">
-      <div className="min-h-screen bg-stone-50 text-stone-900 font-sans">
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <NotificationSystem />
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-stone-200/50 transition-all duration-300">
+      <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
             <div 
@@ -435,7 +501,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               {profile && (
                 <button 
                   onClick={() => setActiveTab('notifications')}
-                  className={`relative p-2.5 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-stone-900 text-white shadow-xl shadow-stone-900/10' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}
+                  className={`relative p-2.5 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/20/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                   <Bell size={20} />
                   <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
@@ -444,21 +510,21 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               {profile ? (
                 <div className="flex items-center gap-3 sm:gap-6 relative">
                   <div className="text-right hidden sm:block">
-                    <p className="text-[11px] font-bold text-stone-900 leading-none mb-1">{profile.displayName}</p>
+                    <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">{profile.displayName}</p>
                     <span className={`text-[9px] font-black uppercase tracking-[0.1em] leading-none px-2 py-0.5 rounded-md ${
                       profile.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                      profile.role === 'partner' ? 'bg-stone-900 text-white' :
-                      'bg-stone-100 text-stone-500'
+                      profile.role === 'partner' ? 'bg-blue-700 text-white' :
+                      'bg-slate-100 text-slate-500'
                     }`}>
                       {profile.role}
                     </span>
                   </div>
                   <button 
                     onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-900 hover:text-white transition-all shadow-sm overflow-hidden"
+                    className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-blue-700 hover:text-white transition-all shadow-sm overflow-hidden"
                   >
                     {profile.photoURL ? (
-                       <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                       <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                        <UserIcon size={18} />
                     )}
@@ -470,14 +536,28 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute top-full right-0 mt-4 w-48 bg-white rounded-2xl shadow-2xl border border-stone-100 p-2 z-[60]"
+                        className="absolute top-full right-0 mt-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60]"
                       >
                         <button 
                           onClick={() => { setActiveTab('profile'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 rounded-xl transition-all"
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
                         >
                           <UserIcon size={16} />
                           Profile
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('wallet'); setIsUserMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+                          Wallet
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('tickets'); setIsUserMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                        >
+                          <MessageSquare size={16} />
+                          Support Tickets
                         </button>
                         <button 
                           onClick={() => { signOut(auth); setIsUserMenuOpen(false); setActiveTab('home'); }}
@@ -493,13 +573,13 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               ) : (
                 <button 
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="bg-stone-900 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-black transition-all shadow-xl shadow-stone-900/10 active:scale-95"
+                  className="bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/10 active:scale-95"
                 >
                   Login
                 </button>
               )}
               <button 
-                className="md:hidden p-2 text-stone-600 hover:bg-stone-50 rounded-xl transition-all" 
+                className="md:hidden p-2 text-slate-600 hover:bg-slate-50 rounded-xl transition-all" 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 id="mobile-menu-toggle"
               >
@@ -517,7 +597,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-white border-b border-stone-200 overflow-hidden"
+            className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
           >
             <div className="px-4 py-8 flex flex-col gap-1">
               {getNavLinks()
@@ -533,10 +613,10 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                 ))
               }
               {!profile && (
-                <div className="mt-4 pt-4 border-t border-stone-100">
+                <div className="mt-4 pt-4 border-t border-slate-100">
                   <button 
                     onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}
-                    className="w-full py-4 px-6 bg-stone-900 text-white rounded-2xl font-bold text-center shadow-xl shadow-stone-900/20"
+                    className="w-full py-4 px-6 bg-blue-700 text-white rounded-2xl font-bold text-center shadow-xl shadow-blue-700/20/20"
                   >
                     Login to Explore
                   </button>
@@ -554,8 +634,18 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       />
 
       {/* Main Content */}
-      <main className="pb-24 md:pb-0">
-        {renderContent()}
+      <main className="pb-24 md:pb-0 relative min-h-[500px]">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {renderContent()}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <BottomNav 
@@ -567,36 +657,36 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       />
 
       {/* Footer */}
-      <footer className="bg-white border-t border-stone-200 pt-16 pb-8 mt-20">
+      <footer className="bg-white border-t border-slate-200 pt-16 pb-8 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
             <div className="col-span-1 md:col-span-2">
               <div className="mb-6">
                 <Logo size={24} />
               </div>
-              <p className="text-stone-500 text-sm max-w-sm leading-relaxed">
+              <p className="text-slate-500 text-sm max-w-sm leading-relaxed">
                 India's trusted home service ecosystem. Connecting homeowners with verified professional service partners for a better living. 
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-stone-900 mb-4">Quick Links</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><button onClick={() => setActiveTab('about')} className="hover:text-stone-900 transition-colors">About Us</button></li>
-                <li><button onClick={() => setActiveTab('contact')} className="hover:text-stone-900 transition-colors">Contact</button></li>
-                <li><button onClick={() => setActiveTab('offers')} className="hover:text-stone-900 transition-colors">Exclusive Offers</button></li>
+              <h4 className="font-semibold text-slate-900 mb-4">Quick Links</h4>
+              <ul className="space-y-2 text-sm text-slate-500">
+                <li><button onClick={() => setActiveTab('about')} className="hover:text-blue-700 transition-colors">About Us</button></li>
+                <li><button onClick={() => setActiveTab('contact')} className="hover:text-blue-700 transition-colors">Contact</button></li>
+                <li><button onClick={() => setActiveTab('offers')} className="hover:text-blue-700 transition-colors">Exclusive Offers</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-stone-900 mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><button onClick={() => setActiveTab('help')} className="hover:text-stone-900 transition-colors">Help Center</button></li>
-                <li><button onClick={() => setActiveTab('terms')} className="hover:text-stone-900 transition-colors">Terms of Service</button></li>
-                <li><button onClick={() => setActiveTab('privacy')} className="hover:text-stone-900 transition-colors">Privacy Policy</button></li>
+              <h4 className="font-semibold text-slate-900 mb-4">Support</h4>
+              <ul className="space-y-2 text-sm text-slate-500">
+                <li><button onClick={() => setActiveTab('help')} className="hover:text-blue-700 transition-colors">Help Center</button></li>
+                <li><button onClick={() => setActiveTab('terms')} className="hover:text-blue-700 transition-colors">Terms of Service</button></li>
+                <li><button onClick={() => setActiveTab('privacy')} className="hover:text-blue-700 transition-colors">Privacy Policy</button></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-stone-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs text-stone-400">© 2026 zomindia. All rights reserved.</p>
+          <div className="border-t border-slate-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-xs text-slate-400">© 2026 zomindia. All rights reserved.</p>
             <div className="flex gap-6">
               {/* Social links could go here */}
             </div>

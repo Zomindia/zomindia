@@ -1,8 +1,8 @@
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { handleFirestoreError, OperationType } from './firestore-errors';
 
-export type NotificationType = 'booking_confirmed' | 'job_started' | 'job_completed' | 'on_the_way' | 'payment_received' | 'new_booking' | 'booking_cancelled' | 'booking_pending' | 'partner_rejected';
+export type NotificationType = 'booking_confirmed' | 'job_started' | 'job_completed' | 'on_the_way' | 'payment_received' | 'new_booking' | 'booking_cancelled' | 'booking_pending' | 'partner_rejected' | 'promotional';
 
 interface NotificationPayload {
   userId: string;
@@ -16,6 +16,42 @@ interface NotificationPayload {
 
 export const sendNotification = async (userId: string, title: string, message: string, type: NotificationType, bookingId?: string) => {
   try {
+    // Check preferences if it's not an admin notification (assuming admin email is hardcoded or identifiable)
+    // For simplicity, we check preferences for all users if they exist
+    let prefs = null;
+    try {
+      const userRef = doc(db, 'users', userId);
+      // Use getDoc with a short logic or just let it try
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        prefs = userSnap.data().notificationPreferences;
+      }
+    } catch (e) {
+      console.warn("Failed to fetch notification preferences, defaulting to enabled:", e);
+    }
+    
+    if (prefs) {
+      const isBookingUpdate = [
+        'booking_confirmed', 
+        'job_started', 
+        'job_completed', 
+        'on_the_way', 
+        'payment_received', 
+        'new_booking', 
+        'booking_cancelled', 
+        'booking_pending', 
+        'partner_rejected'
+      ].includes(type);
+
+      if (isBookingUpdate && prefs.bookingUpdates === false) {
+        return;
+      }
+
+      if (type === 'promotional' && prefs.promotionalMessages === false) {
+        return;
+      }
+    }
+
     const payload: NotificationPayload = {
       userId,
       title,
@@ -51,6 +87,11 @@ export const notifyBookingUpdate = async (booking: any, newStatus: string, actor
     case 'on_the_way':
       await sendNotification(customerId, 'Partner On The Way!', 'Our service partner is heading to your location now.', 'on_the_way', booking.id);
       await sendNotification(adminId, 'Partner Moving', `Partner started journey for booking #${bookingIdShort}.`, 'on_the_way', booking.id);
+      break;
+
+    case 'arrived':
+      await sendNotification(customerId, 'Partner Arrived!', 'Your service partner has reached the location. Please provide the OTP to start.', 'on_the_way', booking.id);
+      await sendNotification(adminId, 'Partner Arrived', `Partner reached for booking #${bookingIdShort}.`, 'on_the_way', booking.id);
       break;
 
     case 'in_progress':

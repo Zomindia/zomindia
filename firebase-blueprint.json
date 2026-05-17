@@ -9,6 +9,7 @@
         "displayName": { "type": "string" },
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["customer", "partner", "admin"] },
+        "adminSubRole": { "type": "string", "enum": ["head", "accounts", "hr"] },
         "phoneNumber": { "type": "string" },
         "photoURL": { "type": "string" },
         "address": { "type": "string" },
@@ -133,8 +134,9 @@
         "discountValue": { "type": "number" },
         "description": { "type": "string" },
         "expiryDate": { "type": "string", "format": "date-time" },
-        "applicableCategoryId": { "type": "string", "description": "Optional category filter" },
-        "applicableServiceId": { "type": "string", "description": "Optional service filter" },
+        "applicableCategories": { "type": "array", "items": { "type": "string" }, "description": "Optional category filters" },
+        "applicableServices": { "type": "array", "items": { "type": "string" }, "description": "Optional service filters" },
+        "targetAudience": { "type": "string", "enum": ["customer", "partner", "all"] },
         "usageLimit": { "type": "number" },
         "usageCount": { "type": "number" },
         "imageUrl": { "type": "string" },
@@ -225,12 +227,68 @@
         "appliedServiceId": { "type": "string" }
       },
       "required": ["userId", "promotionId", "redeemedAt", "status"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "Support tickets submitted by users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "adminResponse": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "subject", "message", "status", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "System audit logs.",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminId", "action", "createdAt"]
+    },
+    "WalletTransaction": {
+      "title": "Wallet Transaction",
+      "description": "User wallet transactions.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["credit", "debit"] },
+        "reason": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "reason", "status", "createdAt"]
     }
   },
   "firestore": {
+    "/walletTransactions/{transactionId}": {
+      "schema": "WalletTransaction",
+      "description": "Wallet transactions for users."
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Public and private user profiles."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit logs for tracking actions."
+    },
+    "/tickets/{ticketId}": {
+      "schema": "Ticket",
+      "description": "User support tickets."
     },
     "/categories/{categoryId}": {
       "schema": "Category",

@@ -68,35 +68,35 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 sm:py-16">
       <div className="mb-12">
-        <h1 className="text-3xl font-bold text-stone-900 mb-2">Profile Settings</h1>
-        <p className="text-stone-500">Manage your account details and notification preferences.</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Profile Settings</h1>
+        <p className="text-slate-500">Manage your account details and notification preferences.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
         {/* Left Column: Personal Info */}
         <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white border border-stone-200 rounded-[32px] p-8 shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-900">
+              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-900">
                 <User size={20} />
               </div>
-              <h3 className="text-xl font-bold text-stone-900">Personal Information</h3>
+              <h3 className="text-xl font-bold text-slate-900">Personal Information</h3>
             </div>
 
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-xs font-bold text-stone-400 uppercase mb-2 ml-1">Full Name</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Full Name</label>
                   <input 
                     type="text" 
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full bg-stone-50 px-5 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-500 transition-all font-medium"
+                    className="w-full bg-slate-50 px-5 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all font-medium"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-stone-400 uppercase mb-2 ml-1">Email Address</label>
-                  <div className="w-full bg-stone-100/50 px-5 py-4 rounded-2xl font-medium text-stone-400 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Email Address</label>
+                  <div className="w-full bg-slate-100/50 px-5 py-4 rounded-2xl font-medium text-slate-400 flex items-center justify-between">
                     {profile.email}
                     <Shield size={16} />
                   </div>
@@ -105,9 +105,9 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
 
               {!import.meta.env.DEV && (
                 <div>
-                  <label className="block text-xs font-bold text-stone-400 uppercase mb-2 ml-1">Primary Phone</label>
-                  <div className="w-full bg-stone-100/50 px-5 py-4 rounded-2xl font-medium text-stone-900 flex items-center gap-3">
-                    <Smartphone size={18} className="text-stone-400" />
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Primary Phone</label>
+                  <div className="w-full bg-slate-100/50 px-5 py-4 rounded-2xl font-medium text-slate-900 flex items-center gap-3">
+                    <Smartphone size={18} className="text-slate-400" />
                     {profile.phoneNumber || 'Not Linked'}
                   </div>
                 </div>
@@ -115,21 +115,35 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
 
               <div>
                 <div className="flex items-center justify-between mb-2 ml-1">
-                  <label className="block text-xs font-bold text-stone-400 uppercase">Saved Address</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase">Saved Address</label>
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
+                      if (navigator.permissions) {
+                        try {
+                          const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+                          if (permissionStatus.state === 'denied') {
+                            alert("Location permission is blocked. Please enable it in your browser/device settings.");
+                            return;
+                          }
+                        } catch (e) {
+                          // Ignore implementation error
+                        }
+                      }
                       if ("geolocation" in navigator) {
                         setLoading(true);
                         navigator.geolocation.getCurrentPosition((pos) => {
                           setAddress(`[Location detected: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}]`);
                           setLoading(false);
                         }, (err) => {
+                          alert("Failed to get location. Ensure GPS is enabled.");
                           console.error(err);
                           setLoading(false);
                         });
+                      } else {
+                        alert("Geolocation is not supported by your browser.");
                       }
                     }}
-                    className="flex items-center gap-1.5 text-[10px] font-black uppercase text-stone-900 border-b border-stone-900/10 hover:border-stone-900 transition-all"
+                    className="flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-900 border-b border-blue-700/10 hover:border-blue-700 transition-all"
                   >
                     <MapPin size={10} /> Use Current Location
                   </button>
@@ -139,54 +153,54 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Your default service address..."
                   rows={3}
-                  className="w-full bg-stone-50 px-5 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-500 transition-all font-medium resize-none shadow-inner"
+                  className="w-full bg-slate-50 px-5 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all font-medium resize-none shadow-inner"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-[32px] p-8 shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-900">
+              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-900">
                 <Bell size={20} />
               </div>
-              <h3 className="text-xl font-bold text-stone-900">Notifications</h3>
+              <h3 className="text-xl font-bold text-slate-900">Notifications</h3>
             </div>
 
             <div className="space-y-4">
-              <label className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl cursor-pointer group hover:bg-stone-100 transition-colors">
+              <label className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group hover:bg-slate-100 transition-colors">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-stone-900">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-900">
                     <MessageSquare size={18} />
                   </div>
                   <div>
-                    <p className="font-bold text-stone-900">Booking Updates</p>
-                    <p className="text-xs text-stone-500">Get notified about status changes and partner assignments.</p>
+                    <p className="font-bold text-slate-900">Booking Updates</p>
+                    <p className="text-xs text-slate-500">Get notified about status changes and partner assignments.</p>
                   </div>
                 </div>
                 <input 
                   type="checkbox" 
                   checked={notifPrefs.bookingUpdates}
                   onChange={(e) => setNotifPrefs({ ...notifPrefs, bookingUpdates: e.target.checked })}
-                  className="w-5 h-5 rounded-md border-stone-300 text-stone-900 focus:ring-stone-500"
+                  className="w-5 h-5 rounded-md border-slate-300 text-slate-900 focus:ring-slate-500"
                 />
               </label>
 
-              <label className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl cursor-pointer group hover:bg-stone-100 transition-colors">
+              <label className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group hover:bg-slate-100 transition-colors">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-stone-900">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-900">
                     <Zap size={18} />
                   </div>
                   <div>
-                    <p className="font-bold text-stone-900">Promotional Messages</p>
-                    <p className="text-xs text-stone-500">Receive special offers, discounts and service announcements.</p>
+                    <p className="font-bold text-slate-900">Promotional Messages</p>
+                    <p className="text-xs text-slate-500">Receive special offers, discounts and service announcements.</p>
                   </div>
                 </div>
                 <input 
                   type="checkbox" 
                   checked={notifPrefs.promotionalMessages}
                   onChange={(e) => setNotifPrefs({ ...notifPrefs, promotionalMessages: e.target.checked })}
-                  className="w-5 h-5 rounded-md border-stone-300 text-stone-900 focus:ring-stone-500"
+                  className="w-5 h-5 rounded-md border-slate-300 text-slate-900 focus:ring-slate-500"
                 />
               </label>
             </div>
@@ -195,10 +209,10 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
 
         {/* Right Column: Profile Summary & Action */}
         <div className="space-y-6">
-          <div className="bg-stone-900 rounded-[32px] p-8 text-white text-center shadow-xl shadow-stone-200">
+          <div className="bg-blue-700 rounded-[32px] p-8 text-white text-center shadow-xl shadow-slate-200">
             <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-white/20">
               {profile.photoURL ? (
-                <img src={profile.photoURL} alt="" className="w-full h-full object-cover rounded-full" />
+                <img src={profile.photoURL} alt="" className="w-full h-full object-cover rounded-full" referrerPolicy="no-referrer" />
               ) : (
                 <User size={48} className="text-white/20" />
               )}
@@ -209,10 +223,10 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
             <button 
               onClick={handleSave}
               disabled={loading}
-              className="w-full bg-white text-stone-900 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-stone-100 transition-all active:scale-95 disabled:opacity-50"
+              className="w-full bg-white text-slate-900 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-slate-100 transition-all active:scale-95 disabled:opacity-50"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-stone-900 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <Save size={20} />
               )}
@@ -232,7 +246,7 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
 
             <button 
               onClick={() => signOut(auth)}
-              className="mt-3 w-full bg-stone-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-rose-600 transition-all active:scale-95 border border-stone-700"
+              className="mt-3 w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-rose-600 transition-all active:scale-95 border border-slate-700"
             >
               <LogOut size={20} />
               Logout

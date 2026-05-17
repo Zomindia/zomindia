@@ -23,6 +23,25 @@ service cloud.firestore {
              );
     }
 
+    function getAdminProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isHeadAdmin() {
+      let profile = getAdminProfile();
+      return isAdmin() && (!('adminSubRole' in profile) || profile.adminSubRole == 'head');
+    }
+
+    function isAccountsAdmin() {
+      let profile = getAdminProfile();
+      return isAdmin() && (profile.adminSubRole == 'accounts' || profile.adminSubRole == 'head' || !('adminSubRole' in profile));
+    }
+
+    function isHRAdmin() {
+      let profile = getAdminProfile();
+      return isAdmin() && (profile.adminSubRole == 'hr' || profile.adminSubRole == 'head' || !('adminSubRole' in profile));
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128;
     }
@@ -97,7 +116,9 @@ service cloud.firestore {
              data.totalPrice is number &&
              data.scheduledAt is timestamp && 
              (!('partnerId' in data) || (data.partnerId is string || data.partnerId == null)) &&
-             (!('serviceOtp' in data) || (data.serviceOtp is string)) &&
+             (!('lat' in data) || (data.lat is number || data.lat == null)) &&
+             (!('lng' in data) || (data.lng is number || data.lng == null)) &&
+             (!('serviceOtp' in data) || (data.serviceOtp is string && data.serviceOtp.size() == 4)) &&
              (!('otpVerified' in data) || (data.otpVerified is bool)) &&
              (!('promoCode' in data) || (data.promoCode is string || data.promoCode == null)) &&
              (!('discountApplied' in data) || (data.discountApplied is number)) &&
@@ -129,10 +150,13 @@ service cloud.firestore {
              (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
              (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000)) &&
              (!('usageCount' in data) || (data.usageCount is number)) &&
+             (!('usageLimit' in data) || (data.usageLimit is number)) &&
+             (!('targetAudience' in data) || (data.targetAudience in ['customer', 'partner', 'all'])) &&
              (!('expiryDate' in data) || (data.expiryDate is string || data.expiryDate is timestamp || data.expiryDate == null)) &&
-             (!('applicableCategoryId' in data) || (data.applicableCategoryId is string || data.applicableCategoryId == null)) &&
-             (!('applicableServiceId' in data) || (data.applicableServiceId is string || data.applicableServiceId == null)) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp));
+             (!('applicableCategories' in data) || (data.applicableCategories is list || data.applicableCategories == null)) &&
+             (!('applicableServices' in data) || (data.applicableServices is list || data.applicableServices == null)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp));
     }
 
     function isValidFAQ(data) {
@@ -164,7 +188,7 @@ service cloud.firestore {
              data.read is bool &&
              data.createdAt is timestamp &&
              (!('type' in data) || (data.type is string)) &&
-             (!('bookingId' in data) || (data.bookingId is string));
+             (!('bookingId' in data) || (data.bookingId is string || data.bookingId == null));
     }
 
     function isValidRedemption(data) {
@@ -180,8 +204,9 @@ service cloud.firestore {
 
     function isValidMessage(data) {
       return data.keys().hasAll(['senderId', 'text', 'createdAt']) &&
+             data.keys().size() == 3 &&
              data.senderId == request.auth.uid &&
-             data.text is string &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 5000 &&
              data.createdAt is timestamp;
     }
 
@@ -190,26 +215,55 @@ service cloud.firestore {
              data.type in ['booking_earning', 'reward_credit', 'adjustment'] &&
              (!('amount' in data) || (data.amount is number)) &&
              (!('credits' in data) || (data.credits is number)) &&
-             (!('reason' in data) || (data.reason is string)) &&
+             (!('reason' in data) || (data.reason is string && data.reason.size() <= 1000)) &&
              (!('bookingId' in data) || (data.bookingId is string)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['adminId', 'action', 'createdAt']) &&
+             data.adminId == request.auth.uid &&
+             data.action is string &&
+             (!('targetId' in data) || (data.targetId is string)) &&
+             (!('details' in data) || (data.details is string)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidWalletTransaction(data) {
+      return data.keys().hasAll(['userId', 'amount', 'type', 'reason', 'status', 'createdAt']) &&
+             data.userId is string &&
+             data.amount is number &&
+             data.type in ['credit', 'debit'] &&
+             data.reason is string &&
+             data.status in ['pending', 'completed', 'failed'] &&
+             (!('referenceId' in data) || data.referenceId is string) &&
              data.createdAt is timestamp;
     }
 
     // --- RULES ---
 
+    match /walletTransactions/{transactionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin()) && isValidWalletTransaction(incoming());
+      allow update: if isSignedIn() && isAccountsAdmin() && (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']));
+    }
+
     match /users/{userId} {
       allow get: if isSignedIn() || (resource.data.role == 'partner');
       allow list: if isSignedIn();
       allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
-      allow update: if isSignedIn() && (isOwner(userId) || isAdmin()) && (
-        isAdmin() || (
+      allow update: if isSignedIn() && (isOwner(userId) || isHRAdmin() || isHeadAdmin()) && (
+        isHeadAdmin() || (
           isValidUser(incoming()) && 
           incoming().uid == existing().uid &&
           (
-            // Regular profile update
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'address', 'bio', 'notificationPreferences', 'updatedAt']) ||
-            // Specific action: Sign up as admin or partner
-            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])
+            // Regular user profile update
+            (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'address', 'bio', 'notificationPreferences', 'updatedAt'])) ||
+            // Partner onboarding (HR can verify, but user can opt-in)
+            (isHRAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])) ||
+            // Role assignment (Head Admin only)
+            (isHeadAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['role', 'adminSubRole', 'updatedAt']))
           )
         )
       );
@@ -217,31 +271,33 @@ service cloud.firestore {
 
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isHeadAdmin();
     }
 
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isHeadAdmin();
     }
 
     match /partners/{partnerId} {
       allow read: if true;
       allow get: if true;
       allow create: if isSignedIn() && isValidPartner(incoming());
-      allow update: if isSignedIn() && (isOwner(existing().userId) || isAdmin()) &&
-                    (isAdmin() || (isValidPartner(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['categories', 'status', 'bio', 'lat', 'lng', 'updatedAt', 'availabilityStatus'])));
+      allow update: if isSignedIn() && (isOwner(existing().userId) || isHRAdmin() || isHeadAdmin()) &&
+                    (isHeadAdmin() || isHRAdmin() || (isValidPartner(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['categories', 'status', 'bio', 'lat', 'lng', 'updatedAt', 'availabilityStatus'])));
 
       match /earningsHistory/{historyId} {
-        allow read: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId) || isAdmin());
-        allow create, update: if isAdmin();
-        allow delete: if isAdmin();
+        allow read: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId) || isAccountsAdmin() || isHeadAdmin());
+        allow create, update: if isAccountsAdmin() || isHeadAdmin();
+        allow delete: if isHeadAdmin();
       }
     }
 
     match /promotions/{promoId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin() && isValidPromotion(incoming());
+      allow update: if isAdmin() && isValidPromotion(incoming());
+      allow delete: if isAdmin();
     }
 
     match /notifications/{notifId} {
@@ -286,12 +342,12 @@ service cloud.firestore {
       );
 
       match /messages/{messageId} {
-        allow read: if isSignedIn() && (
+        allow read: if isSignedIn() && isValidId(bookingId) && (
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid ||
           isAdmin()
         );
-        allow create: if isSignedIn() && (
+        allow create: if isSignedIn() && isValidId(bookingId) && (
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid
         ) && isValidMessage(incoming());
@@ -302,7 +358,11 @@ service cloud.firestore {
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
           isAdmin()
         );
-        allow create, update, delete: if isAdmin();
+        allow create: if isSignedIn() && isValidId(bookingId) && (
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
+          isAdmin()
+        );
+        allow update, delete: if isAdmin();
       }
 
       match /otps/{code} {
@@ -339,6 +399,11 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidTicket(incoming());
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isHeadAdmin() || isHRAdmin();
+      allow create: if isAdmin() && isValidAuditLog(incoming());
     }
 
     match /redemptions/{redemptionId} {
