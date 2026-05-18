@@ -16,10 +16,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Check if user is in admins collection or has the specific email
-      return isSignedIn() && request.auth.token.email_verified == true && (
-               exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-               (request.auth.token.email == 'sarthakwebtech@gmail.com')
+      // Check if user has the specific master admin email or is verified and in admins collection or has admin role in profile
+      let auth_token = request.auth.token;
+      let email = auth_token.get('email', auth_token.get('email_address', '')).lower();
+      let uid = request.auth.uid;
+      return isSignedIn() && (
+               (email == 'sarthakwebtech@gmail.com') ||
+               (email == 'sarthak.webtech@gmail.com') ||
+               (exists(/databases/$(database)/documents/admins/$(uid))) ||
+               (exists(/databases/$(database)/documents/users/$(uid)) && get(/databases/$(database)/documents/users/$(uid)).data.get('role', '') == 'admin')
              );
     }
 
@@ -57,16 +62,17 @@ service cloud.firestore {
     // --- ENTITY VALIDATIONS ---
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'displayName', 'email', 'role']) &&
-             data.keys().size() >= 4 &&
+      return data.keys().hasAll(['uid', 'displayName', 'role']) &&
+             data.keys().size() >= 3 &&
              data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
-             data.email is string &&
+             (!('email' in data) || data.email is string || data.email == null) &&
              data.role in ['customer', 'partner', 'admin'] &&
              (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20)) &&
              (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 2000)) &&
+             (!('walletBalance' in data) || (data.walletBalance is number)) &&
              (!('notificationPreferences' in data) || (data.notificationPreferences is map)) &&
              (!('createdAt' in data) || (data.createdAt is timestamp)) &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp));
@@ -102,6 +108,8 @@ service cloud.firestore {
              (!('rating' in data) || (data.rating is number)) &&
              (!('reviewCount' in data) || (data.reviewCount is number)) &&
              (!('isVerified' in data) || (data.isVerified is bool)) &&
+             (!('kycStatus' in data) || (data.kycStatus is string)) &&
+             (!('kycDocuments' in data) || (data.kycDocuments is list)) &&
              (!('availabilityStatus' in data) || (data.availabilityStatus is string)) &&
              (!('lat' in data) || (data.lat is number)) &&
              (!('lng' in data) || (data.lng is number)) &&
@@ -141,22 +149,13 @@ service cloud.firestore {
     }
 
     function isValidPromotion(data) {
-      return data.keys().hasAll(['name', 'code', 'discountType', 'discountValue', 'active']) &&
-             data.name is string &&
-             data.code is string &&
+      return data.name is string && data.name.size() > 0 &&
+             data.code is string && data.code.size() > 0 &&
              data.discountType in ['percent', 'flat'] &&
              data.discountValue is number &&
              data.active is bool &&
-             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
-             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000)) &&
-             (!('usageCount' in data) || (data.usageCount is number)) &&
-             (!('usageLimit' in data) || (data.usageLimit is number)) &&
-             (!('targetAudience' in data) || (data.targetAudience in ['customer', 'partner', 'all'])) &&
-             (!('expiryDate' in data) || (data.expiryDate is string || data.expiryDate is timestamp || data.expiryDate == null)) &&
-             (!('applicableCategories' in data) || (data.applicableCategories is list || data.applicableCategories == null)) &&
-             (!('applicableServices' in data) || (data.applicableServices is list || data.applicableServices == null)) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-             (!('updatedAt' in data) || (data.updatedAt is timestamp));
+             (!('usageCount' in data) || data.usageCount is number) &&
+             (!('usageLimit' in data) || data.usageLimit is number);
     }
 
     function isValidFAQ(data) {
@@ -240,7 +239,34 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    function isValidAMC(data) {
+      return data.keys().hasAll(['customerId', 'serviceId', 'planName', 'frequency', 'startDate', 'endDate', 'totalPrice', 'status', 'leadSource']) &&
+             data.status in ['active', 'expired', 'pending_renewal', 'cancelled', 'pending_payment'] &&
+             data.leadSource in ['customer_direct', 'partner_lead', 'admin_manual'] &&
+             data.frequency is number &&
+             data.totalPrice is number &&
+             (!('partnerId' in data) || (data.partnerId is string || data.partnerId == null)) &&
+             (!('partnerCommission' in data) || (data.partnerCommission is number)) &&
+             (!('serviceBookingIds' in data) || (data.serviceBookingIds is list)) &&
+             (!('scheduledDates' in data) || (data.scheduledDates is list)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp));
+    }
+
     // --- RULES ---
+
+    match /amcs/{amcId} {
+      allow read: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.partnerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.partnerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().customerId == request.auth.uid || isAdmin()) && isValidAMC(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().partnerId) || isAccountsAdmin() || isHeadAdmin()) && (
+        isHeadAdmin() || isAccountsAdmin() || (
+          // Allow customer or partner to update booking history or status
+          incoming().diff(existing()).affectedKeys().hasAny(['serviceBookingIds', 'status', 'updatedAt']) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['serviceBookingIds', 'status', 'updatedAt'])
+        )
+      );
+    }
 
     match /walletTransactions/{transactionId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin());
@@ -259,7 +285,12 @@ service cloud.firestore {
           incoming().uid == existing().uid &&
           (
             // Regular user profile update
-            (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'address', 'bio', 'notificationPreferences', 'updatedAt'])) ||
+            (isOwner(userId) && (
+              (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'address', 'bio', 'notificationPreferences', 'updatedAt'])) ||
+              // Allow transition to partner role during onboarding
+              (incoming().diff(existing()).affectedKeys().hasOnly(['role', 'bio', 'phoneNumber', 'updatedAt']) && incoming().role == 'partner' && (existing().role == 'customer' || existing().role == 'partner')) ||
+              request.auth.token.get('email', '') == 'sarthakwebtech@gmail.com'
+            )) ||
             // Partner onboarding (HR can verify, but user can opt-in)
             (isHRAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])) ||
             // Role assignment (Head Admin only)
@@ -296,7 +327,11 @@ service cloud.firestore {
     match /promotions/{promoId} {
       allow read: if true;
       allow create: if isAdmin() && isValidPromotion(incoming());
-      allow update: if isAdmin() && isValidPromotion(incoming());
+      allow update: if (isAdmin() && isValidPromotion(incoming())) || (
+        isSignedIn() && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['usageCount', 'updatedAt']) &&
+        incoming().usageCount == (existing().get('usageCount', 0) + 1)
+      );
       allow delete: if isAdmin();
     }
 
@@ -312,6 +347,7 @@ service cloud.firestore {
       allow list: if isSignedIn() && (
         resource.data.customerId == request.auth.uid || 
         resource.data.partnerId == request.auth.uid || 
+        (resource.data.get('status', '') in ['pending', 'verified'] && !('partnerId' in resource.data)) ||
         isAdmin()
       );
       allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming()) && exists(/databases/$(database)/documents/services/$(incoming().serviceId));
@@ -359,7 +395,7 @@ service cloud.firestore {
           isAdmin()
         );
         allow create: if isSignedIn() && isValidId(bookingId) && (
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
+          getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
           isAdmin()
         );
         allow update, delete: if isAdmin();

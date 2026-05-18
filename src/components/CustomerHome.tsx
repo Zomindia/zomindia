@@ -272,7 +272,7 @@ export default function CustomerHome({ setActiveTab, profile, onAuthRequired, on
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={() => profile ? setSelectedService(service) : onAuthRequired()}
-                  className="w-full bg-blue-700 text-white py-3.5 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all active:scale-95 shadow-lg shadow-blue-700/20/5"
+                  className="w-full bg-blue-700 text-white py-3.5 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all active:scale-95 shadow-lg shadow-blue-700/5"
                 >
                   Book now
                 </button>

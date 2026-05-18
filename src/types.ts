@@ -1,11 +1,11 @@
-export type UserRole = 'customer' | 'partner' | 'admin';
-export type AdminSubRole = 'head' | 'accounts' | 'hr';
+export type UserRole = 'customer' | 'partner' | 'admin' | 'anon';
+export type AdminSubRole = 'head' | 'accounts' | 'hr' | 'manager' | 'support' | 'editor' | 'moderator' | 'marketing' | 'sales' | 'logistics' | 'developer' | 'owner' | 'field_manager';
 
 export interface UserProfile {
   uid: string;
   displayName: string;
   email: string;
-  role: UserRole;
+  role: 'customer' | 'partner' | 'admin'; // Keep strictly roles for profile
   adminSubRole?: AdminSubRole;
   phoneNumber?: string;
   photoURL?: string;
@@ -81,6 +81,7 @@ export interface PartnerProfile {
   workingHours?: WorkingHours[];
   lat?: number;
   lng?: number;
+  createdAt?: any;
   updatedAt?: any;
 }
 
@@ -144,6 +145,8 @@ export interface Booking {
   partnerPriority?: 'high' | 'medium' | 'low';
   completedTasks?: string[];
   adminNotes?: string;
+  isPriority?: boolean;
+  notes?: string;
 }
 
 export interface Promotion {
@@ -214,4 +217,27 @@ export interface WalletTransaction {
   referenceId?: string;
   status: 'pending' | 'completed' | 'failed';
   createdAt: any;
+}
+
+export type AMCStatus = 'active' | 'expired' | 'pending_renewal' | 'cancelled' | 'pending_payment';
+
+export interface AMC {
+  id: string;
+  customerId: string;
+  partnerId?: string; // Lead generator
+  serviceId: string;
+  planName: string;
+  description: string;
+  frequency: number; // number of services per year
+  startDate: any;
+  endDate: any;
+  totalPrice: number;
+  status: AMCStatus;
+  leadSource: 'customer_direct' | 'partner_lead' | 'admin_manual';
+  partnerCommission?: number;
+  serviceBookingIds: string[]; // List of bookings completed under this AMC
+  scheduledDates: any[]; // Expected dates for preventive maintenance
+  notes?: string;
+  createdAt: any;
+  updatedAt: any;
 }

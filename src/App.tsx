@@ -43,9 +43,10 @@ import AuthModal from './components/AuthModal';
 import ServiceDetails from './components/ServiceDetails';
 import NotificationsView from './components/NotificationsView';
 import OffersView from './components/OffersView';
-import BookingHistory from './components/BookingHistory';
 import BottomNav from './components/BottomNav';
 import PartnerApp from './components/PartnerApp';
+import InstallPrompt from './components/InstallPrompt';
+import CustomerAmcView from './components/CustomerAmcView';
 
 import SupportTicketsView from './components/SupportTicketsView';
 import AiSupportChat from './components/AiSupportChat';
@@ -75,7 +76,7 @@ const MobileNavItem = ({ onClick, label, isActive, index }: { onClick: () => voi
     animate={{ opacity: 1, x: 0 }}
     transition={{ delay: index * 0.05 }}
     onClick={onClick} 
-    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/20/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
+    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
   >
     <span className="tracking-tight">{label}</span>
     <ChevronRight size={16} className={`transition-transform ${isActive ? 'translate-x-0' : '-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0'}`} />
@@ -95,15 +96,23 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet'>('home');
+  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs'>('home');
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
 
   // Sync state with hash and handle popstate for browser back button
   const setActiveTab = (tab: typeof activeTab, bId: string | null = null) => {
     setActiveTabState(tab);
     setTargetBookingId(bId);
-    window.history.pushState(null, '', `#${tab}`);
   };
+
+  useEffect(() => {
+    if (activeTab) {
+      const currentHash = window.location.hash.replace('#', '');
+      if (currentHash !== activeTab) {
+        window.history.pushState(null, '', `#${activeTab}`);
+      }
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -142,18 +151,27 @@ export default function App() {
       if (u) {
         // ... previous profile logic
         const profileDoc = await getDoc(doc(db, 'users', u.uid));
-        const isAdminUser = u.email === 'sarthakwebtech@gmail.com';
+        const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
         
         let userRole: UserRole = 'customer';
 
         if (profileDoc.exists()) {
           const currentProfile = profileDoc.data() as UserProfile;
           userRole = currentProfile.role;
-          if (isAdminUser && currentProfile.role !== 'admin') {
-            await updateDoc(doc(db, 'users', u.uid), { role: 'admin' });
+          
+          if (isAdminUser) {
             userRole = 'admin';
+            if (currentProfile.role !== 'admin' || currentProfile.adminSubRole !== 'head') {
+              updateDoc(doc(db, 'users', u.uid), { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
+            }
           }
-          setProfile({ ...currentProfile, role: userRole });
+
+          const updatedProfile: UserProfile = { 
+            ...currentProfile, 
+            role: userRole, 
+            adminSubRole: isAdminUser ? 'head' : currentProfile.adminSubRole 
+          };
+          setProfile(updatedProfile);
         } else {
           const newProfile: UserProfile = {
             uid: u.uid,
@@ -161,6 +179,7 @@ export default function App() {
             email: u.email || '',
             phoneNumber: u.phoneNumber || '',
             role: isAdminUser ? 'admin' : 'customer',
+            adminSubRole: isAdminUser ? 'head' : undefined,
             photoURL: u.photoURL || '', 
             referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
             walletBalance: 0,
@@ -171,11 +190,13 @@ export default function App() {
           userRole = newProfile.role;
         }
 
-        setActiveTab(current => {
-          if (userRole === 'partner' && (current === 'home' || current === 'profile')) return 'partner';
-          if (userRole === 'admin' && (current === 'home' || current === 'profile')) return 'admin';
-          return current;
-        });
+        // Forced redirection for admin
+        const currentHash = window.location.hash.replace('#', '');
+        if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
+          setActiveTab('admin');
+        } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
+          setActiveTab('partner');
+        }
 
         // Global Active Booking Listener
         const q = query(
@@ -272,17 +293,25 @@ export default function App() {
     { id: 'home', label: 'Home', roles: ['customer', 'partner', 'admin'] as UserRole[] },
     { id: 'offers', label: 'Offers', roles: ['customer', 'partner', 'admin', 'anon'] as UserRole[] },
     { id: 'bookings', label: 'Bookings', roles: ['customer', 'partner', 'admin'] as UserRole[] },
+    { id: 'amcs', label: 'AMC', roles: ['customer', 'admin'] as UserRole[] },
     { id: 'notifications', label: 'Notifications', roles: ['customer', 'partner', 'admin'] as UserRole[] },
     { id: 'profile', label: 'Settings', roles: ['customer', 'partner', 'admin'] as UserRole[] },
-    { id: 'partner', label: 'Partner Dashboard', roles: ['partner'] as UserRole[] },
+    { id: 'partner', label: 'Partner Dashboard', roles: ['partner', 'admin'] as UserRole[] },
     { id: 'admin', label: 'Admin Panel', roles: ['admin'] as UserRole[] },
+    { id: 'partner-signup', label: 'Become Partner', roles: ['customer', 'admin'] as UserRole[] },
   ];
 
   const renderNavigation = () => {
     return (
       <div className="hidden md:flex items-center gap-8">
         {getNavLinks()
-          .filter(link => link.roles.includes(profile?.role || 'anon'))
+          .filter(link => {
+            // Only show logic: 
+            // 1. Link role matches user role
+            // 2. For partner-signup, only show if not already partner
+            if (link.id === 'partner-signup' && profile?.role === 'partner') return false;
+            return link.roles.includes((profile?.role as any) || 'anon');
+          })
           .map(link => (
             <button 
               key={link.id}
@@ -323,6 +352,19 @@ export default function App() {
        return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
     }
 
+    if (activeTab === 'partner') {
+      if (!profile) return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+      return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
+    }
+
+    if (activeTab === 'admin') {
+      if (!profile || profile.role !== 'admin') {
+         setActiveTab('home');
+         return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+      }
+      return <AdminDashboard profile={profile} setActiveTab={setActiveTab} />;
+    }
+
     if (activeTab === 'service-details' && selectedServiceId) {
       return (
         <ServiceDetails 
@@ -335,16 +377,26 @@ export default function App() {
       );
     }
 
-    if (activeTab === 'bookings' && profile.role === 'customer') {
+    if (activeTab === 'bookings' && profile) {
+      if (profile.role === 'admin') {
+        return <AdminDashboard profile={profile} setActiveTab={setActiveTab} initialAdminTab="bookings" />;
+      }
+      if (profile.role === 'partner') {
+        return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} initialTab="jobs" />;
+      }
       return <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />;
     }
 
-    if (profile?.role === 'customer' && activeTab === 'partner-signup') {
+    if (activeTab === 'amcs' && profile.role === 'customer') {
+      return <CustomerAmcView profile={profile} onBack={() => setActiveTab('home')} />;
+    }
+
+    if ((profile?.role === 'customer' || profile?.role === 'admin') && activeTab === 'partner-signup') {
       return <SignUpAsPartner profile={profile} onSuccess={() => { setActiveTab('partner'); }} />;
     }
 
     if (activeTab === 'profile') {
-      return <ProfileSettings profile={profile} onUpdate={(updated) => setProfile(updated)} />;
+      return <ProfileSettings profile={profile} onUpdate={(updated) => setProfile(updated)} setActiveTab={setActiveTab} />;
     }
 
     if (activeTab === 'about') {
@@ -452,28 +504,18 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       return <WalletView profile={profile} />;
     }
 
-    if (activeTab === 'bookings' && profile) {
-      return <BookingHistory profile={profile} />;
-    }
-
-    if (profile?.role === 'admin' && (activeTab === 'admin' || activeTab === 'home')) {
-      return <AdminDashboard profile={profile} />;
-    }
-
-    if (profile?.role === 'partner' && (activeTab === 'partner' || activeTab === 'bookings' || activeTab === 'home')) {
-      return <PartnerApp profile={profile} initialTab={activeTab === 'bookings' ? 'jobs' : 'home'} targetBookingId={targetBookingId} />;
-    }
-
     // Default to Customer View
     return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
   };
 
-  if (profile?.role === 'partner') {
+  const isFullScreenView = activeTab === 'admin' || activeTab === 'partner';
+
+  if (isFullScreenView) {
     return (
       <APIProvider apiKey={API_KEY} version="weekly">
-        <div className="min-h-screen bg-slate-100 flex justify-center">
-           <NotificationSystem />
-           <PartnerApp profile={profile} />
+        <div className="min-h-screen">
+          <NotificationSystem />
+          {renderContent()}
         </div>
       </APIProvider>
     );
@@ -483,6 +525,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
     <APIProvider apiKey={API_KEY} version="weekly">
       <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <NotificationSystem />
+      <InstallPrompt />
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -501,7 +544,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               {profile && (
                 <button 
                   onClick={() => setActiveTab('notifications')}
-                  className={`relative p-2.5 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/20/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  className={`relative p-2.5 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                   <Bell size={20} />
                   <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
@@ -546,6 +589,13 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                           Profile
                         </button>
                         <button 
+                          onClick={() => { setActiveTab('amcs'); setIsUserMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                        >
+                          <Calendar size={16} />
+                          Annual Contracts (AMC)
+                        </button>
+                        <button 
                           onClick={() => { setActiveTab('wallet'); setIsUserMenuOpen(false); }}
                           className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
                         >
@@ -573,7 +623,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               ) : (
                 <button 
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/10 active:scale-95"
+                  className="bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 active:scale-95"
                 >
                   Login
                 </button>
@@ -616,7 +666,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <button 
                     onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}
-                    className="w-full py-4 px-6 bg-blue-700 text-white rounded-2xl font-bold text-center shadow-xl shadow-blue-700/20/20"
+                    className="w-full py-4 px-6 bg-blue-700 text-white rounded-2xl font-bold text-center shadow-xl shadow-blue-700/20"
                   >
                     Login to Explore
                   </button>

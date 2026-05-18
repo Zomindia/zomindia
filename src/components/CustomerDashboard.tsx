@@ -9,7 +9,9 @@ import PaymentModal from './PaymentModal';
 import BookingModal from './BookingModal';
 import AudioCall from './AudioCall';
 import AiSupportChat from './AiSupportChat';
+import MarqueeCarousel from './MarqueeCarousel';
 import { Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import PartnerTrackingMap from './PartnerTrackingMap';
 import { 
   Clock, 
   MapPin, 
@@ -35,87 +37,6 @@ import {
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || '';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
-function TrackingMap({ partnerLocation, destinationAddress, routePath }: { partnerLocation: {lat: number, lng: number}, destinationAddress: string, routePath?: string[] }) {
-  const map = useMap();
-  const mapsLib = useMapsLibrary('maps');
-  const [destCoords, setDestCoords] = useState<{lat: number, lng: number} | null>(null);
-
-  // Geocode destination address to show it on map
-  useEffect(() => {
-    if (!destinationAddress || !mapsLib) return;
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: destinationAddress }, (results, status) => {
-      if (status === 'OK' && results?.[0]) {
-        const loc = results[0].geometry.location;
-        setDestCoords({ lat: loc.lat(), lng: loc.lng() });
-      }
-    });
-  }, [destinationAddress, mapsLib]);
-
-  // Handle polylines
-  useEffect(() => {
-    if (!map || !routePath || routePath.length === 0) return;
-
-    const polylines = routePath.map(path => new google.maps.Polyline({
-      path: google.maps.geometry.encoding.decodePath(path),
-      geodesic: true,
-      strokeColor: '#1c1917',
-      strokeOpacity: 0.8,
-      strokeWeight: 4,
-    }));
-
-    polylines.forEach(p => p.setMap(map));
-    
-    // Fit bounds to show both partner and destination
-    if (partnerLocation && destCoords) {
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend(partnerLocation);
-      bounds.extend(destCoords);
-      map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
-    }
-
-    return () => polylines.forEach(p => p.setMap(null));
-  }, [map, routePath, partnerLocation, destCoords]);
-
-  if (!partnerLocation) return null;
-
-  return (
-    <div className="h-80 w-full rounded-2xl overflow-hidden border border-slate-200 mt-4 shadow-inner relative group bg-slate-100">
-      <Map
-        defaultCenter={partnerLocation}
-        defaultZoom={15}
-        mapId="TRACKING_MAP"
-        style={{ width: '100%', height: '100%' }}
-        internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-        gestureHandling="greedy"
-        disableDefaultUI
-      >
-        <AdvancedMarker position={partnerLocation}>
-          <div className="relative">
-             <div className="absolute inset-0 bg-blue-700 rounded-full animate-ping opacity-25" />
-             <div className="relative bg-blue-700 p-2.5 rounded-full shadow-lg border-2 border-white text-white z-10">
-                <Navigation size={18} />
-             </div>
-          </div>
-        </AdvancedMarker>
-
-        {destCoords && (
-          <AdvancedMarker position={destCoords}>
-            <div className="bg-white p-2 rounded-full shadow-lg border-2 border-blue-700 text-slate-900">
-               <MapPin size={18} />
-            </div>
-          </AdvancedMarker>
-        )}
-      </Map>
-      <div className="absolute top-4 right-4 flex flex-col gap-2 scale-90 sm:scale-100 items-end">
-        <div className="bg-blue-700 text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg border border-white/20">
-          Live Tracking Active
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PartnerLiveStatus({ 
   partnerId, 
   destinationAddress,
@@ -131,62 +52,6 @@ function PartnerLiveStatus({
   status: string;
   serviceOtp?: string;
 }) {
-  const [partnerLocation, setPartnerLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [eta, setEta] = useState<string | null>(null);
-  const [distance, setDistance] = useState<string | null>(null);
-  const [routePath, setRoutePath] = useState<string[]>([]);
-  
-  const routesLib = useMapsLibrary('routes');
-
-  useEffect(() => {
-    if (!partnerId) return;
-    const q = query(collection(db, 'partners'), where('userId', '==', partnerId));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const data = snap.docs[0].data() as PartnerProfile;
-        if (data.lat !== undefined && data.lng !== undefined) {
-          setPartnerLocation({ lat: data.lat, lng: data.lng });
-        }
-      }
-    }, (err) => console.error("Error fetching partner location:", err));
-    return () => unsubscribe();
-  }, [partnerId]);
-
-  useEffect(() => {
-    if (!partnerLocation || !destinationAddress || !routesLib) return;
-
-    const calculateRoute = async () => {
-      try {
-        const { routes } = await routesLib.Route.computeRoutes({
-          origin: partnerLocation,
-          destination: destinationAddress,
-          travelMode: 'DRIVING',
-          fields: ['path', 'durationMillis', 'distanceMeters'],
-        });
-
-        if (routes?.[0]) {
-          const route = routes[0];
-          // Convert durationMillis to human readable text
-          const minutes = Math.ceil(Number(route.durationMillis || 0) / 60000);
-          setEta(`${minutes} min${minutes !== 1 ? 's' : ''}`);
-          
-          const km = (Number(route.distanceMeters) || 0) / 1000;
-          setDistance(`${km.toFixed(1)} km`);
-          
-          if (route.path) {
-            setRoutePath([route.path]);
-          }
-        }
-      } catch (err) {
-        console.error("Route calculation error:", err);
-      }
-    };
-
-    calculateRoute();
-    const interval = setInterval(calculateRoute, 30000); // Update every 30s
-    return () => clearInterval(interval);
-  }, [partnerLocation, destinationAddress, routesLib]);
-
   const statusLabel = 
     status === 'on_the_way' ? 'Partner Navigating' : 
     status === 'arrived' ? 'Partner Arrived' : 
@@ -205,15 +70,7 @@ function PartnerLiveStatus({
             <div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
             {statusLabel}
           </div>
-          {eta && (
-            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200 shadow-sm">
-              <Clock size={14} className="text-slate-400" />
-              <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
-                {status === 'on_the_way' ? `Arriving approx. ${eta}` : 'On Site'}
-              </span>
-            </div>
-          )}
-          {serviceOtp && status === 'on_the_way' && (
+          {serviceOtp && (status === 'on_the_way' || status === 'arrived') && (
              <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 rounded-2xl border border-amber-200 shadow-sm animate-bounce-subtle">
                <Shield size={14} className="text-amber-600" />
                <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest">
@@ -231,25 +88,17 @@ function PartnerLiveStatus({
         </button>
       </div>
       
-      {!partnerLocation && isOpen && (
-        <div className="p-8 bg-slate-50 rounded-2xl border border-slate-200 mt-4 text-center">
-          <div className="w-8 h-8 border-4 border-blue-700 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm font-bold text-slate-600">Waiting for Pro's signal...</p>
-        </div>
-      )}
-
       <AnimatePresence>
-        {isOpen && partnerLocation && (
+        {isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <TrackingMap 
-              partnerLocation={partnerLocation} 
+            <PartnerTrackingMap 
+              partnerId={partnerId} 
               destinationAddress={destinationAddress} 
-              routePath={routePath}
             />
           </motion.div>
         )}
@@ -662,6 +511,12 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
         </div>
       </div>
 
+      <MarqueeCarousel 
+        promotions={promotions}
+        services={allActiveServices}
+        onServiceClick={setSelectedService}
+      />
+
       {/* Active High-Visibility Status Ticker */}
       {activeBookings.some(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status)) && (
         <motion.div 
@@ -670,7 +525,7 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
           className="mb-16 -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           {activeBookings.filter(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status)).map(booking => (
-            <div key={booking.id} className="bg-blue-700 text-white rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-blue-700/20/20 relative overflow-hidden group">
+            <div key={booking.id} className="bg-blue-700 text-white rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-blue-700/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse" />
               <div className="relative z-10 flex flex-col sm:flex-row justify-between items-center gap-12">
                 <div className="flex items-center gap-10">
@@ -801,7 +656,7 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
                               e.stopPropagation();
                               setActiveBookingChat(booking);
                             }}
-                            className="bg-blue-700 text-white px-6 py-4 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20/20 flex items-center gap-3 active:scale-95"
+                            className="bg-blue-700 text-white px-6 py-4 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 flex items-center gap-3 active:scale-95"
                           >
                             <MessageSquare size={16} />
                             Chat
@@ -875,46 +730,60 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
                         <div>
                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Your Professional</h4>
                           {booking.partnerId ? (
-                            <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[32px] border border-slate-100">
-                              <div className="w-16 h-16 bg-white rounded-2xl shadow-lg shadow-slate-200 flex items-center justify-center overflow-hidden border-2 border-white">
-                                {partners[booking.partnerId]?.photoURL ? (
-                                  <img src={partners[booking.partnerId].photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <User size={32} className="text-slate-200" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-lg font-black text-slate-900">{partners[booking.partnerId]?.displayName}</p>
-                                  {partnerDetails[booking.partnerId]?.isVerified && (
-                                    <div className="text-emerald-500 bg-emerald-50 p-1 rounded-full shadow-sm" title="Verified Professional">
-                                      <CheckCircle2 size={14} fill="currentColor" className="text-white fill-emerald-500" />
-                                    </div>
+                            <>
+                              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+                                <div className="w-16 h-16 bg-white rounded-2xl shadow-lg shadow-slate-200 flex items-center justify-center overflow-hidden border-2 border-white">
+                                  {partners[booking.partnerId]?.photoURL ? (
+                                    <img src={partners[booking.partnerId].photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <User size={32} className="text-slate-200" />
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 mb-3">
-                                  <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${
-                                    partnerDetails[booking.partnerId]?.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                  }`}>
-                                     {partnerDetails[booking.partnerId]?.isVerified ? 'Platinum Verified' : 'Checking Credentials'}
-                                  </span>
-                                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-900 ml-auto">
-                                    <Star size={12} fill="currentColor" className="text-amber-400" /> {partnerDetails[booking.partnerId]?.rating || 4.9}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-lg font-black text-slate-900">{partners[booking.partnerId]?.displayName}</p>
+                                    {partnerDetails[booking.partnerId]?.isVerified && (
+                                      <div className="text-emerald-500 bg-emerald-50 p-1 rounded-full shadow-sm" title="Verified Professional">
+                                        <CheckCircle2 size={14} fill="currentColor" className="text-white fill-emerald-500" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${
+                                      partnerDetails[booking.partnerId]?.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                    }`}>
+                                       {partnerDetails[booking.partnerId]?.isVerified ? 'Platinum Verified' : 'Checking Credentials'}
+                                    </span>
+                                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-900 ml-auto">
+                                      <Star size={12} fill="currentColor" className="text-amber-400" /> {partnerDetails[booking.partnerId]?.rating || 4.9}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    {partners[booking.partnerId]?.phoneNumber && (
+                                      <a 
+                                        href={`tel:${partners[booking.partnerId].phoneNumber}`} 
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-xs font-black text-slate-900 hover:underline flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
+                                      >
+                                        Contact Pro
+                                      </a>
+                                    )}
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                  {partners[booking.partnerId]?.phoneNumber && (
-                                    <a 
-                                      href={`tel:${partners[booking.partnerId].phoneNumber}`} 
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-xs font-black text-slate-900 hover:underline flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
-                                    >
-                                      Contact Pro
-                                    </a>
-                                  )}
+                              </div>
+                              
+                              {/* Live Chat Integration */}
+                              <div className="mt-8">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Direct Message</h4>
+                                <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl shadow-slate-200/20 overflow-hidden">
+                                  <ChatWindow 
+                                    booking={booking}
+                                    otherUser={partners[booking.partnerId] || null}
+                                    isEmbedded={true}
+                                  />
                                 </div>
                               </div>
-                            </div>
+                            </>
                           ) : (
                             <div className="p-10 bg-slate-50 rounded-[32px] border-2 border-slate-200 border-dashed text-center">
                               <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
@@ -1124,7 +993,7 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
                   </div>
                   <button 
                     onClick={() => setSelectedService(service)}
-                    className="bg-blue-700 text-white px-8 py-5 rounded-[22px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all active:scale-95 shadow-2xl shadow-blue-700/20/10"
+                    className="bg-blue-700 text-white px-8 py-5 rounded-[22px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all active:scale-95 shadow-2xl shadow-blue-700/10"
                   >
                     Deploy Pro
                   </button>

@@ -15,8 +15,10 @@ import {
   LayoutGrid,
   FileText,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
+import AdminUpload from './AdminUpload';
 
 interface Props {
   profile: UserProfile;
@@ -29,6 +31,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   
   // Form State
   const [formData, setFormData] = useState({
@@ -46,7 +49,33 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
     return unsub;
   }, []);
 
+  const validateStep = (step: Step): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (step === 1) {
+      if (!formData.bio || formData.bio.length < 20) {
+        newErrors.bio = 'Bio must be at least 20 characters long.';
+      }
+      const phoneRegex = /^(?:\+91|91|0)?[6-9]\d{9}$/;
+      if (!formData.phoneNumber) {
+        newErrors.phoneNumber = 'Phone number is required.';
+      } else if (!phoneRegex.test(formData.phoneNumber.replace(/\s+/g, ''))) {
+        newErrors.phoneNumber = 'Please enter a valid 10-digit phone number.';
+      }
+    }
+
+    if (step === 2) {
+      if (formData.selectedCategories.length === 0) {
+        newErrors.selectedCategories = 'Please select at least one specialization.';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSignUp = async () => {
+    if (!validateStep(3)) return;
     setLoading(true);
     try {
       // 1. Update user role and basic info
@@ -83,8 +112,15 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
     }
   };
 
-  const nextStep = () => setCurrentStep(prev => (prev < 4 ? (prev + 1) as Step : prev));
-  const prevStep = () => setCurrentStep(prev => (prev > 1 ? (prev - 1) as Step : prev));
+  const nextStep = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => (prev < 4 ? (prev + 1) as Step : prev));
+    }
+  };
+  const prevStep = () => {
+    setErrors({});
+    setCurrentStep(prev => (prev > 1 ? (prev - 1) as Step : prev));
+  };
 
   const toggleCategory = (catName: string) => {
     setFormData(prev => ({
@@ -93,6 +129,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
         ? prev.selectedCategories.filter(c => c !== catName)
         : [...prev.selectedCategories, catName]
     }));
+    if (errors.selectedCategories) setErrors(prev => ({ ...prev, selectedCategories: '' }));
   };
 
   if (currentStep === 4) {
@@ -112,7 +149,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
         </p>
         <button 
           onClick={onSuccess}
-          className="bg-blue-700 text-white px-12 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20/20 active:scale-95"
+          className="bg-blue-700 text-white px-12 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 active:scale-95"
         >
           Enter Control Center
         </button>
@@ -128,7 +165,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
           {/* Progress Sidebar */}
           <div className="lg:col-span-4 space-y-12">
             <div>
-               <div className="bg-blue-700 text-white p-4 rounded-3xl w-fit mb-8 shadow-xl shadow-blue-700/20/10">
+               <div className="bg-blue-700 text-white p-4 rounded-3xl w-fit mb-8 shadow-xl shadow-blue-700/10">
                   <Briefcase size={32} />
                </div>
                <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tighter leading-tight uppercase italic">
@@ -189,14 +226,22 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                         </div>
                         
                         <div className="space-y-8">
-                           <div className="group">
+                            <div className="group">
                               <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest px-1">Professional Bio</label>
                               <textarea 
                                 value={formData.bio}
-                                onChange={(e) => setFormData({...formData, bio: e.target.value})}
+                                onChange={(e) => {
+                                  setFormData({...formData, bio: e.target.value});
+                                  if (errors.bio) setErrors({...errors, bio: ''});
+                                }}
                                 placeholder="Describe your experience, team size, and service philosophy..."
-                                className="w-full bg-slate-50 border-none rounded-[32px] p-8 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 transition-all outline-none h-40 resize-none italic"
+                                className={`w-full bg-slate-50 border-2 rounded-[32px] p-8 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 transition-all outline-none h-40 resize-none italic ${errors.bio ? 'border-rose-100 bg-rose-50/30' : 'border-transparent'}`}
                               />
+                              {errors.bio && (
+                                <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mt-2 ml-4 flex items-center gap-2">
+                                  <AlertCircle size={12} /> {errors.bio}
+                                </p>
+                              )}
                            </div>
 
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -205,10 +250,18 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                                  <input 
                                    type="tel"
                                    value={formData.phoneNumber}
-                                   onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
+                                   onChange={(e) => {
+                                     setFormData({...formData, phoneNumber: e.target.value});
+                                     if (errors.phoneNumber) setErrors({...errors, phoneNumber: ''});
+                                   }}
                                    placeholder="+91 XXXXX XXXXX"
-                                   className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
+                                   className={`w-full bg-slate-50 border-2 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none ${errors.phoneNumber ? 'border-rose-100 bg-rose-50/30' : 'border-transparent'}`}
                                  />
+                                 {errors.phoneNumber && (
+                                   <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mt-2 ml-1 flex items-center gap-2">
+                                     <AlertCircle size={12} /> {errors.phoneNumber}
+                                   </p>
+                                 )}
                               </div>
                               <div>
                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest px-1">Business Email</label>
@@ -252,10 +305,10 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                            ))}
                         </div>
 
-                        {formData.selectedCategories.length === 0 && (
-                          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
-                             <AlertCircle size={16} className="text-amber-500 shrink-0" />
-                             <p className="text-[10px] font-bold text-amber-800 uppercase tracking-widest">Please select at least one specialization.</p>
+                        {errors.selectedCategories && (
+                          <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 flex gap-3">
+                             <AlertCircle size={16} className="text-rose-500 shrink-0" />
+                             <p className="text-[10px] font-bold text-rose-800 uppercase tracking-widest">{errors.selectedCategories}</p>
                           </div>
                         )}
                       </motion.div>
@@ -269,39 +322,43 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                         </div>
 
                         <div className="space-y-8">
-                           <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100/50">
-                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Step A: Identity Proof (PDF/Image URL)</label>
-                              <div className="relative">
-                                 <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                 <input 
-                                   type="text"
-                                   placeholder="URL to your ID Proof..."
-                                   value={formData.kycIdUrl}
-                                   onChange={(e) => setFormData({...formData, kycIdUrl: e.target.value})}
-                                   className="w-full bg-white border-2 border-transparent focus:border-blue-700 rounded-2xl px-12 py-4 text-sm outline-none transition-all"
-                                 />
-                              </div>
+                           <div className="bg-slate-50 p-4 rounded-[40px] border border-slate-100/50">
+                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest ml-4">Identity Proof</label>
+                              <AdminUpload 
+                                label="Upload ID Proof (Aadhar/PAN/DL)"
+                                onUpload={(url) => setFormData({...formData, kycIdUrl: url})}
+                                value={formData.kycIdUrl}
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                placeholder="Select or drop file..."
+                              />
                            </div>
 
-                           <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100/50">
-                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Step B: Address Verification (PDF/Image URL)</label>
-                              <div className="relative">
-                                 <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                 <input 
-                                   type="text"
-                                   placeholder="URL to address proof documents..."
-                                   value={formData.kycAddressUrl}
-                                   onChange={(e) => setFormData({...formData, kycAddressUrl: e.target.value})}
-                                   className="w-full bg-white border-2 border-transparent focus:border-blue-700 rounded-2xl px-12 py-4 text-sm outline-none transition-all"
-                                 />
-                              </div>
+                           <div className="bg-slate-50 p-4 rounded-[40px] border border-slate-100/50">
+                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest ml-4">Address Verification</label>
+                              <AdminUpload 
+                                label="Upload Address Proof (Utility Bill/Rental)"
+                                onUpload={(url) => setFormData({...formData, kycAddressUrl: url})}
+                                value={formData.kycAddressUrl}
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                placeholder="Select or drop file..."
+                              />
                            </div>
 
-                           <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 flex gap-4">
-                              <ShieldCheck className="text-indigo-500 shrink-0" size={20} />
-                              <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest italic leading-relaxed">
-                                Documents are reviewed by human auditors. Please ensure clarity to avoid rejection.
-                              </p>
+                           <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 flex items-center justify-between gap-4">
+                              <div className="flex gap-4">
+                                <ShieldCheck className="text-indigo-500 shrink-0" size={20} />
+                                <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest italic leading-relaxed">
+                                  You can skip this and upload documents later.
+                                </p>
+                              </div>
+                              <button 
+                                onClick={handleSignUp}
+                                className="px-6 py-3 bg-white text-indigo-700 border border-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 whitespace-nowrap"
+                              >
+                                Skip & Continue <ArrowRight size={14} />
+                              </button>
                            </div>
                         </div>
                       </motion.div>
@@ -325,7 +382,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                       (currentStep === 1 && (!formData.bio || !formData.phoneNumber)) ||
                       (currentStep === 2 && formData.selectedCategories.length === 0)
                     }
-                    className="flex-[2] bg-blue-700 text-white py-5 rounded-[28px] font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20/20 disabled:opacity-50 flex items-center justify-center gap-3 italic"
+                    className="flex-[2] bg-blue-700 text-white py-5 rounded-[28px] font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 disabled:opacity-50 flex items-center justify-center gap-3 italic"
                   >
                     {loading ? (
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -86,7 +86,7 @@ export default function PartnerWallet({ partner }: Props) {
             <div className="mt-12 flex gap-4">
                <button 
                  onClick={() => setShowWithdraw(true)}
-                 className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/20/40 active:scale-95 transition-all"
+                 className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/40 active:scale-95 transition-all"
                >
                   Withdraw
                </button>
@@ -135,7 +135,7 @@ export default function PartnerWallet({ partner }: Props) {
                 
                 <button 
                   type="submit"
-                  className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-800 active:scale-95 transition-all shadow-xl shadow-blue-700/20/20"
+                  className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-800 active:scale-95 transition-all shadow-xl shadow-blue-700/20"
                 >
                   Confirm Request
                 </button>

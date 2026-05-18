@@ -84,7 +84,7 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
                onClick={() => setTimeRange(range)}
                className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                  timeRange === range 
-                   ? 'bg-blue-700 text-white shadow-lg shadow-blue-700/20/10' 
+                   ? 'bg-blue-700 text-white shadow-lg shadow-blue-700/10' 
                    : 'text-slate-400 hover:text-blue-700 hover:bg-white'
                }`}
              >
@@ -289,7 +289,7 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
                           setPayoutRequested(false);
                         }, 3000);
                       }}
-                      className="flex-[2] py-4 rounded-2xl bg-blue-700 text-white hover:bg-blue-800 font-black uppercase tracking-widest text-[10px] transition-all shadow-xl shadow-blue-700/20/10"
+                      className="flex-[2] py-4 rounded-2xl bg-blue-700 text-white hover:bg-blue-800 font-black uppercase tracking-widest text-[10px] transition-all shadow-xl shadow-blue-700/10"
                     >
                       Confirm Transfer
                     </button>

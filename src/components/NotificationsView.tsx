@@ -129,17 +129,17 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
                 <div className="flex gap-8">
                     <div className={`w-16 h-16 rounded-[28px] flex items-center justify-center shrink-0 shadow-lg ${
                     (n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
-                    (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived') ? 'bg-blue-700 text-white shadow-blue-700/20' :
-                    (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts') ? 'bg-orange-500 text-white shadow-orange-500/20' :
-                    (n.type?.includes('error') || n.type === 'booking_cancelled') ? 'bg-rose-600 text-white shadow-rose-600/20' :
-                    (n.type === 'promotional') ? 'bg-violet-600 text-white shadow-violet-600/20' :
+                    (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? 'bg-blue-700 text-white shadow-blue-700/20' :
+                    (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? 'bg-orange-500 text-white shadow-orange-500/20' :
+                    (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? 'bg-rose-600 text-white shadow-rose-600/20' :
+                    (n.type === 'promotional' || n.type === 'offer_active') ? 'bg-violet-600 text-white shadow-violet-600/20' :
                     'bg-slate-900 text-white shadow-slate-900/20'
                   }`}>
                     {(n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? <CheckCircle2 size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived') ? <ShieldCheck size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts') ? <Clock size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('error') || n.type === 'booking_cancelled') ? <X size={32} strokeWidth={2.5} /> :
-                     (n.type === 'promotional') ? <Smartphone size={32} strokeWidth={2.5} /> :
+                     (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? <ShieldCheck size={32} strokeWidth={2.5} /> :
+                     (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? <Clock size={32} strokeWidth={2.5} /> :
+                     (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? <X size={32} strokeWidth={2.5} /> :
+                     (n.type === 'promotional' || n.type === 'offer_active') ? <Smartphone size={32} strokeWidth={2.5} /> :
                      <Info size={32} strokeWidth={2.5} />}
                   </div>
                   <div className="flex-1">

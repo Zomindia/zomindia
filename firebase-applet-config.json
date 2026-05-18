@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0641053183",
-  "appId": "1:513608864842:web:c0851e42a9a4d0df0382b3",
-  "apiKey": "AIzaSyB9KZu1yxF5dCU-DCjKju9ckm-qbV3juSw",
-  "authDomain": "gen-lang-client-0641053183.firebaseapp.com",
+  "projectId": "zomindia-807ce",
+  "appId": "1:165132689371:web:a14bfc51c08886901ad1fe",
+  "apiKey": "AIzaSyCzLPxWtZ2ARI2VhoEvfNVb17RSZZMx-4Y",
+  "authDomain": "zomindia-807ce.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc",
-  "storageBucket": "gen-lang-client-0641053183.firebasestorage.app",
-  "messagingSenderId": "513608864842",
+  "storageBucket": "zomindia-807ce.firebasestorage.app",
+  "messagingSenderId": "165132689371",
   "measurementId": ""
 }

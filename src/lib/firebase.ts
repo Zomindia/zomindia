@@ -1,25 +1,25 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+// Using standard getFirestore with databaseId from config
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 export const auth = getAuth(app);
 
-// Connection Test
+// Connection Test with better error reporting
 async function testConnection() {
   try {
+    // Attempting to reach the server to verify config
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connected successfully");
+    console.log("Firestore connection test: SUCCESS");
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
-    } else {
-      console.error("Firestore connection error:", error);
-    }
+    console.error("Firestore connection test: FAILED", error);
+    // We don't throw here to avoid crashing the whole module load, 
+    // but the app might still fail later if it relies on DB.
   }
 }
-testConnection();
+
+// Initializing connection test to help debug in console
+testConnection().catch(console.error);

@@ -194,7 +194,7 @@ export default function OffersView({ profile, onAuthRequired, setActiveTab }: { 
                   ) : (
                     <button 
                       onClick={() => setSelectedPromo(promo)}
-                      className={`w-full py-5 rounded-3xl flex items-center justify-center gap-3 font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-blue-700/20/10 active:scale-95 ${
+                      className={`w-full py-5 rounded-3xl flex items-center justify-center gap-3 font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-blue-700/10 active:scale-95 ${
                         accentColor === 'rose' ? 'bg-rose-500 text-white hover:bg-rose-600' :
                         accentColor === 'amber' ? 'bg-amber-500 text-white hover:bg-amber-600' :
                         'bg-blue-700 text-white hover:bg-blue-800'
@@ -283,7 +283,7 @@ export default function OffersView({ profile, onAuthRequired, setActiveTab }: { 
                 </button>
 
                 <div className="mb-10 text-center">
-                   <div className="w-20 h-20 bg-blue-700 text-white rounded-[32px] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-700/20/20">
+                   <div className="w-20 h-20 bg-blue-700 text-white rounded-[32px] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-700/20">
                       <TicketPercent size={32} />
                    </div>
                    <h3 className="text-2xl font-bold text-slate-900 italic">Activate Promotion</h3>
@@ -311,7 +311,7 @@ export default function OffersView({ profile, onAuthRequired, setActiveTab }: { 
                   <button 
                     disabled={!targetCategory || isRedeeming}
                     onClick={handleRedeem}
-                    className="w-full bg-blue-700 text-white py-5 rounded-3xl font-bold hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20/20 disabled:opacity-50 flex items-center justify-center gap-3 uppercase tracking-widest text-xs font-black"
+                    className="w-full bg-blue-700 text-white py-5 rounded-3xl font-bold hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 disabled:opacity-50 flex items-center justify-center gap-3 uppercase tracking-widest text-xs font-black"
                   >
                     {isRedeeming ? 'Validating...' : 'Claim Reward'}
                   </button>

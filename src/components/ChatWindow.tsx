@@ -9,10 +9,11 @@ import { Send, X, User, MessageSquare } from 'lucide-react';
 interface ChatWindowProps {
   booking: Booking;
   otherUser: UserProfile | null;
-  onClose: () => void;
+  onClose?: () => void;
+  isEmbedded?: boolean;
 }
 
-export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowProps) {
+export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = false }: ChatWindowProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -61,16 +62,11 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
     }
   };
 
-  return (
-    <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0, y: 100, scale: 0.95, filter: 'blur(10px)' }}
-        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
-        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[420px] h-full sm:h-[650px] bg-white sm:rounded-[40px] shadow-[0_32px_64px_rgba(0,0,0,0.15)] border-t sm:border border-slate-100 flex flex-col z-[100] overflow-hidden"
-      >
-        {/* Header */}
-        <div className="px-6 py-5 bg-blue-700 text-white flex items-center justify-between relative overflow-hidden">
+  const content = (
+    <div className={`flex flex-col h-full ${isEmbedded ? 'bg-transparent' : 'bg-white'}`}>
+      {/* Header - Only for modal mode */}
+      {!isEmbedded && (
+        <div className="px-6 py-5 bg-blue-700 text-white flex items-center justify-between relative overflow-hidden shrink-0">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
             <div className="absolute top-[-50%] left-[-20%] w-[100%] h-[200%] bg-white/20 blur-[120px] rounded-full rotate-45 animate-pulse" />
           </div>
@@ -92,102 +88,112 @@ export default function ChatWindow({ booking, otherUser, onClose }: ChatWindowPr
             </div>
           </div>
           <div className="flex items-center gap-1 relative z-10">
-            <button 
-              onClick={onClose}
-              className="p-3 hover:bg-white/10 rounded-2xl transition-all active:scale-90 group"
-              title="Close Chat"
-            >
-              <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-            </button>
+            {onClose && (
+              <button 
+                onClick={onClose}
+                className="p-3 hover:bg-white/10 rounded-2xl transition-all active:scale-90 group"
+                title="Close Chat"
+              >
+                <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+              </button>
+            )}
           </div>
         </div>
+      )}
 
-        {/* Messages */}
-        <div 
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50/30 scroll-smooth"
-        >
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-              <div className="w-10 h-10 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6" />
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900/40">Secure Sync...</p>
+      {/* Messages */}
+      <div 
+        ref={scrollRef}
+        className={`flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth ${isEmbedded ? 'min-h-[300px] max-h-[500px]' : 'bg-slate-50/30'}`}
+      >
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <div className="w-10 h-10 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6" />
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900/40">Secure Sync...</p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-300 text-center px-12">
+            <div className="w-20 h-20 bg-white rounded-[32px] mb-6 shadow-xl shadow-slate-200/50 flex items-center justify-center border border-slate-100/50 transform -rotate-6">
+              <MessageSquare size={32} className="text-slate-100" />
             </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-300 text-center px-12">
-              <div className="w-24 h-24 bg-white rounded-[32px] mb-8 shadow-2xl shadow-slate-200/50 flex items-center justify-center border border-slate-100/50 transform -rotate-6">
-                <MessageSquare size={40} className="text-slate-100" />
-              </div>
-              <h5 className="text-xl font-bold text-slate-900 mb-2 italic">Connect Now</h5>
-              <p className="text-xs text-slate-400 leading-relaxed font-medium">Say hello to your {auth.currentUser?.uid === booking.customerId ? 'partner' : 'customer'} to coordinate the booking.</p>
-            </div>
-          ) : (
-            <div className="space-y-8">
-              {messages.map((msg, idx) => {
-                const isMe = msg.senderId === auth.currentUser?.uid;
-                const nextMsg = messages[idx + 1];
-                const isLastInGroup = !nextMsg || nextMsg.senderId !== msg.senderId;
+            <h5 className="text-lg font-bold text-slate-900 mb-1 italic">Direct Message</h5>
+            <p className="text-[10px] text-slate-400 leading-relaxed font-black uppercase tracking-widest">Connect with your {auth.currentUser?.uid === booking.customerId ? 'pro' : 'client'}</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {messages.map((msg, idx) => {
+              const isMe = msg.senderId === auth.currentUser?.uid;
+              const nextMsg = messages[idx + 1];
+              const isLastInGroup = !nextMsg || nextMsg.senderId !== msg.senderId;
 
-                return (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    key={msg.id}
-                    className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-                  >
+              return (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  key={msg.id}
+                  className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[85%] group ${isMe ? 'items-end' : 'items-start'}`}>
                     <div 
-                      className={`max-w-[82%] group ${isMe ? 'items-end' : 'items-start'}`}
+                      className={`relative px-4 py-3 rounded-[24px] text-sm font-medium leading-relaxed transition-all shadow-sm ${
+                        isMe 
+                          ? `bg-blue-700 text-white shadow-xl shadow-blue-700/10 ${isLastInGroup ? 'rounded-br-none' : ''}` 
+                          : `bg-white text-slate-800 border border-slate-100 shadow-xl shadow-slate-100/50 ${isLastInGroup ? 'rounded-bl-none' : ''}`
+                      }`}
                     >
-                      <div 
-                        className={`relative px-5 py-3.5 rounded-[28px] text-sm leading-relaxed transition-all shadow-sm ${
-                          isMe 
-                            ? `bg-blue-700 text-white shadow-xl shadow-blue-700/20/10 ${isLastInGroup ? 'rounded-br-none' : ''}` 
-                            : `bg-white text-slate-800 border border-slate-200/50 shadow-xl shadow-slate-200/20 ${isLastInGroup ? 'rounded-bl-none' : ''}`
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap font-medium">{msg.text}</p>
-                      </div>
-                      {isLastInGroup && (
-                        <p className={`text-[10px] mt-2 font-bold uppercase tracking-tighter opacity-30 ${isMe ? 'text-right mr-1' : 'text-left ml-1'}`}>
-                          {msg.createdAt instanceof Timestamp ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}
-                        </p>
-                      )}
+                      <p className="whitespace-pre-wrap font-medium">{msg.text}</p>
                     </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="p-8 bg-white border-t border-slate-100">
-          <form 
-            onSubmit={handleSendMessage}
-            className="flex gap-4 items-center"
-          >
-            <div className="flex-1 relative group">
-              <input 
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[28px] pl-6 pr-12 py-5 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 focus:border-blue-700 focus:bg-white outline-none transition-all placeholder:text-slate-300 shadow-inner"
-              />
-            </div>
-            <button 
-              type="submit"
-              disabled={!newMessage.trim()}
-              className="w-14 h-14 bg-blue-700 text-white rounded-[24px] hover:bg-blue-800 disabled:opacity-20 disabled:grayscale transition-all shadow-2xl shadow-blue-700/20/30 active:scale-90 shrink-0 flex items-center justify-center p-0"
-            >
-              <Send size={22} className="transform -rotate-12 translate-x-0.5" />
-            </button>
-          </form>
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <div className="h-[1px] flex-1 bg-slate-100" />
-            <p className="text-[9px] text-slate-300 uppercase font-black tracking-[0.3em] leading-none">Security Verified</p>
-            <div className="h-[1px] flex-1 bg-slate-100" />
+                    {isLastInGroup && (
+                      <p className={`text-[9px] mt-1.5 font-bold uppercase tracking-widest opacity-30 ${isMe ? 'text-right mr-1' : 'text-left ml-1'}`}>
+                        {msg.createdAt instanceof Timestamp ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
-        </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className={`p-6 ${isEmbedded ? 'bg-slate-50 rounded-[32px] mt-4' : 'bg-white border-t border-slate-100'}`}>
+        <form 
+          onSubmit={handleSendMessage}
+          className="flex gap-3 items-center"
+        >
+          <div className="flex-1 relative group">
+            <input 
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Message..."
+              className={`w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-5 pr-10 py-4 text-sm font-black focus:ring-4 focus:ring-blue-700/5 focus:border-blue-700 focus:bg-white outline-none transition-all placeholder:text-slate-300 shadow-inner`}
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={!newMessage.trim()}
+            className="w-12 h-12 bg-blue-700 text-white rounded-xl hover:bg-blue-800 disabled:opacity-20 disabled:grayscale transition-all shadow-xl shadow-blue-700/30 active:scale-90 shrink-0 flex items-center justify-center font-black p-0"
+          >
+            <Send size={18} className="transform -rotate-12" />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
+  if (isEmbedded) return content;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        initial={{ opacity: 0, y: 100, scale: 0.95, filter: 'blur(10px)' }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: 100, scale: 0.95, filter: 'blur(10px)' }}
+        className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 w-full sm:w-[420px] h-[100dvh] sm:h-[650px] bg-white sm:rounded-[40px] shadow-[0_32px_64px_rgba(0,0,0,0.15)] border-t sm:border border-slate-100 flex flex-col z-[1001] overflow-hidden"
+      >
+        {content}
       </motion.div>
     </AnimatePresence>
   );

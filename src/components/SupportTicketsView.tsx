@@ -62,7 +62,7 @@ export default function SupportTicketsView({ profile }: { profile: UserProfile }
         </div>
         <button 
           onClick={() => setIsAdding(!isAdding)}
-          className="bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm tracking-tight shadow-xl shadow-blue-700/20/10 hover:scale-105 transition-transform"
+          className="bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm tracking-tight shadow-xl shadow-blue-700/10 hover:scale-105 transition-transform"
         >
           {isAdding ? <X size={18} /> : <Plus size={18} />}
           {isAdding ? 'Cancel' : 'New Ticket'}

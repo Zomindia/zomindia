@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, ClipboardList, TicketPercent, User, Bell } from 'lucide-react';
+import { Home, ClipboardList, TicketPercent, User } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface BottomNavProps {

@@ -255,7 +255,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               <button
                 onClick={handleRazorpayPayment}
                 disabled={processing}
-                className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all flex justify-center items-center gap-3 shadow-xl shadow-blue-700/20/20 disabled:opacity-50 active:scale-95"
+                className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all flex justify-center items-center gap-3 shadow-xl shadow-blue-700/20 disabled:opacity-50 active:scale-95"
               >
                 <CreditCard size={20} />
                 {processing ? 'Launching Gateway...' : `Proceed to Pay ₹${booking.totalPrice}`}

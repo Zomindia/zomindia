@@ -91,11 +91,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const user = userCredential.user;
       
       // Initial Profile Creation
+      const isAdminEmail = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         displayName,
         email: user.email,
-        role: 'customer',
+        role: isAdminEmail ? 'admin' : 'customer',
+        adminSubRole: isAdminEmail ? 'head' : undefined,
         createdAt: Timestamp.now(),
         referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
         walletBalance: 0,
@@ -192,7 +194,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 <div className="space-y-3">
                   <button 
                     onClick={() => setView('email-login')}
-                    className="w-full flex items-center justify-between p-5 bg-blue-700 text-white rounded-[24px] font-bold group hover:scale-[1.02] transition-all active:scale-95 shadow-xl shadow-blue-700/20/10"
+                    className="w-full flex items-center justify-between p-5 bg-blue-700 text-white rounded-[24px] font-bold group hover:scale-[1.02] transition-all active:scale-95 shadow-xl shadow-blue-700/10"
                   >
                     <div className="flex items-center gap-4">
                       <Mail size={20} />
@@ -298,7 +300,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-700 text-white p-5 rounded-[24px] font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/10 disabled:opacity-50 flex items-center justify-center gap-3"
+                  className="w-full bg-blue-700 text-white p-5 rounded-[24px] font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 disabled:opacity-50 flex items-center justify-center gap-3"
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -374,7 +376,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                    <button 
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-blue-700 text-white p-5 rounded-[24px] font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/10 disabled:opacity-50 flex items-center justify-center gap-3"
+                    className="w-full bg-blue-700 text-white p-5 rounded-[24px] font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 disabled:opacity-50 flex items-center justify-center gap-3"
                   >
                     {loading ? (
                       <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />

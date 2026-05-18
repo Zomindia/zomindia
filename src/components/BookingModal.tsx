@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus } from '../types';
+import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus, AMC } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { sendNotification } from '../lib/notifications';
+import { getWhatsAppBookingLink } from '../lib/whatsapp';
+import { handleMapsError } from '../lib/maps-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Map,
@@ -23,7 +25,8 @@ import {
   Info,
   Zap,
   FileText,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from 'lucide-react';
 
 const MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || '';
@@ -71,14 +74,17 @@ function AddressAutocomplete({ onAddressSelect }: { onAddressSelect: (address: s
 
     if (placesService.current) {
       placesService.current.getDetails(
-        { placeId: prediction.place_id, fields: ['formatted_address', 'geometry'] },
-        (place) => {
-          if (place?.formatted_address && place.geometry?.location) {
+        { placeId: prediction.place_id, fields: ['formatted_address', 'geometry', 'name'] },
+        (place, status) => {
+          if (status === 'OK' && place?.formatted_address && place.geometry?.location) {
             onAddressSelect(
               place.formatted_address,
               place.geometry.location.lat(),
               place.geometry.location.lng()
             );
+          } else {
+            const errorMsg = handleMapsError(status === 'OK' ? place : { status });
+            alert(errorMsg);
           }
         }
       );
@@ -126,7 +132,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [address, setAddress] = useState(profile?.address || '');
   const [addressDetails, setAddressDetails] = useState('');
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [time, setTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,20 +140,43 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [availablePromos, setAvailablePromos] = useState<Promotion[]>([]);
   const [showPromos, setShowPromos] = useState(false);
   const [slotNotAvailablePopup, setSlotNotAvailablePopup] = useState(false);
+  
+  // AMC State
+  const [activeAmc, setActiveAmc] = useState<AMC | null>(null);
+  const [useAmc, setUseAmc] = useState(false);
 
-  // Fetch available promos
+  // Fetch available promos & AMCs
   useEffect(() => {
-    const fetchPromos = async () => {
+    const fetchData = async () => {
+      if (!profile) return;
       try {
-        const q = query(collection(db, 'promotions'), where('active', '==', true), limit(5));
-        const snap = await getDocs(q);
-        setAvailablePromos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion)));
+        // Fetch Promos
+        const qPromos = query(collection(db, 'promotions'), where('active', '==', true), limit(5));
+        const promoSnap = await getDocs(qPromos);
+        setAvailablePromos(promoSnap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion)));
+
+        // Fetch user's active AMC for this service
+        const qAmc = query(
+          collection(db, 'amcs'), 
+          where('customerId', '==', profile.uid),
+          where('serviceId', '==', service.id),
+          where('status', '==', 'active')
+        );
+        const amcSnap = await getDocs(qAmc);
+        if (!amcSnap.empty) {
+          const amcData = { id: amcSnap.docs[0].id, ...amcSnap.docs[0].data() } as AMC;
+          // Check if frequency not exceeded
+          if (amcData.serviceBookingIds.length < amcData.frequency) {
+            setActiveAmc(amcData);
+            setUseAmc(true); // Default to using AMC if available
+          }
+        }
       } catch (err) {
-        console.error("Error fetching available promos:", err);
+        console.error("Error fetching booking data:", err);
       }
     };
-    fetchPromos();
-  }, []);
+    fetchData();
+  }, [profile, service.id]);
 
   const timeSlots = [
     { label: '09:00 AM', value: '09:00' },
@@ -241,6 +270,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   };
 
   const calculateFinalPrice = () => {
+    if (useAmc && activeAmc) return 0;
+    
     let price = service.basePrice + getSurgeAmount() - getPrimeDiscountAmount();
     if (appliedPromo) {
       if (appliedPromo.discountType === 'percent') {
@@ -314,6 +345,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const [showFinalConfirmation, setShowFinalConfirmation] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [lastBookingId, setLastBookingId] = useState<string | null>(null);
 
   const handleBooking = async () => {
     if (!profile) return;
@@ -384,55 +416,71 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       } catch (matchErr) {
         console.error("Partner matching failed, falling back to manual assignment:", matchErr);
       }
+
+      const batch = writeBatch(db);
+      const bookingRef = doc(collection(db, bookingPath));
+      setLastBookingId(bookingRef.id);
       
-      const docRef = await addDoc(collection(db, bookingPath), {
+      batch.set(bookingRef, {
         customerId: profile?.uid || auth.currentUser?.uid,
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: bookingStatus,
-        paymentStatus: 'unpaid',
+        paymentStatus: useAmc ? 'paid' : 'unpaid',
         scheduledAt: Timestamp.fromDate(scheduledAt),
         address: fullAddress,
         lat: location?.lat || null,
         lng: location?.lng || null,
         totalPrice: finalPrice,
         promoCode: appliedPromo?.code || null,
-        discountApplied: appliedPromo ? (service.basePrice - finalPrice) : 0,
-        paymentMethod,
+        discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
+        paymentMethod: useAmc ? 'wallet' : paymentMethod,
+        isAmcBooking: useAmc,
+        amcId: useAmc ? activeAmc?.id : null,
         serviceOtp,
         otpVerified: false,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
 
-      // Also store in secrets for security rules if needed, but the requirement specifically asks for the field in Booking details
-      await setDoc(doc(db, `bookings/${docRef.id}/secrets`, 'otp'), { code: serviceOtp });
-      
-      // Notify customer
-      await sendNotification(profile?.uid || auth.currentUser?.uid || '', 'Booking Placed!', assignedPartnerId ? `Your request for ${service.name} has been received and partner has been assigned.` : `Your request for ${service.name} has been received. Waiting for partner assignment.`, 'new_booking', docRef.id);
-      
-      if (assignedPartnerId) {
-        // Notify assigned partner
-        await sendNotification(assignedPartnerId, 'New Job Assigned', `You have been automatically matched for a ${service.name} booking at ${date} ${time}.`, 'new_booking', docRef.id);
-      } else {
-        // Notify admin (sarthakwebtech@gmail.com)
-        await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', docRef.id);
+      // Update AMC usage if applicable
+      if (useAmc && activeAmc) {
+        const amcRef = doc(db, 'amcs', activeAmc.id);
+        batch.update(amcRef, {
+          serviceBookingIds: [...activeAmc.serviceBookingIds, bookingRef.id],
+          updatedAt: Timestamp.now()
+        });
       }
-      
-      // Update redemption if applied
-      if (appliedPromo) {
-        // Increment usage count on promotion
-        await updateDoc(doc(db, 'promotions', appliedPromo.id), {
+
+      // Increment promo usage
+      if (appliedPromo && !useAmc) {
+        batch.update(doc(db, 'promotions', appliedPromo.id), {
           usageCount: (appliedPromo.usageCount || 0) + 1,
           updatedAt: Timestamp.now()
         });
-
+        
         const match = redemptions.find(r => r.promotionId === appliedPromo.id);
         if (match) {
-          await updateDoc(doc(db, 'redemptions', match.id), { status: 'used', updatedAt: Timestamp.now() });
+          batch.update(doc(db, 'redemptions', match.id), { status: 'used', updatedAt: Timestamp.now() });
         }
       }
 
+      // OTP Secret
+      batch.set(doc(db, `bookings/${bookingRef.id}/secrets`, 'otp'), { code: serviceOtp });
+      
+      await batch.commit();
+
+      // Notify customer
+      await sendNotification(profile?.uid || auth.currentUser?.uid || '', 'Booking Placed!', assignedPartnerId ? `Your request for ${service.name} has been received and partner has been assigned.` : `Your request for ${service.name} has been received. Waiting for partner assignment.`, 'new_booking', bookingRef.id);
+      
+      if (assignedPartnerId) {
+        // Notify assigned partner
+        await sendNotification(assignedPartnerId, 'New Job Assigned', `You have been automatically matched for a ${service.name} booking at ${date} ${time}.`, 'new_booking', bookingRef.id);
+      } else {
+        // Notify admin (sarthakwebtech@gmail.com)
+        await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', bookingRef.id);
+      }
+      
       setShowFinalConfirmation(false);
       setShowSuccessModal(true);
       setStep(4);
@@ -584,14 +632,29 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                      </div>
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      setShowSuccessModal(false);
-                    }} 
-                    className="w-full py-4 md:py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/20 active:scale-95 italic"
-                  >
-                    Continue to Dashboard
-                  </button>
+                  <div className="flex flex-col gap-3 w-full">
+                    {lastBookingId && (
+                      <button 
+                        onClick={() => {
+                          const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
+                          if (link) window.open(link, '_blank');
+                        }}
+                        className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 active:scale-95 italic flex items-center justify-center gap-2"
+                      >
+                        <MessageCircle size={16} /> Confirm via WhatsApp
+                      </button>
+                    )}
+                    
+                    <button 
+                      onClick={() => {
+                        setShowSuccessModal(false);
+                        onSuccess();
+                      }} 
+                      className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic"
+                    >
+                      Go to Dashboard
+                    </button>
+                  </div>
                 </motion.div>
               )}
               {showFinalConfirmation && (
@@ -616,7 +679,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         <span className="text-xs font-bold text-slate-900">{date} at {time}</span>
                      </div>
                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investment</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</span>
                         <span className="text-xl font-bold text-slate-900 tracking-tight">₹{calculateFinalPrice()}</span>
                      </div>
                   </div>
@@ -635,9 +698,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <button 
                       disabled={loading}
                       onClick={handleBooking} 
-                      className="flex-1 py-4 md:py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/20 active:scale-95 italic"
+                      className="flex-1 py-4 md:py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic"
                     >
-                      {loading ? 'Confirming...' : 'Yes, Finalize'}
+                      {loading ? 'Confirming...' : 'Continue'}
                     </button>
                   </div>
                   <p className="mt-8 text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto">By finalizing, you agree to our terms of service and convenience fee policy.</p>
@@ -674,6 +737,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-lg border border-slate-100 font-bold text-slate-900">₹{service.basePrice}</span>
                     </div>
                   </div>
+
+                  {activeAmc && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-5 rounded-[24px] border-2 transition-all cursor-pointer ${useAmc ? 'bg-blue-700 border-blue-700 text-white shadow-xl' : 'bg-emerald-50 border-emerald-100 text-emerald-900'}`}
+                      onClick={() => setUseAmc(!useAmc)}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                           <Zap size={16} className={useAmc ? 'text-white' : 'text-emerald-500'} />
+                           <span className="text-[10px] font-black uppercase tracking-widest">Active AMC Plan</span>
+                        </div>
+                        <input type="checkbox" checked={useAmc} readOnly className="rounded-full border-white/20 bg-transparent text-white" />
+                      </div>
+                      <p className="text-sm font-bold tracking-tight mb-1">{activeAmc.planName}</p>
+                      <p className={`text-[10px] font-medium ${useAmc ? 'text-blue-100' : 'text-emerald-600'}`}>
+                        {activeAmc.frequency - activeAmc.serviceBookingIds.length} of {activeAmc.frequency} services remaining
+                      </p>
+                    </motion.div>
+                  )}
 
                   <div className="space-y-5">
                     <div className="grid grid-cols-2 gap-4">
@@ -797,22 +881,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                 const lat = pos.coords.latitude;
                                 const lng = pos.coords.longitude;
                                 setLocation({ lat, lng });
-                                // Optionally reverse geocode using Google Maps API
-                                const geocoder = new google.maps.Geocoder();
+                                setMapCenter({ lat, lng });
+                                
                                 try {
+                                  const geocoder = new google.maps.Geocoder();
                                   const response = await geocoder.geocode({ location: { lat, lng } });
                                   if (response.results[0]) {
                                     setAddress(response.results[0].formatted_address);
                                   } else {
-                                    setAddress(`[Location detected: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+                                    setAddress(`[Point: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
                                   }
                                 } catch (e) {
+                                  alert(handleMapsError(e));
                                   setAddress(`[Location detected: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
                                 }
                               },
                               (err) => {
-                                alert("Location permission denied or unavailable. Please enable GPS permissions.");
-                              }
+                                alert(handleMapsError(err));
+                              },
+                              { timeout: 10000 }
                             );
                           } else {
                              alert("Geolocation is not supported by your browser.");
@@ -823,14 +910,28 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         <MapPin size={12} /> Use Current
                       </button>
                     </div>
-                    <div>
-                      <AddressAutocomplete 
-                        onAddressSelect={(addr, lat, lng) => {
-                          setAddress(addr);
-                          setLocation({ lat, lng });
-                        }} 
-                      />
-                    </div>
+                      <div>
+                        <AddressAutocomplete 
+                          onAddressSelect={(addr, lat, lng) => {
+                            setAddress(addr);
+                            setLocation({ lat, lng });
+                            setMapCenter({ lat, lng });
+                          }} 
+                        />
+                        <div className="mt-2 text-center">
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-2">Or type manually below</p>
+                          <input 
+                            type="text"
+                            value={address}
+                            onChange={(e) => {
+                               setAddress(e.target.value);
+                               if (!location) setLocation({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi if typing manually without autocomplete
+                            }}
+                            placeholder="Enter detailed address..."
+                            className="w-full bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-700 transition-all"
+                          />
+                        </div>
+                      </div>
 
                     {address && location && (
                       <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-200 mt-2 shadow-inner bg-slate-100">
@@ -967,12 +1068,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
                   </div>
 
-                  <div className="bg-blue-700 p-5 sm:p-8 rounded-3xl text-white shadow-2xl shadow-blue-700/20/30 relative overflow-hidden group">
+                  <div className="bg-blue-700 p-5 sm:p-8 rounded-3xl text-white shadow-2xl shadow-blue-700/30 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-1000" />
                     
                     <div className="flex justify-between items-end mb-4 sm:mb-6 relative z-10">
                       <div>
-                        <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest block mb-2">Investment Total</span>
+                        <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest block mb-2">Total Amount</span>
                         <div className="flex items-baseline gap-2">
                            <span className="text-3xl sm:text-4xl font-bold tracking-tight">₹{calculateFinalPrice()}</span>
                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Base Rate</span>
@@ -996,9 +1097,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   <button 
                     disabled={!address}
                     onClick={() => setStep(3)}
-                    className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/20 disabled:opacity-50 active:scale-[0.98]"
+                    className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 disabled:opacity-50 active:scale-[0.98]"
                   >
-                    View Settlement Summary
+                    Continue
                   </button>
                 </motion.div>
               )}
@@ -1032,10 +1133,23 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           <p className="font-bold text-slate-900">{time}</p>
                         </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Full Address</p>
-                        <p className="text-sm text-slate-600 font-medium leading-relaxed">
-                          {addressDetails && <span className="block font-bold text-slate-900 mb-0.5">{addressDetails}</span>}
+                      <div className="bg-white rounded-[28px] border border-slate-100 p-5 group transition-all hover:shadow-md">
+                        <div className="flex justify-between items-center mb-3">
+                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Service Destination</p>
+                          <button 
+                            onClick={() => {
+                              const newAddress = prompt("Enter complete address manually:", address);
+                              if (newAddress !== null && newAddress.trim() !== "") {
+                                setAddress(newAddress);
+                              }
+                            }}
+                            className="text-[10px] font-black uppercase text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-full transition-all border border-blue-100"
+                          >
+                            Edit Manually
+                          </button>
+                        </div>
+                        <p className="text-sm text-slate-700 font-bold leading-relaxed">
+                          {addressDetails && <span className="block text-slate-900 mb-1">{addressDetails}</span>}
                           {address}
                         </p>
                       </div>
@@ -1141,9 +1255,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   <button 
                     disabled={loading}
                     onClick={() => setShowFinalConfirmation(true)}
-                    className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex justify-center items-center gap-2 shadow-lg shadow-blue-700/20/20"
+                    className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex justify-center items-center gap-2 shadow-lg shadow-blue-700/20"
                   >
-                    {loading ? 'Processing...' : 'Finalize & Book'}
+                    {loading ? 'Processing...' : 'Confirm Service'}
                   </button>
                 </motion.div>
               )}

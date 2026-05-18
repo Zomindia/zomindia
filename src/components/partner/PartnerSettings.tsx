@@ -15,7 +15,8 @@ import {
   Briefcase,
   Zap,
   Globe,
-  Bell
+  Bell,
+  Wallet
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, WorkingHours } from '../../types';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
@@ -26,12 +27,13 @@ import { handleFirestoreError, OperationType } from '../../lib/firestore-errors'
 interface Props {
   partner: PartnerProfile | null;
   profile: UserProfile;
+  onNavigate: (tab: any) => void;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DEFAULT_HOURS = DAYS.map(day => ({ day, startTime: '09:00', endTime: '18:00', enabled: true }));
 
-export default function PartnerSettings({ partner, profile }: Props) {
+export default function PartnerSettings({ partner, profile, onNavigate }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
@@ -126,9 +128,10 @@ export default function PartnerSettings({ partner, profile }: Props) {
          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 mb-4">Account Control</h3>
          
          {[
+           { icon: Wallet, label: 'ZOM Wallet', value: `₹${profile.walletBalance || 0}`, onClick: () => onNavigate('wallet') },
            { icon: Briefcase, label: 'Service Skills', value: `${partner?.categories.length || 0} active`, onClick: () => setIsEditing(true) },
            { icon: Clock, label: 'Work Schedule', value: 'Customizable', onClick: () => setIsEditing(true) },
-           { icon: Bell, label: 'Notifications', value: 'Enabled', onClick: () => {} },
+           { icon: Bell, label: 'Notifications', value: 'Enabled', onClick: () => onNavigate('notifications') },
            { icon: Globe, label: 'Service Areas', value: 'City Wide', onClick: () => {} },
          ].map((opt, idx) => (
            <button 

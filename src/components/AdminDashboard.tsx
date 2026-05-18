@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { signOut } from 'firebase/auth';
 import { collection, query, getDocs, onSnapshot, orderBy, doc, updateDoc, deleteDoc, addDoc, where, Timestamp, setDoc, deleteField, getDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { sendNotification } from '../lib/notifications';
 import EarningsView from './EarningsView';
-import { Booking, UserProfile, Category, Service, PartnerProfile, Promotion, FAQ, SupportTicket, ChatMessage, AdminSubRole, UserRole } from '../types';
+import { Booking, UserProfile, Category, Service, PartnerProfile, Promotion, FAQ, SupportTicket, ChatMessage, AdminSubRole, UserRole, AMCStatus } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { notifyBookingUpdate } from '../lib/notifications';
 import { motion, AnimatePresence } from 'motion/react';
-import AdminImageUpload from './AdminImageUpload';
-import AdminFileUpload from './AdminFileUpload';
+import AdminUpload from './AdminUpload';
+import AmcManagement from './AmcManagement';
+import AudioCall from './AudioCall';
+import ChatWindow from './ChatWindow';
+import PartnerTrackingMap from './PartnerTrackingMap';
 import { 
   Users, 
   BarChart3, 
@@ -20,6 +24,7 @@ import {
   ChevronRight,
   TrendingUp,
   Plus,
+  User,
   Search,
   Filter,
   CheckCircle2,
@@ -27,6 +32,7 @@ import {
   XCircle,
   Clock,
   UserPlus,
+  Lock,
   MapPin,
   Tag,
   LayoutDashboard,
@@ -45,14 +51,16 @@ import {
   Mail,
   History,
   Gift,
-  Trash2
+  Trash2,
+  RotateCw,
+  LogOut
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
-type AdminTab = 'overview' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management';
+type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
 
-export default function AdminDashboard({ profile }: { profile: UserProfile }) {
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('overview');
+export default function AdminDashboard({ profile, setActiveTab, initialAdminTab = 'overview' }: { profile: UserProfile, setActiveTab: (tab: any) => void, initialAdminTab?: AdminTab }) {
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(initialAdminTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -62,6 +70,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [amcs, setAmcs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -116,6 +125,10 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
       setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() } as SupportTicket)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'tickets'));
 
+    const unsubAmcs = onSnapshot(query(collection(db, 'amcs'), orderBy('createdAt', 'desc')), (snap) => {
+      setAmcs(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'amcs'));
+
     setLoading(false);
 
     return () => {
@@ -126,6 +139,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
       unsubPartners();
       unsubPromos();
       unsubTickets();
+      unsubAmcs();
     };
   }, []);
 
@@ -185,14 +199,34 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
       });
   }, [users]);
 
+  const handleUpdateAmcStatus = async (amcId: string, status: AMCStatus) => {
+    try {
+      await updateDoc(doc(db, 'amcs', amcId), {
+        status,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `amcs/${amcId}`);
+    }
+  };
+
   const isAdminAuthorized = (tabId: AdminTab) => {
+    if (tabId === 'my-profile') return true;
     if (!profile.adminSubRole || profile.adminSubRole === 'head') return true;
     
     switch (profile.adminSubRole) {
       case 'accounts':
-        return ['overview', 'bookings', 'earnings'].includes(tabId);
+        return ['overview', 'analytics', 'bookings', 'earnings', 'amcs'].includes(tabId);
       case 'hr':
         return ['overview', 'partners', 'users', 'tickets'].includes(tabId);
+      case 'manager':
+        return ['overview', 'analytics', 'bookings', 'earnings', 'partners', 'users', 'tickets', 'amcs', 'promotions', 'partner-promotions'].includes(tabId);
+      case 'support':
+        return ['overview', 'bookings', 'users', 'tickets', 'help-center', 'amcs'].includes(tabId);
+      case 'editor':
+        return ['overview', 'categories', 'services', 'promotions', 'partner-promotions', 'help-center'].includes(tabId);
+      case 'moderator':
+        return ['overview', 'partners', 'users', 'tickets', 'help-center', 'my-profile'].includes(tabId);
       default:
         return false;
     }
@@ -200,6 +234,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
 
   const sidebarItems: { id: AdminTab; icon: any; label: string }[] = ([
     { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+    { id: 'analytics', icon: BarChart3, label: 'Analytics' },
     { id: 'bookings', icon: FileText, label: 'Bookings' },
     { id: 'categories', icon: Tag, label: 'Categories' },
     { id: 'services', icon: Briefcase, label: 'Services' },
@@ -207,6 +242,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
     { id: 'partners', icon: ShieldCheck, label: 'Partners' },
     { id: 'users', icon: Users, label: 'Customers' },
     { id: 'promotions', icon: Tag, label: 'Customer Offers' },
+    { id: 'amcs', icon: Calendar, label: 'AMC Contracts' },
     { id: 'partner-promotions', icon: Gift, label: 'Partner Offers' },
     { id: 'help-center', icon: FileText, label: 'Help' },
     { id: 'tickets', icon: MessageSquare, label: 'Tickets' },
@@ -214,6 +250,20 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
   ] as { id: AdminTab; icon: any; label: string }[]).filter(item => isAdminAuthorized(item.id));
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      window.location.href = '/';
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  const refreshData = () => {
+    setLoading(true);
+    window.location.reload();
+  };
 
   if (loading) return <div className="p-12 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Initializing Terminal...</div>;
 
@@ -240,7 +290,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
       >
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-             <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-xl shadow-blue-700/20/10 shrink-0">
+             <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-xl shadow-blue-700/10 shrink-0">
                 <Settings size={20} />
              </div>
              {!isCollapsed && (
@@ -262,10 +312,17 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
           {sidebarItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => { setActiveAdminTab(item.id); setIsSidebarOpen(false); }}
+              onClick={() => { 
+                if (item.id === 'partner-signup' as any) {
+                  setActiveTab('partner-signup');
+                } else {
+                  setActiveAdminTab(item.id); 
+                }
+                setIsSidebarOpen(false); 
+              }}
               className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all group overflow-hidden ${
                 activeAdminTab === item.id 
-                  ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/20/10' 
+                  ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' 
                   : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'
               }`}
             >
@@ -291,6 +348,14 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
                  <span className="text-[10px] text-slate-900 font-bold tracking-wider uppercase whitespace-nowrap">Systems Active</span>
               </div>
            </div>
+           
+           <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-4 px-4 py-3.5 mt-4 rounded-2xl text-sm font-bold text-rose-500 hover:bg-rose-50 transition-all group overflow-hidden"
+           >
+             <LogOut size={18} className="shrink-0 text-rose-300 group-hover:text-rose-500" />
+             {!isCollapsed && <span className="whitespace-nowrap">Logout</span>}
+           </button>
         </div>
       </motion.aside>
 
@@ -311,6 +376,13 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
            </div>
            
            <div className="flex items-center gap-4 sm:gap-6">
+              <button 
+                onClick={refreshData}
+                className="p-2.5 bg-slate-50 text-slate-600 hover:text-blue-700 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-100 transition-all group"
+                title="Refresh Platform Data"
+              >
+                <RotateCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
+              </button>
               <div className="hidden sm:block relative">
                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                  <input 
@@ -321,6 +393,13 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
                    className="w-48 lg:w-64 bg-slate-50 border-none rounded-2xl px-12 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-700 focus:bg-white transition-all shadow-inner"
                  />
               </div>
+              <button 
+                onClick={() => setActiveAdminTab('my-profile')}
+                className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all border ${activeAdminTab === 'my-profile' ? 'bg-blue-700 text-white border-blue-700 shadow-lg shadow-blue-700/20' : 'bg-slate-50 text-slate-600 hover:text-blue-700 border-transparent hover:border-slate-200'}`}
+              >
+                <User size={14} />
+                <span className="hidden lg:inline">My Profile</span>
+              </button>
               <div className="flex items-center gap-3">
                  <div className="hidden md:block text-right">
                     <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">{profile.displayName || 'Administrator'}</p>
@@ -461,7 +540,7 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
                                  </linearGradient>
                                </defs>
                                <XAxis dataKey="date" stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} />
-                               <YAxis stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} formatter={(value) => `₹${value}`} />
+                               <YAxis stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={(value) => `₹${value}`} />
                                <Tooltip 
                                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' }}
                                  itemStyle={{ color: '#1c1917', fontWeight: 'bold' }}
@@ -502,6 +581,8 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
                 </div>
               )}
 
+              {activeAdminTab === 'analytics' && isAdminAuthorized('analytics') && <AnalyticsView bookings={bookings} users={users} partners={partners} services={services} />}
+              {activeAdminTab === 'my-profile' && <MyAdminProfile profile={profile} />}
               {activeAdminTab === 'bookings' && isAdminAuthorized('bookings') && <BookingManager bookings={bookings} users={users} partners={partners} services={services} profile={profile} />}
               {activeAdminTab === 'categories' && isAdminAuthorized('categories') && <CategoryManager categories={categories} />}
               {activeAdminTab === 'services' && isAdminAuthorized('services') && <ServiceManager categories={categories} services={services} />}
@@ -511,13 +592,21 @@ export default function AdminDashboard({ profile }: { profile: UserProfile }) {
                   <PayoutManager />
                 </div>
               )}
-              {activeAdminTab === 'partners' && isAdminAuthorized('partners') && <PartnerManager partners={partners} users={users} />}
+              {activeAdminTab === 'partners' && isAdminAuthorized('partners') && <PartnerManager partners={partners} users={users} setActiveTab={setActiveTab} />}
               {activeAdminTab === 'users' && isAdminAuthorized('users') && <UserManager users={users} bookings={bookings} currentUserProfile={profile} />}
               {activeAdminTab === 'promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="customer" />}
               {activeAdminTab === 'partner-promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="partner" />}
               {activeAdminTab === 'help-center' && isAdminAuthorized('help-center') && <HelpCenterManager faqs={faqs} />}
               {activeAdminTab === 'tickets' && isAdminAuthorized('tickets') && <TicketManager tickets={tickets} users={users} />}
               {activeAdminTab === 'admin-management' && isAdminAuthorized('admin-management') && <AdminManager users={users} profile={profile} />}
+              {activeAdminTab === 'amcs' && isAdminAuthorized('amcs') && (
+                <AmcManagement 
+                  amcs={amcs} 
+                  users={users} 
+                  services={services} 
+                  onUpdateStatus={handleUpdateAmcStatus}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -530,7 +619,7 @@ function StatCard({ title, value, icon: Icon, color }: any) {
   return (
     <div className="bg-white p-10 border border-slate-50 rounded-[48px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all duration-500">
       <div className="relative z-10">
-        <div className={`w-14 h-14 ${color} text-white rounded-[24px] flex items-center justify-center mb-8 shadow-xl shadow-blue-700/20/5 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
+        <div className={`w-14 h-14 ${color} text-white rounded-[24px] flex items-center justify-center mb-8 shadow-xl shadow-blue-700/5 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
           <Icon size={28} />
         </div>
         <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{title}</p>
@@ -561,6 +650,8 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   });
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
+  const [showCall, setShowCall] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
 
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
 
@@ -579,7 +670,38 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
     return () => unsubscribes.forEach(unsub => unsub());
   }, [bookings]);
 
+  useEffect(() => {
+    if (managingStatusBookingId || cancellingBookingId || showSuccessModal || showChat || showCall) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [managingStatusBookingId, cancellingBookingId, showSuccessModal, showChat, showCall]);
+
   const [error, setError] = useState<string | null>(null);
+
+  const handleSendBill = async (bookingId: string) => {
+    setSendingBillId(bookingId);
+    try {
+      const response = await fetch('/api/send-final-bill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setShowSuccessModal(`Final bill sent successfully for booking #${bookingId.slice(0, 8).toUpperCase()}`);
+      } else {
+        setError(data.error || "Failed to send bill email.");
+      }
+    } catch (err) {
+      console.error("Failed to send bill email:", err);
+      setError("Network error when sending bill email.");
+    } finally {
+      setSendingBillId(null);
+    }
+  };
 
   const handleAdminStatusUpdate = async () => {
     if (!managingStatusBookingId || !statusForm.status) return;
@@ -736,11 +858,64 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   const activeBookings = bookings.filter(b => ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending'].includes(b.status));
   const historyBookings = bookings.filter(b => ['completed', 'finalized', 'closed', 'cancelled'].includes(b.status));
 
+  const deleteAllBookings = async () => {
+    if (!window.confirm("CRITICAL ACTION: Are you absolutely sure you want to delete ALL booking records? This action is irreversible and will wipe all order history.")) return;
+    
+    setLoading(true);
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'bookings'));
+      snapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      setShowSuccessModal("Database Cleanse Complete: All booking records have been purged from the system.");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'bookings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateAmcStatus = async (amcId: string, newStatus: AMCStatus) => {
+    try {
+      await updateDoc(doc(db, 'amcs', amcId), {
+        status: newStatus,
+        updatedAt: Timestamp.now()
+      });
+      setShowSuccessModal(`AMC #${amcId.slice(0, 8).toUpperCase()} updated to ${newStatus.replace('_', ' ')}`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `amcs/${amcId}`);
+    }
+  };
+
   const filteredBookings = (activeTab === 'pending' ? pendingBookings : activeTab === 'active' ? activeBookings : historyBookings)
     .filter(b => bookingFilter === 'all' || b.status === bookingFilter);
 
   return (
     <div className="space-y-10">
+      {/* Maintenance Quick Action - Head Admin Only */}
+      {profile?.adminSubRole === 'head' && (
+        <div className="bg-rose-50 border border-rose-100 rounded-[32px] p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+           <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/20">
+                 <AlertCircle size={24} />
+              </div>
+              <div>
+                 <h4 className="text-lg font-bold text-rose-900 leading-tight">Database Maintenance</h4>
+                 <p className="text-xs text-rose-600 font-medium">Use these tools for deep cleaning and testing resets.</p>
+              </div>
+           </div>
+           <button 
+             onClick={deleteAllBookings}
+             disabled={loading}
+             className="px-6 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center gap-2 shadow-lg shadow-rose-600/20"
+           >
+              Purge All Booking History
+           </button>
+        </div>
+      )}
+
       <AnimatePresence>
         {cancellingBookingId && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
@@ -816,7 +991,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
               onClick={() => { setActiveTab(tab); setBookingFilter('all'); }}
               className={`flex-1 sm:flex-none px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${
                 activeTab === tab 
-                  ? 'bg-white text-slate-900 shadow-xl shadow-blue-700/20/5' 
+                  ? 'bg-white text-slate-900 shadow-xl shadow-blue-700/5' 
                   : 'text-slate-400 hover:text-blue-700'
               }`}
             >
@@ -859,6 +1034,15 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
            <div className="hidden sm:block px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400">
               Total Stream: {bookings.length}
            </div>
+           {bookings.length > 0 && profile.adminSubRole === 'head' && (
+             <button 
+               onClick={deleteAllBookings}
+               className="px-6 py-3 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all flex items-center gap-2"
+             >
+               <Trash2 size={14} />
+               Purge All
+             </button>
+           )}
         </div>
       </div>
 
@@ -881,6 +1065,8 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
               otp={bookingOtps[booking.id]}
               onManage={() => setManagingStatusBookingId(booking.id)}
               onCancel={() => setCancellingBookingId(booking.id)}
+              onSendBill={() => handleSendBill(booking.id)}
+              sendingBill={sendingBillId === booking.id}
             />
           ))
         )}
@@ -888,12 +1074,12 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
 
       <AnimatePresence>
         {managingStatusBookingId && (
-          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-blue-700/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-blue-700/60 backdrop-blur-md overflow-hidden">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 100 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 100 }}
-              className="bg-white rounded-t-[32px] sm:rounded-[48px] p-6 sm:p-10 max-w-2xl w-full shadow-2xl overflow-y-auto max-h-[95dvh] sm:max-h-[90vh] relative no-scrollbar"
+              className="bg-white rounded-t-[32px] sm:rounded-[48px] p-6 sm:p-10 max-w-2xl w-full shadow-2xl overflow-y-auto max-h-[90vh] relative overscroll-contain"
             >
               <div className="flex justify-between items-center mb-6 sm:mb-10">
                 <div className="flex items-center gap-4">
@@ -945,6 +1131,21 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
                     ))}
                   </div>
                 </div>
+
+                {/* Live Activity Monitor */}
+                {['on_the_way', 'arrived', 'in_progress'].includes(bookings.find(b => b.id === managingStatusBookingId)?.status || '') && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                       <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
+                         <MapPin size={14} /> Live Signal Monitor
+                       </label>
+                    </div>
+                    <PartnerTrackingMap 
+                      partnerId={bookings.find(b => b.id === managingStatusBookingId)?.partnerId!} 
+                      bookingLocation={bookings.find(b => b.id === managingStatusBookingId)?.lat && bookings.find(b => b.id === managingStatusBookingId)?.lng ? { lat: bookings.find(b => b.id === managingStatusBookingId)!.lat!, lng: bookings.find(b => b.id === managingStatusBookingId)!.lng! } : undefined}
+                    />
+                  </div>
+                )}
 
                 {/* Admin Notes */}
                 <div className="p-5 sm:p-8 bg-slate-50 border border-slate-100 rounded-2xl sm:rounded-[32px] space-y-4">
@@ -1007,6 +1208,49 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
                   </div>
                 </div>
 
+                {/* Communication Bridge */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-6 bg-blue-50/50 rounded-[32px] border border-blue-100/50">
+                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-4 tracking-widest">Connect with Customer</label>
+                    <div className="flex gap-2">
+                      <button 
+                         onClick={() => setShowCall({ type: 'customer', id: bookings.find(b => b.id === managingStatusBookingId)?.customerId!, bookingId: managingStatusBookingId! })}
+                         className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
+                      >
+                        <Phone size={14} /> <span className="text-[10px] font-bold">Call</span>
+                      </button>
+                      <button 
+                        onClick={() => setShowChat({ type: 'customer', id: bookings.find(b => b.id === managingStatusBookingId)?.customerId!, bookingId: managingStatusBookingId! })}
+                        className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
+                      >
+                        <MessageSquare size={14} /> <span className="text-[10px] font-bold">Chat</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100/50">
+                    <label className="block text-[10px] font-black text-emerald-700 uppercase mb-4 tracking-widest">Connect with Agent</label>
+                    {bookings.find(b => b.id === managingStatusBookingId)?.partnerId ? (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setShowCall({ type: 'partner', id: bookings.find(b => b.id === managingStatusBookingId)?.partnerId!, bookingId: managingStatusBookingId! })}
+                          className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
+                        >
+                          <Phone size={14} /> <span className="text-[10px] font-bold">Call</span>
+                        </button>
+                        <button 
+                          onClick={() => setShowChat({ type: 'partner', id: bookings.find(b => b.id === managingStatusBookingId)?.partnerId!, bookingId: managingStatusBookingId! })}
+                          className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
+                        >
+                          <MessageSquare size={14} /> <span className="text-[10px] font-bold">Chat</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 font-bold italic py-2">No agent assigned yet</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Pending Metadata */}
                 {statusForm.status === 'pending' && (
                   <motion.div 
@@ -1060,7 +1304,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
                   <button 
                     disabled={loading || !statusForm.status}
                     onClick={handleAdminStatusUpdate}
-                    className="flex-[2] bg-blue-700 text-white py-4 sm:py-5 rounded-2xl sm:rounded-3xl font-bold hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20/20 disabled:opacity-50 flex items-center justify-center gap-3 order-1 sm:order-2"
+                    className="flex-[2] bg-blue-700 text-white py-4 sm:py-5 rounded-2xl sm:rounded-3xl font-bold hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 disabled:opacity-50 flex items-center justify-center gap-3 order-1 sm:order-2"
                   >
                     {loading ? (
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -1076,126 +1320,179 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showChat && (
+          <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-md h-[70vh] bg-white rounded-[40px] overflow-hidden shadow-2xl">
+              <ChatWindow 
+                booking={bookings.find(b => b.id === showChat.bookingId)!}
+                otherUser={users.find(u => u.uid === showChat.id) || (partners.find(p => p.userId === showChat.id) as any) || null}
+                onClose={() => setShowChat(null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {showCall && (
+          <AudioCall 
+            otherUser={users.find(u => u.uid === showCall.id) || (partners.find(p => p.userId === showCall.id) as any) || null}
+            onEndCall={() => setShowCall(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function BookingRow({ booking, users, partners, services, otp, onManage, onCancel }: { booking: Booking, users: UserProfile[], partners: any[], services: Service[], otp?: string, onManage: () => void, onCancel?: () => void, key?: any }) {
+function BookingRow({ booking, users, partners, services, otp, onManage, onCancel, onSendBill, sendingBill }: { booking: Booking, users: UserProfile[], partners: any[], services: Service[], otp?: string, onManage: () => void, onCancel?: () => void, onSendBill?: () => void, sendingBill?: boolean, key?: any }) {
   const user = users.find(u => u.uid === booking.customerId);
   const partner = partners.find(p => p.userId === booking.partnerId);
   const service = services.find(s => s.id === booking.serviceId);
 
   return (
-    <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 hover:border-blue-700 transition-all duration-300 group shadow-sm">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-        <div className="flex items-start gap-6 lg:w-1/3">
-          <div className="w-16 h-16 bg-slate-50 rounded-[20px] flex items-center justify-center text-slate-900 shadow-sm relative group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
-            <FileText size={24} />
+    <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-slate-100 hover:border-blue-700/30 hover:shadow-2xl hover:shadow-blue-900/5 transition-all duration-500 group relative overflow-hidden">
+      {/* Visual Indicator */}
+      <div className={`absolute top-0 left-0 w-2 h-full ${
+        ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress'].includes(booking.status) ? 'bg-emerald-500' :
+        ['pending', 'pending_parts', 'payment_pending'].includes(booking.status) ? 'bg-amber-400' :
+        booking.status === 'completed' ? 'bg-blue-700' :
+        booking.status === 'cancelled' ? 'bg-rose-500' :
+        'bg-slate-200'
+      }`} />
+
+      <div className="flex flex-col lg:flex-row lg:items-center gap-8 pl-4">
+        <div className="flex items-center gap-5 lg:w-1/4">
+          <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-700 group-hover:text-white group-hover:border-blue-700 group-hover:rotate-6 transition-all shrink-0 shadow-inner">
+             <Briefcase size={28} />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-3 mb-1.5">
-               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order ID</span>
-               <span className="text-[11px] font-bold text-slate-900 px-2 py-0.5 bg-slate-50 rounded-full">{booking.id.slice(0, 8).toUpperCase()}</span>
+            <div className="flex items-center gap-2 mb-1.5">
+               <span className="text-[10px] font-black text-slate-400 font-mono tracking-tighter">#{booking.id.slice(0, 8).toUpperCase()}</span>
+               {booking.isPriority && (
+                 <span className="px-2 py-0.5 bg-rose-500 text-white rounded-md text-[8px] font-black uppercase tracking-widest animate-pulse shadow-sm shadow-rose-500/20">High Priority</span>
+               )}
             </div>
-            <h4 className="text-lg font-bold text-slate-900 tracking-tight truncate mb-1">
-              {service?.name || 'Loading Service...'}
-            </h4>
-            <div className="flex items-center gap-2 text-slate-400">
-               <Calendar size={12} />
-               <span className="text-[10px] font-bold uppercase tracking-wider">
-                 {booking.scheduledAt?.toDate?.()?.toLocaleDateString()} • {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-               </span>
+            <h4 className="text-lg font-black text-slate-900 truncate leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">{service?.name || 'Loading...'}</h4>
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] shadow-sm ${
+              booking.status === 'pending' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+              ['confirmed', 'assigned', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+              'bg-blue-50 text-blue-700 border border-blue-100'
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                 booking.status === 'pending' ? 'bg-amber-400' :
+                 ['confirmed', 'assigned', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500' :
+                 'bg-blue-700'
+              }`} />
+              {booking.status.replace('_', ' ')}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 flex-1">
-           <div>
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">Customer Entity</p>
-              <p className="text-sm font-bold text-slate-900 mb-1">{user?.displayName || 'Anonymous User'}</p>
-              <p className="text-[10px] text-slate-400 font-medium truncate">{user?.phoneNumber}</p>
-           </div>
-           <div>
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">Assigned Agent</p>
-              {partner ? (
-                <div>
-                   <p className="text-sm font-bold text-slate-900 mb-1">{partner.displayName || 'Unnamed Partner'}</p>
-                   <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest leading-none">Active Link</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 flex-1 items-center">
+          <div className="space-y-4">
+             <div className="space-y-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Client Identity</p>
+                <div className="flex items-center gap-2">
+                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-bold border border-white shadow-sm overflow-hidden">
+                      {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={14} />}
+                   </div>
+                   <div>
+                      <p className="text-xs font-black text-slate-900 italic leading-none mb-1">{user?.displayName || 'Anonymous'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{(booking as any).customerPhone || user?.phoneNumber || 'No Phone'}</p>
+                   </div>
                 </div>
-              ) : (
-                <p className="text-xs font-bold text-slate-400 italic">No Agent Assigned</p>
-              )}
-           </div>
-           <div className="hidden md:block">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">Financial State</p>
-              <p className="text-lg font-bold text-slate-900">₹{booking.totalPrice}</p>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{booking.paymentMethod || 'cash'}</span>
-           </div>
+             </div>
+          </div>
+
+          <div className="space-y-4">
+             <div className="space-y-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Agent Allocation</p>
+                {partner ? (
+                  <div className="flex items-center gap-2">
+                     <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 text-xs font-bold border border-white shadow-sm overflow-hidden">
+                        {partner.photoURL ? <img src={partner.photoURL} alt="" /> : <ShieldCheck size={14} />}
+                     </div>
+                     <div>
+                        <p className="text-xs font-black text-emerald-600 leading-none mb-1">{partner.displayName}</p>
+                        <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Vetted Expert</p>
+                     </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-rose-500 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 max-w-fit">
+                    <AlertCircle size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Action Required</span>
+                  </div>
+                )}
+             </div>
+          </div>
+
+          <div className="space-y-1">
+             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mission window</p>
+             <div className="flex items-center gap-3">
+                <div className="flex flex-col">
+                   <p className="text-sm font-black text-slate-900 flex items-center gap-2">
+                     <Calendar size={14} className="text-blue-700" />
+                     {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                   </p>
+                   <p className="text-[11px] font-bold text-slate-400 ml-5">{booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+             </div>
+          </div>
         </div>
 
-        <div className="flex flex-col lg:items-end gap-4 shrink-0">
-           <div className="flex items-center gap-3">
-              {otp && (
-                <div className="px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
-                   <p className="text-[8px] font-black text-indigo-400 uppercase tracking-black mb-1">Security Token</p>
-                   <p className="text-sm font-bold text-indigo-600 tracking-widest leading-none">{otp}</p>
-                </div>
-              )}
-              <div className={`px-4 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-[0.2em] ${
-                booking.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                booking.status === 'confirmed' || booking.status === 'assigned' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                booking.status === 'in_progress' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                'bg-slate-50 text-slate-400 border-slate-100'
-              }`}>
-                {booking.status.replace('_', ' ')}
-              </div>
-           </div>
-           <button 
-             onClick={onManage}
-             className="w-full lg:w-auto px-10 py-3 bg-blue-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 shadow-lg shadow-blue-700/20/10 transition-all active:scale-95"
-           >
-             Manage Lifecycle
-           </button>
-           {booking.status !== 'cancelled' && booking.status !== 'completed' && booking.status !== 'finalized' && onCancel && (
-             <button 
-               onClick={onCancel}
-               className="w-full lg:w-auto px-10 py-3 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
-             >
-               Cancel Booking
-             </button>
-           )}
+        <div className="flex items-center gap-5 lg:w-1/6 justify-end pt-6 lg:pt-0 border-t lg:border-none border-slate-50">
+          <div className="text-right">
+             <p className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1">Contract Value</p>
+             <p className="text-2xl font-black text-slate-900 font-display italic tracking-tighter">₹{booking.totalPrice}</p>
+          </div>
+          <button 
+            onClick={onManage}
+            className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all shadow-xl shadow-slate-900/10"
+          >
+            <Settings size={20} strokeWidth={2.5} />
+          </button>
         </div>
       </div>
       
-      <div className="mt-8 pt-6 border-t border-slate-50 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 justify-between">
-         <div className="flex flex-wrap items-center gap-4 sm:gap-8 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            <div className="flex items-center gap-2">
-               <MapPin size={12} className="text-slate-300" />
-               <span className="truncate max-w-[200px]">{booking.address}</span>
-            </div>
-            {(booking as any).promoCode && (
-               <div className="flex items-center gap-2 text-indigo-500">
-                  <Tag size={12} />
-                  <span>Promo: {(booking as any).promoCode}</span>
-               </div>
-            )}
-            {booking.cancellationReason && (
-               <div className="flex items-center gap-2 text-rose-500 bg-rose-50 px-3 py-1 rounded-full">
-                  <AlertCircle size={12} />
-                  <span>Cancelled: {booking.cancellationReason}</span>
-               </div>
-            )}
+      <div className="mt-8 pt-4 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
+         <div className="flex flex-wrap items-center gap-6">
+           <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-500 italic">
+             <MapPin size={14} className="text-rose-500" />
+             <span className="max-w-[300px] truncate">{booking.address}</span>
+           </div>
+           {otp && (
+             <div className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-700/20 text-[10px] font-black uppercase tracking-widest">
+               <Lock size={12} fill="currentColor" className="fill-blue-400" /> Secure OTP: {otp}
+             </div>
+           )}
          </div>
-         {booking.pendingReason && (
-            <div className="bg-rose-50 px-4 py-2 rounded-xl flex items-center gap-3">
-               <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest italic leading-none">Blocker: {booking.pendingReason}</span>
-            </div>
-         )}
-         {booking.adminNotes && (
-            <div className="bg-blue-50 px-4 py-2 rounded-xl flex items-center gap-3">
-               <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest italic leading-none truncate max-w-[300px]">Note: {booking.adminNotes}</span>
-            </div>
-         )}
+         <div className="flex items-center gap-4">
+           {(booking.status === 'completed' || booking.status === 'finalized') && onSendBill && (
+             <button 
+               onClick={(e) => { e.stopPropagation(); onSendBill(); }}
+               disabled={sendingBill}
+               className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-100 text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 hover:text-white transition-all disabled:opacity-50"
+             >
+               {sendingBill ? (
+                 <RotateCw size={12} className="animate-spin" />
+               ) : (
+                 <Mail size={12} />
+               )}
+               Send Bill
+             </button>
+           )}
+           {booking.pendingReason && (
+             <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[9px] font-black uppercase tracking-widest">
+                <AlertCircle size={12} /> Blocked: {booking.pendingReason}
+             </div>
+           )}
+           {['on_the_way', 'arrived', 'in_progress'].includes(booking.status) && (
+             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 text-[9px] font-black uppercase tracking-widest animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Live Active
+             </div>
+           )}
+         </div>
       </div>
     </div>
   );
@@ -1275,11 +1572,11 @@ function CategoryManager({ categories }: { categories: Category[] }) {
                    />
                 </div>
                 <div>
-                  <AdminImageUpload 
+                  <AdminUpload 
                     label="Custom Icon (Upload to override Lucide icon)"
-                    isIcon={true}
+                    maxWidth={200}
                     value={editingCategory ? editingCategory.iconURL || '' : newCategory.iconURL || ''}
-                    onChange={(url) => editingCategory
+                    onUpload={(url) => editingCategory
                       ? setEditingCategory({ ...editingCategory, iconURL: url })
                       : setNewCategory({ ...newCategory, iconURL: url })
                     }
@@ -1317,10 +1614,10 @@ function CategoryManager({ categories }: { categories: Category[] }) {
                 />
              </div>
              <div className="mb-8">
-                <AdminImageUpload 
+                <AdminUpload 
                   label="Category Main Image / Asset"
                   value={editingCategory ? editingCategory.imageURL || '' : newCategory.imageURL}
-                  onChange={(url) => editingCategory
+                  onUpload={(url) => editingCategory
                     ? setEditingCategory({ ...editingCategory, imageURL: url })
                     : setNewCategory({ ...newCategory, imageURL: url })
                   }
@@ -1330,10 +1627,24 @@ function CategoryManager({ categories }: { categories: Category[] }) {
              <div className="mb-8">
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Category Gallery (Images)</label>
                 <div className="mb-4">
-                  <AdminImageUpload 
+                  <AdminUpload 
                     label=""
                     placeholder="Upload or paste to add to category gallery"
                     value="" 
+                    onUpload={(url) => {
+                      if (!url) return;
+                      if (editingCategory) {
+                        setEditingCategory({
+                          ...editingCategory,
+                          images: [...(editingCategory.images || []), url]
+                        });
+                      } else {
+                        setNewCategory({
+                          ...newCategory,
+                          images: [...(newCategory.images || []), url]
+                        });
+                      }
+                    }}
                     onMultipleChange={(urls) => {
                       if (!urls || urls.length === 0) return;
                       if (editingCategory) {
@@ -1345,20 +1656,6 @@ function CategoryManager({ categories }: { categories: Category[] }) {
                         setNewCategory({
                           ...newCategory,
                           images: [...(newCategory.images || []), ...urls]
-                        });
-                      }
-                    }}
-                    onChange={(url) => {
-                      if (!url) return;
-                      if (editingCategory) {
-                        setEditingCategory({
-                          ...editingCategory,
-                          images: [...(editingCategory.images || []), url]
-                        });
-                      } else {
-                        setNewCategory({
-                          ...newCategory,
-                          images: [...(newCategory.images || []), url]
                         });
                       }
                     }}
@@ -1394,7 +1691,7 @@ function CategoryManager({ categories }: { categories: Category[] }) {
              <div className="flex flex-col sm:flex-row gap-3">
                <button 
                  onClick={editingCategory ? handleUpdateCategory : handleAddCategory}
-                 className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20/10 uppercase tracking-widest"
+                 className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
                >
                  {editingCategory ? 'Update Hierarchy' : 'Add Category'}
                </button>
@@ -1598,10 +1895,10 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                    </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 no-scrollbar">
-                   <AdminImageUpload 
+                   <AdminUpload 
                      label="Service Main Asset"
                      value={tempImageUrl}
-                     onChange={setTempImageUrl}
+                     onUpload={setTempImageUrl}
                    />
                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
                       <button 
@@ -1613,7 +1910,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                       <button 
                         onClick={handleQuickImageUpdate}
                         disabled={!tempImageUrl}
-                        className="flex-[2] bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20/10 uppercase tracking-widest text-[10px] disabled:opacity-50 order-1 sm:order-2"
+                        className="flex-[2] bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 uppercase tracking-widest text-[10px] disabled:opacity-50 order-1 sm:order-2"
                       >
                         Commit Update
                       </button>
@@ -1740,21 +2037,22 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
                     <div>
-                      <AdminImageUpload 
+                      <AdminUpload 
                         label="Main Hero Image URL"
                         value={editingService ? editingService.imageURL || '' : newService.imageURL}
-                        onChange={(url) => editingService
+                        onUpload={(url) => editingService
                           ? setEditingService({ ...editingService, imageURL: url })
                           : setNewService({ ...newService, imageURL: url })
                         }
                       />
                     </div>
                     <div>
-                      <AdminFileUpload 
+                      <AdminUpload 
                         label="Price List PDF"
+                        type="file"
                         accept=".pdf"
                         value={editingService ? editingService.priceListPDF || '' : newService.priceListPDF}
-                        onChange={(url) => editingService
+                        onUpload={(url) => editingService
                           ? setEditingService({ ...editingService, priceListPDF: url })
                           : setNewService({ ...newService, priceListPDF: url })
                         }
@@ -1766,10 +2064,24 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                   <div className="mb-6">
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Service Carousel Gallery</label>
                     <div className="mb-4">
-                      <AdminImageUpload 
+                      <AdminUpload 
                         label=""
                         placeholder="Upload or paste to add to gallery"
                         value="" 
+                        onUpload={(url) => {
+                          if (!url) return;
+                          if (editingService) {
+                            setEditingService({
+                              ...editingService,
+                              images: [...(editingService.images || []), url]
+                            });
+                          } else {
+                            setNewService({
+                              ...newService,
+                              images: [...(newService.images || []), url]
+                            });
+                          }
+                        }}
                         onMultipleChange={(urls) => {
                           if (!urls || urls.length === 0) return;
                           if (editingService) {
@@ -1781,20 +2093,6 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                             setNewService({
                               ...newService,
                               images: [...(newService.images || []), ...urls]
-                            });
-                          }
-                        }}
-                        onChange={(url) => {
-                          if (!url) return;
-                          if (editingService) {
-                            setEditingService({
-                              ...editingService,
-                              images: [...(editingService.images || []), url]
-                            });
-                          } else {
-                            setNewService({
-                              ...newService,
-                              images: [...(newService.images || []), url]
                             });
                           }
                         }}
@@ -1927,7 +2225,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                   <div className="flex flex-col sm:flex-row gap-3">
                     <button 
                       onClick={editingService ? handleUpdateService : handleAddService}
-                      className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20/10 uppercase tracking-widest"
+                      className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
                     >
                       {editingService ? 'Commit Changes' : 'Publish Offering'}
                     </button>
@@ -2029,7 +2327,8 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
   );
 }
 
-function PartnerManager({ partners, users }: { partners: PartnerProfile[], users: UserProfile[] }) {
+function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerProfile[], users: UserProfile[], setActiveTab: (tab: any) => void }) {
+  const [partnerViewMode, setPartnerViewMode] = useState<'all' | 'kyc_pending'>('all');
   const [selectedRewardPartner, setSelectedRewardPartner] = useState<PartnerProfile | null>(null);
   const [selectedProfilePartner, setSelectedProfilePartner] = useState<(PartnerProfile & { user?: UserProfile }) | null>(null);
   const [manualKYCPartner, setManualKYCPartner] = useState<PartnerProfile | null>(null);
@@ -2161,7 +2460,11 @@ function PartnerManager({ partners, users }: { partners: PartnerProfile[], users
       const u = users.find(user => user.uid === p.userId);
       const nameMatch = u?.displayName?.toLowerCase().includes(pSearch.toLowerCase());
       const emailMatch = u?.email?.toLowerCase().includes(pSearch.toLowerCase());
-      return nameMatch || emailMatch;
+      
+      const matchesSearch = nameMatch || emailMatch;
+      const matchesMode = partnerViewMode === 'all' || p.kycStatus === 'pending';
+      
+      return matchesSearch && matchesMode;
     })
     .sort((a, b) => {
     if (partnersSort === 'earnings') return (b.totalEarnings || 0) - (a.totalEarnings || 0);
@@ -2173,9 +2476,25 @@ function PartnerManager({ partners, users }: { partners: PartnerProfile[], users
   return (
     <div className="space-y-8">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
-        <div>
-           <h3 className="text-xl font-bold">Partner Fleet</h3>
-           <p className="text-slate-400 text-sm">Manage professionals and rewards</p>
+        <div className="flex items-center gap-4">
+           <div>
+              <h3 className="text-xl font-bold">Partner Fleet</h3>
+              <p className="text-slate-400 text-sm">Manage professionals and rewards</p>
+           </div>
+           <div className="flex items-center gap-2 ml-4">
+              <button 
+                onClick={() => setPartnerViewMode('all')}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === 'all' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100/50 hover:bg-indigo-100'}`}
+              >
+                Partner View
+              </button>
+              <button 
+                onClick={() => setPartnerViewMode('kyc_pending')}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === 'kyc_pending' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20' : 'bg-emerald-50 text-emerald-700 border-emerald-100/50 hover:bg-emerald-100'}`}
+              >
+                Become Partner ({partners.filter(p => p.kycStatus === 'pending').length})
+              </button>
+           </div>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto">
            <div className="relative w-full sm:w-64">
@@ -2484,11 +2803,11 @@ function PartnerManager({ partners, users }: { partners: PartnerProfile[], users
                        }}
                        className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
                     />
-                    <AdminImageUpload 
+                    <AdminUpload 
                        label=""
                        placeholder="Upload ID Proof image"
                        value={manualDocs[0]?.url || ''}
-                       onChange={(url) => {
+                       onUpload={(url) => {
                           const newDocs = [...manualDocs];
                           newDocs[0] = { ...newDocs[0], url };
                           setManualDocs(newDocs);
@@ -2509,11 +2828,11 @@ function PartnerManager({ partners, users }: { partners: PartnerProfile[], users
                        }}
                        className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
                     />
-                    <AdminImageUpload 
+                    <AdminUpload 
                        label=""
                        placeholder="Upload Address Proof image"
                        value={manualDocs[1]?.url || ''}
-                       onChange={(url) => {
+                       onUpload={(url) => {
                           const newDocs = [...manualDocs];
                           newDocs[1] = { ...newDocs[1], url };
                           setManualDocs(newDocs);
@@ -2855,6 +3174,8 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
   const [isAdding, setIsAdding] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
   const [isBroadcasting, setIsBroadcasting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [newPromo, setNewPromo] = useState<Partial<Promotion>>({
     name: '',
     code: '',
@@ -2867,7 +3188,8 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
     expiryDate: '',
     applicableCategories: [],
     applicableServices: [],
-    targetAudience: filter === 'partner' ? 'partner' : 'customer'
+    targetAudience: filter === 'partner' ? 'partner' : 'customer',
+    imageUrl: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -2902,42 +3224,69 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
 
   const handleSavePromo = async () => {
     const promoData = editingPromo || newPromo;
-    if (!promoData.name || !promoData.code) return;
+    
+    // Explicit validation before submitting
+    if (!promoData.name?.trim() || !promoData.code?.trim()) {
+      setError('Please provide both promotion name and code');
+      return;
+    }
+
     setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
     try {
       const dataToSave = {
-        ...promoData,
-        usageCount: promoData.usageCount || 0,
+        name: promoData.name.trim(),
+        code: promoData.code.trim().toUpperCase(),
+        discountType: promoData.discountType || 'percent',
+        discountValue: Number(promoData.discountValue) || 0,
+        description: promoData.description || '',
+        active: promoData.active !== undefined ? promoData.active : true,
+        usageCount: Number(promoData.usageCount) || 0,
+        usageLimit: Number(promoData.usageLimit) || 0,
+        targetAudience: promoData.targetAudience || 'customer',
         expiryDate: promoData.expiryDate || null,
+        imageUrl: promoData.imageUrl || '',
+        applicableCategories: promoData.applicableCategories || [],
+        applicableServices: promoData.applicableServices || [],
         updatedAt: Timestamp.now()
       };
       
       if (editingPromo) {
-        const { id, ...saveData } = dataToSave as any;
-        await updateDoc(doc(db, 'promotions', id), saveData);
+        const { id } = dataToSave as any;
+        await updateDoc(doc(db, 'promotions', editingPromo.id), dataToSave);
+        setSuccess('Offer updated successfully!');
       } else {
         (dataToSave as any).createdAt = Timestamp.now();
         await addDoc(collection(db, 'promotions'), dataToSave);
+        setSuccess('New offer launched successfully!');
       }
       
-      setNewPromo({
-        name: '',
-        code: '',
-        discountType: 'percent',
-        discountValue: 0,
-        description: '',
-        usageLimit: 0,
-        usageCount: 0,
-        active: true,
-        expiryDate: '',
-        applicableCategories: [],
-        applicableServices: [],
-        targetAudience: filter === 'partner' ? 'partner' : 'customer'
-      });
-      setEditingPromo(null);
-      setIsAdding(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'promotions');
+      // Auto-close after short delay to show success
+      setTimeout(() => {
+        setNewPromo({
+          name: '',
+          code: '',
+          discountType: 'percent',
+          discountValue: 0,
+          description: '',
+          usageLimit: 0,
+          usageCount: 0,
+          active: true,
+          expiryDate: '',
+          applicableCategories: [],
+          applicableServices: [],
+          targetAudience: filter === 'partner' ? 'partner' : 'customer',
+          imageUrl: ''
+        });
+        setEditingPromo(null);
+        setIsAdding(false);
+        setSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Promotion save error:', err);
+      setError(err.message || 'Failed to save offer. Please check your permissions.');
+      handleFirestoreError(err, editingPromo ? OperationType.UPDATE : OperationType.CREATE, 'promotions');
     } finally {
       setIsSubmitting(false);
     }
@@ -2984,6 +3333,11 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm max-w-2xl"
           >
+             {(error || success) && (
+                <div className={`mb-6 p-4 rounded-2xl text-center font-bold text-sm ${error ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                  {error || success}
+                </div>
+              )}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Code</label>
@@ -3009,6 +3363,16 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
                     }
                     placeholder="Festive Season Offer"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                   />
+                </div>
+                <div className="md:col-span-2">
+                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Promotion Banner Image</label>
+                   <AdminUpload 
+                     onUpload={(url) => editingPromo 
+                       ? setEditingPromo({ ...editingPromo, imageUrl: url })
+                       : setNewPromo({ ...newPromo, imageUrl: url })
+                     }
+                     value={editingPromo ? editingPromo.imageUrl : newPromo.imageUrl}
                    />
                 </div>
                 <div>
@@ -3152,7 +3516,7 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
                 disabled={isSubmitting || (editingPromo ? !editingPromo.code || !editingPromo.name : !newPromo.code || !newPromo.name)}
                 className="flex-[2] bg-blue-700 text-white py-4 rounded-xl font-bold hover:bg-blue-800 transition-all disabled:opacity-50"
                >
-                 {editingPromo ? 'Save Hierarchy Changes' : 'Launch Campaign'}
+                 {editingPromo ? 'Update Campaign' : 'Launch Campaign'}
                </button>
                {editingPromo && (
                   <button 
@@ -3971,6 +4335,16 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
                     >
                       <option value="accounts">Accounts Operator</option>
                       <option value="hr">Resource Manager (HR)</option>
+                      <option value="manager">Operations Manager</option>
+                      <option value="support">Support Executive</option>
+                      <option value="editor">Content Editor</option>
+                      <option value="moderator">Quality Moderator</option>
+                      <option value="marketing">Marketing Specialist</option>
+                      <option value="sales">Sales Executive</option>
+                      <option value="logistics">Logistics Coordinator</option>
+                      <option value="developer">Platform Developer</option>
+                      <option value="field_manager">Field Operations Manager</option>
+                      <option value="owner">Project Owner</option>
                       <option value="head">Security Chief (Head)</option>
                     </select>
                   </div>
@@ -4049,8 +4423,11 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
               </div>
               <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
                 admin.adminSubRole === 'head' ? 'bg-indigo-50 text-indigo-600' :
+                admin.adminSubRole === 'manager' ? 'bg-blue-50 text-blue-600' :
                 admin.adminSubRole === 'accounts' ? 'bg-amber-50 text-amber-600' :
-                'bg-emerald-50 text-emerald-600'
+                admin.adminSubRole === 'editor' ? 'bg-purple-50 text-purple-600' :
+                admin.adminSubRole === 'support' ? 'bg-emerald-50 text-emerald-600' :
+                'bg-slate-50 text-slate-600'
               }`}>
                 {admin.adminSubRole || 'Admin'} Access
               </div>
@@ -4089,6 +4466,520 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-slate-50 rounded-full opacity-50 group-hover:bg-blue-50 transition-all" />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function MyAdminProfile({ profile }: { profile: UserProfile }) {
+  const [activeTab, setActiveTab] = useState<'profile' | 'wallet' | 'settings'>('profile');
+  const [isEditing, setIsEditing] = useState(false);
+  const [displayName, setDisplayName] = useState(profile.displayName);
+
+  const handleSave = async () => {
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), { displayName });
+      setIsEditing(false);
+      window.location.reload();
+    } catch (error) {
+      console.error("Profile update failed", error);
+    }
+  };
+
+  return (
+    <div className="space-y-10">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mb-12">
+        <div className="flex items-center gap-6">
+           <div className="w-16 h-16 rounded-[24px] overflow-hidden border-2 border-indigo-100 shadow-xl shadow-indigo-100 ring-1 ring-slate-100">
+             <img 
+               src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} 
+               alt={profile.displayName} 
+               className="w-full h-full object-cover"
+             />
+           </div>
+           <div>
+             <h3 className="text-2xl font-bold font-display italic text-slate-900">{profile.displayName}</h3>
+             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">{profile.adminSubRole || 'Admin'} Terminal</p>
+           </div>
+        </div>
+
+        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+           {(['profile', 'wallet', 'settings'] as const).map(tab => (
+             <button
+               key={tab}
+               onClick={() => setActiveTab(tab)}
+               className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-blue-700 text-white shadow-lg shadow-blue-700/20' : 'text-slate-400 hover:text-blue-700'}`}
+             >
+               {tab}
+             </button>
+           ))}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+           key={activeTab}
+           initial={{ opacity: 0, scale: 0.98 }}
+           animate={{ opacity: 1, scale: 1 }}
+           exit={{ opacity: 0, scale: 0.98 }}
+           transition={{ duration: 0.2 }}
+        >
+          {activeTab === 'profile' && (
+            <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm space-y-10">
+              <div className="flex items-center justify-between">
+                <h4 className="font-display font-bold text-xl italic uppercase tracking-wider">Administrative Identity</h4>
+                <button 
+                  onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                  className="px-6 py-2.5 bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10"
+                >
+                  {isEditing ? 'Save Identity' : 'Modify Credentials'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                  {isEditing ? (
+                    <input 
+                      type="text" 
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-700/5 transition-all"
+                    />
+                  ) : (
+                    <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                       <p className="font-bold text-lg text-slate-700">{profile.displayName}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Email</label>
+                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 opacity-60">
+                      <p className="font-bold text-lg text-slate-700">{profile.email}</p>
+                   </div>
+                </div>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">System Tier</label>
+                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex items-center gap-3 text-indigo-600">
+                      <ShieldCheck size={20} />
+                      <p className="font-bold text-lg capitalize">{profile.role} ({profile.adminSubRole})</p>
+                   </div>
+                </div>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Deployment Date</label>
+                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                      <p className="font-bold text-lg text-slate-700">
+                        {profile.createdAt && (profile.createdAt as any).toDate ? (profile.createdAt as any).toDate().toLocaleDateString() : 
+                         profile.createdAt instanceof Date ? profile.createdAt.toLocaleDateString() : 'Historical'}
+                      </p>
+                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'wallet' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               <div className="bg-indigo-600 rounded-[48px] p-12 text-white space-y-6 relative overflow-hidden group">
+                  <div className="relative z-10">
+                    <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center mb-8">
+                      <DollarSign size={32} />
+                    </div>
+                    <p className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em] mb-2">Admin Credit Balance</p>
+                    <h4 className="text-6xl font-display font-bold italic">₹{profile.walletBalance || 0}</h4>
+                    <p className="text-sm text-white/40 mt-8 max-w-xs leading-relaxed">This balance reflects your internal operational credits, bonuses, or reimbursements as an administrative member.</p>
+                  </div>
+                  <Smartphone className="absolute -right-12 -bottom-12 w-64 h-64 text-white/5 rotate-12 group-hover:rotate-0 transition-transform duration-700" />
+               </div>
+
+               <div className="bg-white rounded-[48px] p-12 border border-slate-100 shadow-sm">
+                  <h4 className="text-xl font-bold italic font-display mb-10">Ledger History</h4>
+                  <div className="space-y-4">
+                     <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                        <AlertCircle size={48} strokeWidth={1} className="mb-4 opacity-20" />
+                        <p className="text-[10px] font-black uppercase tracking-widest">No Recent Transactions</p>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm space-y-10 text-center py-32">
+               <div className="w-24 h-24 bg-slate-50 text-slate-300 rounded-[40px] flex items-center justify-center mx-auto mb-8">
+                  <Settings size={48} className="animate-spin-slow" />
+               </div>
+               <h4 className="text-2xl font-bold font-display italic text-slate-900">System Configuration</h4>
+               <p className="text-slate-500 max-w-md mx-auto">Interface settings, terminal colors, and notification anchors are currently managed via the Global Security Chief.</p>
+               <button 
+                 onClick={() => signOut(auth)}
+                 className="flex items-center gap-3 bg-rose-50 text-rose-600 px-10 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[10px] mx-auto hover:bg-rose-100 transition-all border border-rose-100/50"
+               >
+                 <LogOut size={16} />
+                 Terminate Session
+               </button>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AnalyticsView({ bookings, users, partners, services }: { bookings: Booking[], users: UserProfile[], partners: any[], services: Service[] }) {
+  const [trendRange, setTrendRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const totalRevenue = bookings.reduce((acc, b) => (b.status === 'completed' || b.status === 'finalized') ? acc + b.totalPrice : acc, 0);
+  const totalBookings = bookings.length;
+  const activePartnersCount = partners.filter(p => p.status === 'active').length;
+
+  const processTrendData = (data: any[], dateKey: string, valueExtractor: (item: any) => number = () => 1) => {
+    const dataMap: Record<string, number> = {};
+    
+    data.forEach(item => {
+      const date = item[dateKey]?.toDate ? item[dateKey].toDate() : new Date(item[dateKey]);
+      if (isNaN(date.getTime())) return;
+
+      let key = '';
+      if (trendRange === 'daily') {
+        key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      } else if (trendRange === 'weekly') {
+        const d = new Date(date);
+        d.setHours(0,0,0,0);
+        d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+        const yearStart = new Date(d.getFullYear(), 0, 1);
+        const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+        key = `W${weekNo} ${d.getFullYear()}`;
+      } else {
+        key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+      }
+
+      dataMap[key] = (dataMap[key] || 0) + valueExtractor(item);
+    });
+
+    return Object.entries(dataMap)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => {
+         // Custom sort for trend labels
+         return 0; // Simplified for now, map handles distribution
+      });
+  };
+
+  const revenueTrendData = useMemo(() => {
+    const dataMap: Record<string, number> = {};
+    bookings.forEach(b => {
+      if (b.status === 'completed' || b.status === 'finalized') {
+        const date = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.updatedAt);
+        if (isNaN(date.getTime())) return;
+        
+        let key = '';
+        if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        else if (trendRange === 'weekly') {
+          const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+          key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
+        }
+        else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+
+        dataMap[key] = (dataMap[key] || 0) + b.totalPrice;
+      }
+    });
+    return Object.entries(dataMap)
+      .map(([label, amount]) => ({ label, amount }))
+      .slice(-12); // Last 12 points
+  }, [bookings, trendRange]);
+
+  const bookingTrendData = useMemo(() => {
+    const dataMap: Record<string, number> = {};
+    bookings.forEach(b => {
+      const date = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      if (isNaN(date.getTime())) return;
+
+      let key = '';
+      if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      else if (trendRange === 'weekly') {
+        const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+        key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
+      }
+      else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+
+      dataMap[key] = (dataMap[key] || 0) + 1;
+    });
+    return Object.entries(dataMap)
+      .map(([label, count]) => ({ label, count }))
+      .slice(-12);
+  }, [bookings, trendRange]);
+
+  const acquisitionTrendData = useMemo(() => {
+    const dataMap: Record<string, number> = {};
+    users.forEach(u => {
+      const date = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
+      if (isNaN(date.getTime())) return;
+
+      let key = '';
+      if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      else if (trendRange === 'weekly') {
+        const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+        key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
+      }
+      else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+
+      dataMap[key] = (dataMap[key] || 0) + 1;
+    });
+    return Object.entries(dataMap)
+      .map(([label, count]) => ({ label, count }))
+      .slice(-12);
+  }, [users, trendRange]);
+
+  const partnerPerformance = useMemo(() => {
+    const perfMap: Record<string, { name: string, revenue: number, assigned: number, completed: number, rating: number, responseTime: number }> = {};
+    
+    partners.forEach(p => {
+      const user = users.find(u => u.uid === p.userId);
+      perfMap[p.userId] = {
+        name: user?.displayName || p.id.slice(0, 8),
+        revenue: 0,
+        assigned: 0,
+        completed: 0,
+        rating: p.rating || 0,
+        responseTime: Math.floor(Math.random() * 30) + 5 // Mock for now
+      };
+    });
+
+    bookings.forEach(b => {
+      if (b.partnerId && perfMap[b.partnerId]) {
+        perfMap[b.partnerId].assigned += 1;
+        if (b.status === 'completed' || b.status === 'finalized') {
+          perfMap[b.partnerId].completed += 1;
+          perfMap[b.partnerId].revenue += b.totalPrice;
+        }
+      }
+    });
+
+    return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  }, [bookings, partners, users]);
+
+  const acquisitionMetrics = useMemo(() => {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    const newUsersLast30 = users.filter(u => {
+      const createdAt = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
+      return createdAt >= thirtyDaysAgo && createdAt <= now;
+    }).length;
+
+    const newUsersPrev30 = users.filter(u => {
+      const createdAt = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
+      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
+    }).length;
+
+    const rate = newUsersPrev30 === 0 ? (newUsersLast30 > 0 ? 100 : 0) : ((newUsersLast30 - newUsersPrev30) / newUsersPrev30) * 100;
+
+    return {
+      currentCount: newUsersLast30,
+      previousCount: newUsersPrev30,
+      growthRate: rate.toFixed(1)
+    };
+  }, [users]);
+
+  const serviceDistribution = useMemo(() => {
+    const distMap: Record<string, number> = {};
+    bookings.forEach(b => {
+      const service = services.find(s => s.id === b.serviceId);
+      const name = service?.name || 'Unknown';
+      distMap[name] = (distMap[name] || 0) + 1;
+    });
+    return Object.entries(distMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
+  }, [bookings, services]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+  return (
+    <div className="space-y-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h2 className="text-3xl font-display font-bold italic">Analytics Terminal</h2>
+          <p className="text-slate-400 text-sm">Real-time performance intelligence</p>
+        </div>
+        <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+          {(['daily', 'weekly', 'monthly'] as const).map(range => (
+            <button
+              key={range}
+              onClick={() => setTrendRange(range)}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${trendRange === range ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              {range}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <StatCard title="Total Revenue" value={`₹${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
+        <StatCard title="Total Bookings" value={totalBookings.toString()} icon={FileText} color="bg-blue-700" />
+        <StatCard title="Growth Rate" value={`${acquisitionMetrics.growthRate}%`} icon={TrendingUp} color="bg-indigo-600" />
+        <StatCard title="Active Partners" value={activePartnersCount.toString()} icon={ShieldCheck} color="bg-amber-500" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold italic font-display">Revenue Growth</h3>
+              <div className="flex items-center gap-2 text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                 <TrendingUp size={12} />
+                 Adaptive
+              </div>
+           </div>
+           <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueTrendData}>
+                  <defs>
+                    <linearGradient id="analyticsRev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(val) => `₹${val}`} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                    itemStyle={{ color: '#10b981', fontWeight: 'bold' }}
+                    formatter={(val) => [`₹${val}`, 'Revenue']}
+                  />
+                  <Area type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#analyticsRev)" />
+                </AreaChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold italic font-display">Customer Acquisition</h3>
+           </div>
+           <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={acquisitionTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={4} dot={{ r: 6, fill: '#6366f1' }} activeDot={{ r: 8, strokeWidth: 0 }} />
+                </LineChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold italic font-display">Booking Trends</h3>
+           </div>
+           <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={bookingTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                  <Tooltip 
+                    cursor={{ fill: '#f8fafc', radius: 12 }}
+                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[12, 12, 0, 0]} name="Bookings" />
+                </BarChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold italic font-display">Service Distribution</h3>
+           </div>
+           <div className="h-[350px] w-full flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={serviceDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={80}
+                    outerRadius={120}
+                    fill="#8884d8"
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {serviceDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: '24px', border: 'none' }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute flex flex-col items-center">
+                <span className="text-2xl font-bold font-display italic">{totalBookings}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Total Ops</span>
+              </div>
+           </div>
+        </div>
+
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm lg:col-span-2">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold italic font-display">Partner Efficiency Matrix</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue Leaderboard</p>
+           </div>
+           <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                 <thead>
+                    <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
+                       <th className="px-6 py-4">Professional</th>
+                       <th className="px-6 py-4">Revenue Generated</th>
+                       <th className="px-6 py-4">Success Rate</th>
+                       <th className="px-6 py-4">Response Time</th>
+                       <th className="px-6 py-4">Avg Rating</th>
+                       <th className="px-6 py-4 text-right">Performance Index</th>
+                    </tr>
+                 </thead>
+                 <tbody>
+                    {partnerPerformance.map((p, i) => (
+                      <tr key={i} className="group hover:bg-slate-50 transition-colors">
+                         <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                               <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-[10px]">
+                                  {p.name[0]}
+                               </div>
+                               <span className="text-sm font-bold text-slate-900">{p.name}</span>
+                            </div>
+                         </td>
+                         <td className="px-6 py-5">
+                            <span className="text-sm font-bold text-slate-900">₹{p.revenue.toLocaleString()}</span>
+                         </td>
+                         <td className="px-6 py-5">
+                            <div className="flex flex-col">
+                               <span className="text-sm font-bold text-slate-600">{((p.completed / (p.assigned || 1)) * 100).toFixed(0)}%</span>
+                               <span className="text-[9px] text-slate-400 font-medium">{p.completed}/{p.assigned} Jobs</span>
+                            </div>
+                         </td>
+                         <td className="px-6 py-5">
+                            <span className="text-sm font-bold text-slate-600">{p.responseTime} min</span>
+                         </td>
+                         <td className="px-6 py-5">
+                            <div className="flex items-center gap-1.5">
+                               <Star size={12} className="text-amber-400 fill-amber-400" />
+                               <span className="text-sm font-bold text-slate-900">{p.rating}</span>
+                            </div>
+                         </td>
+                         <td className="px-6 py-5 text-right">
+                            <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
+                               <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full" />
+                               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Rank #{i+1}</span>
+                            </div>
+                         </td>
+                      </tr>
+                    ))}
+                 </tbody>
+              </table>
+           </div>
+        </div>
       </div>
     </div>
   );

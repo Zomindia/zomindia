@@ -271,9 +271,36 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "amount", "type", "reason", "status", "createdAt"]
+    },
+    "AMC": {
+      "title": "Annual Maintenance Contract",
+      "description": "Subscription based maintenance contracts.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "planName": { "type": "string" },
+        "frequency": { "type": "number" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "expired", "pending_renewal", "cancelled", "pending_payment"] },
+        "leadSource": { "type": "string", "enum": ["customer_direct", "partner_lead", "admin_manual"] },
+        "partnerCommission": { "type": "number" },
+        "serviceBookingIds": { "type": "array", "items": { "type": "string" } },
+        "scheduledDates": { "type": "array", "items": { "type": "string", "format": "date-time" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "serviceId", "planName", "frequency", "startDate", "endDate", "totalPrice", "status", "leadSource"]
     }
   },
   "firestore": {
+    "/amcs/{amcId}": {
+      "schema": "AMC",
+      "description": "Annual Maintenance Contracts."
+    },
     "/walletTransactions/{transactionId}": {
       "schema": "WalletTransaction",
       "description": "Wallet transactions for users."

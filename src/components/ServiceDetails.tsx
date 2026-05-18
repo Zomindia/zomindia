@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Service, Review, FAQ, PartnerProfile, UserProfile, Category } from '../types';
+import { handleMapsError } from '../lib/maps-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Star, 
@@ -151,11 +152,17 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
     if (availablePros.length > 0) {
       setCenter({ lat: availablePros[0].lat!, lng: availablePros[0].lng! });
     } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        (err) => {
+          // Silent failure on mount, keep default center
+          if (err.code !== 1) console.error("Geolocation error:", err);
+        }
+      );
     }
-  }, [availablePros.length]); // Only update center if no pros found initially or list changes
+  }, [availablePros.length]); 
 
   return (
     <div className="w-full h-80 rounded-[40px] overflow-hidden border border-slate-100 shadow-inner bg-slate-50 relative group">
@@ -338,7 +345,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
              </div>
              <button 
                onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-               className="bg-blue-700 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-700/20/20 hover:bg-blue-800 transition-all active:scale-95"
+               className="bg-blue-700 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-700/20 hover:bg-blue-800 transition-all active:scale-95"
              >
                Book Now
              </button>
@@ -375,7 +382,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
               <div className="flex flex-col sm:flex-row gap-4 md:gap-6 mb-12 md:mb-16">
                 <button 
                   onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-                  className="bg-blue-700 text-white px-8 md:px-12 py-5 md:py-6 rounded-2xl md:rounded-3xl font-bold text-sm md:text-base tracking-tight shadow-2xl shadow-blue-700/20/10 hover:bg-blue-800 transition-all active:scale-95 flex items-center justify-center gap-3"
+                  className="bg-blue-700 text-white px-8 md:px-12 py-5 md:py-6 rounded-2xl md:rounded-3xl font-bold text-sm md:text-base tracking-tight shadow-2xl shadow-blue-700/10 hover:bg-blue-800 transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
                   <Calendar size={20} /> Book Service Now
                 </button>

@@ -205,10 +205,14 @@ async function startServer() {
 
       const ai = getAi();
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: `Context: ${JSON.stringify(context || {})}\nUser: ${message}`,
         config: {
-          systemInstruction: "You are the zomindia AI support assistant. You are helpful, professional, and knowledgeable about home services. You have access to the user's profile and their recent bookings (if any). Use this context to provide specific, personalized help. For customers, help with their bookings and service queries. For partners, help them with their assigned jobs and earnings queries. Keep answers concise.",
+          systemInstruction: `You are the zomindia AI support assistant. You are helpful, professional, and knowledgeable about home services. 
+          You have access to the user's profile and their recent bookings (if any). Use this context to provide specific, personalized help. 
+          For customers, help with their bookings and service queries. For partners, help them with their assigned jobs and earnings queries. 
+          If you cannot resolve an issue, suggest they contact human support at ${process.env.VITE_WHATSAPP_SUPPORT_NUMBER || 'WhatsApp'}. 
+          Always keep answers concise and avoid over-explaining. If the user asks for a WhatsApp link, provide it: https://wa.me/${(process.env.VITE_WHATSAPP_SUPPORT_NUMBER || '').replace(/\D/g, '')}`,
         }
       });
       res.json({ reply: response.text });
@@ -538,6 +542,13 @@ async function startServer() {
         });
       });
 
+      // Trigger final bill email asynchronously
+      try {
+        await axios.post(`http://localhost:${PORT}/api/send-final-bill`, { bookingId });
+      } catch (e) {
+        console.error("Failed to trigger bill email after wallet payment:", e);
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error('Wallet payment error:', err);
@@ -550,10 +561,11 @@ async function startServer() {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: false 
+        hmr: false
       },
       appType: "spa",
-      logLevel: 'silent'
+      logLevel: 'silent',
+      clearScreen: false
     });
     app.use(vite.middlewares);
   } else {
@@ -565,7 +577,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server is LIVE on port ${PORT}`);
   });
 }
 

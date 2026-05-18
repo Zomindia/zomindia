@@ -58,10 +58,6 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    provide: {
-      // Polyfill process for some older libraries if needed
-      // 'process.env': {}
-    },
     logLevel: 'silent',
     server: {
       // Explicitly disable HMR to avoid websocket connection errors in this environment
@@ -69,5 +65,7 @@ export default defineConfig(({ mode }) => {
       // Disable watch in dev to reduce noise and resource usage
       watch: null,
     },
+    // Prevent vite from clearing console
+    clearScreen: false,
   };
 });

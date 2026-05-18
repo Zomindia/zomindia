@@ -4,6 +4,7 @@ import { signOut } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { handleMapsError } from '../lib/maps-errors';
 import { motion } from 'motion/react';
 import { 
   User, 
@@ -16,15 +17,18 @@ import {
   MessageSquare,
   Zap,
   LogOut,
-  MapPin
+  MapPin,
+  Calendar,
+  ChevronRight
 } from 'lucide-react';
 
 interface Props {
   profile: UserProfile;
   onUpdate: (updatedProfile: UserProfile) => void;
+  setActiveTab: (tab: any) => void;
 }
 
-export default function ProfileSettings({ profile, onUpdate }: Props) {
+export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Props) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   
@@ -135,8 +139,7 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
                           setAddress(`[Location detected: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}]`);
                           setLoading(false);
                         }, (err) => {
-                          alert("Failed to get location. Ensure GPS is enabled.");
-                          console.error(err);
+                          alert(handleMapsError(err));
                           setLoading(false);
                         });
                       } else {
@@ -205,6 +208,31 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
               </label>
             </div>
           </div>
+
+          {/* AMC Section */}
+          <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-700">
+                <Calendar size={20} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Maintenance Contracts</h3>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-6 flex items-center justify-between group hover:bg-blue-50 transition-all cursor-pointer border border-transparent hover:border-blue-100" onClick={() => setActiveTab('amcs')}>
+               <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-blue-700 shadow-sm">
+                     <Shield size={22} />
+                  </div>
+                  <div>
+                     <p className="font-bold text-slate-900">Annual Protection Plans</p>
+                     <p className="text-xs text-slate-500">Manage your active AMCs or browse new yearly contracts.</p>
+                  </div>
+               </div>
+               <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 group-hover:text-blue-700 group-hover:bg-white transition-all shadow-sm">
+                 <ChevronRight size={20} />
+               </div>
+            </div>
+          </div>
         </div>
 
         {/* Right Column: Profile Summary & Action */}
@@ -252,6 +280,26 @@ export default function ProfileSettings({ profile, onUpdate }: Props) {
               Logout
             </button>
           </div>
+
+          {profile.role === 'admin' && (
+             <div className="bg-purple-50 rounded-[32px] p-8 border border-purple-100 flex flex-col gap-4">
+               <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center">
+                 <Shield size={24} />
+               </div>
+               <div>
+                 <h4 className="font-bold text-purple-900 mb-1">Administration</h4>
+                 <p className="text-xs text-purple-700 leading-relaxed opacity-80">
+                   You have high-level privileges. Access the global platform terminal.
+                 </p>
+               </div>
+               <button 
+                 onClick={() => setActiveTab('admin')}
+                 className="w-full bg-purple-600 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-purple-700 transition-all active:scale-95 shadow-lg shadow-purple-200"
+               >
+                 Open Admin Panel
+               </button>
+             </div>
+          )}
 
           <div className="bg-amber-50 rounded-[32px] p-8 border border-amber-100">
             <Shield size={24} className="text-amber-600 mb-4" />

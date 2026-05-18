@@ -21,14 +21,15 @@ import {
   Zap,
   TicketPercent
 } from 'lucide-react';
-import { UserProfile, PartnerProfile, Booking } from '../types';
+import { UserProfile, PartnerProfile, Booking, Service } from '../types';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import PartnerHome from './partner/PartnerHome';
 import PartnerJobs from './partner/PartnerJobs';
 import PartnerWallet from './partner/PartnerWallet';
 import PartnerSettings from './partner/PartnerSettings';
-import PartnerNotifications from './partner/PartnerNotifications';
+import NotificationsView from './NotificationsView';
+import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -37,12 +38,33 @@ interface Props {
   profile: UserProfile;
   initialTab?: 'home' | 'jobs' | 'wallet' | 'settings' | 'notifications';
   targetBookingId?: string | null;
+  onNavigate?: (tab: string) => void;
 }
 
-export default function PartnerApp({ profile, initialTab = 'home', targetBookingId }: Props) {
-  const [activeScreen, setActiveScreen] = useState<'home' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers'>(initialTab);
+export default function PartnerApp({ profile, initialTab = 'home', targetBookingId: initialTargetId, onNavigate: onAppNavigate }: Props) {
+  const [activeScreen, setActiveScreen] = useState<'home' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab as any);
+  const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
+
+  useEffect(() => {
+    if (initialTargetId) {
+      setTargetBookingId(initialTargetId);
+      setActiveScreen('jobs');
+    }
+  }, [initialTargetId]);
+
+  const navigateWithTarget = (screen: any, targetId: string | null = null) => {
+    // If screen is a top level app tab, use onAppNavigate
+    if (onAppNavigate && (screen === 'admin' || screen === 'home')) {
+       onAppNavigate(screen);
+       return;
+    }
+    setTargetBookingId(targetId);
+    setActiveScreen(screen);
+  };
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showStatusModal, setShowStatusModal] = useState(false);
 
@@ -91,12 +113,28 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         };
     };
 
+    const fetchServices = () => {
+      return onSnapshot(collection(db, 'services'), (snap) => {
+        setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      });
+    };
+
+    const fetchUsers = () => {
+      return onSnapshot(collection(db, 'users'), (snap) => {
+        setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+      });
+    };
+
     const unsubPartner = fetchPartner();
     const unsubBookings = fetchBookings();
+    const unsubServices = fetchServices();
+    const unsubUsers = fetchUsers();
     
     return () => {
       unsubPartner();
       unsubBookings();
+      unsubServices();
+      unsubUsers();
     };
   }, [profile.uid]);
 
@@ -128,28 +166,29 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <PartnerHome partner={partner} bookings={bookings} onNavigate={setActiveScreen} profile={profile} />;
+        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
       case 'jobs':
         return <PartnerJobs partner={partner} bookings={bookings} initialExpandedBookingId={targetBookingId} />;
       case 'wallet':
         return <PartnerWallet partner={partner} />;
       case 'settings':
-        return <PartnerSettings partner={partner} profile={profile} />;
+        return <PartnerSettings partner={partner} profile={profile} onNavigate={navigateWithTarget} />;
       case 'notifications':
-        return <PartnerNotifications profile={profile} onNavigate={setActiveScreen} />;
+        return <NotificationsView profile={profile} onNavigate={navigateWithTarget} />;
+      case 'amc-leads':
+        return <PartnerAmcLeads profile={profile} partner={partner} />;
       case 'offers':
-        return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => setActiveScreen(tab)} />;
+        return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} />;
       default:
-        return <PartnerHome partner={partner} bookings={bookings} onNavigate={setActiveScreen} profile={profile} />;
+        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
     }
   };
 
   const navItems = [
     { id: 'home', icon: BarChart3, label: 'Stats' },
     { id: 'jobs', icon: Briefcase, label: 'Jobs' },
-    { id: 'wallet', icon: Wallet, label: 'Wallet' },
+    { id: 'amc-leads', icon: Zap, label: 'AMC Leads' },
     { id: 'offers', icon: TicketPercent, label: 'Offers' },
-    { id: 'settings', icon: UserIcon, label: 'Profile' },
   ];
 
   return (
@@ -166,12 +205,49 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           </div>
         </div>
         <div className="flex items-center gap-4">
+           {profile.role === 'admin' && (
+             <button 
+               onClick={() => onAppNavigate?.('admin')}
+               className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-100 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-purple-100 transition-all"
+             >
+               Admin Mode
+             </button>
+           )}
+           {profile.walletBalance !== undefined && (
+             <button 
+               onClick={() => navigateWithTarget('wallet')}
+               className={`flex items-center gap-2 px-4 py-2 bg-white rounded-2xl border transition-all hover:shadow-md active:scale-95 ${activeScreen === 'wallet' ? 'border-amber-500 shadow-lg shadow-amber-500/10' : 'border-slate-100'}`}
+             >
+               <Wallet size={18} className="text-amber-500" />
+               <span className="text-sm font-black text-slate-900 tracking-tighter">₹{profile.walletBalance}</span>
+             </button>
+           )}
            <button 
-             onClick={() => setActiveScreen('notifications')}
+             onClick={() => navigateWithTarget('notifications')}
              className="relative p-2 text-slate-400 hover:text-blue-700 transition-colors"
            >
              <Bell size={20} />
              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+           </button>
+           <button 
+             onClick={async () => {
+               try {
+                 await signOut(auth);
+                 window.location.href = '/';
+               } catch (e) {
+                 console.error("Logout failed", e);
+               }
+             }}
+             className="p-2 text-rose-400 hover:text-rose-600 transition-colors"
+             title="Logout"
+           >
+             <LogOut size={20} />
+           </button>
+           <button 
+             onClick={() => navigateWithTarget('settings')}
+             className={`w-10 h-10 rounded-2xl overflow-hidden bg-slate-100 border transition-all ${activeScreen === 'settings' ? 'border-blue-700 ring-2 ring-blue-700/20 shadow-lg' : 'border-slate-200'}`}
+           >
+              <img src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} alt="" className="w-full h-full object-cover" />
            </button>
            <button 
              onClick={() => setShowStatusModal(true)}
@@ -216,7 +292,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveScreen(tab.id as any)}
+                onClick={() => navigateWithTarget(tab.id as any)}
                 className="relative flex flex-col items-center justify-center pt-2 pb-1.5 px-1 transition-all flex-1"
               >
                 <div className={`relative p-2 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/30 scale-110' : 'text-slate-400 active:scale-90 hover:text-slate-600'}`}>
