@@ -575,264 +575,123 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
         </motion.div>
       )}
 
-      {/* Active Bookings - High Priority if exists */}
-      {!searchQuery && activeBookings.length > 0 && (
-        <div className="mb-32">
-          <div className="flex items-center justify-between mb-12">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-700 rounded-[16px] text-white shadow-2xl flex items-center justify-center">
-                <Calendar size={18} />
-              </div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase italic">Live Jobs</h2>
-            </div>
-          </div>
-          <div className="space-y-8">
-            {activeBookings.map((booking) => (
-              <motion.div 
-                layout
-                key={booking.id}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? 'border-blue-700 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.1)]' : 'border-slate-100 shadow-sm hover:border-slate-200'} rounded-[48px] sm:rounded-[64px] p-8 sm:p-12 cursor-pointer relative overflow-hidden`}
-                onClick={() => setExpandedBookingId(expandedBookingId === booking.id ? null : booking.id)}
-              >
-                {/* Visual Accent for Status */}
-                {['on_the_way', 'arrived', 'in_progress'].includes(booking.status) && (
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl animate-pulse" />
-                )}
-
-                <div className="flex flex-col lg:flex-row justify-between gap-12 relative z-10">
-                  <div className="flex gap-8 sm:gap-10 items-start">
-                    <div className="w-20 h-20 sm:w-32 sm:h-32 bg-slate-50 rounded-[32px] sm:rounded-[48px] flex items-center justify-center text-slate-900 overflow-hidden shrink-0 shadow-inner group">
-                      {services[booking.serviceId]?.imageURL ? (
-                        <img src={services[booking.serviceId].imageURL} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Zap size={40} className="text-slate-200" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 pt-2">
-                      <div className="flex items-center gap-4 mb-4">
-                         <span className={`text-[9px] px-4 py-1.5 rounded-full font-black uppercase tracking-widest ${getStatusColor(booking.status)} shadow-sm border border-black/5`}>
-                           {booking.status.replace('_', ' ')}
-                         </span>
-                         <span className="text-[10px] text-slate-300 font-mono font-bold tracking-[0.2em] uppercase">ID: {booking.id.slice(0, 8)}</span>
-                      </div>
-                      <h3 className="text-3xl sm:text-4xl font-black mb-4 text-slate-900 tracking-tighter uppercase italic leading-none">
-                        {services[booking.serviceId]?.name || 'Professional Service'}
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-4 text-xs sm:text-sm text-slate-500">
-                        <div className="flex items-center gap-4 font-black uppercase tracking-widest text-slate-900">
-                          <Calendar size={18} className="text-slate-300" /> {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'long', day: 'numeric' })}
-                        </div>
-                        <div className="flex items-center gap-4 font-black uppercase tracking-widest text-slate-900">
-                          <Clock size={18} className="text-slate-300" /> {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                        <div className="flex items-center gap-4 col-span-full font-bold text-slate-400">
-                          <MapPin size={18} className="shrink-0" /> <span className="truncate">{booking.address}</span>
-                        </div>
-                      </div>
-                    </div>
+      {/* Ongoing Jobs & Service Discovery Logic */}
+      {!searchQuery && (
+        <div className="space-y-32">
+          {activeBookings.length > 0 ? (
+            <div className="mb-16">
+              <div className="flex items-center justify-between mb-12">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-700 rounded-[16px] text-white shadow-2xl flex items-center justify-center">
+                    <Calendar size={18} />
                   </div>
-                  <div className="flex flex-row lg:flex-col justify-between items-end gap-6 pt-8 lg:pt-2">
-                    <div className="text-left lg:text-right">
-                      <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.3em] mb-2 leading-none">Project Value</p>
-                      <p className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tighter italic leading-none">₹{booking.totalPrice}</p>
-                    </div>
-                    <div className="flex gap-4">
-                      {booking.partnerId && (
-                        <>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveCallBooking(booking);
-                            }}
-                            className="bg-emerald-500 text-white px-6 py-4 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-600 transition-all shadow-2xl shadow-emerald-500/20 flex items-center gap-3 active:scale-95"
-                          >
-                            <Phone size={16} />
-                            Call
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveBookingChat(booking);
-                            }}
-                            className="bg-blue-700 text-white px-6 py-4 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 flex items-center gap-3 active:scale-95"
-                          >
-                            <MessageSquare size={16} />
-                            Chat
-                          </button>
-                        </>
-                       )}
-                      <button className="bg-slate-50 text-slate-400 hover:text-blue-700 p-4 rounded-[20px] transition-all border border-slate-100 flex items-center justify-center">
-                        <HelpCircle size={24} />
-                      </button>
-                    </div>
-                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase italic">Ongoing Jobs</h2>
                 </div>
-
-                <AnimatePresence>
-                  {expandedBookingId === booking.id && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-10 pt-10 border-t border-slate-50 grid grid-cols-1 md:grid-cols-2 gap-10">
-                        <div className="md:col-span-2">
-                           <BookingStatusTracker status={booking.status} />
-                        </div>
-                        <div className="space-y-8">
-                          <div>
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Service Details</h4>
-                            <div className="space-y-6">
-                              <div>
-                                <p className="text-xs font-bold text-slate-400 mb-2 uppercase">Core Service</p>
-                                <p className="text-xl font-bold text-slate-900">{services[booking.serviceId]?.name}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-bold text-slate-400 mb-2 uppercase">Insight</p>
-                                <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                                  {services[booking.serviceId]?.description}
-                                </p>
-                              </div>
-                              {booking.notes && (
-                                <div className="p-6 bg-amber-50 border border-amber-100 rounded-[32px]">
-                                  <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <FileText size={14} /> Special Instructions
-                                  </p>
-                                  <p className="text-sm text-amber-900 italic font-medium leading-relaxed">"{booking.notes}"</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* Additional Charges Breakdown */}
-                          {(booking.additionalCharges?.length || 0) > 0 && (
-                            <div className="p-8 bg-slate-50 border border-slate-100 rounded-[32px] space-y-4">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Itemized Add-ons</p>
-                              <div className="space-y-3">
-                                {booking.additionalCharges?.map((charge, idx) => (
-                                  <div key={idx} className="flex justify-between items-center text-sm font-bold">
-                                    <span className="text-slate-500">{charge.reason}</span>
-                                    <span className="text-slate-900">₹{charge.amount}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="pt-4 border-t border-slate-200 flex justify-between items-center font-black text-slate-900 text-lg">
-                                <span>Subtotal Add-ons</span>
-                                <span>₹{booking.additionalCharges?.reduce((sum, c) => sum + c.amount, 0)}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Your Professional</h4>
-                          {booking.partnerId ? (
-                            <>
-                              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[32px] border border-slate-100">
-                                <div className="w-16 h-16 bg-white rounded-2xl shadow-lg shadow-slate-200 flex items-center justify-center overflow-hidden border-2 border-white">
-                                  {partners[booking.partnerId]?.photoURL ? (
-                                    <img src={partners[booking.partnerId].photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                  ) : (
-                                    <User size={32} className="text-slate-200" />
-                                  )}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className="text-lg font-black text-slate-900">{partners[booking.partnerId]?.displayName}</p>
-                                    {partnerDetails[booking.partnerId]?.isVerified && (
-                                      <div className="text-emerald-500 bg-emerald-50 p-1 rounded-full shadow-sm" title="Verified Professional">
-                                        <CheckCircle2 size={14} fill="currentColor" className="text-white fill-emerald-500" />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${
-                                      partnerDetails[booking.partnerId]?.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                    }`}>
-                                       {partnerDetails[booking.partnerId]?.isVerified ? 'Platinum Verified' : 'Checking Credentials'}
-                                    </span>
-                                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-900 ml-auto">
-                                      <Star size={12} fill="currentColor" className="text-amber-400" /> {partnerDetails[booking.partnerId]?.rating || 4.9}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    {partners[booking.partnerId]?.phoneNumber && (
-                                      <a 
-                                        href={`tel:${partners[booking.partnerId].phoneNumber}`} 
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-xs font-black text-slate-900 hover:underline flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
-                                      >
-                                        Contact Pro
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              {/* Live Chat Integration */}
-                              <div className="mt-8">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Direct Message</h4>
-                                <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl shadow-slate-200/20 overflow-hidden">
-                                  <ChatWindow 
-                                    booking={booking}
-                                    otherUser={partners[booking.partnerId] || null}
-                                    isEmbedded={true}
-                                  />
-                                </div>
-                              </div>
-                            </>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {activeBookings.map((booking) => (
+                  <motion.div 
+                    layout
+                    key={booking.id}
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? 'border-blue-700 shadow-xl' : 'border-slate-100 shadow-sm hover:border-slate-200'} rounded-[40px] p-6 sm:p-8 cursor-pointer relative overflow-hidden`}
+                    onClick={() => setExpandedBookingId(expandedBookingId === booking.id ? null : booking.id)}
+                  >
+                    <div className="flex flex-col gap-6 relative z-10">
+                      <div className="flex gap-6 items-start">
+                        <div className="w-16 h-16 bg-slate-50 rounded-[24px] flex items-center justify-center text-slate-900 overflow-hidden shrink-0 shadow-inner group">
+                          {services[booking.serviceId]?.imageURL ? (
+                            <img src={services[booking.serviceId].imageURL} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
                           ) : (
-                            <div className="p-10 bg-slate-50 rounded-[32px] border-2 border-slate-200 border-dashed text-center">
-                              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                                <Search size={20} className="text-slate-300" />
-                              </div>
-                              <p className="text-sm font-black text-slate-900 uppercase tracking-widest mb-2">Assigning Pro</p>
-                              <p className="text-xs text-slate-400 font-medium">Sit back! We're matching you with the best available expert in your area.</p>
-                            </div>
+                            <Zap size={24} className="text-slate-200" />
                           )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                             <span className={`text-[8px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${getStatusColor(booking.status)} shadow-sm border border-black/5`}>
+                               {booking.status.replace('_', ' ')}
+                             </span>
+                          </div>
+                          <h3 className="text-xl font-black mb-2 text-slate-900 tracking-tight uppercase italic leading-none truncate">
+                            {services[booking.serviceId]?.name || 'Professional Service'}
+                          </h3>
+                          <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                            <Clock size={12} className="text-slate-300" /> {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            <span className="text-slate-100">•</span>
+                            <MapPin size={12} className="text-slate-300" /> <span className="truncate max-w-[100px]">{booking.address}</span>
+                          </div>
                         </div>
                       </div>
                       
-                      {['in_progress', 'completed'].includes(booking.status) && (
-                        <div className="mt-12 flex justify-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFinalizingBooking(booking);
-                            }}
-                            className={`${
-                              booking.status === 'completed' 
-                                ? 'bg-emerald-600 shadow-emerald-200' 
-                                : 'bg-blue-700 shadow-slate-200'
-                            } w-full sm:w-auto text-white px-16 py-5 rounded-[24px] font-black uppercase tracking-widest text-sm hover:opacity-90 transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3`}
-                          >
-                            <CheckCircle2 size={24} />
-                            {booking.status === 'completed' ? (
-                              booking.paymentStatus === 'unpaid' ? 'Pay & Close Service' : 'Confirm Service Completion'
-                            ) : 'Mark Task as Completed'}
-                          </button>
+                      {expandedBookingId === booking.id && (
+                        <div className="pt-6 border-t border-slate-50 animate-in fade-in slide-in-from-top-2">
+                          <BookingStatusTracker status={booking.status} />
+                          <div className="mt-8 flex gap-4">
+                             {booking.partnerId && (
+                               <>
+                                 <button 
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setActiveCallBooking(booking);
+                                   }}
+                                   className="flex-1 bg-emerald-500 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+                                 >
+                                   <Phone size={14} /> Call
+                                 </button>
+                                 <button 
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setActiveBookingChat(booking);
+                                   }}
+                                   className="flex-1 bg-blue-700 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all flex items-center justify-center gap-2"
+                                 >
+                                   <MessageSquare size={14} /> Chat
+                                 </button>
+                               </>
+                             )}
+                          </div>
                         </div>
                       )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {(['on_the_way', 'arrived', 'in_progress'].includes(booking.status)) && booking.partnerId && (
-                  <PartnerLiveStatus 
-                    partnerId={booking.partnerId}
-                    destinationAddress={booking.address}
-                    isOpen={trackingBookingId === booking.id}
-                    onToggle={() => setTrackingBookingId(trackingBookingId === booking.id ? null : booking.id)}
-                    status={booking.status}
-                    serviceOtp={booking.serviceOtp}
-                  />
-                )}
-              </motion.div>
-            ))}
-          </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Discovery Grid when no active bookings */
+            <div className="mb-16">
+              <div className="flex items-center justify-between mb-12">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-700 rounded-[16px] text-white shadow-2xl flex items-center justify-center">
+                    <Sparkles size={18} />
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase italic">Explore Services</h2>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                {allCategories.map((cat) => (
+                  <button 
+                    key={cat.id}
+                    onClick={() => setActiveCategoryFilter(cat.id)}
+                    className="group bg-white border-2 border-slate-50 hover:border-blue-700 p-6 rounded-[32px] transition-all shadow-sm hover:shadow-xl active:scale-95 text-center"
+                  >
+                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-50 transition-colors">
+                      {cat.iconURL ? (
+                        <img src={cat.iconURL} alt="" className="w-8 h-8 object-contain" />
+                      ) : (
+                        <Zap size={24} className="text-slate-300 group-hover:text-blue-700" />
+                      )}
+                    </div>
+                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest group-hover:text-blue-700 truncate block">
+                      {cat.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1070,30 +929,6 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
                 View Full Service History
               </button>
             )}
-        </div>
-      )}
-
-      {/* Discovery Section - If no active results */}
-      {!searchQuery && activeBookings.length === 0 && !activeCategoryFilter && (
-        <div className="text-center py-20 bg-slate-50 rounded-[48px] border-2 border-white shadow-inner">
-           <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl shadow-slate-200">
-             <Sparkles size={32} className="text-slate-900" />
-           </div>
-           <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tighter">Start your first project</h2>
-           <p className="text-slate-500 max-w-sm mx-auto mb-10 font-medium leading-relaxed">
-             From plumbing to home beauty, we have the best professionals ready to help. Discover top services in your area.
-           </p>
-           <div className="flex flex-wrap justify-center gap-4">
-              {allCategories.slice(0, 3).map(cat => (
-                <button 
-                  key={cat.id} 
-                  onClick={() => setActiveCategoryFilter(cat.id)}
-                  className="bg-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-900 shadow-lg shadow-slate-200 hover:scale-105 transition-all"
-                >
-                  {cat.name}
-                </button>
-              ))}
-           </div>
         </div>
       )}
 

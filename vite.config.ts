@@ -62,8 +62,10 @@ export default defineConfig(({ mode }) => {
     server: {
       // Explicitly disable HMR to avoid websocket connection errors in this environment
       hmr: false,
-      // Disable watch in dev to reduce noise and resource usage
-      watch: null,
+      // Keep watch enabled but limit its impact
+      watch: {
+        ignored: ['**/node_modules/**', '**/dist/**']
+      }
     },
     // Prevent vite from clearing console
     clearScreen: false,
