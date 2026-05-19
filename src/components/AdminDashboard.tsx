@@ -703,6 +703,24 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
     }
   };
 
+  useEffect(() => {
+    if (managingStatusBookingId) {
+      const b = bookings.find(x => x.id === managingStatusBookingId);
+      if (b) {
+        setStatusForm({
+          status: b.status,
+          pendingReason: b.pendingReason || '',
+          pendingDate: b.pendingResolveDate?.toDate?.() ? b.pendingResolveDate.toDate().toISOString().split('T')[0] : '',
+          pendingDuration: b.pendingResolveDuration || '',
+          assignedPartnerId: b.partnerId || '',
+          extraAmount: '',
+          extraReason: '',
+          adminNotes: b.adminNotes || ''
+        });
+      }
+    }
+  }, [managingStatusBookingId, bookings]);
+
   const handleAdminStatusUpdate = async () => {
     if (!managingStatusBookingId || !statusForm.status) return;
     
@@ -4243,11 +4261,16 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
     setLoading(true);
     setError(null);
     try {
-      await updateDoc(doc(db, 'users', editingAdmin.uid), {
+      const updateData: any = {
         displayName: editingAdmin.displayName,
-        adminSubRole: editingAdmin.adminSubRole,
         updatedAt: Timestamp.now()
-      });
+      };
+      
+      if (editingAdmin.adminSubRole) {
+        updateData.adminSubRole = editingAdmin.adminSubRole;
+      }
+      
+      await updateDoc(doc(db, 'users', editingAdmin.uid), updateData);
       setSuccess("Admin updated successfully.");
       setTimeout(() => {
         setEditingAdmin(null);

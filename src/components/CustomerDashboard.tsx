@@ -130,7 +130,7 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
     }
   }, [initialExpandedBookingId]);
 
-  const activeBookings = useMemo(() => bookings.filter(b => ['pending', 'confirmed', 'assigned', 'on_the_way', 'in_progress', 'pending_parts'].includes(b.status)), [bookings]);
+  const activeBookings = useMemo(() => bookings.filter(b => ['pending', 'confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'pending_parts', 'payment_pending'].includes(b.status)), [bookings]);
   const pastBookings = useMemo(() => bookings.filter(b => ['completed', 'finalized', 'cancelled'].includes(b.status)), [bookings]);
 
   const activeBookingIds = activeBookings.map(b => b.id).join(',');
@@ -518,13 +518,13 @@ export default function CustomerDashboard({ profile, onServiceSelect, initialExp
       />
 
       {/* Active High-Visibility Status Ticker */}
-      {activeBookings.some(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status)) && (
+      {activeBookings.some(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(b.status)) && (
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-16 -mx-4 px-4 sm:mx-0 sm:px-0"
         >
-          {activeBookings.filter(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status)).map(booking => (
+          {activeBookings.filter(b => ['pending', 'assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(b.status)).map(booking => (
             <div key={booking.id} className="bg-blue-700 text-white rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-blue-700/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse" />
               <div className="relative z-10 flex flex-col sm:flex-row justify-between items-center gap-12">

@@ -166,27 +166,31 @@ export default function App() {
             }
           }
 
-          const updatedProfile: UserProfile = { 
+          const profileUpdate: any = { 
             ...currentProfile, 
-            role: userRole, 
-            adminSubRole: isAdminUser ? 'head' : currentProfile.adminSubRole 
+            role: userRole
           };
-          setProfile(updatedProfile);
+          if (isAdminUser || currentProfile.adminSubRole) {
+            profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
+          }
+          setProfile(profileUpdate as UserProfile);
         } else {
-          const newProfile: UserProfile = {
+          const newProfile: any = {
             uid: u.uid,
             displayName: u.displayName || 'User',
             email: u.email || '',
             phoneNumber: u.phoneNumber || '',
             role: isAdminUser ? 'admin' : 'customer',
-            adminSubRole: isAdminUser ? 'head' : undefined,
             photoURL: u.photoURL || '', 
             referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
             walletBalance: 0,
             createdAt: Timestamp.now() as any, 
           };
+          if (isAdminUser) {
+            newProfile.adminSubRole = 'head';
+          }
           await setDoc(doc(db, 'users', u.uid), newProfile);
-          setProfile(newProfile);
+          setProfile(newProfile as UserProfile);
           userRole = newProfile.role;
         }
 
@@ -202,7 +206,7 @@ export default function App() {
         const q = query(
           collection(db, 'bookings'), 
           where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
-          where('status', 'in', ['on_the_way', 'arrived'])
+          where('status', 'in', ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
         );
         unsubscribeBookings = onSnapshot(q, (snap) => {
           setHasActiveArrival(!snap.empty);

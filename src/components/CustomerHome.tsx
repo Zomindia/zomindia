@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, doc, getDoc, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Category, Service, UserProfile, PartnerProfile, Promotion } from '../types';
+import { Category, Service, UserProfile, PartnerProfile, Promotion, Booking } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import BookingModal from './BookingModal';
@@ -92,6 +92,28 @@ export default function CustomerHome({ setActiveTab, profile, onAuthRequired, on
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    if (!profile) {
+      setActiveBooking(null);
+      return;
+    }
+    const q = query(
+      collection(db, 'bookings'),
+      where('customerId', '==', profile.uid),
+      where('status', 'in', ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts']),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    return onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        setActiveBooking({ id: snap.docs[0].id, ...snap.docs[0].data() } as Booking);
+      } else {
+        setActiveBooking(null);
+      }
+    });
+  }, [profile?.uid]);
 
   useEffect(() => {
      const q = query(collection(db, 'promotions'), where('active', '==', true));
@@ -482,6 +504,35 @@ export default function CustomerHome({ setActiveTab, profile, onAuthRequired, on
       {/* Main Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 relative z-20">
         
+        {/* Active Booking Ticker */}
+        {activeBooking && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={() => setActiveTab('bookings')}
+            className="mb-12 bg-blue-700 text-white p-6 rounded-[32px] shadow-xl shadow-blue-700/20 cursor-pointer flex items-center justify-between group overflow-hidden relative"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
+            <div className="flex items-center gap-6 relative z-10">
+               <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-inner">
+                  <Zap size={24} className="animate-pulse" />
+               </div>
+               <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Live Status: {activeBooking.status.replace('_', ' ')}</span>
+                  </div>
+                  <h4 className="text-lg font-black italic tracking-tighter uppercase line-clamp-1">
+                    {allServices.find(s => s.id === activeBooking.serviceId)?.name || 'Ongoing Service'}
+                  </h4>
+               </div>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-white/10 px-4 py-2 rounded-xl group-hover:bg-white group-hover:text-blue-700 transition-all border border-white/10 relative z-10 shrink-0">
+               Track Job <ArrowRight size={14} className="ml-1" />
+            </div>
+          </motion.div>
+        )}
+
         {/* Categories Grid */}
         <section className="mb-8" id="categories-grid">
           <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-y-6 gap-x-2">

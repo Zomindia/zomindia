@@ -472,7 +472,21 @@ async function startServer() {
       const booking = bookingDoc.data()!;
       if (booking.partnerId !== partnerId) return res.status(403).json({ error: "Not authorized for this booking" });
 
-      if (booking.serviceOtp !== otp) {
+      let currentOtp = booking.serviceOtp;
+
+      if (!currentOtp) {
+        // Fallback: check secrets collection in case it was only saved there
+        const secretsSnap = await db.collection("bookings").doc(bookingId).collection("secrets").doc("otp").get();
+        if (secretsSnap.exists) {
+          currentOtp = secretsSnap.data()?.code;
+        }
+      }
+
+      if (!currentOtp) {
+        return res.status(400).json({ error: "No OTP set for this booking" });
+      }
+
+      if (currentOtp.toString().trim() !== otp.toString().trim()) {
         return res.status(400).json({ error: "Invalid OTP" });
       }
 

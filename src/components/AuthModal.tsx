@@ -92,12 +92,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       
       // Initial Profile Creation
       const isAdminEmail = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-      await setDoc(doc(db, 'users', user.uid), {
+      const initialProfile: any = {
         uid: user.uid,
         displayName,
         email: user.email,
         role: isAdminEmail ? 'admin' : 'customer',
-        adminSubRole: isAdminEmail ? 'head' : undefined,
         createdAt: Timestamp.now(),
         referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
         walletBalance: 0,
@@ -105,7 +104,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           bookingUpdates: true,
           promotionalMessages: true
         }
-      });
+      };
+
+      if (isAdminEmail) {
+        initialProfile.adminSubRole = 'head';
+      }
+
+      await setDoc(doc(db, 'users', user.uid), initialProfile);
       
       onSuccess();
       onClose();
