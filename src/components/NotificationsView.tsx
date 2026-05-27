@@ -5,6 +5,7 @@ import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, Clock, Info, ShieldCheck, Trash2, X, MapPin, Smartphone } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { LoadingScreen } from './LoadingIndicator';
 
 interface Notification {
   id: string;
@@ -67,12 +68,7 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
     // Logic for deletion if requested.
   };
 
-  if (loading) return (
-    <div className="p-12 text-center text-slate-400">
-      <div className="w-8 h-8 border-2 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-4" />
-      Syncing Inbox...
-    </div>
-  );
+  if (loading) return <LoadingScreen message="Syncing your personalized notifications inbox..." />;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-16 relative">

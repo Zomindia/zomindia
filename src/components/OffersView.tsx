@@ -8,6 +8,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
 // Modules
 import AuthModal from './AuthModal';
+import { LoadingScreen } from './LoadingIndicator';
 
 const ICON_MAP: Record<string, any> = {
   Sparkles,
@@ -27,7 +28,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   'AC Repair': 'text-cyan-500 bg-cyan-50',
 };
 
-export default function OffersView({ profile, onAuthRequired, setActiveTab }: { profile: UserProfile | null, onAuthRequired: () => void, setActiveTab: (tab: any) => void }) {
+export default function OffersView({ 
+  profile, 
+  onAuthRequired, 
+  setActiveTab, 
+  context = 'customer' 
+}: { 
+  profile: UserProfile | null, 
+  onAuthRequired: () => void, 
+  setActiveTab: (tab: any) => void,
+  context?: 'customer' | 'partner'
+}) {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -89,13 +100,14 @@ export default function OffersView({ profile, onAuthRequired, setActiveTab }: { 
   const isRedeemed = (promoId: string) => redemptions.some(r => r.promotionId === promoId);
 
   const visiblePromotions = promotions.filter(promo => {
-    if (!profile) return promo.targetAudience === 'all' || promo.targetAudience === 'customer' || !promo.targetAudience;
-    if (profile.role === 'admin') return true;
-    if (profile.role === 'partner') return promo.targetAudience === 'all' || promo.targetAudience === 'partner';
-    return promo.targetAudience === 'all' || promo.targetAudience === 'customer' || !promo.targetAudience;
+    if (context === 'partner') {
+      return promo.targetAudience === 'partner';
+    } else {
+      return promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all';
+    }
   });
 
-  if (loading) return <div className="p-12 text-center text-slate-400">Loading exclusive rewards...</div>;
+  if (loading) return <LoadingScreen message="Unlocking exclusive partner & customer rewards..." />;
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-6 sm:px-6 md:px-8 py-8 sm:py-16 pb-32 sm:pb-20">
@@ -113,11 +125,11 @@ export default function OffersView({ profile, onAuthRequired, setActiveTab }: { 
 
         <div className="relative z-10 text-center sm:text-left">
           <h2 className="text-4xl sm:text-6xl md:text-7xl font-display font-black text-slate-900 italic tracking-tighter leading-none mb-4 sm:mb-6">
-            {profile?.role === 'partner' ? 'Partner' : 'Exclusive'} <br className="hidden sm:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">{profile?.role === 'partner' ? 'Rewards' : 'Unbeatable'}</span> Offers
+            {context === 'partner' ? 'Partner' : 'Exclusive'} <br className="hidden sm:block" />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">{context === 'partner' ? 'Rewards' : 'Unbeatable'}</span> Offers
           </h2>
           <p className="text-slate-500 text-base sm:text-lg font-medium max-w-xl leading-relaxed mx-auto sm:mx-0">
-            {profile?.role === 'partner' 
+            {context === 'partner' 
               ? 'Maximize your earnings with exclusive partner rewards and bonuses.'
               : 'Premium rewards for our frequent users. Redeem exclusive promotions and save on high-end services.'}
           </p>

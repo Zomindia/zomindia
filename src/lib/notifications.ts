@@ -63,6 +63,13 @@ export const sendNotification = async (userId: string, title: string, message: s
     };
     await addDoc(collection(db, 'notifications'), payload);
     console.log(`Notification sent to ${userId}: ${title}`);
+
+    // Trigger secure Firebase Cloud Messaging push via Express backend proxy
+    fetch('/api/send-push-notification', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ userId, title, message })
+    }).catch(err => console.error('[Push System] Background trigger failed:', err));
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, 'notifications');
   }

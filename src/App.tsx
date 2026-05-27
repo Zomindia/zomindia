@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking } from './types';
@@ -20,7 +20,6 @@ import {
   ShieldCheck, 
   Menu, 
   X,
-  LogOut,
   LayoutDashboard,
   ChevronRight,
   Bell,
@@ -28,16 +27,19 @@ import {
   TicketPercent,
   Settings,
   Zap,
-  MessageSquare
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 
 // Modules
 import CustomerHome from './components/CustomerHome';
 import CustomerDashboard from './components/CustomerDashboard';
+import { LoadingScreen } from './components/LoadingIndicator';
 import AdminDashboard from './components/AdminDashboard';
 import SignUpAsPartner from './components/SignUpAsPartner';
 import StaticPage from './components/StaticPage';
 import NotificationSystem from './components/NotificationSystem';
+import PermissionsPrompt from './components/PermissionsPrompt';
 import ProfileSettings from './components/ProfileSettings';
 import AuthModal from './components/AuthModal';
 import ServiceDetails from './components/ServiceDetails';
@@ -46,11 +48,13 @@ import OffersView from './components/OffersView';
 import BottomNav from './components/BottomNav';
 import PartnerApp from './components/PartnerApp';
 import InstallPrompt from './components/InstallPrompt';
+import AppUpdatePrompt from './components/AppUpdatePrompt';
 import CustomerAmcView from './components/CustomerAmcView';
 
 import SupportTicketsView from './components/SupportTicketsView';
 import AiSupportChat from './components/AiSupportChat';
 import WalletView from './components/WalletView';
+import ReferralsView from './components/ReferralsView';
 
 const Logo = ({ size = 20, light = false }: { size?: number, light?: boolean }) => (
   <div className="flex items-center gap-2 group">
@@ -96,13 +100,18 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs'>('home');
+  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs' | 'referrals'>('home');
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
   // Sync state with hash and handle popstate for browser back button
-  const setActiveTab = (tab: typeof activeTab, bId: string | null = null) => {
+  const setActiveTab = (tab: typeof activeTab, bIdOrCategoryId: string | null = null) => {
     setActiveTabState(tab);
-    setTargetBookingId(bId);
+    if (tab === 'home') {
+      setSelectedCategoryId(bIdOrCategoryId);
+    } else {
+      setTargetBookingId(bIdOrCategoryId);
+    }
   };
 
   useEffect(() => {
@@ -141,6 +150,10 @@ export default function App() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasActiveArrival, setHasActiveArrival] = useState(false);
+
+  const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
+  const [verificationFeedbackError, setVerificationFeedbackError] = useState<string | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   useEffect(() => {
     seedDatabase();
@@ -194,6 +207,14 @@ export default function App() {
           userRole = newProfile.role;
         }
 
+        // Native Push Registration trigger
+        try {
+          const { registerPushNotifications } = await import('./lib/push-notifications');
+          registerPushNotifications(u.uid);
+        } catch (e) {
+          console.error("Push registration trigger failed:", e);
+        }
+
         // Forced redirection for admin
         const currentHash = window.location.hash.replace('#', '');
         if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
@@ -224,6 +245,45 @@ export default function App() {
       unsubscribeAuth();
       unsubscribeBookings();
     };
+  }, []);
+
+  // Generic live pipeline listener for system-critical backend force-reloads
+  useEffect(() => {
+    let isInitial = true;
+    const updatesColRef = collection(db, 'system_updates');
+    
+    const unsubscribeSystemUpdates = onSnapshot(updatesColRef, (snapshot) => {
+      // Skip the initial database snapshot on page load to prevent direct reload loops
+      if (isInitial) {
+        isInitial = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' || change.type === 'modified') {
+          const docId = change.doc.id;
+          const docData = change.doc.data();
+          
+          if (
+            docId === 'force-reload' || 
+            docData.type === 'force-reload' || 
+            String(docId).includes('force-reload')
+          ) {
+            const updateReasonText = docData.reason || docData.description || 'System administrator has initialized a critical synchronized ecosystem update.';
+            
+            // Dispatch dynamic ecosystem reload notification trigger event
+            const updateEvent = new CustomEvent('simulate-ecosystem-update', {
+              detail: { reason: `Ecosystem Hard-Sync: ${updateReasonText}` }
+            });
+            window.dispatchEvent(updateEvent);
+          }
+        }
+      });
+    }, (error) => {
+      console.warn("Firestore 'system_updates' subscription bypassed:", error);
+    });
+
+    return () => unsubscribeSystemUpdates();
   }, []);
 
   if (!hasValidKey) {
@@ -263,16 +323,7 @@ export default function App() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <motion.div 
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-        >
-          <Logo size={32} />
-        </motion.div>
-      </div>
-    );
+    return <LoadingScreen message="Connecting to secure zomindia console..." />;
   }
 
   if (authError) {
@@ -296,6 +347,7 @@ export default function App() {
   const getNavLinks = () => [
     { id: 'home', label: 'Home', roles: ['customer', 'partner', 'admin'] as UserRole[] },
     { id: 'offers', label: 'Offers', roles: ['customer', 'partner', 'admin', 'anon'] as UserRole[] },
+    { id: 'referrals', label: 'Refer & Earn', roles: ['customer', 'anon', 'admin'] as UserRole[] },
     { id: 'bookings', label: 'Bookings', roles: ['customer', 'partner', 'admin'] as UserRole[] },
     { id: 'amcs', label: 'AMC', roles: ['customer', 'admin'] as UserRole[] },
     { id: 'notifications', label: 'Notifications', roles: ['customer', 'partner', 'admin'] as UserRole[] },
@@ -310,10 +362,12 @@ export default function App() {
       <div className="hidden md:flex items-center gap-8">
         {getNavLinks()
           .filter(link => {
+            // Remove tabs relocated to the Profile settings area
+            const excludedIds = ['referrals', 'amcs', 'profile', 'partner-signup'];
+            if (excludedIds.includes(link.id)) return false;
+
             // Only show logic: 
             // 1. Link role matches user role
-            // 2. For partner-signup, only show if not already partner
-            if (link.id === 'partner-signup' && profile?.role === 'partner') return false;
             return link.roles.includes((profile?.role as any) || 'anon');
           })
           .map(link => (
@@ -353,18 +407,18 @@ export default function App() {
            />
          );
        }
-       return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+       return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
     }
 
     if (activeTab === 'partner') {
-      if (!profile) return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+      if (!profile) return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
 
     if (activeTab === 'admin') {
       if (!profile || profile.role !== 'admin') {
          setActiveTab('home');
-         return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+         return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
       }
       return <AdminDashboard profile={profile} setActiveTab={setActiveTab} />;
     }
@@ -505,11 +559,32 @@ Marketing: We may send you promotional offers if you have opted in to receive th
     }
 
     if (activeTab === 'wallet' && profile) {
-      return <WalletView profile={profile} />;
+      return <WalletView profile={profile} setActiveTab={setActiveTab} />;
+    }
+
+    if (activeTab === 'referrals') {
+      if (!profile) {
+        return (
+          <div className="max-w-2xl mx-auto px-4 py-20 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+            </div>
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">Claim Your ₹100 Welcome Bonus</h2>
+            <p className="text-slate-500 text-sm max-w-sm mx-auto mb-8">Please register or log in to view your unique referral code, track your referral earnings, or apply an invitation code.</p>
+            <button 
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In / Sign Up
+            </button>
+          </div>
+        );
+      }
+      return <ReferralsView profile={profile} />;
     }
 
     // Default to Customer View
-    return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} />;
+    return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
   };
 
   const isFullScreenView = activeTab === 'admin' || activeTab === 'partner';
@@ -518,7 +593,9 @@ Marketing: We may send you promotional offers if you have opted in to receive th
     return (
       <APIProvider apiKey={API_KEY} version="weekly">
         <div className="min-h-screen">
-          <NotificationSystem />
+          <NotificationSystem onNavigate={setActiveTab} />
+          <PermissionsPrompt />
+          <AppUpdatePrompt />
           {renderContent()}
         </div>
       </APIProvider>
@@ -528,8 +605,10 @@ Marketing: We may send you promotional offers if you have opted in to receive th
   return (
     <APIProvider apiKey={API_KEY} version="weekly">
       <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <NotificationSystem />
+      <NotificationSystem onNavigate={setActiveTab} />
+      <PermissionsPrompt />
       <InstallPrompt />
+      <AppUpdatePrompt />
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -614,11 +693,30 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                           Support Tickets
                         </button>
                         <button 
-                          onClick={() => { signOut(auth); setIsUserMenuOpen(false); setActiveTab('home'); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                          onClick={() => { setActiveTab('referrals'); setIsUserMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
                         >
-                          <LogOut size={16} />
-                          Logout
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                          Refer & Earn
+                        </button>
+                        {profile.role !== 'partner' && (
+                          <button 
+                            onClick={() => { setActiveTab('partner-signup'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                          >
+                            <svg xmlns="http://www.w3.org/2005/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                            Become Partner
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => { 
+                            setIsUserMenuOpen(false); 
+                            window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all border-t border-slate-100"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 animate-pulse"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                          <span className="font-semibold text-slate-800">🤖 AI Support Chat</span>
                         </button>
                       </motion.div>
                     )}
@@ -644,6 +742,77 @@ Marketing: We may send you promotional offers if you have opted in to receive th
         </div>
       </nav>
 
+      {/* Email Verification Required Banner */}
+      {user && !user.emailVerified && user.email && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold shadow-sm transition-all">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-amber-100 rounded-lg text-amber-700 animate-pulse shrink-0">
+              <Mail size={16} />
+            </div>
+            <div>
+              <span>Verify your email to secure your account. Verification link sent to <span className="underline text-amber-950 font-black">{user.email}</span>.</span>
+              {(verificationFeedback || verificationFeedbackError) && (
+                <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+                  {verificationFeedback && <span className="text-emerald-700 font-extrabold">✓ {verificationFeedback}</span>}
+                  {verificationFeedbackError && <span className="text-rose-600 font-extrabold">✗ {verificationFeedbackError}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              disabled={verificationLoading}
+              onClick={async () => {
+                setVerificationLoading(true);
+                setVerificationFeedback(null);
+                setVerificationFeedbackError(null);
+                try {
+                  await sendEmailVerification(user);
+                  setVerificationFeedback("Verification email sent! Please check your inbox.");
+                  setTimeout(() => setVerificationFeedback(null), 6000);
+                } catch (err: any) {
+                  setVerificationFeedbackError(err.message || "Failed to resend verification link.");
+                  setTimeout(() => setVerificationFeedbackError(null), 6000);
+                } finally {
+                  setVerificationLoading(false);
+                }
+              }}
+              className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-100/50 rounded-xl transition-all uppercase tracking-wider text-[9px] font-black"
+            >
+              Resend Link
+            </button>
+            <button 
+              disabled={verificationLoading}
+              onClick={async () => {
+                setVerificationLoading(true);
+                setVerificationFeedback(null);
+                setVerificationFeedbackError(null);
+                try {
+                  await user.reload();
+                  const refreshed = auth.currentUser;
+                  setUser(refreshed ? { ...refreshed } as any : null);
+                  if (refreshed?.emailVerified) {
+                    setVerificationFeedback("Success! Your email address is verified.");
+                    setTimeout(() => setVerificationFeedback(null), 5000);
+                  } else {
+                    setVerificationFeedbackError("Email still not verified. Click the link we sent, or click resend.");
+                    setTimeout(() => setVerificationFeedbackError(null), 5000);
+                  }
+                } catch (err: any) {
+                  setVerificationFeedbackError(err.message || "Failed to sync status.");
+                  setTimeout(() => setVerificationFeedbackError(null), 5000);
+                } finally {
+                  setVerificationLoading(false);
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-all uppercase tracking-wider text-[9px] font-black shadow-md shadow-amber-500/20"
+            >
+              Verify Status
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Menu */}
       <AnimatePresence>
         {isMenuOpen && (
@@ -655,7 +824,11 @@ Marketing: We may send you promotional offers if you have opted in to receive th
           >
             <div className="px-4 py-8 flex flex-col gap-1">
               {getNavLinks()
-                .filter(link => link.roles.includes(profile?.role || 'anon'))
+                .filter(link => {
+                  const excludedIds = ['referrals', 'amcs', 'profile', 'partner-signup'];
+                  if (excludedIds.includes(link.id)) return false;
+                  return link.roles.includes(profile?.role || 'anon');
+                })
                 .map((link, i) => (
                   <MobileNavItem 
                     key={link.id}
@@ -710,6 +883,8 @@ Marketing: We may send you promotional offers if you have opted in to receive th
         hasActiveArrival={hasActiveArrival}
       />
 
+      <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} />
+
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 pt-16 pb-8 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -728,6 +903,21 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                 <li><button onClick={() => setActiveTab('about')} className="hover:text-blue-700 transition-colors">About Us</button></li>
                 <li><button onClick={() => setActiveTab('contact')} className="hover:text-blue-700 transition-colors">Contact</button></li>
                 <li><button onClick={() => setActiveTab('offers')} className="hover:text-blue-700 transition-colors">Exclusive Offers</button></li>
+                <li>
+                  <button 
+                    onClick={() => {
+                      const event = new CustomEvent('simulate-ecosystem-update', {
+                        detail: { reason: 'Dynamic load balancing scale was adjusted' }
+                      });
+                      window.dispatchEvent(event);
+                    }} 
+                    className="hover:text-blue-700 text-slate-500 transition-colors flex items-center gap-1 focus:outline-none"
+                    title="Simulate push notification update trigger"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Simulate Live Update
+                  </button>
+                </li>
               </ul>
             </div>
             <div>

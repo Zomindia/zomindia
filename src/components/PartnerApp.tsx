@@ -4,7 +4,6 @@ import {
   BarChart3, 
   Calendar, 
   User as UserIcon, 
-  LogOut, 
   Briefcase,
   Wallet,
   Settings,
@@ -22,7 +21,6 @@ import {
   TicketPercent
 } from 'lucide-react';
 import { UserProfile, PartnerProfile, Booking, Service } from '../types';
-import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import PartnerHome from './partner/PartnerHome';
 import PartnerJobs from './partner/PartnerJobs';
@@ -31,6 +29,7 @@ import PartnerSettings from './partner/PartnerSettings';
 import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
+import { LoadingScreen } from './LoadingIndicator';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
@@ -152,15 +151,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-          className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full"
-        />
-      </div>
-    );
+    return <LoadingScreen message="Syncing pro job pool & active leads..." />;
   }
 
   const renderScreen = () => {
@@ -168,7 +159,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'home':
         return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
       case 'jobs':
-        return <PartnerJobs partner={partner} bookings={bookings} initialExpandedBookingId={targetBookingId} />;
+        return <PartnerJobs partner={partner} bookings={bookings} initialExpandedBookingId={targetBookingId} profile={profile} />;
       case 'wallet':
         return <PartnerWallet partner={partner} />;
       case 'settings':
@@ -178,7 +169,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'amc-leads':
         return <PartnerAmcLeads profile={profile} partner={partner} />;
       case 'offers':
-        return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} />;
+        return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} context="partner" />;
       default:
         return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
     }
@@ -194,70 +185,56 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   return (
     <div className="min-h-[100dvh] bg-slate-50 pb-32 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
       {/* App Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center transition-all">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-700 rounded-2xl flex items-center justify-center text-white shadow-lg">
-            <span className="font-black italic">Z</span>
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-9 h-9 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg">
+            <span className="font-black italic text-sm">Z</span>
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-900 leading-none mb-1">zomindia</h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Partner App</p>
+            <h1 className="text-xs font-black text-slate-900 leading-none mb-0.5 tracking-tight">zomindia</h1>
+            <p className="text-[8px] text-slate-400 font-extrabold uppercase tracking-widest leading-none">Partner App</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
            {profile.role === 'admin' && (
              <button 
                onClick={() => onAppNavigate?.('admin')}
-               className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-100 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-purple-100 transition-all"
+               className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded-lg text-[8px] font-black uppercase tracking-wider hover:bg-purple-100 transition-all shrink-0"
              >
-               Admin Mode
+               Admin
              </button>
            )}
            {profile.walletBalance !== undefined && (
              <button 
                onClick={() => navigateWithTarget('wallet')}
-               className={`flex items-center gap-2 px-4 py-2 bg-white rounded-2xl border transition-all hover:shadow-md active:scale-95 ${activeScreen === 'wallet' ? 'border-amber-500 shadow-lg shadow-amber-500/10' : 'border-slate-100'}`}
+               className={`flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border transition-all active:scale-95 shrink-0 ${activeScreen === 'wallet' ? 'border-amber-500 bg-amber-50/20' : 'border-slate-100'}`}
              >
-               <Wallet size={18} className="text-amber-500" />
-               <span className="text-sm font-black text-slate-900 tracking-tighter">₹{profile.walletBalance}</span>
+               <Wallet size={13} className="text-amber-500" />
+               <span className="text-[11px] font-black text-slate-800 tracking-tight">₹{profile.walletBalance}</span>
              </button>
            )}
            <button 
              onClick={() => navigateWithTarget('notifications')}
-             className="relative p-2 text-slate-400 hover:text-blue-700 transition-colors"
+             className="relative p-1.5 text-slate-400 hover:text-blue-700 transition-colors shrink-0"
            >
-             <Bell size={20} />
-             <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-           </button>
-           <button 
-             onClick={async () => {
-               try {
-                 await signOut(auth);
-                 window.location.href = '/';
-               } catch (e) {
-                 console.error("Logout failed", e);
-               }
-             }}
-             className="p-2 text-rose-400 hover:text-rose-600 transition-colors"
-             title="Logout"
-           >
-             <LogOut size={20} />
+             <Bell size={18} />
+             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-rose-500 rounded-full border border-white" />
            </button>
            <button 
              onClick={() => navigateWithTarget('settings')}
-             className={`w-10 h-10 rounded-2xl overflow-hidden bg-slate-100 border transition-all ${activeScreen === 'settings' ? 'border-blue-700 ring-2 ring-blue-700/20 shadow-lg' : 'border-slate-200'}`}
+             className={`w-8 h-8 rounded-xl overflow-hidden bg-slate-100 border transition-all shrink-0 ${activeScreen === 'settings' ? 'border-blue-700 ring-2 ring-blue-700/10' : 'border-slate-200'}`}
            >
               <img src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} alt="" className="w-full h-full object-cover" />
            </button>
            <button 
              onClick={() => setShowStatusModal(true)}
-             className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all ${
+             className={`px-2 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border transition-all shrink-0 ${
                partner?.availabilityStatus === 'Available' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                partner?.availabilityStatus === 'Busy' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-               'bg-slate-50 text-slate-400 border-slate-200'
+               'bg-slate-100 text-slate-500 border-slate-200'
              }`}
            >
-             <div className={`w-1.5 h-1.5 rounded-full ${
+             <span className={`w-1.5 h-1.5 rounded-full ${
                partner?.availabilityStatus === 'Available' ? 'bg-emerald-500 animate-pulse' :
                partner?.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-400'
              }`} />

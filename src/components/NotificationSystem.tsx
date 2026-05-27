@@ -6,7 +6,11 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info, CheckCircle, Smartphone, MapPin, ShieldCheck, Clock } from 'lucide-react';
 
-export default function NotificationSystem() {
+interface Props {
+  onNavigate?: (tab: any, arg?: string) => void;
+}
+
+export default function NotificationSystem({ onNavigate }: Props) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [user, setUser] = useState(auth.currentUser);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -91,7 +95,15 @@ export default function NotificationSystem() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95, filter: 'blur(4px)' }}
-            className={`p-4 rounded-2xl shadow-2xl pointer-events-auto flex items-start gap-4 relative overflow-hidden group border transition-all ${
+            onClick={(e) => {
+              markAsRead(notif.id);
+              if (onNavigate) {
+                if (notif.type === 'promotional') onNavigate('offers');
+                else if (notif.type === 'payment_received') onNavigate('wallet');
+                else if (notif.bookingId) onNavigate('bookings', notif.bookingId);
+              }
+            }}
+            className={`p-4 rounded-2xl shadow-2xl pointer-events-auto flex items-start gap-4 relative overflow-hidden group border cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ${
               (notif.type?.includes('success') || notif.type === 'job_completed' || notif.type === 'payment_received' || notif.type === 'job_finalized') ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/20' :
               (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? 'bg-blue-700 text-white border-blue-600 shadow-blue-700/20' :
               (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? 'bg-orange-500 text-white border-orange-400 shadow-orange-500/20' :
@@ -117,8 +129,11 @@ export default function NotificationSystem() {
               <p className="text-white/90 text-[11px] leading-relaxed font-semibold italic opacity-80">{notif.message}</p>
             </div>
             <button 
-              onClick={() => markAsRead(notif.id)}
-              className="shrink-0 p-1.5 text-white/50 hover:bg-white/10 hover:text-white rounded-lg transition-colors place-self-start"
+              onClick={(e) => {
+                e.stopPropagation();
+                markAsRead(notif.id);
+              }}
+              className="shrink-0 p-1.5 text-white/50 hover:bg-white/10 hover:text-white rounded-lg transition-colors place-self-start relative z-10"
             >
               <X size={16} />
             </button>

@@ -10,6 +10,7 @@ import {
   Smartphone,
   Navigation
 } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
 
 interface Props {
@@ -27,6 +28,18 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
   const service = currentJob ? services.find(s => s.id === currentJob.serviceId) : null;
   const customer = currentJob ? users.find(u => u.uid === currentJob.customerId) : null;
+
+  const upcomingJobs = bookings
+    .filter(b => b.status === 'confirmed')
+    .sort((a, b) => {
+      const timeA = a.scheduledAt?.toDate?.()?.getTime() || 0;
+      const timeB = b.scheduledAt?.toDate?.()?.getTime() || 0;
+      return timeA - timeB;
+    });
+  
+  const nextUpcomingJob = upcomingJobs[0];
+  const nextService = nextUpcomingJob ? services.find(s => s.id === nextUpcomingJob.serviceId) : null;
+  const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerId) : null;
 
   return (
     <div className="p-6 space-y-8">
@@ -56,7 +69,102 @@ export default function PartnerHome({ partner, bookings, services, users, profil
           <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
           <p className="text-3xl font-black italic">{partner?.rating || '4.9'}</p>
         </div>
-      </section>      {/* Current/Active Job Focus */}
+      </section>
+
+      {/* Recharts Weekly Earnings Trend Mini-Dashboard */}
+      <section className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Performance</h3>
+            <h4 className="text-sm font-black text-slate-900 italic">Weekly Earnings trend</h4>
+          </div>
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0">
+            <TrendingUp size={12} /> +12%
+          </span>
+        </div>
+        <div className="h-40 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart 
+              data={[
+                { day: 'Mon', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.12) : 1200 },
+                { day: 'Tue', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.08) : 800 },
+                { day: 'Wed', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.15) : 1500 },
+                { day: 'Thu', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.22) : 2100 },
+                { day: 'Fri', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.18) : 1800 },
+                { day: 'Sat', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.25) : 2500 },
+                { day: 'Sun', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.10) : 1000 },
+              ]} 
+              margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <XAxis 
+                dataKey="day" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} 
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  background: '#0f172a', 
+                  border: 'none', 
+                  borderRadius: '12px', 
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  color: '#fff' 
+                }}
+                labelStyle={{ color: '#94a3b8' }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="earnings" 
+                stroke="#10b981" 
+                strokeWidth={2.5} 
+                fillOpacity={1} 
+                fill="url(#colorEarnings)" 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* Upcoming Appointment Reminders */}
+      {nextUpcomingJob && (
+        <section className="space-y-4 animate-fade-in-down">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Upcoming Appointment</h3>
+          <div 
+            onClick={() => onNavigate('jobs', nextUpcomingJob.id)}
+            className="bg-indigo-600 p-6 rounded-[36px] text-white shadow-xl shadow-indigo-600/10 cursor-pointer group active:scale-98 transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-white/10 rounded-3xl flex flex-col items-center justify-center text-white shrink-0">
+                <Clock size={18} />
+                <span className="text-[8px] font-bold mt-1 uppercase">Remind</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-extrabold italic text-sm leading-snug group-hover:underline truncate">{nextService?.name || 'Assigned Duty'}</h4>
+                <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider mt-1">
+                  Slot, {nextUpcomingJob.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Client: {nextCustomer?.displayName.split(' ')[0] || 'Member'}
+                </p>
+              </div>
+            </div>
+            <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white group-hover:bg-white/20 transition-all shrink-0 ml-3">
+              <ChevronRight size={16} />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Current/Active Job Focus */}
       <section className="space-y-6">
         <div className="flex justify-between items-end px-1">
           <div>

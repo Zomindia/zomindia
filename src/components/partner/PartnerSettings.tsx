@@ -5,7 +5,6 @@ import {
   ShieldCheck, 
   Clock, 
   MapPin, 
-  LogOut, 
   ChevronRight, 
   Camera, 
   Check,
@@ -16,13 +15,15 @@ import {
   Zap,
   Globe,
   Bell,
-  Wallet
+  Wallet,
+  Bot
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, WorkingHours } from '../../types';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
-import { signOut } from 'firebase/auth';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
+import AdminUpload from '../AdminUpload';
+import { sendNotification } from '../../lib/notifications';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -38,6 +39,12 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
   const [categories, setCategories] = useState<Category[]>([]);
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // KYC custom fields state
+  const [kycIdUrl, setKycIdUrl] = useState(partner?.kycDocuments?.[0]?.url || '');
+  const [kycAddressUrl, setKycAddressUrl] = useState(partner?.kycDocuments?.[1]?.url || '');
+  const [kycSubmitSuccess, setKycSubmitSuccess] = useState(false);
+  const [kycLoading, setKycLoading] = useState(false);
 
   const [editForm, setEditForm] = useState({
     displayName: profile.displayName,
@@ -77,9 +84,45 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
     }
   };
 
-  const logout = () => {
-    signOut(auth);
-    window.location.reload();
+  const handleKYCSubmit = async () => {
+    if (!partner) return;
+    setKycLoading(true);
+    try {
+      await updateDoc(doc(db, 'partners', partner.id), {
+        kycStatus: 'pending',
+        kycDocuments: [
+          { type: 'Identity Proof', url: kycIdUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926', status: 'pending' },
+          { type: 'Address Proof', url: kycAddressUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926', status: 'pending' }
+        ],
+        updatedAt: Timestamp.now()
+      });
+      
+      // Notify partner
+      await sendNotification(
+        profile.uid,
+        'KYC Documents Uploaded!',
+        'Your profile verification request has been queued. Verification usually takes 4-8 hours.',
+        'promotional'
+      );
+      
+      // Notify Admin
+      await sendNotification(
+        'sarthakwebtech@gmail.com',
+        'New Partner KYC Submitted',
+        `Partner ${profile.displayName} (${profile.email}) uploaded KYC documents. Approval needed.`,
+        'promotional'
+      );
+      
+      setKycSubmitSuccess(true);
+      setTimeout(() => {
+        setIsKYCModalOpen(false);
+        setKycSubmitSuccess(false);
+      }, 2500);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `partners/${partner.id}`);
+    } finally {
+      setKycLoading(false);
+    }
   };
 
   return (
@@ -101,26 +144,39 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
       </section>
 
       {/* KYC Status Banner */}
-      <section className={`p-6 rounded-[32px] border ${partner?.isVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+      <section className={`p-6 rounded-[32px] border ${partner?.isVerified ? 'bg-emerald-50 border-emerald-200' : partner?.kycStatus === 'pending' ? 'bg-indigo-50/50 border-indigo-200' : partner?.kycStatus === 'rejected' ? 'bg-rose-50/50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
          <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-               <div className={`p-3 rounded-2xl ${partner?.isVerified ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-amber-500 text-white shadow-lg shadow-amber-200'}`}>
+               <div className={`p-3 rounded-2xl ${partner?.isVerified ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : partner?.kycStatus === 'pending' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : partner?.kycStatus === 'rejected' ? 'bg-rose-500 text-white shadow-lg shadow-rose-200' : 'bg-amber-500 text-white shadow-lg shadow-amber-200'}`}>
                    {partner?.isVerified ? <ShieldCheck size={20} /> : <AlertCircle size={20} />}
                </div>
                <div>
-                  <h4 className="text-sm font-bold text-slate-900">{partner?.isVerified ? 'Partner Verified' : 'KYC Required'}</h4>
-                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">{partner?.isVerified ? 'Access to Elite Jobs' : 'Some features locked'}</p>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    {partner?.isVerified ? 'Certified Provider' : partner?.kycStatus === 'pending' ? 'Verification In Progress' : partner?.kycStatus === 'rejected' ? 'KYC Claim Rejected' : 'KYC Required'}
+                  </h4>
+                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">
+                    {partner?.isVerified ? 'Access to Elite Jobs' : partner?.kycStatus === 'pending' ? 'Awaiting administrator audit' : partner?.kycStatus === 'rejected' ? 'Action required: upload valid docs' : 'Some features locked'}
+                  </p>
                </div>
             </div>
             {!partner?.isVerified && (
                <button 
                  onClick={() => setIsKYCModalOpen(true)}
-                 className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/20"
+                 className={`px-4 py-2 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl ${partner?.kycStatus === 'pending' ? 'bg-indigo-600 shadow-indigo-500/20' : partner?.kycStatus === 'rejected' ? 'bg-rose-600 shadow-rose-500/20' : 'bg-amber-500 shadow-amber-500/20'}`}
                >
-                 Verify
+                 {partner?.kycStatus === 'pending' ? 'Review Docs' : 'Verify Now'}
                </button>
             )}
          </div>
+         {partner?.kycStatus === 'rejected' && partner?.kycRejectReason && (
+            <div className="mt-4 p-4 bg-rose-50/50 rounded-2xl border border-rose-100/50 flex gap-3 text-rose-800 animate-fade-in">
+               <AlertCircle size={14} className="shrink-0 mt-0.5" />
+               <div className="text-left">
+                  <p className="text-[9px] font-black uppercase tracking-wider mb-0.5">Disapproval Reason:</p>
+                  <p className="text-[11px] font-bold leading-normal">{partner.kycRejectReason}</p>
+               </div>
+            </div>
+         )}
       </section>
 
       {/* Navigation Options */}
@@ -133,6 +189,7 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
            { icon: Clock, label: 'Work Schedule', value: 'Customizable', onClick: () => setIsEditing(true) },
            { icon: Bell, label: 'Notifications', value: 'Enabled', onClick: () => onNavigate('notifications') },
            { icon: Globe, label: 'Service Areas', value: 'City Wide', onClick: () => {} },
+           { icon: Bot, label: '🤖 AI Partner Support', value: 'Online Assistance', onClick: () => window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } })) },
          ].map((opt, idx) => (
            <button 
              key={idx}
@@ -151,19 +208,6 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
               </div>
            </button>
          ))}
-
-         <button 
-           onClick={logout}
-           className="w-full bg-rose-50 p-5 rounded-[28px] border border-rose-100 flex justify-between items-center active:scale-98 transition-transform group mt-10"
-         >
-            <div className="flex items-center gap-4 text-rose-600">
-               <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center">
-                  <LogOut size={18} />
-               </div>
-               <span className="font-bold text-sm italic">Disconnect Account</span>
-            </div>
-            <ChevronRight size={16} className="text-rose-300" />
-         </button>
       </section>
 
       {/* Full Screen Editing Layer */}
@@ -283,7 +327,115 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
          )}
       </AnimatePresence>
 
-      {/* KYC Modal placeholder logic would go here, omitting for brevity in favor of core app flow */}
+      {/* KYC Submit and Verification Modal */}
+      <AnimatePresence>
+         {isKYCModalOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[120] bg-slate-900/80 backdrop-blur-md flex flex-col justify-end sm:justify-center items-center p-4 overflow-y-auto"
+            >
+               <motion.div 
+                 initial={{ y: '100%' }} 
+                 animate={{ y: 0 }} 
+                 exit={{ y: '100%' }}
+                 className="bg-white w-full max-w-md rounded-t-[48px] sm:rounded-[48px] p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+               >
+                  <button 
+                    onClick={() => setIsKYCModalOpen(false)} 
+                    className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-full transition-all"
+                  >
+                     <X size={20} />
+                  </button>
+
+                  <div className="mb-6 shrink-0 mt-2">
+                     <h3 className="text-2xl font-black italic text-slate-900 leading-none">KYC Verification</h3>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">
+                       {partner?.kycStatus === 'pending' ? 'Documents Under Active Revision' : 'Secure Document Depository'}
+                     </p>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-6 pr-1 no-scrollbar pb-6">
+                     {kycSubmitSuccess ? (
+                        <div className="p-10 text-center space-y-4">
+                           <div className="w-16 h-16 bg-emerald-500 text-white rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/20">
+                              <ShieldCheck size={36} />
+                           </div>
+                           <h4 className="text-lg font-black italic">Successfully Registered!</h4>
+                           <p className="text-xs text-slate-500 font-bold tracking-tight">Your KYC documents have been successfully filed. Our administrator will review them soon.</p>
+                        </div>
+                     ) : (
+                        <>
+                           <div className="space-y-2 flex-1">
+                              {partner?.kycStatus === 'pending' && (
+                                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-3 text-blue-800 shrink-0 mb-4 animate-fade-in">
+                                    <Clock size={16} className="shrink-0 mt-0.5" />
+                                    <span className="text-xs font-bold leading-normal">
+                                      Your application is currently pending and visible to administrators. Uploading new documents will refresh your file queue.
+                                    </span>
+                                 </div>
+                              )}
+                              
+                              <div className="space-y-4">
+                                 <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Identity proof (PAN / Aadhaar / DL)</label>
+                                    <AdminUpload 
+                                      label="Drop or Select Identity Document"
+                                      onUpload={(url) => setKycIdUrl(url)}
+                                      value={kycIdUrl}
+                                      type="file"
+                                      accept=".jpg,.jpeg,.png,.pdf"
+                                    />
+                                    {kycIdUrl && (
+                                       <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl max-w-max border border-emerald-100">
+                                          <Check size={12} strokeWidth={3} />
+                                          <span className="text-[9px] font-bold uppercase tracking-wider">Identity Document Loaded</span>
+                                       </div>
+                                    )}
+                                 </div>
+
+                                 <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Address Proof (Utility Bill / Land Agreement)</label>
+                                    <AdminUpload 
+                                      label="Drop or Select Address Document"
+                                      onUpload={(url) => setKycAddressUrl(url)}
+                                      value={kycAddressUrl}
+                                      type="file"
+                                      accept=".jpg,.jpeg,.png,.pdf"
+                                    />
+                                    {kycAddressUrl && (
+                                       <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl max-w-max border border-emerald-100">
+                                          <Check size={12} strokeWidth={3} />
+                                          <span className="text-[9px] font-bold uppercase tracking-wider">Address Document Loaded</span>
+                                       </div>
+                                    )}
+                                 </div>
+                              </div>
+                           </div>
+                        </>
+                     )}
+                  </div>
+
+                  {!kycSubmitSuccess && (
+                     <div className="pt-4 border-t border-slate-100 shrink-0">
+                        <button
+                          disabled={kycLoading || !kycIdUrl || !kycAddressUrl}
+                          onClick={handleKYCSubmit}
+                          className="w-full bg-blue-700 disabled:opacity-50 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                        >
+                           {kycLoading ? (
+                             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                           ) : (
+                             'File Verification Claim'
+                           )}
+                        </button>
+                     </div>
+                  )}
+               </motion.div>
+            </motion.div>
+         )}
+      </AnimatePresence>
     </div>
   );
 }

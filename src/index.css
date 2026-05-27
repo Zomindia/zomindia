@@ -27,16 +27,18 @@
   --color-luxury-gold: #C5A059;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   html {
     scroll-behavior: smooth;
   }
   body {
-    @apply antialiased text-slate-900 bg-slate-50 selection:bg-blue-700 selection:text-white leading-relaxed;
+    @apply antialiased text-slate-900 bg-slate-50 dark:text-slate-100 dark:bg-slate-950 selection:bg-blue-700 selection:text-white leading-relaxed transition-colors duration-200;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight text-slate-900 font-bold;
+    @apply font-display tracking-tight text-slate-900 dark:text-slate-100 font-bold;
   }
 
   p {

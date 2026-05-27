@@ -1,0 +1,8 @@
+{
+  "appId": "com.zomato.homeservices",
+  "appName": "Zomato Home Services",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

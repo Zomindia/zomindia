@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Bot, User } from 'lucide-react';
 import { UserProfile, Booking } from '../types';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export default function AiSupportChat({ userProfile, isPartner, bookings }: { userProfile?: UserProfile, isPartner?: boolean, bookings?: Booking[] }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,13 +17,79 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    };
+    scrollToBottom();
+    // Use a small timeout to let the DOM settle before measuring and scrolling
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => clearTimeout(timer);
+  }, [messages, isOpen, isLoading]);
+
+  // Support customized trigger from anywhere
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && typeof customEvent.detail.open === 'boolean') {
+        setIsOpen(customEvent.detail.open);
+      } else {
+        setIsOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('toggle-ai-chat', handleToggle);
+    return () => window.removeEventListener('toggle-ai-chat', handleToggle);
+  }, []);
+
+  // Sync or fetch bookings dynamically
+  useEffect(() => {
+    if (bookings) {
+      setLocalBookings(bookings);
+      return;
     }
-  }, [messages, isOpen]);
+    if (!userProfile) {
+      setLocalBookings([]);
+      return;
+    }
+
+    try {
+      const roleField = userProfile.role === 'partner' ? 'partnerId' : 'customerId';
+      const q = query(
+        collection(db, 'bookings'),
+        where(roleField, '==', userProfile.uid),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      );
+
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+        setLocalBookings(list);
+      }, (err) => {
+        console.warn("Silent fallback: bookings list permission in AI Chat:", err);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Could not load bookings inside AI Chat:", e);
+    }
+  }, [userProfile?.uid, bookings]);
+
+  // Update starting message when role switches
+  useEffect(() => {
+    setMessages([
+      { 
+        role: 'ai', 
+        text: isPartner 
+          ? 'Hello Pro! I am your partner support assistant. How can I help you manage your jobs today?' 
+          : 'Hi! I am your zomindia AI assistant. Looking for help with a booking or a service? Ask me anything!' 
+      }
+    ]);
+  }, [isPartner]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -44,7 +112,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
               city: (userProfile as any).city, // city might be custom or in address
               isPartner: isPartner
             } : { isPartner: isPartner },
-            bookings: bookings?.slice(0, 5).map(b => ({
+            bookings: localBookings?.slice(0, 5).map(b => ({
               id: b.id,
               status: b.status,
               serviceId: b.serviceId,
@@ -75,7 +143,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 right-6 sm:bottom-8 sm:right-8 bg-blue-700 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform z-50 flex items-center justify-center"
+          className="fixed bottom-24 right-6 sm:bottom-8 sm:right-8 bg-blue-700 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform z-[110] flex items-center justify-center border-2 border-white/20 hover:bg-blue-800"
         >
           <MessageSquare size={24} />
         </button>
@@ -88,7 +156,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className="fixed bottom-24 right-4 sm:bottom-24 sm:right-8 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-3xl shadow-2xl flex flex-col z-50 overflow-hidden"
+            className="fixed bottom-24 right-4 sm:bottom-24 sm:right-8 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-3xl shadow-2xl flex flex-col z-[110] overflow-hidden"
             style={{ maxHeight: '600px', height: '60vh' }}
           >
             {/* Header */}
@@ -97,7 +165,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
                 <Bot size={20} className="text-amber-400" />
                 <div>
                   <h3 className="font-bold text-sm">AI Support</h3>
-                  <p className="text-[10px] text-slate-400 font-medium.tracking-widest uppercase">zomindia Assistant</p>
+                  <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">zomindia Assistant</p>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors">

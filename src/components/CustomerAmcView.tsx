@@ -12,6 +12,7 @@ import { db } from '../lib/firebase';
 import { AMC, UserProfile, Service, AMCStatus } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
+import { LoadingScreen } from './LoadingIndicator';
 import { 
   Zap, 
   CheckCircle2, 
@@ -105,7 +106,7 @@ export default function CustomerAmcView({ profile, onBack }: CustomerAmcViewProp
     }
   };
 
-  if (loading) return <div className="p-12 text-center text-slate-400 font-bold uppercase animate-pulse">Initializing AMC Portal...</div>;
+  if (loading) return <LoadingScreen message="Initializing premium AMC plans & coverage..." />;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12 pb-24">

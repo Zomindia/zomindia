@@ -22,6 +22,58 @@ export default defineConfig(({ mode }) => {
           // Disable PWA in dev to avoid [vite] middleware and service worker errors
           enabled: false
         },
+        workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
+          globPatterns: [
+            '**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'
+          ],
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                }
+              }
+            },
+            {
+              urlPattern: /\.(?:js|css|html)$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'static-resources',
+                expiration: {
+                  maxEntries: 80,
+                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+                }
+              }
+            },
+            {
+              urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'local-images',
+                expiration: {
+                  maxEntries: 120,
+                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+                }
+              }
+            },
+            {
+              urlPattern: /^https:\/\/(?:images\.unsplash\.com|api\.dicebear\.com)\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'external-images',
+                expiration: {
+                  maxEntries: 150,
+                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+                }
+              }
+            }
+          ]
+        },
         manifest: {
           name: 'Zomindia',
           short_name: 'Zomindia',
@@ -58,7 +110,6 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    logLevel: 'silent',
     server: {
       // Explicitly disable HMR to avoid websocket connection errors in this environment
       hmr: false,

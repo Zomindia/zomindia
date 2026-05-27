@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus, AMC } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -38,12 +38,24 @@ interface Props {
   onSuccess: () => void;
 }
 
-function AddressAutocomplete({ onAddressSelect }: { onAddressSelect: (address: string, lat: number, lng: number) => void }) {
+function AddressAutocomplete({ 
+  value, 
+  onChange, 
+  onAddressSelect 
+}: { 
+  value: string; 
+  onChange: (val: string) => void; 
+  onAddressSelect: (address: string, lat: number, lng: number) => void;
+}) {
   const placesLib = useMapsLibrary('places');
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(value);
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const autocompleteService = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesService = useRef<google.maps.places.PlacesService | null>(null);
+
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
 
   useEffect(() => {
     if (placesLib) {
@@ -55,12 +67,13 @@ function AddressAutocomplete({ onAddressSelect }: { onAddressSelect: (address: s
   }, [placesLib]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setInputValue(value);
+    const val = e.target.value;
+    setInputValue(val);
+    onChange(val);
 
-    if (value.length > 2 && autocompleteService.current) {
+    if (val.length > 2 && autocompleteService.current) {
       autocompleteService.current.getPlacePredictions(
-        { input: value, componentRestrictions: { country: 'in' } },
+        { input: val, componentRestrictions: { country: 'in' } },
         (results) => setPredictions(results || [])
       );
     } else {
@@ -70,6 +83,7 @@ function AddressAutocomplete({ onAddressSelect }: { onAddressSelect: (address: s
 
   const handleSelectPrediction = (prediction: google.maps.places.AutocompletePrediction) => {
     setInputValue(prediction.description);
+    onChange(prediction.description);
     setPredictions([]);
 
     if (placesService.current) {
@@ -145,6 +159,90 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [activeAmc, setActiveAmc] = useState<AMC | null>(null);
   const [useAmc, setUseAmc] = useState(false);
 
+  const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
+
+  const [contactEmail, setContactEmail] = useState(profile?.email || '');
+  const [contactPhone, setContactPhone] = useState(profile?.phoneNumber || '');
+
+  useEffect(() => {
+    if (profile) {
+      if (!contactEmail && profile.email) setContactEmail(profile.email);
+      if (!contactPhone && profile.phoneNumber) setContactPhone(profile.phoneNumber);
+    }
+  }, [profile]);
+
+  // Fetch busy/unavailable slots in real-time
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const today = new Date();
+    const minDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
+    const maxDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30);
+    const minTimestamp = Timestamp.fromDate(minDate);
+    const maxTimestamp = Timestamp.fromDate(maxDate);
+
+    // Use a query that matches our deployed security rules and limits to +/- 30 days to improve performance and prevent overload
+    const q = query(
+      collection(db, 'bookings'),
+      where('status', 'not-in', ['cancelled', 'rejected']),
+      where('scheduledAt', '>=', minTimestamp),
+      where('scheduledAt', '<=', maxTimestamp)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const busyMap: { [date: string]: string[] } = {};
+        
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (!data.scheduledAt) return;
+          
+          let bookingDateObj: Date;
+          if (data.scheduledAt instanceof Timestamp) {
+            bookingDateObj = data.scheduledAt.toDate();
+          } else if (data.scheduledAt.toDate && typeof data.scheduledAt.toDate === 'function') {
+            bookingDateObj = data.scheduledAt.toDate();
+          } else if (data.scheduledAt.seconds) {
+            bookingDateObj = new Date(data.scheduledAt.seconds * 1000);
+          } else {
+            bookingDateObj = new Date(data.scheduledAt);
+          }
+          
+          // Form local YYYY-MM-DD
+          const year = bookingDateObj.getFullYear();
+          const month = String(bookingDateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(bookingDateObj.getDate()).padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+          
+          // Form local HH:MM (e.g., "09:00", "13:00")
+          const hours = String(bookingDateObj.getHours()).padStart(2, '0');
+          const minutes = String(bookingDateObj.getMinutes()).padStart(2, '0');
+          const timeStr = `${hours}:${minutes}`;
+          
+          if (!busyMap[dateStr]) {
+            busyMap[dateStr] = [];
+          }
+          if (!busyMap[dateStr].includes(timeStr)) {
+            busyMap[dateStr].push(timeStr);
+          }
+        });
+        
+        setBusySlots(busyMap);
+      },
+      (err) => {
+        try {
+          // Gracefully report and fallback if required
+          handleFirestoreError(err, OperationType.LIST, 'bookings');
+        } catch (logErr) {
+          console.error("Availability listener query fallback warning:", logErr);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [profile]);
+
   // Fetch available promos & AMCs
   useEffect(() => {
     const fetchData = async () => {
@@ -153,7 +251,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         // Fetch Promos
         const qPromos = query(collection(db, 'promotions'), where('active', '==', true), limit(5));
         const promoSnap = await getDocs(qPromos);
-        setAvailablePromos(promoSnap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion)));
+        const fetchedPromos = promoSnap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
+        const customerPromos = fetchedPromos.filter(promo => promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all');
+        setAvailablePromos(customerPromos);
 
         // Fetch user's active AMC for this service
         const qAmc = query(
@@ -190,6 +290,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const getSlotStatus = (slotValue: string, testDate?: string) => {
     const d = testDate || date;
     if (!d) return 'available';
+    
+    // Check if slot has already been booked (busy / unavailable) in real-time
+    if (busySlots[d] && busySlots[d].includes(slotValue)) {
+      return 'expired';
+    }
     
     const now = new Date();
     // Use local YYYY-MM-DD for comparison
@@ -347,6 +452,40 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastBookingId, setLastBookingId] = useState<string | null>(null);
 
+  const handleConfirmServiceClick = () => {
+    setError(null);
+    
+    // Check if email is missing and needs validation
+    if (!profile?.email) {
+      const emailTrimmed = contactEmail.trim();
+      if (!emailTrimmed) {
+        setError("Please enter your email address to continue.");
+        return;
+      }
+      // Simple email pattern check
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailTrimmed)) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+    }
+    
+    // Check if phone is missing and needs validation
+    if (!profile?.phoneNumber) {
+      const phoneDigits = contactPhone.replace('+91', '').trim();
+      if (!phoneDigits) {
+        setError("Please enter your 10-digit mobile number to continue.");
+        return;
+      }
+      if (phoneDigits.length !== 10) {
+        setError("Please enter a valid 10-digit mobile number.");
+        return;
+      }
+    }
+
+    setShowFinalConfirmation(true);
+  };
+
   const handleBooking = async () => {
     if (!profile) return;
     setLoading(true);
@@ -376,41 +515,125 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       // PARTNER MATCHING LOGIC
       let assignedPartnerId: string | null = null;
       let bookingStatus: BookingStatus = 'pending';
+      let eligiblePartnersList: PartnerProfile[] = [];
 
       try {
         const partnersSnap = await getDocs(collection(db, 'partners'));
         const partners = partnersSnap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerProfile));
 
+        // Haversine formula to compute exact physical distance in kilometers
+        const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+          const R = 6371; // Earth's radius in km
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c; // distance in km
+        };
+
+        const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const scheduledDayName = daysOfWeek[scheduledAt.getDay()];
+
         // 1. Filter eligible partners
-        const eligiblePartners = partners.filter(p => 
-          p.isVerified && 
-          p.status === 'active' && 
-          p.categories.includes(service.categoryId) &&
-          p.availabilityStatus !== 'Offline'
-        );
+        // A partner is eligible if:
+        // - Verified and active
+        // - Has expertise in the service category
+        // - Not completely offline
+        // - Active schedule: has booking scheduled time overlapping active working hours for that day of week (if working hour settings are present)
+        const eligiblePartners = partners.filter(p => {
+          const isCoreEligible = p.isVerified && 
+                                 p.status === 'active' && 
+                                 p.availabilityStatus !== 'Offline' &&
+                                 p.categories.includes(service.categoryId);
+          if (!isCoreEligible) return false;
+
+          // Optional schedule filter: if the partner has configured schedule, make sure they are active at scheduled day/time.
+          if (p.workingHours && p.workingHours.length > 0) {
+            const daySched = p.workingHours.find(wh => wh.day.toLowerCase() === scheduledDayName.toLowerCase());
+            if (daySched && !daySched.enabled) {
+              return false; // Not working this day!
+            }
+            if (daySched && daySched.startTime && daySched.endTime && time) {
+              const [sHour, sMin] = time.split(':').map(Number);
+              const [startHour, startMin] = daySched.startTime.split(':').map(Number);
+              const [endHour, endMin] = daySched.endTime.split(':').map(Number);
+              
+              const sMinutes = sHour * 60 + sMin;
+              const startMinutes = startHour * 60 + startMin;
+              const endMinutes = endHour * 60 + endMin;
+              
+              if (sMinutes < startMinutes || sMinutes > endMinutes) {
+                return false; // Time booking falls outside of partner scheduled hours!
+              }
+            }
+          }
+          return true;
+        });
+
+        eligiblePartnersList = eligiblePartners;
 
         if (eligiblePartners.length > 0) {
-          // 2. Sort according to criteria
-          const sortedPartners = [...eligiblePartners].sort((a, b) => {
-            // Priority 1: Availability
-            if (a.availabilityStatus === 'Available' && b.availabilityStatus !== 'Available') return -1;
-            if (a.availabilityStatus !== 'Available' && b.availabilityStatus === 'Available') return 1;
+          // 2. Score according to proximity (Haversine), category rating, reviews volume, and real-time availability status
+          const scoredPartners = eligiblePartners.map(p => {
+            let score = 0;
 
-            // Priority 2: Proximity (if location is available)
-            if (location && a.lat && a.lng && b.lat && b.lng) {
-              const distA = Math.sqrt(Math.pow(a.lat - location.lat, 2) + Math.pow(a.lng - location.lng, 2));
-              const distB = Math.sqrt(Math.pow(b.lat - location.lat, 2) + Math.pow(b.lng - location.lng, 2));
-              if (Math.abs(distA - distB) > 0.0001) { // 0.0001 deg is ~11m
-                return distA - distB;
+            // Aspect A: Real-time Availability
+            if (p.availabilityStatus === 'Available') {
+              score += 150; // Heavily favor available professionals
+            } else if (p.availabilityStatus === 'Busy') {
+              score += 40; // Backup option
+            }
+
+            // Aspect B: Proximity (Haversine Distance matching)
+            let distanceInKm = 9999;
+            if (location && p.lat && p.lng) {
+              distanceInKm = haversineDistance(location.lat, location.lng, p.lat, p.lng);
+              if (distanceInKm <= 2) {
+                score += 200; // Extremely close
+              } else if (distanceInKm <= 5) {
+                score += 130; // Very close
+              } else if (distanceInKm <= 10) {
+                score += 80;  // Standard range
+              } else if (distanceInKm <= 20) {
+                score += 30;  // Moderate commute
+              } else {
+                score -= 30;  // Commute distance penalty
               }
             }
 
-            // Priority 3: Rating
-            return (b.rating || 0) - (a.rating || 0);
+            // Aspect C: Category Rating & Completed Experience
+            const rating = p.rating || 0;
+            if (rating >= 4.8) {
+              score += 60;
+            } else if (rating >= 4.5) {
+              score += 40;
+            } else if (rating >= 4.0) {
+              score += 20;
+            }
+
+            // Experience volume weight (proxied by completed review counts)
+            const reviews = p.reviewCount || 0;
+            if (reviews >= 50) {
+              score += 40;
+            } else if (reviews >= 20) {
+              score += 25;
+            } else if (reviews >= 5) {
+              score += 10;
+            }
+
+            return { partner: p, score, distance: distanceInKm };
           });
 
-          const bestPartner = sortedPartners[0];
-          assignedPartnerId = bestPartner.userId;
+          // Sort descending by calculated score
+          scoredPartners.sort((a, b) => b.score - a.score);
+
+          const bestMatchObj = scoredPartners[0];
+          console.log(`Matched partner ${bestMatchObj.partner.userId} with Score: ${bestMatchObj.score}, Distance: ${bestMatchObj.distance.toFixed(2)}km`);
+          
+          assignedPartnerId = bestMatchObj.partner.userId;
           bookingStatus = 'assigned';
         }
       } catch (matchErr) {
@@ -439,9 +662,26 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         amcId: useAmc ? activeAmc?.id : null,
         serviceOtp,
         otpVerified: false,
+        customerBookedEmail: contactEmail.trim(),
+        customerBookedPhone: contactPhone.trim(),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
+
+      // Backfill user profile in Firestore if email or phoneNumber was missing
+      const userRef = doc(db, 'users', profile?.uid || auth.currentUser?.uid || '');
+      const profileUpdates: any = {};
+      
+      if (contactEmail.trim() && !profile?.email) {
+        profileUpdates.email = contactEmail.trim();
+      }
+      if (contactPhone.trim() && !profile?.phoneNumber) {
+        profileUpdates.phoneNumber = contactPhone.trim();
+      }
+      if (Object.keys(profileUpdates).length > 0) {
+        profileUpdates.updatedAt = Timestamp.now();
+        batch.update(userRef, profileUpdates);
+      }
 
       // Update AMC usage if applicable
       if (useAmc && activeAmc) {
@@ -480,6 +720,18 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         // Notify admin (sarthakwebtech@gmail.com)
         await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', bookingRef.id);
       }
+
+      // Notify other active, qualified partners nearby so they receive alerts for newly published booking requests
+      const matchingPartnersToNotify = eligiblePartnersList.filter(p => p.userId !== assignedPartnerId);
+      for (const pt of matchingPartnersToNotify) {
+        await sendNotification(
+          pt.userId,
+          'New Booking Request Nearby!',
+          `A new request for ${service.name} has been published in your area. Accept it now!`,
+          'new_booking',
+          bookingRef.id
+        );
+      }
       
       setShowFinalConfirmation(false);
       setShowSuccessModal(true);
@@ -502,6 +754,74 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   };
 
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+
+  const reverseGeocode = async (lat: number, lng: number) => {
+    setIsGeocoding(true);
+    let resolvedAddress = '';
+
+    // 1. Try Nominatim FIRST (unrestricted, reliable, no console auth errors)
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'en',
+          'User-Agent': 'zomindia-app-preview'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          resolvedAddress = data.display_name;
+        }
+      }
+    } catch (err) {
+      console.warn("OSM Nominatim reverse-geocode failed, trying Google Maps fallback:", err);
+    }
+
+    // 2. Fallback to Google Maps Geocoder if Nominatim failed
+    if (!resolvedAddress && typeof google !== 'undefined' && google.maps) {
+      try {
+        const geocoder = new google.maps.Geocoder();
+        const response = await geocoder.geocode({ location: { lat, lng } });
+        if (response.results && response.results[0]) {
+          resolvedAddress = response.results[0].formatted_address;
+        }
+      } catch (e) {
+        console.warn("Google Maps Geocoder failed or restricted:", e);
+      }
+    }
+
+    // 3. Coordinate fallback
+    if (!resolvedAddress) {
+      resolvedAddress = `Point: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+
+    setAddress(resolvedAddress);
+    setIsGeocoding(false);
+  };
+
+  const getEventLatLng = (e: any): { lat: number, lng: number } | null => {
+    let lat: any = null;
+    let lng: any = null;
+
+    if (e.detail?.latLng) {
+      lat = e.detail.latLng.lat;
+      lng = e.detail.latLng.lng;
+    } else if (e.latLng) {
+      lat = e.latLng.lat;
+      lng = e.latLng.lng;
+    }
+
+    if (lat && lng) {
+      const latVal = typeof lat === 'function' ? lat() : lat;
+      const lngVal = typeof lng === 'function' ? lng() : lng;
+      if (typeof latVal === 'number' && typeof lngVal === 'number') {
+        return { lat: latVal, lng: lngVal };
+      }
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (location) {
@@ -657,55 +977,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   </div>
                 </motion.div>
               )}
-              {showFinalConfirmation && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute inset-0 z-[70] bg-white/98 backdrop-blur-xl flex flex-col items-center justify-center p-6 md:p-10 text-center overflow-y-auto"
-                >
-                  <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-700 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shrink-0">
-                    <CheckCircle2 size={32} />
-                  </div>
-                  <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4 tracking-tight font-display">Confirm Selection</h3>
-                  
-                  <div className="w-full bg-slate-50 p-6 md:p-8 rounded-3xl border border-slate-100 mb-8 text-left space-y-4">
-                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Service</span>
-                        <span className="text-xs font-bold text-slate-900 text-right ml-4">{service.name}</span>
-                     </div>
-                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timeline</span>
-                        <span className="text-xs font-bold text-slate-900">{date} at {time}</span>
-                     </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</span>
-                        <span className="text-xl font-bold text-slate-900 tracking-tight">₹{calculateFinalPrice()}</span>
-                     </div>
-                  </div>
-
-                    <div className="flex flex-col sm:flex-row gap-4 w-full">
-                      <button 
-                        disabled={loading}
-                        onClick={() => {
-                          setShowFinalConfirmation(false);
-                          setStep(1);
-                        }} 
-                        className="flex-1 py-4 md:py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-slate-100 text-slate-400 hover:text-blue-700 transition-all active:scale-95 italic"
-                      >
-                        Modify Selection
-                      </button>
-                      <button 
-                      disabled={loading}
-                      onClick={handleBooking} 
-                      className="flex-1 py-4 md:py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic"
-                    >
-                      {loading ? 'Confirming...' : 'Continue'}
-                    </button>
-                  </div>
-                  <p className="mt-8 text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto">By finalizing, you agree to our terms of service and convenience fee policy.</p>
-                </motion.div>
-              )}
               {step === 1 && (
                 <motion.div 
                   key="step1"
@@ -859,9 +1130,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   className="space-y-6"
                 >
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-xs font-bold text-slate-400 uppercase ml-1">Search Location</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-400 uppercase ml-1">Search or Select Address</label>
                       <button 
+                        type="button"
                         onClick={async () => {
                           if (navigator.permissions) {
                             try {
@@ -871,84 +1143,143 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                 return;
                               }
                             } catch (e) {
-                              // Permissions API not supported or error, continue to fallback
+                              // Permissions API not supported or error
                             }
                           }
 
                           if (navigator.geolocation) {
+                            const successCallback = async (pos: GeolocationPosition) => {
+                              const lat = pos.coords.latitude;
+                              const lng = pos.coords.longitude;
+                              setLocation({ lat, lng });
+                              setMapCenter({ lat, lng });
+                              reverseGeocode(lat, lng);
+                            };
+                            
+                            const errorCallback = (err: GeolocationPositionError) => {
+                              alert(handleMapsError(err));
+                            };
+
                             navigator.geolocation.getCurrentPosition(
-                              async (pos) => {
-                                const lat = pos.coords.latitude;
-                                const lng = pos.coords.longitude;
-                                setLocation({ lat, lng });
-                                setMapCenter({ lat, lng });
-                                
-                                try {
-                                  const geocoder = new google.maps.Geocoder();
-                                  const response = await geocoder.geocode({ location: { lat, lng } });
-                                  if (response.results[0]) {
-                                    setAddress(response.results[0].formatted_address);
-                                  } else {
-                                    setAddress(`[Point: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
-                                  }
-                                } catch (e) {
-                                  alert(handleMapsError(e));
-                                  setAddress(`[Location detected: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+                              successCallback,
+                              (err) => {
+                                if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+                                  // Fall back to standard mode if high accuracy times out/fails on sandbox
+                                  navigator.geolocation.getCurrentPosition(
+                                    successCallback,
+                                    errorCallback,
+                                    { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+                                  );
+                                } else {
+                                  errorCallback(err);
                                 }
                               },
-                              (err) => {
-                                alert(handleMapsError(err));
-                              },
-                              { timeout: 10000 }
+                              { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
                             );
                           } else {
                              alert("Geolocation is not supported by your browser.");
                           }
                         }}
-                        className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                        className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-colors flex items-center gap-1.5 shadow-sm"
                       >
-                        <MapPin size={12} /> Use Current
+                        <MapPin size={12} className="animate-pulse" /> Use GPS Location
                       </button>
                     </div>
-                      <div>
-                        <AddressAutocomplete 
-                          onAddressSelect={(addr, lat, lng) => {
-                            setAddress(addr);
-                            setLocation({ lat, lng });
-                            setMapCenter({ lat, lng });
-                          }} 
-                        />
-                        <div className="mt-2 text-center">
-                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-2">Or type manually below</p>
-                          <input 
-                            type="text"
-                            value={address}
-                            onChange={(e) => {
-                               setAddress(e.target.value);
-                               if (!location) setLocation({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi if typing manually without autocomplete
-                            }}
-                            placeholder="Enter detailed address..."
-                            className="w-full bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-700 transition-all"
-                          />
-                        </div>
-                      </div>
 
+                    {/* Single Unified Address Input integrating Autocomplete */}
+                    <div>
+                      <AddressAutocomplete 
+                        value={address}
+                        onChange={(val) => {
+                          setAddress(val);
+                          if (!location) setLocation({ lat: 28.6139, lng: 77.2090 });
+                        }}
+                        onAddressSelect={(addr, lat, lng) => {
+                          setAddress(addr);
+                          setLocation({ lat, lng });
+                          setMapCenter({ lat, lng });
+                        }} 
+                      />
+                    </div>
+
+                    {/* Interactive Geographic Map Picker */}
                     {address && location && (
-                      <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-200 mt-2 shadow-inner bg-slate-100">
-                        <Map
-                          defaultCenter={location}
-                          center={mapCenter}
-                          defaultZoom={15}
-                          mapId="DEMO_MAP_ID"
-                          gestureHandling="none"
-                          disableDefaultUI={true}
-                          className="w-full h-full"
-                          internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                        >
-                          <AdvancedMarker position={location}>
-                            <Pin background="#1c1917" glyphColor="#fff" borderColor="#000" />
-                          </AdvancedMarker>
-                        </Map>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
+                            🎯 Pinpoint Address Coordinate Map
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!address.trim()) return;
+                              setIsGeocoding(true);
+                              let resolvedLocation: { lat: number, lng: number } | null = null;
+                              try {
+                                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+                                const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  if (data?.[0]) {
+                                    resolvedLocation = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                                  }
+                                }
+                              } catch {}
+                              if (resolvedLocation) {
+                                setLocation(resolvedLocation);
+                                setMapCenter(resolvedLocation);
+                              } else {
+                                alert("Could not find address coordinate. Drag the map pin to set visually.");
+                              }
+                              setIsGeocoding(false);
+                            }}
+                            className="text-[9px] font-bold text-blue-700 hover:underline uppercase tracking-wider"
+                          >
+                            {isGeocoding ? "Locating..." : "Pin Typed Address"}
+                          </button>
+                        </div>
+                        <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner bg-slate-50">
+                          <Map
+                            defaultCenter={location}
+                            center={mapCenter}
+                            defaultZoom={15}
+                            mapId="DEMO_MAP_ID"
+                            gestureHandling="greedy"
+                            disableDefaultUI={false}
+                            zoomControl={true}
+                            streetViewControl={false}
+                            mapTypeControl={false}
+                            fullscreenControl={false}
+                            className="w-full h-full"
+                            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                            onClick={(e) => {
+                              const coords = getEventLatLng(e);
+                              if (coords) {
+                                setLocation(coords);
+                                setMapCenter(coords);
+                                reverseGeocode(coords.lat, coords.lng);
+                              }
+                            }}
+                          >
+                            <AdvancedMarker 
+                              position={location}
+                              draggable={true}
+                              onDragEnd={(e) => {
+                                const coords = getEventLatLng(e);
+                                if (coords) {
+                                  setLocation(coords);
+                                  setMapCenter(coords);
+                                  reverseGeocode(coords.lat, coords.lng);
+                                }
+                              }}
+                            >
+                              <Pin background="#1a1a1a" glyphColor="#fff" borderColor="#000" />
+                            </AdvancedMarker>
+                          </Map>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium px-1 flex items-center gap-1 italic">
+                          <span>💡</span> Drag the black pin or click anywhere on the map to accurately place your service location.
+                        </p>
                       </div>
                     )}
 
@@ -970,10 +1301,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                        <div className="flex justify-between items-center mb-2 ml-1">
                          <label className="block text-xs font-bold text-slate-400 uppercase">Offers & Promos</label>
                          <button 
-                           onClick={() => setShowPromos(true)}
+                           onClick={() => setShowPromos(!showPromos)}
                            className="text-[10px] font-black text-rose-500 uppercase tracking-widest hover:underline"
                          >
-                           View Available
+                           {showPromos ? 'Hide Offers' : 'View Available'}
                          </button>
                        </div>
                        <div className="flex gap-2">
@@ -981,16 +1312,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                            type="text"
                            value={promoInput}
                            onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                           placeholder="ENTER CODE"
+                           onFocus={() => setShowPromos(true)}
+                           placeholder="Type code or select from below..."
                            className="flex-1 bg-slate-50 px-4 py-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all font-mono text-sm font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-300"
                          />
-                         <button 
-                           onClick={handleApplyPromo}
-                           disabled={isVerifyingPromo || !promoInput.trim()}
-                           className="bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50"
-                         >
-                           {isVerifyingPromo ? '...' : 'APPLY'}
-                         </button>
+                         {promoInput.trim() && !appliedPromo && (
+                           <button 
+                             onClick={handleApplyPromo}
+                             disabled={isVerifyingPromo}
+                             className="bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50"
+                           >
+                             {isVerifyingPromo ? '...' : 'APPLY'}
+                           </button>
+                         )}
                        </div>
 
                        {/* Available Promos Overlay/Section */}
@@ -1003,30 +1337,64 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                              className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3"
                            >
                               <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Offers</span>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Offers ({availablePromos.length})</span>
                                 <button onClick={() => setShowPromos(false)} className="text-slate-400 px-2 py-1">
                                   <X size={14} />
                                 </button>
                               </div>
                               {availablePromos.length > 0 ? (
-                                <div className="space-y-3">
-                                  {availablePromos.map(p => (
-                                    <div key={p.id} className="bg-white border border-slate-100 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                                      <div>
-                                        <p className="font-black text-slate-900 text-sm tracking-tight">{p.name}</p>
-                                        <p className="text-[10px] font-bold text-emerald-600 uppercase">CODE: {p.code}</p>
-                                      </div>
-                                      <button 
+                                <div className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 max-h-60 overflow-y-auto no-scrollbar">
+                                  {availablePromos.map(p => {
+                                    const isSelected = appliedPromo?.id === p.id;
+                                    return (
+                                      <div 
+                                        key={p.id} 
                                         onClick={() => {
-                                          setAppliedPromo(p);
-                                          setShowPromos(false);
+                                          if (isSelected) {
+                                            setAppliedPromo(null);
+                                            setPromoInput('');
+                                          } else {
+                                            setAppliedPromo(p);
+                                            setPromoInput(p.code);
+                                            setShowPromos(false);
+                                          }
                                         }}
-                                        className="text-[10px] font-black text-slate-900 px-4 py-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                                        className={`p-4 rounded-xl flex justify-between items-center shadow-sm cursor-pointer border transition-all hover:scale-[1.01] active:translate-y-0.5 ${isSelected ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-slate-100 hover:border-slate-200'}`}
                                       >
-                                        Apply
-                                      </button>
-                                    </div>
-                                  ))}
+                                        <div className="flex-1 pr-3">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider font-mono">
+                                              {p.code}
+                                            </span>
+                                            {isSelected && (
+                                              <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                <CheckCircle2 size={10} /> Active
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="font-extrabold text-slate-800 text-xs tracking-tight">{p.name}</p>
+                                          <p className="text-[10px] text-slate-400 mt-0.5">Instant {p.discountType === 'percent' ? `${p.discountValue}%` : `₹${p.discountValue}`} off on booking!</p>
+                                        </div>
+                                        <button 
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isSelected) {
+                                              setAppliedPromo(null);
+                                              setPromoInput('');
+                                            } else {
+                                              setAppliedPromo(p);
+                                              setPromoInput(p.code);
+                                              setShowPromos(false);
+                                            }
+                                          }}
+                                          className={`text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors ${isSelected ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' : 'bg-slate-100 text-slate-905 hover:bg-slate-200'}`}
+                                        >
+                                          {isSelected ? 'Remove' : 'Apply'}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <p className="text-[10px] text-slate-400 italic text-center py-4">No exclusive offers found for you yet.</p>
@@ -1055,11 +1423,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                              </div>
                            </div>
                            <button 
-                            onClick={() => {
-                              setAppliedPromo(null);
-                              setPromoInput('');
-                            }} 
-                            className="bg-white p-2 rounded-lg text-slate-400 hover:text-blue-700 border border-emerald-100 transition-colors"
+                             type="button"
+                             onClick={() => {
+                               setAppliedPromo(null);
+                               setPromoInput('');
+                             }} 
+                             className="bg-white p-2 rounded-lg text-slate-400 hover:text-blue-700 border border-emerald-100 transition-colors"
                            >
                              <X size={14} />
                            </button>
@@ -1153,6 +1522,52 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           {address}
                         </p>
                       </div>
+
+                      {/* Contact Accuracy, Accessibility, & Security */}
+                      {(!profile?.email || !profile?.phoneNumber) && (
+                        <div className="bg-white rounded-[28px] border border-slate-200 p-5 space-y-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="w-1.5 h-3 bg-blue-700 rounded-full" />
+                            <p className="text-[10px] text-slate-900 font-black uppercase tracking-widest">Contact Accuracy & Security</p>
+                          </div>
+                          
+                          <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                            For security, accessibility, and real-time booking updates, please fill in your missing info.
+                          </p>
+
+                          {!profile?.email && (
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] text-slate-400 uppercase font-bold tracking-widest block">Your Email Address</label>
+                              <input 
+                                type="email"
+                                value={contactEmail}
+                                onChange={(e) => setContactEmail(e.target.value)}
+                                placeholder="name@domain.com"
+                                className="w-full bg-slate-50 border border-slate-200 text-sm font-bold text-slate-900 px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700 transition-all placeholder:text-slate-300"
+                              />
+                            </div>
+                          )}
+
+                          {!profile?.phoneNumber && (
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] text-slate-400 uppercase font-bold tracking-widest block">Your Mobile Number</label>
+                              <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">+91</span>
+                                <input 
+                                  type="tel"
+                                  value={contactPhone.replace('+91', '')}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                    setContactPhone(raw ? `+91${raw}` : '');
+                                  }}
+                                  placeholder="Enter 10-digit number"
+                                  className="w-full bg-slate-50 border border-slate-200 text-sm font-bold text-slate-900 pl-16 pr-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700 transition-all placeholder:text-slate-300"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="pt-4 border-t border-slate-200">
                         <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-3">Preferred Settlement Mode</p>
@@ -1254,7 +1669,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
                   <button 
                     disabled={loading}
-                    onClick={() => setShowFinalConfirmation(true)}
+                    onClick={handleConfirmServiceClick}
                     className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex justify-center items-center gap-2 shadow-lg shadow-blue-700/20"
                   >
                     {loading ? 'Processing...' : 'Confirm Service'}
@@ -1289,6 +1704,64 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               )}
             </AnimatePresence>
           </div>
+
+          <AnimatePresence>
+            {showFinalConfirmation && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute inset-0 z-[120] bg-white backdrop-blur-xl flex flex-col justify-between p-6 sm:p-8 overflow-y-auto"
+              >
+                <div>
+                  <div className="w-16 h-16 bg-blue-700 text-white rounded-full flex items-center justify-center mx-auto mb-4 mt-2 shadow-xl shrink-0">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4 tracking-tight font-display text-center">Confirm Selection</h3>
+                  
+                  <div className="w-full bg-slate-50 p-5 sm:p-6 rounded-3xl border border-slate-100 mb-4 text-left space-y-3.5">
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Service</span>
+                        <span className="text-xs font-bold text-slate-900 text-right ml-4">{service.name}</span>
+                     </div>
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timeline</span>
+                        <span className="text-xs font-bold text-slate-900 text-right">{date} at {time}</span>
+                     </div>
+                     <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</span>
+                        <span className="text-lg font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</span>
+                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3.5 w-full">
+                    <button 
+                      disabled={loading}
+                      onClick={() => {
+                        setShowFinalConfirmation(false);
+                        setStep(1);
+                      }} 
+                      className="py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all active:scale-95"
+                    >
+                      Modify Selection
+                    </button>
+                    <button 
+                      disabled={loading}
+                      onClick={handleBooking} 
+                      className="py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20 active:scale-95"
+                    >
+                      {loading ? 'Confirming...' : 'Continue'}
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto text-center">
+                    By finalizing, you agree to our terms of service and convenience fee policy.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
         
         <AnimatePresence>

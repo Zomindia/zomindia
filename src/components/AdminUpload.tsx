@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Upload, X, Check, Image as ImageIcon, FileText, Link as LinkIcon, AlertCircle } from 'lucide-react';
+import { Upload, X, Check, Image as ImageIcon, FileText, Link as LinkIcon, AlertCircle, Camera as CameraIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 interface AdminUploadProps {
   onUpload: (url: string) => void;
@@ -25,7 +27,7 @@ export default function AdminUpload({
   value = "",
   maxWidth = 1200
 }: AdminUploadProps) {
-  const [tab, setTab] = useState<'upload' | 'url'>('upload');
+  const [tab, setTab] = useState<'upload' | 'url' | 'camera'>('upload');
   const [url, setUrl] = useState(value);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +69,36 @@ export default function AdminUpload({
       };
       reader.onerror = reject;
     });
+  };
+
+  const handleCameraCapture = async () => {
+    setUploading(true);
+    setError(null);
+    try {
+      const image = await Camera.getPhoto({
+        quality: 85,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
+      });
+      
+      if (image && image.base64String) {
+        const finalData = `data:image/jpeg;base64,${image.base64String}`;
+        setPreview(finalData);
+        onUpload(finalData);
+        if (onMultipleChange) {
+          onMultipleChange([finalData]);
+        }
+      }
+    } catch (err: any) {
+      console.error("Camera capture failed or was cancelled", err);
+      // Suppress on user cancel
+      if (err?.message !== "User cancelled photos app" && err?.message !== "User cancelled camera experience") {
+        setError(err?.message || "Failed to capture image using native camera.");
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,20 +148,27 @@ export default function AdminUpload({
 
   return (
     <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
-      <div className="flex bg-white rounded-2xl p-1 mb-6 shadow-sm border border-slate-100">
+      <div className="flex bg-white rounded-2xl p-1 mb-6 shadow-sm border border-slate-100 gap-1 overflow-x-auto">
         <button 
           onClick={() => setTab('upload')}
-          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'upload' ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-400 hover:text-blue-700'}`}
+          className={`flex-1 py-2.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'upload' ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-400 hover:text-blue-700'}`}
         >
           {type === 'image' ? <ImageIcon size={14} className="inline mr-2" /> : <FileText size={14} className="inline mr-2" />}
-          File Upload
+          Upload File
+        </button>
+        <button 
+          onClick={() => setTab('camera')}
+          className={`flex-1 py-2.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'camera' ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-400 hover:text-blue-700'}`}
+        >
+          <CameraIcon size={14} className="inline mr-2" />
+          Camera
         </button>
         <button 
           onClick={() => setTab('url')}
-          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'url' ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-400 hover:text-blue-700'}`}
+          className={`flex-1 py-2.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'url' ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-400 hover:text-blue-700'}`}
         >
           <LinkIcon size={14} className="inline mr-2" />
-          Direct URL
+          URL
         </button>
       </div>
 
@@ -159,6 +198,25 @@ export default function AdminUpload({
               </div>
             </div>
           </motion.div>
+        ) : tab === 'camera' ? (
+          <motion.div 
+            key="camera"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-4"
+          >
+            <div 
+              onClick={handleCameraCapture}
+              className="border-2 border-dashed border-slate-200 rounded-3xl py-10 flex flex-col items-center justify-center bg-white hover:border-blue-700 hover:bg-blue-50/30 transition-all group cursor-pointer"
+            >
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-4 group-hover:bg-blue-700 group-hover:text-white transition-all">
+                {uploading ? <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CameraIcon size={20} />}
+              </div>
+              <p className="text-xs font-bold text-slate-900">{label ? label.replace("Upload", "Capture") : "Take Photo with Camera"}</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">TAP TO LAUNCH CAMERA</p>
+            </div>
+          </motion.div>
         ) : (
           <motion.div 
             key="url"
@@ -184,7 +242,7 @@ export default function AdminUpload({
                   setPreview(url);
                 }
               }}
-              className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-lg"
+              className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-lg cursor-pointer"
             >
               Verify & Sync
             </button>

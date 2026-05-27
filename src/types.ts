@@ -8,12 +8,14 @@ export interface UserProfile {
   role: 'customer' | 'partner' | 'admin'; // Keep strictly roles for profile
   adminSubRole?: AdminSubRole;
   phoneNumber?: string;
+  phoneNumberVerified?: boolean;
   photoURL?: string;
   address?: string;
   bio?: string;
   walletBalance?: number;
   referralCode?: string;
   referredBy?: string;
+  referralCreditPending?: boolean;
   isPremium?: boolean;
   subscriptionExpiry?: any;
   notificationPreferences?: {
@@ -147,6 +149,20 @@ export interface Booking {
   adminNotes?: string;
   isPriority?: boolean;
   notes?: string;
+  discountApplied?: number;
+  promoCode?: string | null;
+  isAmcBooking?: boolean;
+  amcId?: string | null;
+  activeCall?: ActiveCallInfo | null;
+  completionPhotos?: string[];
+}
+
+export interface ActiveCallInfo {
+  callerId: string;
+  callerName: string;
+  status: 'ringing' | 'connected' | 'ended';
+  timestamp: any;
+  endedBy?: string;
 }
 
 export interface Promotion {
@@ -175,6 +191,9 @@ export interface FAQ {
   order?: number;
   isPublished: boolean;
   createdAt: any;
+  popularity?: number;
+  helpfulCount?: number;
+  notHelpfulCount?: number;
 }
 
 export interface Review {

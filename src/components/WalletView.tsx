@@ -6,7 +6,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion } from 'motion/react';
 import { Wallet, CreditCard, ArrowDownLeft, ArrowUpRight, Copy, Share2 } from 'lucide-react';
 
-export default function WalletView({ profile }: { profile: UserProfile }) {
+export default function WalletView({ profile, setActiveTab }: { profile: UserProfile, setActiveTab?: (tab: any) => void }) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [topupAmount, setTopupAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -208,18 +208,27 @@ export default function WalletView({ profile }: { profile: UserProfile }) {
             <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-6">
               <Share2 size={24} />
             </div>
-            <h3 className="text-xl font-bold text-emerald-900 mb-2">Refer a Friend</h3>
-            <p className="text-sm text-emerald-700/80 mb-6 text-balance">
-              Get ₹100 in your wallet for every friend who completes their first booking using your code.
+            <h3 className="text-xl font-bold text-emerald-900 mb-2">Refer & Earn</h3>
+            <p className="text-sm text-emerald-700/80 mb-6 text-balance leading-relaxed">
+              Get <strong className="font-black text-emerald-900">₹100/- cash reward credit</strong> inside your wallet for every friend who completes their first service!
             </p>
             
             <button 
               onClick={copyReferralCode}
-              className="bg-white border-2 border-emerald-200 text-emerald-800 font-bold px-8 py-3 rounded-2xl hover:bg-emerald-100 transition-colors flex items-center gap-2 mb-6"
+              className="bg-white border-2 border-emerald-200 text-emerald-800 font-bold px-8 py-3 rounded-2xl hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 mb-4 w-full"
             >
               <Copy size={16} />
               {copied ? 'Copied to Clipboard!' : (profile.referralCode || `ZOM${profile.uid.slice(0, 6).toUpperCase()}`)}
             </button>
+
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('referrals')}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-8 py-3 rounded-2xl transition-all shadow-md shadow-emerald-700/10 active:scale-95 text-xs uppercase tracking-wider mb-6 w-full cursor-pointer"
+              >
+                Track Invitations & Friends List
+              </button>
+            )}
 
             {!profile.referredBy && (
               <div className="w-full pt-6 border-t border-emerald-100">

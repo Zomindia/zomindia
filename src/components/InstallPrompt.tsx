@@ -6,7 +6,6 @@ export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
-
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
@@ -27,19 +26,29 @@ export default function InstallPrompt() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // If iOS and not standalone, show prompt after a short delay
-    if (isIOSDevice && !window.matchMedia('(display-mode: standalone)').matches) {
-      const timer = setTimeout(() => setShowPrompt(true), 2000);
-      return () => {
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-        clearTimeout(timer);
-      };
-    }
-    
+    // Initial delay to show prompt
+    const initialTimer = setTimeout(() => {
+      setShowPrompt(true);
+    }, 2000);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      clearTimeout(initialTimer);
     };
   }, []);
+
+  // Interval to show prompt every 30 seconds if not installed
+  useEffect(() => {
+    if (isInstalled) return;
+
+    const interval = setInterval(() => {
+      if (!isInstalled) {
+        setShowPrompt(true);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [isInstalled]);
 
   const handleInstallClick = async () => {
     if (isIOS) {
@@ -72,18 +81,7 @@ export default function InstallPrompt() {
 
   const handleClose = () => {
     setShowPrompt(false);
-    // User requested to force the popup for accuracy and security, 
-    // so we will only suppress it for the current session instead of 24 hours.
-    sessionStorage.setItem('installPromptDismissedSession', 'true');
   };
-
-  useEffect(() => {
-    // Check if dismissed in current session
-    const dismissedSession = sessionStorage.getItem('installPromptDismissedSession');
-    if (dismissedSession === 'true') {
-      setShowPrompt(false);
-    }
-  }, []);
 
   if (isInstalled || !showPrompt) return null;
 
@@ -128,13 +126,9 @@ export default function InstallPrompt() {
               Official App
             </div>
             
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight mb-3">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight mb-8">
               Install Zomindia for <br /><span className="text-blue-700">Better Security</span>
             </h2>
-            
-            <p className="text-slate-500 text-sm leading-relaxed mb-8 px-2 italic">
-              Access premium services with end-to-end verification and real-time tracking directly from your home screen.
-            </p>
 
             <div className="grid grid-cols-3 gap-3 mb-8">
                <div className="flex flex-col items-center gap-2">
@@ -164,10 +158,6 @@ export default function InstallPrompt() {
               <Download size={16} />
               Install Application
             </button>
-            
-            <p className="text-[10px] text-slate-400 mt-6 font-medium">
-              Requires a modern browser and PWA support.
-            </p>
           </div>
         </div>
       </motion.div>

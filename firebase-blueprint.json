@@ -102,6 +102,7 @@
         "scheduledAt": { "type": "string", "format": "date-time" },
         "address": { "type": "string" },
         "totalPrice": { "type": "number" },
+        "completedTasks": { "type": "array", "items": { "type": "string" }, "description": "Completed checklist tasks." },
         "additionalCharges": {
           "type": "array",
           "items": {

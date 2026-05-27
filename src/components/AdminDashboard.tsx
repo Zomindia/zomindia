@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { signOut } from 'firebase/auth';
 import { collection, query, getDocs, onSnapshot, orderBy, doc, updateDoc, deleteDoc, addDoc, where, Timestamp, setDoc, deleteField, getDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 import { sendNotification } from '../lib/notifications';
 import EarningsView from './EarningsView';
 import { Booking, UserProfile, Category, Service, PartnerProfile, Promotion, FAQ, SupportTicket, ChatMessage, AdminSubRole, UserRole, AMCStatus } from '../types';
@@ -10,7 +10,9 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { notifyBookingUpdate } from '../lib/notifications';
 import { motion, AnimatePresence } from 'motion/react';
 import AdminUpload from './AdminUpload';
+import { LoadingScreen, LoadingSpinner } from './LoadingIndicator';
 import AmcManagement from './AmcManagement';
+import ReferralLifecycleManager from './ReferralLifecycleManager';
 import AudioCall from './AudioCall';
 import ChatWindow from './ChatWindow';
 import PartnerTrackingMap from './PartnerTrackingMap';
@@ -51,13 +53,15 @@ import {
   Mail,
   History,
   Gift,
+  Award,
   Trash2,
   RotateCw,
-  LogOut
+  LogOut,
+  Home
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
-type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
+type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
 
 export default function AdminDashboard({ profile, setActiveTab, initialAdminTab = 'overview' }: { profile: UserProfile, setActiveTab: (tab: any) => void, initialAdminTab?: AdminTab }) {
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(initialAdminTab);
@@ -216,17 +220,17 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     
     switch (profile.adminSubRole) {
       case 'accounts':
-        return ['overview', 'analytics', 'bookings', 'earnings', 'amcs'].includes(tabId);
+        return ['overview', 'analytics', 'bookings', 'earnings', 'amcs', 'referrals'].includes(tabId);
       case 'hr':
         return ['overview', 'partners', 'users', 'tickets'].includes(tabId);
       case 'manager':
-        return ['overview', 'analytics', 'bookings', 'earnings', 'partners', 'users', 'tickets', 'amcs', 'promotions', 'partner-promotions'].includes(tabId);
+        return ['overview', 'analytics', 'bookings', 'earnings', 'partners', 'users', 'referrals', 'tickets', 'amcs', 'promotions', 'partner-promotions'].includes(tabId);
       case 'support':
         return ['overview', 'bookings', 'users', 'tickets', 'help-center', 'amcs'].includes(tabId);
       case 'editor':
         return ['overview', 'categories', 'services', 'promotions', 'partner-promotions', 'help-center'].includes(tabId);
       case 'moderator':
-        return ['overview', 'partners', 'users', 'tickets', 'help-center', 'my-profile'].includes(tabId);
+        return ['overview', 'partners', 'users', 'referrals', 'tickets', 'help-center', 'my-profile'].includes(tabId);
       default:
         return false;
     }
@@ -241,6 +245,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     { id: 'earnings', icon: DollarSign, label: 'Earnings' },
     { id: 'partners', icon: ShieldCheck, label: 'Partners' },
     { id: 'users', icon: Users, label: 'Customers' },
+    { id: 'referrals', icon: Award, label: 'Referrals' },
     { id: 'promotions', icon: Tag, label: 'Customer Offers' },
     { id: 'amcs', icon: Calendar, label: 'AMC Contracts' },
     { id: 'partner-promotions', icon: Gift, label: 'Partner Offers' },
@@ -251,21 +256,12 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      window.location.href = '/';
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
-
   const refreshData = () => {
     setLoading(true);
     window.location.reload();
   };
 
-  if (loading) return <div className="p-12 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Initializing Terminal...</div>;
+  if (loading) return <LoadingScreen message="Initializing zomindia master control terminal..." />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative overflow-x-hidden">
@@ -341,21 +337,13 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                <ChevronRight size={18} />
              </div>
            </button>
-           <div className={`bg-slate-50 p-4 rounded-2xl transition-all ${isCollapsed ? 'opacity-0 h-0 p-0 overflow-hidden' : ''}`}>
+            <div className={`bg-slate-50 p-4 rounded-2xl transition-all ${isCollapsed ? 'opacity-0 h-0 p-0 overflow-hidden' : ''}`}>
               <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-2">Cloud Status</p>
               <div className="flex items-center gap-2">
                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                  <span className="text-[10px] text-slate-900 font-bold tracking-wider uppercase whitespace-nowrap">Systems Active</span>
               </div>
            </div>
-           
-           <button 
-            onClick={handleLogout}
-            className="w-full flex items-center gap-4 px-4 py-3.5 mt-4 rounded-2xl text-sm font-bold text-rose-500 hover:bg-rose-50 transition-all group overflow-hidden"
-           >
-             <LogOut size={18} className="shrink-0 text-rose-300 group-hover:text-rose-500" />
-             {!isCollapsed && <span className="whitespace-nowrap">Logout</span>}
-           </button>
         </div>
       </motion.aside>
 
@@ -393,6 +381,13 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                    className="w-48 lg:w-64 bg-slate-50 border-none rounded-2xl px-12 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-700 focus:bg-white transition-all shadow-inner"
                  />
               </div>
+              <button 
+                onClick={() => setActiveTab('home')}
+                className="flex items-center gap-2.5 px-4 py-2 bg-slate-50 hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-200 text-slate-600 hover:text-blue-700 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0 active:scale-95"
+              >
+                <Home size={14} />
+                <span className="hidden lg:inline">Home</span>
+              </button>
               <button 
                 onClick={() => setActiveAdminTab('my-profile')}
                 className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all border ${activeAdminTab === 'my-profile' ? 'bg-blue-700 text-white border-blue-700 shadow-lg shadow-blue-700/20' : 'bg-slate-50 text-slate-600 hover:text-blue-700 border-transparent hover:border-slate-200'}`}
@@ -594,6 +589,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
               )}
               {activeAdminTab === 'partners' && isAdminAuthorized('partners') && <PartnerManager partners={partners} users={users} setActiveTab={setActiveTab} />}
               {activeAdminTab === 'users' && isAdminAuthorized('users') && <UserManager users={users} bookings={bookings} currentUserProfile={profile} />}
+              {activeAdminTab === 'referrals' && isAdminAuthorized('referrals') && <ReferralLifecycleManager users={users} bookings={bookings} currentUserProfile={profile} />}
               {activeAdminTab === 'promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="customer" />}
               {activeAdminTab === 'partner-promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="partner" />}
               {activeAdminTab === 'help-center' && isAdminAuthorized('help-center') && <HelpCenterManager faqs={faqs} />}
@@ -3194,6 +3190,8 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
   const [isBroadcasting, setIsBroadcasting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [newPromo, setNewPromo] = useState<Partial<Promotion>>({
     name: '',
     code: '',
@@ -3328,19 +3326,44 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
     }
   };
 
-  const filteredPromotions = promotions.filter(p => filter === 'all' || p.targetAudience === filter || (!p.targetAudience && filter === 'customer'));
+  const filteredPromotions = promotions
+    .filter(p => filter === 'all' || p.targetAudience === filter || (!p.targetAudience && filter === 'customer'))
+    .filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.code.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-         <h3 className="text-xl font-bold">{filter === 'partner' ? 'Partner Campaigns' : 'Customer Campaigns'}</h3>
-         <button 
-           onClick={() => setIsAdding(!isAdding)}
-           className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-xs"
-         >
-           {isAdding ? <X size={16} /> : <Plus size={16} />}
-           {isAdding ? 'Cancel' : 'New Promo Code'}
-         </button>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+         <div>
+           <h3 className="text-xl font-bold text-slate-950">{filter === 'partner' ? 'Partner Campaigns' : 'Customer Campaigns'}</h3>
+           <p className="text-xs text-slate-400 mt-1">Manage, activate, and broadcast promotional campaigns.</p>
+         </div>
+         <div className="flex flex-wrap items-center gap-3">
+           <div className="relative">
+             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+             <input
+               type="text"
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               placeholder="Search promo or code..."
+               className="bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-bold w-48 sm:w-64 focus:ring-2 focus:ring-blue-700 outline-none"
+             />
+             {searchQuery && (
+               <button 
+                 onClick={() => setSearchQuery('')}
+                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-[10px]"
+               >
+                 Clear
+               </button>
+             )}
+           </div>
+           <button 
+             onClick={() => setIsAdding(!isAdding)}
+             className="bg-blue-700 text-white px-5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shrink-0 hover:bg-blue-800 transition-colors"
+           >
+             {isAdding ? <X size={14} /> : <Plus size={14} />}
+             {isAdding ? 'Cancel' : 'New Promo Code'}
+           </button>
+         </div>
       </div>
 
       <AnimatePresence>
@@ -3550,36 +3573,70 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPromotions.map(promo => (
-          <div key={promo.id} className="bg-white p-6 border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group relative overflow-hidden">
-             <div className="flex justify-between items-start mb-4">
-                <div className="bg-slate-50 px-3 py-1 rounded-lg text-slate-900 font-black text-[10px] tracking-widest">{promo.code}</div>
-                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${promo.active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                  {promo.active ? 'Active' : 'Paused'}
+        {filteredPromotions.map(promo => {
+          const isExpired = promo.expiryDate ? new Date(promo.expiryDate) < new Date(new Date().setHours(0,0,0,0)) : false;
+          return (
+            <div key={promo.id} className="bg-white p-6 border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                   <button 
+                     onClick={() => {
+                       navigator.clipboard.writeText(promo.code);
+                       setCopiedCodeId(promo.id);
+                       setTimeout(() => setCopiedCodeId(null), 2000);
+                     }}
+                     className={`px-3 py-1 rounded-lg font-black text-[10px] tracking-widest flex items-center gap-1.5 transition-all outline-none active:scale-95 border ${
+                       copiedCodeId === promo.id
+                         ? 'bg-emerald-500 border-emerald-500 text-white font-bold'
+                         : 'bg-slate-50 hover:bg-slate-100 border-slate-100 text-slate-800'
+                     }`}
+                     title="Click to copy coupon code"
+                   >
+                     {copiedCodeId === promo.id ? (
+                       <>
+                         <Check size={11} className="stroke-[3]" />
+                         <span>Copied!</span>
+                       </>
+                     ) : (
+                       <span>{promo.code}</span>
+                     )}
+                   </button>
+                   <div className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                     isExpired ? 'bg-amber-500 text-white' : (promo.active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')
+                   }`}>
+                     {isExpired ? 'Expired' : (promo.active ? 'Active' : 'Paused')}
+                   </div>
                 </div>
-             </div>
-             <h4 className="font-bold text-slate-900 mb-1">{promo.name}</h4>
-             <p className="text-xs text-slate-400 line-clamp-2 mb-2">{promo.description}</p>
-             
-             {((promo.applicableCategories && promo.applicableCategories.length > 0) || (promo.applicableServices && promo.applicableServices.length > 0) || promo.targetAudience) && (
-               <div className="flex flex-wrap gap-2 mb-4">
-                  {promo.targetAudience && promo.targetAudience !== 'all' && (
-                    <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 uppercase">
-                      For: {promo.targetAudience}
-                    </span>
-                  )}
-                  {promo.applicableCategories?.map(catId => (
-                    <span key={catId} className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                      Cat: {categories.find(c => c.id === catId)?.name || 'Unknown'}
-                    </span>
-                  ))}
-                  {promo.applicableServices?.map(svcId => (
-                    <span key={svcId} className="text-[8px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                      Svc: {services.find(s => s.id === svcId)?.name || 'Unknown'}
-                    </span>
-                  ))}
-               </div>
-             )}
+
+                {promo.imageUrl && (
+                  <div className="w-full h-32 mb-4 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 relative group/img">
+                    <img src={promo.imageUrl} alt={promo.name} className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
+                  </div>
+                )}
+
+                <h4 className="font-bold text-slate-900 mb-1">{promo.name}</h4>
+                <p className="text-xs text-slate-400 line-clamp-2 mb-2">{promo.description}</p>
+                
+                {((promo.applicableCategories && promo.applicableCategories.length > 0) || (promo.applicableServices && promo.applicableServices.length > 0) || promo.targetAudience) && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                     {promo.targetAudience && promo.targetAudience !== 'all' && (
+                       <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 uppercase">
+                         For: {promo.targetAudience}
+                       </span>
+                     )}
+                     {promo.applicableCategories?.map(catId => (
+                       <span key={catId} className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                         Cat: {categories.find(c => c.id === catId)?.name || 'Unknown'}
+                       </span>
+                     ))}
+                     {promo.applicableServices?.map(svcId => (
+                       <span key={svcId} className="text-[8px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                         Svc: {services.find(s => s.id === svcId)?.name || 'Unknown'}
+                       </span>
+                     ))}
+                  </div>
+                )}
+              </div>
              
              <div className="flex justify-between items-center mb-6 py-4 border-y border-slate-50">
                 <div>
@@ -3624,7 +3681,7 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
                 </div>
              </div>
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
@@ -3638,7 +3695,8 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
     answer: '',
     category: 'General',
     isPublished: true,
-    order: (faqs.length + 1)
+    order: (faqs.length + 1),
+    popularity: 0
   });
 
   const handleCreateFaq = async () => {
@@ -3646,9 +3704,10 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
     try {
       await addDoc(collection(db, 'faqs'), {
         ...newFaq,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
+        popularity: Number(newFaq.popularity || 0)
       });
-      setNewFaq({ question: '', answer: '', category: 'General', isPublished: true, order: faqs.length + 2 });
+      setNewFaq({ question: '', answer: '', category: 'General', isPublished: true, order: faqs.length + 2, popularity: 0 });
       setIsAdding(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'faqs');
@@ -3661,6 +3720,7 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
       const { id, ...data } = editingFaq;
       await updateDoc(doc(db, 'faqs', id), {
         ...data,
+        popularity: Number(data.popularity || 0),
         updatedAt: Timestamp.now()
       });
       setEditingFaq(null);
@@ -3712,16 +3772,38 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
                 </div>
                 <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                   <select 
-                    value={editingFaq ? editingFaq.category : newFaq.category}
-                    onChange={(e) => editingFaq ? setEditingFaq({ ...editingFaq, category: e.target.value }) : setNewFaq({ ...newFaq, category: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   >
-                     <option value="General">General</option>
-                     <option value="Payments">Payments</option>
-                     <option value="Bookings">Bookings</option>
-                     <option value="Partners">Partners</option>
-                   </select>
+                    <input 
+                     type="text"
+                     value={editingFaq ? editingFaq.category : newFaq.category}
+                     onChange={(e) => editingFaq ? setEditingFaq({ ...editingFaq, category: e.target.value }) : setNewFaq({ ...newFaq, category: e.target.value })}
+                     placeholder="e.g. General, Payments, Custom Category"
+                     list="faq-categories"
+                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
+                    />
+                    <datalist id="faq-categories">
+                      <option value="General" />
+                      <option value="Payments" />
+                      <option value="Bookings" />
+                      <option value="Partners" />
+                    </datalist>
+                </div>
+                <div>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Popularity Score (Featured FAQs placement)</label>
+                   <input 
+                    type="number"
+                    min="0"
+                    value={editingFaq ? (editingFaq.popularity ?? '') : (newFaq.popularity ?? '')}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? 0 : Number(e.target.value);
+                      if (editingFaq) {
+                        setEditingFaq({ ...editingFaq, popularity: val });
+                      } else {
+                        setNewFaq({ ...newFaq, popularity: val });
+                      }
+                    }}
+                    placeholder="e.g. 50 (higher is more popular)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
+                   />
                 </div>
                 <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Answer</label>
@@ -3758,6 +3840,7 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                <th className="px-8 py-5">Article</th>
                <th className="px-8 py-5">Category</th>
+               <th className="px-8 py-5">Popularity</th>
                <th className="px-8 py-5">Status</th>
                <th className="px-8 py-5 text-right">Actions</th>
             </tr>
@@ -3771,6 +3854,9 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
                 </td>
                 <td className="px-8 py-6">
                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-tighter">{faq.category}</span>
+                </td>
+                <td className="px-8 py-6">
+                   <span className="text-xs font-bold text-blue-700 bg-blue-50/50 px-2.5 py-1 rounded-lg border border-blue-100/50">{faq.popularity ?? 0}</span>
                 </td>
                 <td className="px-8 py-6">
                    <div className="flex items-center gap-2">
@@ -4076,9 +4162,9 @@ function ReviewManager({ serviceId }: { serviceId: string }) {
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-300">
-          <div className="w-12 h-12 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fetching Database Feedback...</p>
+        <div className="flex flex-col items-center justify-center py-24 text-slate-300 gap-4">
+          <LoadingSpinner size="md" />
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">Fetching Database Feedback...</p>
         </div>
       ) : reviews.length === 0 ? (
         <div className="text-center py-24 bg-white border-2 border-dashed border-slate-100 rounded-[48px] flex flex-col items-center">
@@ -4178,7 +4264,10 @@ function PayoutManager() {
     <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm mt-8">
        <h3 className="text-xl font-bold font-display italic mb-6">Payout Requests</h3>
        {loading ? (
-         <p className="text-slate-400">Loading payout requests...</p>
+         <div className="flex items-center gap-2 text-slate-400 py-4 font-semibold font-mono">
+           <LoadingSpinner size="sm" />
+           <span>Loading payout requests...</span>
+         </div>
        ) : requests.length === 0 ? (
          <p className="text-slate-400 bg-slate-50 p-6 rounded-2xl italic border border-slate-100">No payout requests pending.</p>
        ) : (
@@ -4634,17 +4723,20 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
                </div>
                <h4 className="text-2xl font-bold font-display italic text-slate-900">System Configuration</h4>
                <p className="text-slate-500 max-w-md mx-auto">Interface settings, terminal colors, and notification anchors are currently managed via the Global Security Chief.</p>
-               <button 
-                 onClick={() => signOut(auth)}
-                 className="flex items-center gap-3 bg-rose-50 text-rose-600 px-10 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[10px] mx-auto hover:bg-rose-100 transition-all border border-rose-100/50"
-               >
-                 <LogOut size={16} />
-                 Terminate Session
-               </button>
             </div>
           )}
         </motion.div>
       </AnimatePresence>
+
+      <div className="flex justify-end pt-6 border-t border-slate-100 mt-10">
+        <button 
+          onClick={() => signOut(auth)}
+          className="flex items-center gap-2.5 px-6 py-3.5 bg-rose-50 hover:bg-rose-600 border border-rose-100 hover:border-transparent text-rose-600 hover:text-white rounded-[20px] text-xs font-black uppercase tracking-widest transition-all shadow-sm group active:scale-95 focus:outline-none"
+        >
+          <LogOut size={16} className="group-hover:rotate-12 transition-transform shrink-0" />
+          <span>Log out of Session</span>
+        </button>
+      </div>
     </div>
   );
 }

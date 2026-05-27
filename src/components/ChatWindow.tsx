@@ -3,8 +3,10 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timest
 import { db, auth } from '../lib/firebase';
 import { ChatMessage, UserProfile, Booking } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { LoadingSpinner } from './LoadingIndicator';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, X, User, MessageSquare } from 'lucide-react';
+import { sendNotification } from '../lib/notifications';
 
 interface ChatWindowProps {
   booking: Booking;
@@ -57,6 +59,16 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
         text: messageText,
         createdAt: serverTimestamp()
       });
+
+      if (otherUser?.uid) {
+        await sendNotification(
+          otherUser.uid,
+          `New message from ${auth.currentUser.displayName || 'Support'}`,
+          messageText,
+          'booking_pending',
+          booking.id
+        );
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `bookings/${booking.id}/messages`);
     }
@@ -107,8 +119,8 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
         className={`flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth ${isEmbedded ? 'min-h-[300px] max-h-[500px]' : 'bg-slate-50/30'}`}
       >
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <div className="w-10 h-10 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6" />
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+            <LoadingSpinner size="md" />
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900/40">Secure Sync...</p>
           </div>
         ) : messages.length === 0 ? (

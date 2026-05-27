@@ -5,7 +5,7 @@ import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 import ErrorBoundary from './components/ErrorBoundary';
 
-if ('serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   registerSW({ immediate: true });
 }
 

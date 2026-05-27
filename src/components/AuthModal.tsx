@@ -9,10 +9,11 @@ import {
   setPersistence,
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  ConfirmationResult
+  ConfirmationResult,
+  sendEmailVerification
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -33,7 +34,7 @@ interface Props {
   onSuccess: () => void;
 }
 
-type AuthView = 'initial' | 'email-login' | 'email-register' | 'forgot-password' | 'phone-auth' | 'phone-verify';
+type AuthView = 'initial' | 'email-login' | 'email-register' | 'forgot-password' | 'phone-auth' | 'phone-verify' | 'verify-email' | 'success-transition';
 
 function ResendOTPButton({ onResent, phoneNumber, setLoading, setError, confirmationResult, setConfirmationResult }: { 
   onResent: () => void, 
@@ -123,8 +124,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-      onSuccess();
-      onClose();
+      setView('success-transition');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+        resetForm();
+      }, 1500);
     } catch (err: any) {
       setError(err.message || 'Google login failed');
     } finally {
@@ -139,8 +144,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     try {
       await setPersistence(auth, browserSessionPersistence);
       await signInWithEmailAndPassword(auth, email, password);
-      onSuccess();
-      onClose();
+      setView('success-transition');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+        resetForm();
+      }, 1500);
     } catch (err: any) {
       setError('Invalid email or password');
     } finally {
@@ -151,11 +160,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName) return setError('Name is required');
+    if (!phoneNumber) return setError('Mobile number is required for accuracy and security');
+    
+    // Validate Indian Phone Number format (exactly 10 digits)
+    const phoneClean = phoneNumber.replace(/\s+/g, '');
+    const phoneReg = /^[6-9]\d{9}$/;
+    if (!phoneReg.test(phoneClean)) {
+      return setError('Please enter a valid 10-digit mobile number (e.g. 9876543210)');
+    }
+
     setLoading(true);
     setError(null);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      
+      // Enforce email verification upon registration
+      await sendEmailVerification(user);
       
       // Initial Profile Creation
       const isAdminEmail = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
@@ -163,6 +184,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         uid: user.uid,
         displayName,
         email: user.email,
+        phoneNumber: `+91${phoneClean}`,
         role: isAdminEmail ? 'admin' : 'customer',
         createdAt: Timestamp.now(),
         referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
@@ -179,10 +201,48 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
       await setDoc(doc(db, 'users', user.uid), initialProfile);
       
-      onSuccess();
-      onClose();
+      setView('verify-email');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCheckVerify = async () => {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        setView('success-transition');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+          resetForm();
+        }, 1500);
+      } else {
+        setError('Your email is still not verified. Please check your inbox or spam folder and try again.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Verification check failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCheckEmail = async () => {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await sendEmailVerification(auth.currentUser);
+      setSuccessMsg('A new verification email has been sent!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to send new verification email.');
     } finally {
       setLoading(false);
     }
@@ -267,24 +327,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const user = userCredential.user;
 
       // Check if profile exists, if not create one
-      const profileDoc = await doc(db, 'users', user.uid);
-      await setDoc(profileDoc, {
-        uid: user.uid,
-        displayName: displayName || (user.phoneNumber || 'User'),
-        phoneNumber: user.phoneNumber,
-        role: 'customer',
-        createdAt: Timestamp.now(),
-        referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
-        walletBalance: 0,
-        notificationPreferences: {
-          bookingUpdates: true,
-          promotionalMessages: true
-        }
-      }, { merge: true });
+      const profileDocRef = doc(db, 'users', user.uid);
+      const profileDocSnap = await getDoc(profileDocRef);
+      
+      if (!profileDocSnap.exists()) {
+        await setDoc(profileDocRef, {
+          uid: user.uid,
+          displayName: displayName || (user.phoneNumber || 'User'),
+          phoneNumber: user.phoneNumber,
+          role: 'customer',
+          createdAt: Timestamp.now(),
+          referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
+          walletBalance: 0,
+          notificationPreferences: {
+            bookingUpdates: true,
+            promotionalMessages: true
+          }
+        });
+      }
 
-      onSuccess();
-      onClose();
+      setView('success-transition');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+        resetForm();
+      }, 1500);
     } catch (err: any) {
+      console.error("OTP Verification Error:", err);
       setError('Invalid OTP');
     } finally {
       setLoading(false);
@@ -317,7 +386,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={view === 'success-transition' ? undefined : onClose}
       />
       
       <motion.div 
@@ -325,31 +394,34 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         className="relative w-full max-w-md bg-white rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
       >
-        {/* Header */}
-        <div className="p-6 md:p-8 pb-0 flex justify-between items-start shrink-0">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-5 bg-blue-700 rounded-full flex items-center justify-center -rotate-12">
-                <span className="text-white text-[10px] font-black rotate-12">Z</span>
+        {/* Header (Hidden during success-transition) */}
+        {view !== 'success-transition' && (
+          <div className="p-6 md:p-8 pb-0 flex justify-between items-start shrink-0">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-5 bg-blue-700 rounded-full flex items-center justify-center -rotate-12">
+                  <span className="text-white text-[10px] font-black rotate-12">Z</span>
+                </div>
+                <span className="font-bold tracking-tighter text-slate-900">zomindia</span>
               </div>
-              <span className="font-bold tracking-tighter text-slate-900">zomindia</span>
+              <h2 className="text-xl md:text-2xl font-black text-slate-900 italic tracking-tighter">
+                {view === 'initial' && "Begin Journey"}
+                {view === 'email-login' && "Access Account"}
+                {view === 'email-register' && "Join zomindia"}
+                {view === 'forgot-password' && "Recovery"}
+                {view === 'phone-auth' && "Mobile Login"}
+                {view === 'phone-verify' && "Verify OTP"}
+                {view === 'verify-email' && "Verify Your Email"}
+              </h2>
             </div>
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 italic tracking-tighter">
-              {view === 'initial' && "Begin Journey"}
-              {view === 'email-login' && "Access Account"}
-              {view === 'email-register' && "Join zomindia"}
-              {view === 'forgot-password' && "Recovery"}
-              {view === 'phone-auth' && "Mobile Login"}
-              {view === 'phone-verify' && "Verify OTP"}
-            </h2>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-slate-50 rounded-full transition-colors"
+            >
+              <X size={20} className="text-slate-400" />
+            </button>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-slate-50 rounded-full transition-colors"
-          >
-            <X size={20} className="text-slate-400" />
-          </button>
-        </div>
+        )}
 
         <div className="p-6 md:p-8 overflow-y-auto no-scrollbar">
           <AnimatePresence mode="wait">
@@ -366,7 +438,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center shrink-0 text-slate-900 font-bold text-xs">1</div>
                     <div>
                       <p className="text-sm font-bold text-slate-900">Choose Method</p>
-                      <p className="text-xs text-slate-500">Sign in with email or social accounts.</p>
+                      <p className="text-xs text-slate-500">Sign in with phone or Google account.</p>
                     </div>
                   </div>
                 </div>
@@ -379,17 +451,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     <div className="flex items-center gap-4">
                       <Smartphone size={20} />
                       <span>Continue with Phone</span>
-                    </div>
-                    <ArrowRight size={18} className="opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                  </button>
-
-                  <button 
-                    onClick={() => setView('email-login')}
-                    className="w-full flex items-center justify-between p-5 bg-blue-700 text-white rounded-[24px] font-bold group hover:scale-[1.02] transition-all active:scale-95 shadow-xl shadow-blue-700/10"
-                  >
-                    <div className="flex items-center gap-4">
-                      <Mail size={20} />
-                      <span>Continue with Email</span>
                     </div>
                     <ArrowRight size={18} className="opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                   </button>
@@ -461,7 +522,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                         setPhoneNumber(val);
                       }}
                       placeholder="99999 99999"
-                      className="w-full bg-slate-50 border border-transparent focus:border-slate-200 focus:bg-white pl-20 pr-5 py-4 rounded-2xl outline-none transition-all font-medium text-sm tracking-widest"
+                      className="w-full bg-slate-50 border border-transparent focus:border-slate-200 focus:bg-white pl-[104px] pr-5 py-4 rounded-2xl outline-none transition-all font-medium text-sm tracking-widest"
                     />
                   </div>
                   <p className="mt-2 text-[10px] text-slate-400 font-medium tracking-wide">OTP will be sent via SMS for verification</p>
@@ -570,17 +631,35 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 </button>
 
                 {view === 'email-register' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Full Name</label>
-                    <input 
-                      type="text"
-                      required
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Jane Doe"
-                      className="w-full bg-slate-50 border border-transparent focus:border-slate-200 focus:bg-white px-5 py-4 rounded-2xl outline-none transition-all font-medium text-sm"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Full Name</label>
+                      <input 
+                        type="text"
+                        required
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Jane Doe"
+                        className="w-full bg-slate-50 border border-transparent focus:border-slate-200 focus:bg-white px-5 py-4 rounded-2xl outline-none transition-all font-medium text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Mobile Number</label>
+                      <div className="relative">
+                        <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-extrabold text-sm select-none border-r border-slate-250 pr-3">+91</span>
+                        <input 
+                          type="tel"
+                          required
+                          maxLength={10}
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                          placeholder="9876543210"
+                          className="w-full bg-slate-50 border border-transparent focus:border-slate-200 focus:bg-white pl-[76px] pr-5 py-4 rounded-2xl outline-none transition-all font-medium text-sm"
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <div>
@@ -713,6 +792,123 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                   </button>
                 )}
               </motion.form>
+            )}
+
+            {view === 'verify-email' && (
+              <motion.div 
+                key="verify-email"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6 text-center"
+              >
+                <div className="w-16 h-16 bg-blue-50 text-blue-700 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
+                  <Mail size={32} strokeWidth={1.5} className="animate-pulse" />
+                </div>
+                
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-500 font-medium">
+                    We've sent a verification link to:
+                  </p>
+                  <p className="font-extrabold text-slate-900 break-all">{email}</p>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed max-w-sm mx-auto">
+                    Please follow the instructions in the email to activate your account. Be sure to check your spam folder if you don't receive it in a few minutes.
+                  </p>
+                </div>
+
+                {error && (
+                  <div className="flex items-center gap-2 text-rose-500 bg-rose-50 p-4 rounded-2xl text-xs font-bold border border-rose-100 text-left">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {successMsg && (
+                  <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 p-4 rounded-2xl text-xs font-bold border border-emerald-100 text-left">
+                    <CheckCircle2 size={16} className="shrink-0" />
+                    <span>{successMsg}</span>
+                  </div>
+                )}
+
+                <div className="space-y-3 pt-2">
+                  <button 
+                    onClick={handleCheckVerify}
+                    disabled={loading}
+                    className="w-full bg-blue-700 text-white p-5 rounded-[24px] font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <CheckCircle2 size={20} />
+                        I've Verified My Email
+                      </>
+                    )}
+                  </button>
+
+                  <button 
+                    onClick={handleResendCheckEmail}
+                    disabled={loading}
+                    className="w-full bg-slate-50 text-slate-600 p-4 rounded-[24px] font-bold hover:bg-slate-100 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    Resend Email
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100">
+                  <button 
+                    onClick={() => setView('email-login')}
+                    className="text-xs font-bold text-slate-400 hover:text-blue-700 transition-colors"
+                  >
+                    Already verified? Return to sign in
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {view === 'success-transition' && (
+              <motion.div 
+                key="success-transition"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                className="text-center py-12 px-6 space-y-8"
+              >
+                <div className="relative flex items-center justify-center mx-auto w-24 h-24">
+                  <motion.div 
+                    animate={{ scale: [1, 1.3, 1], opacity: [0.1, 0.3, 0.1] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                    className="absolute inset-0 bg-blue-700/20 rounded-full"
+                  />
+                  <motion.div 
+                    animate={{ scale: [1, 1.15, 1], opacity: [0.2, 0.4, 0.2] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
+                    className="absolute inset-2 bg-blue-700/30 rounded-full"
+                  />
+                  <motion.div 
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 15 }}
+                    className="relative bg-blue-700 text-white w-16 h-16 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-700/30"
+                  >
+                    <CheckCircle2 size={32} strokeWidth={2.5} />
+                  </motion.div>
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-2xl font-black italic uppercase text-slate-900 tracking-tight leading-none">Access Synchronized</h3>
+                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest leading-relaxed">
+                    Decrypting secure partner channels...
+                  </p>
+                </div>
+                <div className="w-48 bg-slate-50 h-1.5 rounded-full overflow-hidden mx-auto border border-slate-100">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 1.3, ease: 'easeInOut' }}
+                    className="h-full bg-gradient-to-r from-blue-700 to-indigo-500 rounded-full"
+                  />
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
           <div id="recaptcha-container"></div>

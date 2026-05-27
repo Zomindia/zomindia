@@ -1,4 +1,4 @@
-# Urban Company Clone - Product Requirements
+# zomindia - Product Requirements
 
 ## Project Overview
 A full-stack mobile-responsive web application for on-demand home services including cleaning, repairs, salon, and professional assistance.

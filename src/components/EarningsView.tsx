@@ -29,6 +29,7 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutRequested, setPayoutRequested] = useState(false);
+  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
 
   const filteredBookings = bookings.filter(b => {
     if (b.status !== 'completed' && b.status !== 'finalized') return false;
@@ -176,6 +177,33 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
                  <div className="flex justify-between items-center">
                     <span className="text-sm font-bold text-slate-500">Platform Commission ({platformFeePercentage}%)</span>
                     <span className="text-lg font-bold text-red-500">- ₹{platformRevenue.toLocaleString()}</span>
+                  </div>
+                  {/* Graphical split of the overall aggregate volume */}
+                  {totalVolume > 0 && (
+                     <div className="pt-2">
+                        <div className="h-3.5 w-full bg-slate-200 rounded-full overflow-hidden flex relative shadow-inner">
+                           <div 
+                             style={{ width: `${100 - platformFeePercentage}%` }} 
+                             className="bg-emerald-500 h-full relative flex items-center justify-center text-[9px] font-black text-white hover:opacity-90 transition-opacity"
+                             title={`Partner Share: ${100 - platformFeePercentage}%`}
+                           >
+                             {100 - platformFeePercentage}%
+                           </div>
+                           <div 
+                             style={{ width: `${platformFeePercentage}%` }} 
+                             className="bg-red-400 h-full relative flex items-center justify-center text-[9px] font-black text-white hover:opacity-90 transition-opacity"
+                             title={`Platform Fee: ${platformFeePercentage}%`}
+                           >
+                             {platformFeePercentage}%
+                           </div>
+                        </div>
+                        <div className="flex justify-between text-[9px] font-bold text-slate-400 mt-1">
+                          <span className="text-emerald-600 font-semibold">Partner: ₹{partnerEarnings.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                          <span className="text-red-500 font-semibold">Platform: ₹{platformRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                        </div>
+                     </div>
+                  )}
+                  <div className="flex justify-between items-center hidden" style={{ display: 'none' }}>
                  </div>
                  <div className="h-px bg-slate-200" />
                  <div className="flex justify-between items-center">
@@ -229,27 +257,152 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
                    <p className="text-xs font-bold uppercase tracking-widest">No transactions found</p>
                 </div>
               ) : (
-                filteredBookings.slice(0, 10).map((b) => (
-                  <div key={b.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 group">
-                    <div className="flex items-center gap-4">
-                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0 ${
-                         b.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
-                       }`}>
-                          <ArrowUpRight size={16} />
-                       </div>
-                       <div>
-                          <p className="text-sm font-bold text-slate-900">Booking #{b.id.slice(0, 8).toUpperCase()}</p>
-                          <p className="text-[10px] text-slate-400 font-medium">
-                            {b.updatedAt?.toDate ? b.updatedAt.toDate().toLocaleDateString() : new Date(b.updatedAt).toLocaleDateString()} • {b.paymentMethod || 'cash'}
-                          </p>
-                       </div>
+                filteredBookings.slice(0, 10).map((b) => {
+                  const platformCommission = b.totalPrice * (platformFeePercentage / 100);
+                  const netPartnerEarnings = b.totalPrice - platformCommission;
+                  const partnerPercent = 100 - platformFeePercentage;
+                  const feePercent = platformFeePercentage;
+                  const isExpanded = expandedBookingId === b.id;
+
+                  // custom circular donut variables
+                  const radius = 35;
+                  const circumference = 2 * Math.PI * radius;
+                  const partnerStroke = circumference * (partnerPercent / 100);
+
+                  return (
+                    <div 
+                      key={b.id} 
+                      className={`flex flex-col p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 group ${
+                        isExpanded ? 'bg-white shadow-md border-slate-150' : ''
+                      }`}
+                    >
+                      <div 
+                        onClick={() => setExpandedBookingId(isExpanded ? null : b.id)}
+                        className="flex items-center justify-between cursor-pointer select-none"
+                      >
+                        <div className="flex items-center gap-4">
+                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0 ${
+                             b.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                           }`}>
+                              <ArrowUpRight size={16} />
+                           </div>
+                           <div>
+                              <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                Booking #{b.id.slice(0, 8).toUpperCase()}
+                                <span className="text-[8px] font-black tracking-wider uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                                  {isExpanded ? 'Hide Split' : 'Show Split'}
+                                </span>
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {b.updatedAt?.toDate ? b.updatedAt.toDate().toLocaleDateString() : new Date(b.updatedAt).toLocaleDateString()} • {b.paymentMethod || 'cash'}
+                              </p>
+                           </div>
+                        </div>
+                        <div className="text-right flex items-center gap-3">
+                           <div>
+                              <p className="text-sm font-bold text-slate-900">₹{b.totalPrice}</p>
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic group-hover:text-blue-700">Success</span>
+                           </div>
+                           <ChevronRight size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90 text-blue-700' : ''}`} />
+                        </div>
+                      </div>
+
+                      {/* Stacked inline horizontal progress bar preview always visible when collapsed */}
+                      {!isExpanded && (
+                        <div className="mt-2.5 flex items-center gap-3 pt-2.5 border-t border-dashed border-slate-200">
+                          <div className="h-2 flex-grow bg-slate-100 rounded-full overflow-hidden flex">
+                            <div style={{ width: `${partnerPercent}%` }} className="bg-emerald-500 h-full" />
+                            <div style={{ width: `${feePercent}%` }} className="bg-red-400 h-full" />
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-400 shrink-0 uppercase tracking-wider">
+                            Partner: {partnerPercent}% • Fee: {feePercent}%
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Expandable dynamic micro graphical analysis donut & legend */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                            animate={{ height: 'auto', opacity: 1, marginTop: 14 }}
+                            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                            transition={{ duration: 0.2, ease: 'easeInOut' }}
+                            className="overflow-hidden border-t border-slate-100 pt-3"
+                          >
+                            <div className="bg-slate-50/70 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-5">
+                              {/* Left column: SVG Donut chart */}
+                              <div className="relative flex items-center justify-center shrink-0">
+                                <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+                                  {/* Empty base */}
+                                  <circle cx="50" cy="50" r={radius} className="stroke-slate-100" strokeWidth="11" fill="transparent" />
+                                  {/* Net Partner Share */}
+                                  <circle 
+                                    cx="50" 
+                                    cy="50" 
+                                    r={radius} 
+                                    className="stroke-emerald-500" 
+                                    strokeWidth="11" 
+                                    fill="transparent" 
+                                    strokeDasharray={circumference} 
+                                    strokeDashoffset={0} 
+                                  />
+                                  {/* Platform Commission Share */}
+                                  <circle 
+                                    cx="50" 
+                                    cy="50" 
+                                    r={radius} 
+                                    className="stroke-red-400" 
+                                    strokeWidth="11" 
+                                    fill="transparent" 
+                                    strokeDasharray={circumference} 
+                                    strokeDashoffset={partnerStroke} 
+                                  />
+                                </svg>
+                                {/* Center Absolute Label */}
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Net Ratio</span>
+                                  <span className="text-[11px] font-extrabold text-emerald-600 mt-0.5">{partnerPercent}%</span>
+                                </div>
+                              </div>
+
+                              {/* Right column: Dynamic row pricing values */}
+                              <div className="flex-grow w-full space-y-2">
+                                <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic mb-1.5">Net Payout Split Analysis</p>
+                                
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded bg-blue-600" />
+                                    Total Ticket Paid (Gross)
+                                  </span>
+                                  <span className="font-bold text-slate-900">₹{b.totalPrice.toLocaleString()}</span>
+                                </div>
+
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-semibold text-slate-500 flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded bg-red-400" />
+                                    Platform Commission ({feePercent}%)
+                                  </span>
+                                  <span className="font-bold text-red-500">- ₹{platformCommission.toLocaleString('en-IN', { maximumFractionDigits: 1 })}</span>
+                                </div>
+
+                                <div className="h-px bg-slate-200" />
+
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
+                                    Partner Net Portion
+                                  </span>
+                                  <span className="text-sm font-black text-emerald-600">₹{netPartnerEarnings.toLocaleString('en-IN', { maximumFractionDigits: 1 })}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <div className="text-right">
-                       <p className="text-sm font-bold text-slate-900">₹{b.totalPrice}</p>
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic group-hover:text-blue-700">Success</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
            </div>
            

@@ -7,22 +7,52 @@ interface AudioCallProps {
   otherUser: UserProfile | null;
   onEndCall: () => void;
   isIncoming?: boolean;
+  bookingId?: string;
+  activeCall?: any;
+  onAnswer?: () => void;
 }
 
-export default function AudioCall({ otherUser, onEndCall, isIncoming = false }: AudioCallProps) {
+export default function AudioCall({ 
+  otherUser, 
+  onEndCall, 
+  isIncoming = false,
+  bookingId,
+  activeCall,
+  onAnswer
+}: AudioCallProps) {
   const [callState, setCallState] = useState<'connecting' | 'ringing' | 'connected' | 'ended'>(
     isIncoming ? 'ringing' : 'connecting'
   );
   const [isMuted, setIsMuted] = useState(false);
   const [duration, setDuration] = useState(0);
 
+  // Sync state if activeCall prop is provided via Firestore
+  useEffect(() => {
+    if (activeCall) {
+      if (activeCall.status === 'connected') {
+        setCallState('connected');
+      } else if (activeCall.status === 'ended') {
+        setCallState('ended');
+        const endTimer = setTimeout(onEndCall, 1500);
+        return () => clearTimeout(endTimer);
+      }
+    }
+  }, [activeCall, onEndCall]);
+
   useEffect(() => {
     let timer: any;
     if (callState === 'connecting') {
-      timer = setTimeout(() => setCallState('ringing'), 1500);
+      if (bookingId) {
+        // Coordinated call rings immediately once Firestore doc is updated
+        setCallState('ringing');
+      } else {
+        timer = setTimeout(() => setCallState('ringing'), 1500);
+      }
     } else if (callState === 'ringing' && !isIncoming) {
-      // automatically "answer" after 3 seconds for demo purposes
-      timer = setTimeout(() => setCallState('connected'), 3000);
+      if (!bookingId) {
+        // automatically "answer" after 3 seconds for offline demo fallback purposes
+        timer = setTimeout(() => setCallState('connected'), 3000);
+      }
     } else if (callState === 'connected') {
       timer = setInterval(() => setDuration(d => d + 1), 1000);
     }
@@ -30,7 +60,7 @@ export default function AudioCall({ otherUser, onEndCall, isIncoming = false }: 
       clearTimeout(timer);
       clearInterval(timer);
     };
-  }, [callState, isIncoming]);
+  }, [callState, isIncoming, bookingId]);
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -94,7 +124,13 @@ export default function AudioCall({ otherUser, onEndCall, isIncoming = false }: 
                   <PhoneOff size={24} />
                 </button>
                 <button 
-                  onClick={() => setCallState('connected')}
+                  onClick={() => {
+                    if (onAnswer) {
+                      onAnswer();
+                    } else {
+                      setCallState('connected');
+                    }
+                  }}
                   className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 active:scale-90 animate-bounce"
                 >
                   <Phone size={24} className="animate-pulse" />

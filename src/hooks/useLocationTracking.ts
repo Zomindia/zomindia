@@ -1,17 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking } from '../types';
 
 export function useLocationTracking(partnerProfileId: string | undefined, bookings: Booking[], availabilityStatus?: string) {
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const UPDATE_INTERVAL = 30000; // 30 seconds
   const BACKGROUND_INTERVAL = 120000; // 2 minutes for background tracking
 
+  const hasActiveJob = bookings.some(b => ['on_the_way', 'in_progress'].includes(b.status));
+  const isAvailable = availabilityStatus === 'Available';
+  const isTrackingSupported = typeof window !== 'undefined' && 'geolocation' in navigator;
+  const isTrackingActive = !!partnerProfileId && (hasActiveJob || isAvailable) && isTrackingSupported;
+
   useEffect(() => {
-    const hasActiveJob = bookings.some(b => ['on_the_way', 'in_progress'].includes(b.status));
-    const isAvailable = availabilityStatus === 'Available';
-    
     if (!partnerProfileId || (!hasActiveJob && !isAvailable) || !navigator.geolocation) {
       return;
     }
@@ -36,6 +39,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
             updatedAt: Timestamp.now()
           });
           lastUpdateRef.current = now;
+          setLastSyncedAt(new Date(now));
         } catch (err) {
           console.error("Failed to update location:", err);
         }
@@ -68,4 +72,6 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       navigator.geolocation.clearWatch(watchId);
     };
   }, [partnerProfileId, bookings, availabilityStatus]);
+
+  return { lastSyncedAt, isTrackingActive };
 }
