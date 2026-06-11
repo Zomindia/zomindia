@@ -134,9 +134,16 @@ const MobileNavItem = ({ onClick, label, isActive, index }: { onClick: () => voi
   <motion.button
     initial={{ opacity: 0, x: -10 }}
     animate={{ opacity: 1, x: 0 }}
-    transition={{ delay: index * 0.05 }}
+    whileHover={{ scale: 1.02, x: 5 }}
+    whileTap={{ scale: 0.98 }}
+    transition={{ 
+      delay: index * 0.05, 
+      type: "spring", 
+      stiffness: 300, 
+      damping: 20 
+    }}
     onClick={onClick}
-    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
+    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all cursor-pointer ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
   >
     <span className="tracking-tight">{label}</span>
     <ChevronRight size={16} className={`transition-transform ${isActive ? 'translate-x-0' : '-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0'}`} />
@@ -501,7 +508,11 @@ export default function App() {
             role: isAdminUser ? 'admin' : 'customer',
             photoURL: u.photoURL || '',
             referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-            walletBalance: 0,
+            walletBalance: 100, // ₹100 Welcome Bonus on registration!
+            notificationPreferences: {
+              bookingUpdates: true,
+              promotionalMessages: true
+            },
             createdAt: Timestamp.now() as any,
           };
           if (isAdminUser) {
@@ -759,16 +770,23 @@ export default function App() {
             return link.roles.includes((profile?.role as any) || 'anon');
           })
           .map(link => (
-            <button
+            <motion.button
               key={link.id}
               onClick={() => setActiveTab(link.id as any)}
-              className={`text-sm font-semibold transition-all relative py-1 ${activeTab === link.id ? 'text-slate-900' : 'text-slate-500 hover:text-blue-700'}`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              className={`text-sm font-semibold transition-all relative py-1 focus:outline-none cursor-pointer ${activeTab === link.id ? 'text-slate-900 font-bold' : 'text-slate-500 hover:text-blue-700'}`}
             >
               {link.label}
               {activeTab === link.id && (
-                <motion.div layoutId="nav-underline" className="absolute -bottom-1.5 left-0 right-0 h-0.5 bg-blue-700" />
+                <motion.div 
+                  layoutId="nav-underline" 
+                  className="absolute -bottom-1.5 left-0 right-0 h-0.5 bg-blue-700"
+                  transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                />
               )}
-            </button>
+            </motion.button>
           ))}
       </div>
     );
@@ -796,18 +814,50 @@ export default function App() {
            />
          );
        }
-       return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
+       return (
+         <motion.div
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           exit={{ opacity: 0 }}
+           transition={{ duration: 0.2, ease: "easeInOut" }}
+           className="w-full"
+         >
+           <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+         </motion.div>
+       );
     }
 
     if (activeTab === 'partner') {
-      if (!profile) return <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
+      if (!profile) {
+        return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="w-full"
+          >
+            <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+          </motion.div>
+        );
+      }
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
 
     if (activeTab === 'admin') {
       if (!profile || profile.role !== 'admin') {
          setActiveTab('home');
-         return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
+         return (
+           <motion.div
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             exit={{ opacity: 0 }}
+             transition={{ duration: 0.2, ease: "easeInOut" }}
+             className="w-full"
+           >
+             <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+           </motion.div>
+         );
       }
       return <AdminDashboard profile={profile} setActiveTab={setActiveTab} />;
     }
@@ -832,7 +882,17 @@ export default function App() {
       if (profile.role === 'partner') {
         return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} initialTab="jobs" />;
       }
-      return <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />;
+      return (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className="w-full"
+        >
+          <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />
+        </motion.div>
+      );
     }
 
     if (activeTab === 'amcs' && profile.role === 'customer') {
@@ -844,7 +904,17 @@ export default function App() {
     }
 
     if (activeTab === 'profile') {
-      return <ProfileSettings profile={profile} onUpdate={(updated) => setProfile(updated)} setActiveTab={setActiveTab} />;
+      return (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className="w-full"
+        >
+          <ProfileSettings profile={profile} onUpdate={(updated) => setProfile(updated)} setActiveTab={setActiveTab} />
+        </motion.div>
+      );
     }
 
     if (activeTab === 'about') {
@@ -1062,7 +1132,17 @@ Marketing: We may send you promotional offers if you have opted in to receive th
     }
 
     // Default to Customer View
-    return <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />;
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2, ease: "easeInOut" }}
+        className="w-full"
+      >
+        <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+      </motion.div>
+    );
   };
 
   const isFullScreenView = activeTab === 'admin' || activeTab === 'partner';
@@ -1342,10 +1422,10 @@ Marketing: We may send you promotional offers if you have opted in to receive th
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+            exit={{ opacity: 0, y: -3 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
           >
             <Suspense fallback={<LoadingScreen message="Loading page content..." />}>
               {renderContent()}

@@ -12,7 +12,7 @@ import {
   ConfirmationResult,
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, setDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import { 
@@ -226,13 +226,29 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           setLoading(false);
           return;
         }
-        // Use an unique or existing credential id
+        // Register or sign in a real, unique, deterministic email-password user in the background 
+        // to pass all secure firestore rules without sacrificing simulation state.
         const cleanPhone = phoneNumber.replace(/\D/g, '');
-        const fakeUid = `sim_user_${cleanPhone}`;
-        setVerifiedUid(fakeUid);
+        const sandboxEmail = `${cleanPhone}@zomindia-sandbox.com`;
+        const sandboxPassword = `sandbox_${cleanPhone}_pass`;
+
+        let userObjFromDemo: any = null;
+        try {
+          const cred = await signInWithEmailAndPassword(auth, sandboxEmail, sandboxPassword);
+          userObjFromDemo = cred.user;
+        } catch (signInErr: any) {
+          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.message?.includes('user-not-found')) {
+            const cred = await createUserWithEmailAndPassword(auth, sandboxEmail, sandboxPassword);
+            userObjFromDemo = cred.user;
+          } else {
+            throw signInErr;
+          }
+        }
+
+        setVerifiedUid(userObjFromDemo.uid);
         
         // Check Firestore database if profile exists
-        const profileSnap = await getDoc(doc(db, 'users', fakeUid));
+        const profileSnap = await getDoc(doc(db, 'users', userObjFromDemo.uid));
         if (profileSnap.exists()) {
           // Success! User profiles match, log them directly in
           setView('success-transition');
@@ -288,26 +304,46 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const formattedPhone = `+91${cleanPhone}`;
       const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
-      const initialProfile: any = {
-        uid: verifiedUid,
-        displayName: displayName.trim(),
-        email: email.trim() || `${verifiedUid}@zomindia-user.com`,
-        phoneNumber: formattedPhone,
-        role: isSarthakEmail ? 'admin' : 'customer',
-        createdAt: Timestamp.now(),
-        referralCode: `ZOM${verifiedUid.slice(-6).toUpperCase()}`,
-        walletBalance: 100, // ₹100 Welcome Bonus on onboarding!
-        notificationPreferences: {
-          bookingUpdates: true,
-          promotionalMessages: true
+      const userRef = doc(db, 'users', verifiedUid);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        // Safe partial update of only user-controllable fields
+        const updatePayload: any = {
+          displayName: displayName.trim(),
+          email: email.trim() || `${verifiedUid}@zomindia-user.com`,
+          phoneNumber: formattedPhone,
+          updatedAt: Timestamp.now()
+        };
+        // Omit role updates for normal clients to prevent any potential privilege-escalation/rule failures
+        if (isSarthakEmail) {
+          updatePayload.role = 'admin';
+          updatePayload.adminSubRole = 'head';
         }
-      };
+        await updateDoc(userRef, updatePayload);
+      } else {
+        // Fallback document creation if auto-creation in App.tsx hasn't completed yet
+        const initialProfile: any = {
+          uid: verifiedUid,
+          displayName: displayName.trim(),
+          email: email.trim() || `${verifiedUid}@zomindia-user.com`,
+          phoneNumber: formattedPhone,
+          role: isSarthakEmail ? 'admin' : 'customer',
+          createdAt: Timestamp.now(),
+          referralCode: `ZOM${verifiedUid.slice(-6).toUpperCase()}`,
+          walletBalance: 100, // ₹100 Welcome Bonus on onboarding!
+          notificationPreferences: {
+            bookingUpdates: true,
+            promotionalMessages: true
+          }
+        };
 
-      if (isSarthakEmail) {
-        initialProfile.adminSubRole = 'head';
+        if (isSarthakEmail) {
+          initialProfile.adminSubRole = 'head';
+        }
+
+        await setDoc(userRef, initialProfile);
       }
-
-      await setDoc(doc(db, 'users', verifiedUid), initialProfile);
 
       setView('success-transition');
       setTimeout(() => {
@@ -349,6 +385,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             promotionalMessages: true
           }
         });
+      } else {
+        const currentData = pDoc.data();
+        if (currentData && (currentData.displayName === 'User' || !currentData.displayName)) {
+          await updateDoc(doc(db, 'users', user.uid), {
+            displayName: user.displayName || 'zomindia Client',
+            photoURL: user.photoURL || currentData.photoURL || '',
+            updatedAt: Timestamp.now()
+          });
+        }
       }
 
       setView('success-transition');
