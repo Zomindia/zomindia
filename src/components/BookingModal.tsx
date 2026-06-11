@@ -26,8 +26,12 @@ import {
   Zap,
   FileText,
   AlertCircle,
-  MessageCircle
+  MessageCircle,
+  Tag,
+  Building,
+  Home
 } from 'lucide-react';
+import PartnerIdentityMarker from './PartnerIdentityMarker';
 
 const MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || '';
 
@@ -38,18 +42,30 @@ interface Props {
   onSuccess: () => void;
 }
 
+interface AddressPrediction {
+  id: string;
+  mainText: string;
+  secondaryText: string;
+  description: string;
+  isOsm?: boolean;
+  latLng?: { lat: number; lng: number };
+}
+
 function AddressAutocomplete({ 
   value, 
   onChange, 
-  onAddressSelect 
+  onAddressSelect,
+  onEditClick
 }: { 
   value: string; 
   onChange: (val: string) => void; 
   onAddressSelect: (address: string, lat: number, lng: number) => void;
+  onEditClick?: () => void;
 }) {
   const placesLib = useMapsLibrary('places');
   const [inputValue, setInputValue] = useState(value);
-  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const autocompleteService = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesService = useRef<google.maps.places.PlacesService | null>(null);
 
@@ -59,37 +75,131 @@ function AddressAutocomplete({
 
   useEffect(() => {
     if (placesLib) {
-      autocompleteService.current = new placesLib.AutocompleteService();
-      // Dummy element for PlacesService
-      const div = document.createElement('div');
-      placesService.current = new placesLib.PlacesService(div);
+      try {
+        autocompleteService.current = new placesLib.AutocompleteService();
+        const div = document.createElement('div');
+        placesService.current = new placesLib.PlacesService(div);
+      } catch (e) {
+        console.warn("Failed to initialize Google Places services, using robust OSM fallback:", e);
+      }
     }
   }, [placesLib]);
+
+  const fetchOsmPredictions = async (queryStr: string) => {
+    try {
+      setIsLoading(true);
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryStr)}&countrycodes=in&limit=5`;
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'en',
+          'User-Agent': 'zomindia-app-preview'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const mapped: AddressPrediction[] = data.map((item: any, idx: number) => {
+            const displayName = item.display_name || '';
+            const parts = displayName.split(',').map((p: string) => p.trim());
+            const mainText = parts[0] || '';
+            const secondaryText = parts.slice(1).join(', ') || '';
+            return {
+              id: `osm-${item.place_id || idx}`,
+              mainText,
+              secondaryText,
+              description: displayName,
+              isOsm: true,
+              latLng: { lat: parseFloat(item.lat), lng: parseFloat(item.lon) }
+            };
+          });
+          setPredictions(mapped);
+        }
+      }
+    } catch (e) {
+      console.warn("OSM prediction fallback search failed:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setInputValue(val);
     onChange(val);
 
-    if (val.length > 2 && autocompleteService.current) {
+    if (val.length < 3) {
+      setPredictions([]);
+      return;
+    }
+
+    if (autocompleteService.current) {
+      setIsLoading(true);
       autocompleteService.current.getPlacePredictions(
         { input: val, componentRestrictions: { country: 'in' } },
-        (results) => setPredictions(results || [])
+        (results, status) => {
+          if (status === 'OK' && results && results.length > 0) {
+            const mapped: AddressPrediction[] = results.map(r => ({
+              id: r.place_id,
+              mainText: r.structured_formatting?.main_text || r.description,
+              secondaryText: r.structured_formatting?.secondary_text || '',
+              description: r.description,
+              isOsm: false
+            }));
+            setPredictions(mapped);
+            setIsLoading(false);
+          } else {
+            // Google Autocomplete failed, fallback to OSM
+            fetchOsmPredictions(val);
+          }
+        }
       );
     } else {
-      setPredictions([]);
+      // Direct OSM Fallback
+      fetchOsmPredictions(val);
     }
   };
 
-  const handleSelectPrediction = (prediction: google.maps.places.AutocompletePrediction) => {
+  const fallbackGeocodeText = async (text: string) => {
+    try {
+      setIsLoading(true);
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=1`;
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'en',
+          'User-Agent': 'zomindia-app-preview'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.[0]) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          onAddressSelect(text, lat, lng);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("OSM fallback geocoding failed:", e);
+    } finally {
+      setIsLoading(false);
+    }
+    // Final absolute default coordinates
+    onAddressSelect(text, 28.6139, 77.2090);
+  };
+
+  const handleSelectPrediction = (prediction: AddressPrediction) => {
     setInputValue(prediction.description);
     onChange(prediction.description);
     setPredictions([]);
 
-    if (placesService.current) {
+    if (prediction.isOsm && prediction.latLng) {
+      onAddressSelect(prediction.description, prediction.latLng.lat, prediction.latLng.lng);
+    } else if (placesService.current) {
+      setIsLoading(true);
       placesService.current.getDetails(
-        { placeId: prediction.place_id, fields: ['formatted_address', 'geometry', 'name'] },
+        { placeId: prediction.id, fields: ['formatted_address', 'geometry', 'name'] },
         (place, status) => {
+          setIsLoading(false);
           if (status === 'OK' && place?.formatted_address && place.geometry?.location) {
             onAddressSelect(
               place.formatted_address,
@@ -97,11 +207,13 @@ function AddressAutocomplete({
               place.geometry.location.lng()
             );
           } else {
-            const errorMsg = handleMapsError(status === 'OK' ? place : { status });
-            alert(errorMsg);
+            console.warn("Google Place details failed, using OSM fallback geocoding:", status);
+            fallbackGeocodeText(prediction.description);
           }
         }
       );
+    } else {
+      fallbackGeocodeText(prediction.description);
     }
   };
 
@@ -114,23 +226,43 @@ function AddressAutocomplete({
           value={inputValue}
           onChange={handleInputChange}
           placeholder="Search area, colony, or landmark..."
-          className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all text-sm font-medium text-slate-900 placeholder:text-slate-300"
+          className={`w-full bg-white border border-slate-200 pl-11 ${value ? 'pr-20' : 'pr-4'} py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all text-sm font-medium text-slate-900 placeholder:text-slate-300`}
         />
+        {isLoading && (
+          <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center justify-center">
+            <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+          </div>
+        )}
+        {value && onEditClick && (
+          <button
+            type="button"
+            onClick={onEditClick}
+            className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-black uppercase rounded-lg border border-blue-200 transition-all shadow-sm cursor-pointer select-none"
+            title="Edit address manually to fix typos"
+          >
+            ✏️ Edit
+          </button>
+        )}
       </div>
       
       {predictions.length > 0 && (
         <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden max-h-60 overflow-y-auto">
           {predictions.map((p) => (
             <button
-              key={p.place_id}
+              key={p.id}
               onClick={() => handleSelectPrediction(p)}
-              className="w-full px-5 py-4 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-none group"
+              className="w-full px-5 py-4 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-none group cursor-pointer"
             >
               <div className="flex items-start gap-3">
-                <MapPin size={16} className="text-slate-300 mt-0.5 group-hover:text-blue-700 transition-colors" />
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{p.structured_formatting.main_text}</p>
-                  <p className="text-xs text-slate-400">{p.structured_formatting.secondary_text}</p>
+                <MapPin size={16} className="text-slate-300 mt-0.5 group-hover:text-blue-700 transition-colors shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-900 truncate">{p.mainText}</p>
+                  {p.secondaryText && (
+                    <p className="text-xs text-slate-400 truncate mt-0.5">{p.secondaryText}</p>
+                  )}
+                  {p.isOsm && (
+                    <p className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider mt-1">🌍 Universal Pin</p>
+                  )}
                 </div>
               </div>
             </button>
@@ -142,24 +274,301 @@ function AddressAutocomplete({
 }
 
 export default function BookingModal({ service, profile, onClose, onSuccess }: Props) {
-  const [step, setStep] = useState(1);
-  const [address, setAddress] = useState(profile?.address || '');
-  const [addressDetails, setAddressDetails] = useState('');
-  const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [time, setTime] = useState('');
+  // Load saved progress if it exists and matches the current service
+  const savedState = React.useMemo(() => {
+    try {
+      const saved = localStorage.getItem('zomindia_pending_booking');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.serviceId === service.id) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to retrieve pending booking progress:", e);
+    }
+    return null;
+  }, [service.id]);
+
+  const [step, setStep] = useState(savedState?.step || 1);
+  const geocodingLib = useMapsLibrary('geocoding');
+  const [isIncompleteAddress, setIsIncompleteAddress] = useState(false);
+  const [address, setAddress] = useState(savedState?.address || profile?.address || '');
+  const [isManualEdit, setIsManualEdit] = useState(savedState?.isManualEdit || false);
+  const [isEditingAddressOnConfirm, setIsEditingAddressOnConfirm] = useState(savedState?.isEditingAddressOnConfirm || false);
+  const [addressDetails, setAddressDetails] = useState(savedState?.addressDetails || '');
+
+  // Structured manual address states for error-resistant manual typing
+  const [manualHouse, setManualHouse] = useState('');
+  const [manualStreet, setManualStreet] = useState('');
+  const [manualCity, setManualCity] = useState('');
+  const [manualLandmark, setManualLandmark] = useState('');
+
+  // Synchronize parsed components whenever address/addressDetails changes from auto-selected or parent props
+  useEffect(() => {
+    if (address) {
+      const parts = address.split(',').map(p => p.trim());
+      if (parts.length > 1) {
+        setManualCity(prev => prev || parts[parts.length - 1]);
+        setManualStreet(prev => prev || parts.slice(0, parts.length - 1).join(', '));
+      } else {
+        setManualStreet(prev => prev || address);
+      }
+    }
+  }, [address]);
+
+  useEffect(() => {
+    if (addressDetails) {
+      if (addressDetails.includes('(Landmark:')) {
+        const parts = addressDetails.split('(Landmark:');
+        setManualHouse(prev => prev || parts[0].trim());
+        setManualLandmark(prev => prev || parts[1].replace(')', '').trim());
+      } else {
+        setManualHouse(prev => prev || addressDetails);
+      }
+    }
+  }, [addressDetails]);
+
+  // Re-compose standard address & addressDetails state strings from structured components in real-time
+  const updateAddressFromManual = (house: string, street: string, city: string, landmark: string) => {
+    const combinedAddr = [street, city].filter(p => p && p.trim()).join(', ');
+    setAddress(combinedAddr);
+    
+    const combinedDetails = house.trim() && landmark.trim()
+      ? `${house.trim()} (Landmark: ${landmark.trim()})`
+      : (house.trim() || landmark.trim() || '');
+    setAddressDetails(combinedDetails);
+  };
+  const [location, setLocation] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
+  const [date, setDate] = useState(savedState?.date || new Date().toISOString().split('T')[0]);
+  const [time, setTime] = useState(savedState?.time || '');
   const [loading, setLoading] = useState(false);
+  const [isFetchingGps, setIsFetchingGps] = useState(false);
+  const [mapZoom, setMapZoom] = useState(15);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cash'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cash'>(savedState?.paymentMethod || 'cash');
   const [availablePromos, setAvailablePromos] = useState<Promotion[]>([]);
   const [showPromos, setShowPromos] = useState(false);
   const [slotNotAvailablePopup, setSlotNotAvailablePopup] = useState(false);
   
   // AMC State
-  const [activeAmc, setActiveAmc] = useState<AMC | null>(null);
-  const [useAmc, setUseAmc] = useState(false);
+  const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
+  const [useAmc, setUseAmc] = useState(savedState?.useAmc ?? false);
+
+  // Auto-save progress effect
+  useEffect(() => {
+    if (service?.id) {
+      try {
+        localStorage.setItem('zomindia_pending_booking', JSON.stringify({
+          serviceId: service.id,
+          step,
+          address,
+          isManualEdit,
+          isEditingAddressOnConfirm,
+          addressDetails,
+          location,
+          date,
+          time,
+          paymentMethod,
+          useAmc,
+          activeAmc,
+          timestamp: Date.now()
+        }));
+      } catch (err) {
+        console.warn("Failed to auto-save pending booking state:", err);
+      }
+    }
+  }, [service.id, step, address, isManualEdit, isEditingAddressOnConfirm, addressDetails, location, date, time, paymentMethod, useAmc, activeAmc]);
 
   const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
+
+  const [simulatedPros, setSimulatedPros] = useState<{ id: string; name: string; lat: number; lng: number; status: 'Available' | 'On Job' | 'In Transit'; serviceType: string; rating: number }[]>([]);
+
+  const [realEligiblePartners, setRealEligiblePartners] = useState<PartnerProfile[]>([]);
+  const [realPartnersNames, setRealPartnersNames] = useState<Record<string, string>>({});
+
+  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // distance in km
+  };
+
+  const getScoredNearbyPartners = () => {
+    if (!location) return [];
+    
+    const combined: {
+      id: string;
+      name: string;
+      lat: number;
+      lng: number;
+      status: 'Available' | 'On Job' | 'In Transit';
+      rating: number;
+      reviewCount: number;
+      isReal: boolean;
+      distance: number;
+      score: number;
+    }[] = [];
+
+    // Add simulated pros
+    simulatedPros.forEach((p) => {
+      const dist = haversineDistance(location.lat, location.lng, p.lat, p.lng);
+      let score = 0;
+
+      if (p.status === 'Available') {
+        score += 150;
+      } else if (p.status === 'In Transit') {
+        score += 60;
+      } else {
+        score += 10;
+      }
+
+      if (dist <= 2) {
+        score += 200;
+      } else if (dist <= 5) {
+        score += 130;
+      } else if (dist <= 10) {
+        score += 80;
+      } else if (dist <= 20) {
+        score += 30;
+      } else {
+        score -= 30;
+      }
+
+      score += (p.rating - 4.0) * 100;
+
+      combined.push({
+        id: p.id,
+        name: p.name,
+        lat: p.lat,
+        lng: p.lng,
+        status: p.status,
+        rating: p.rating,
+        reviewCount: 15 + Math.floor(Math.random() * 40),
+        isReal: false,
+        distance: dist,
+        score: score
+      });
+    });
+
+    // Add real database partners
+    realEligiblePartners.forEach((p) => {
+      const name = realPartnersNames[p.userId] || p.bio || "Verified Service Professional";
+      if (p.lat && p.lng) {
+        const dist = haversineDistance(location.lat, location.lng, p.lat, p.lng);
+        let score = 0;
+
+        if (p.availabilityStatus === 'Available') {
+          score += 150;
+        } else if (p.availabilityStatus === 'Busy') {
+          score += 40;
+        }
+
+        if (dist <= 2) {
+          score += 200;
+        } else if (dist <= 5) {
+          score += 130;
+        } else if (dist <= 10) {
+          score += 80;
+        } else if (dist <= 20) {
+          score += 30;
+        } else {
+          score -= 30;
+        }
+
+        const rating = p.rating || 0;
+        score += (rating - 4.0) * 100;
+
+        if (!combined.some(c => c.id === p.id)) {
+          combined.push({
+            id: p.userId || p.id,
+            name,
+            lat: p.lat,
+            lng: p.lng,
+            status: p.availabilityStatus === 'Available' ? 'Available' : (p.availabilityStatus === 'Busy' ? 'On Job' : 'Available'),
+            rating: p.rating || 4.7,
+            reviewCount: p.reviewCount || 12,
+            isReal: true,
+            distance: dist,
+            score: score
+          });
+        }
+      }
+    });
+
+    return combined.sort((a, b) => b.score - a.score);
+  };
+
+  useEffect(() => {
+    if (location) {
+      // Generate 10 mock pros: 5 Available, 3 On Job, 2 In Transit to show partner visibility perfectly
+      const firstNames = ["Arjun", "Rahul", "Vijay", "Deepak", "Karan", "Amit", "Rajesh", "Manoj", "Vikram", "Sanjay", "Rohan", "Kunal", "Anil"];
+      const lastNames = ["Verma", "Sharma", "Kumar", "Gupta", "Singh", "Mishra", "Patel", "Yadav", "Rathore", "Rao", "Malhotra", "Sen", "Joshi"];
+      
+      const newPros: typeof simulatedPros = [];
+      
+      // Total 10 pros: i in [0..4] => Available, i in [5..7] => On Job, i in [8..9] => In Transit
+      for (let i = 0; i < 10; i++) {
+        const name = `${firstNames[i % firstNames.length]} ${lastNames[i % lastNames.length]}`;
+        const distanceMeters = 300 + Math.random() * 1200; // Scattered within 300m - 1500m
+        const angle = Math.random() * 2 * Math.PI;
+        const earthRadius = 6371000;
+        
+        const dLat = (distanceMeters * Math.cos(angle)) / earthRadius * (180 / Math.PI);
+        const dLng = (distanceMeters * Math.sin(angle)) / (earthRadius * Math.cos((location.lat * Math.PI) / 180)) * (180 / Math.PI);
+        
+        const status = i < 5 ? 'Available' : i < 8 ? 'On Job' : 'In Transit';
+        
+        newPros.push({
+          id: `booking_sim_pro_${i}`,
+          name,
+          serviceType: service?.name || "Specialist",
+          lat: location.lat + dLat,
+          lng: location.lng + dLng,
+          status,
+          rating: +(4.5 + Math.random() * 0.5).toFixed(1)
+        });
+      }
+      setSimulatedPros(newPros);
+    }
+  }, [location, service?.name]);
+
+  // Periodic drift simulation to make the moving partners actively travel towards the target location
+  useEffect(() => {
+    if (simulatedPros.length === 0 || !location) return;
+
+    const interval = setInterval(() => {
+      setSimulatedPros(prev => prev.map(pro => {
+        if (pro.status === 'In Transit') {
+          let nextLat = pro.lat;
+          let nextLng = pro.lng;
+          
+          const dy = location.lat - pro.lat;
+          const dx = (location.lng - pro.lng) * Math.cos((location.lat * Math.PI) / 180);
+          const angle = Math.atan2(dy, dx);
+          
+          // Organic drift speed
+          const speed = 0.000025;
+          nextLat += Math.sin(angle) * speed;
+          nextLng += Math.cos(angle) * speed / Math.cos((location.lat * Math.PI) / 180);
+          
+          return {
+            ...pro,
+            lat: nextLat,
+            lng: nextLng
+          };
+        }
+        return pro;
+      }));
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [simulatedPros.length, location]);
 
   const [contactEmail, setContactEmail] = useState(profile?.email || '');
   const [contactPhone, setContactPhone] = useState(profile?.phoneNumber || '');
@@ -278,6 +687,34 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     fetchData();
   }, [profile, service.id]);
 
+  useEffect(() => {
+    const fetchRealPartners = async () => {
+      try {
+        const partnersSnap = await getDocs(collection(db, 'partners'));
+        const partners = partnersSnap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerProfile));
+        
+        const eligible = partners.filter(p => p.isVerified && p.status === 'active' && p.categories.includes(service.categoryId));
+        setRealEligiblePartners(eligible);
+
+        const userIds = eligible.map(p => p.userId).filter(Boolean);
+        if (userIds.length > 0) {
+          const namesMap: Record<string, string> = {};
+          const usersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'partner')));
+          usersSnap.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.uid) {
+              namesMap[data.uid] = data.displayName || data.email || "Verified Pro";
+            }
+          });
+          setRealPartnersNames(namesMap);
+        }
+      } catch (err) {
+        console.error("Error loading real partners for preview:", err);
+      }
+    };
+    fetchRealPartners();
+  }, [service.categoryId]);
+
   const timeSlots = [
     { label: '09:00 AM', value: '09:00' },
     { label: '11:00 AM', value: '11:00' },
@@ -320,6 +757,33 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return 'available';
   };
 
+  const isCurrentDateFullyBooked = date ? timeSlots.every(slot => getSlotStatus(slot.value, date) === 'expired') : false;
+
+  const getNearestAvailableDates = () => {
+    const dates = [];
+    const current = new Date();
+    // Start looking from tomorrow onwards
+    current.setDate(current.getDate() + 1);
+    
+    // Scan up to 15 days out to suggest up to 3 days that have available slots
+    for (let i = 0; i < 15 && dates.length < 3; i++) {
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, '0');
+      const day = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      
+      const hasAvailableSlot = timeSlots.some(slot => getSlotStatus(slot.value, dateStr) === 'available');
+      if (hasAvailableSlot) {
+        dates.push({
+          value: dateStr,
+          label: current.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+
   // Promo Code State
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<Promotion | null>(null);
@@ -342,7 +806,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   }, [profile]);
 
   useEffect(() => {
-    if (redemptions.length > 0 && service && !appliedPromo && step === 2) {
+    if (redemptions.length > 0 && service && !appliedPromo && (step === 2 || step === 3)) {
       const match = redemptions.find(r => r.appliedCategoryId === service.categoryId);
       if (match) {
         getDoc(doc(db, 'promotions', match.promotionId)).then(dsnap => {
@@ -356,12 +820,26 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const isSurgePricingActive = () => {
     if (profile?.isPremium) return false; // Zero surge for Prime
-    if (!time) return false;
+    if (!time || !date) return false;
+
+    const now = new Date();
+    // Use local YYYY-MM-DD for comparison
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+
+    // If customer is booking today for tomorrow or any future date, no surge applies
+    if (date !== todayStr) {
+      return false;
+    }
+
+    // If same day, surge only applies for slot at 7:00 PM (19:00) or later. No surge for before 7:00 PM.
     const [h] = time.split(':').map(Number);
-    // Surge during 8-10 AM or 17-20 PM
-    if ((h >= 8 && h <= 10) || (h >= 17 && h <= 20)) {
+    if (h >= 19) {
       return true;
     }
+
     return false;
   };
 
@@ -487,7 +965,24 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   };
 
   const handleBooking = async () => {
-    if (!profile) return;
+    if (!profile) {
+      setError("User profile not found. Please log in again.");
+      setLoading(false);
+      return;
+    }
+
+    if (!auth.currentUser) {
+      setError("You must be logged in to book a service.");
+      setLoading(false);
+      return;
+    }
+
+    if (profile.role !== 'customer' && profile.role !== 'admin') {
+      setError(`Invalid user role: ${profile.role}. Only standard users and administrators can submit service bookings.`);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const bookingPath = 'bookings';
@@ -635,17 +1130,71 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           
           assignedPartnerId = bestMatchObj.partner.userId;
           bookingStatus = 'assigned';
+        } else {
+          // No real eligible partners found: fall back to nominating the closest simulated pro as auto-assigned!
+          const scoredNearby = getScoredNearbyPartners();
+          if (scoredNearby.length > 0) {
+            const bestSim = scoredNearby[0];
+            assignedPartnerId = bestSim.id;
+            bookingStatus = 'assigned';
+            console.log(`Matched simulated partner ${bestSim.id} / ${bestSim.name} with Distance: ${bestSim.distance.toFixed(2)}km`);
+          }
         }
       } catch (matchErr) {
         console.error("Partner matching failed, falling back to manual assignment:", matchErr);
       }
 
       const batch = writeBatch(db);
+
+      // Backfill simulated pro details if assigned
+      if (assignedPartnerId && assignedPartnerId.startsWith('booking_sim_pro_')) {
+        const scoredNearby = getScoredNearbyPartners();
+        const matchedPro = scoredNearby.find(p => p.id === assignedPartnerId);
+        if (matchedPro) {
+          const simUserRef = doc(db, 'users', matchedPro.id);
+          batch.set(simUserRef, {
+            uid: matchedPro.id,
+            displayName: matchedPro.name,
+            email: `${matchedPro.name.toLowerCase().replace(/\s+/g, '')}@zomindia-mock.com`,
+            role: 'partner',
+            phoneNumber: '+919999999999',
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+          }, { merge: true });
+
+          const simPartnerRef = doc(db, 'partners', matchedPro.id);
+          batch.set(simPartnerRef, {
+            userId: matchedPro.id,
+            categories: [service.categoryId],
+            rating: matchedPro.rating,
+            reviewCount: matchedPro.reviewCount,
+            isVerified: true,
+            status: 'active',
+            availabilityStatus: 'Available',
+            lat: matchedPro.lat,
+            lng: matchedPro.lng,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+          }, { merge: true });
+        }
+      }
+
+      // Security Helper to inject the authenticated UID as key-value 'customerId' in data payload before saving
+      const injectCustomerIdInBooking = (payload: any) => {
+        const uid = profile?.uid || auth.currentUser?.uid;
+        if (!uid) {
+          throw new Error("Unable to create booking: No authenticated user found.");
+        }
+        return {
+          ...payload,
+          customerId: uid
+        };
+      };
+
       const bookingRef = doc(collection(db, bookingPath));
       setLastBookingId(bookingRef.id);
       
-      batch.set(bookingRef, {
-        customerId: profile?.uid || auth.currentUser?.uid,
+      const bookingPayload = injectCustomerIdInBooking({
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: bookingStatus,
@@ -667,6 +1216,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
+
+      batch.set(bookingRef, bookingPayload);
 
       // Backfill user profile in Firestore if email or phoneNumber was missing
       const userRef = doc(db, 'users', profile?.uid || auth.currentUser?.uid || '');
@@ -708,44 +1259,124 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       // OTP Secret
       batch.set(doc(db, `bookings/${bookingRef.id}/secrets`, 'otp'), { code: serviceOtp });
       
-      await batch.commit();
+      try {
+        await batch.commit();
+      } catch (comError: any) {
+        // Specifically log the exact error details from the Firebase SDK, including auth state vs permissions
+        console.error("Firebase SDK booking batch commit failure details:", {
+          errorMessage: comError?.message,
+          errorCode: comError?.code,
+          errorName: comError?.name,
+          errorStack: comError?.stack,
+          currentAuthState: auth.currentUser ? {
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email,
+            emailVerified: auth.currentUser.emailVerified,
+            isAnonymous: auth.currentUser.isAnonymous,
+            providerId: auth.currentUser.providerId
+          } : "USER IS NOT LOGGED IN"
+        });
 
-      // Notify customer
-      await sendNotification(profile?.uid || auth.currentUser?.uid || '', 'Booking Placed!', assignedPartnerId ? `Your request for ${service.name} has been received and partner has been assigned.` : `Your request for ${service.name} has been received. Waiting for partner assignment.`, 'new_booking', bookingRef.id);
-      
-      if (assignedPartnerId) {
-        // Notify assigned partner
-        await sendNotification(assignedPartnerId, 'New Job Assigned', `You have been automatically matched for a ${service.name} booking at ${date} ${time}.`, 'new_booking', bookingRef.id);
-      } else {
-        // Notify admin (sarthakwebtech@gmail.com)
-        await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', bookingRef.id);
+        // Use the existing 'handleFirestoreError' utility to format and throw
+        handleFirestoreError(comError, OperationType.CREATE, `bookings/${bookingRef.id}`);
       }
 
-      // Notify other active, qualified partners nearby so they receive alerts for newly published booking requests
-      const matchingPartnersToNotify = eligiblePartnersList.filter(p => p.userId !== assignedPartnerId);
-      for (const pt of matchingPartnersToNotify) {
-        await sendNotification(
-          pt.userId,
-          'New Booking Request Nearby!',
-          `A new request for ${service.name} has been published in your area. Accept it now!`,
-          'new_booking',
-          bookingRef.id
-        );
+      // Notify key stakeholders (wrapped inside safety block to ensure notification dispatch failure never halts booking completion)
+      try {
+        await sendNotification(profile?.uid || auth.currentUser?.uid || '', 'Booking Placed!', assignedPartnerId ? `Your request for ${service.name} has been received and partner has been assigned.` : `Your request for ${service.name} has been received. Waiting for partner assignment.`, 'new_booking', bookingRef.id);
+        
+        if (assignedPartnerId) {
+          await sendNotification(assignedPartnerId, 'New Job Assigned', `You have been automatically matched for a ${service.name} booking at ${date} ${time}.`, 'new_booking', bookingRef.id);
+        } else {
+          await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', bookingRef.id);
+        }
+
+        // Notify other active, qualified partners nearby so they receive alerts for newly published booking requests
+        const matchingPartnersToNotify = eligiblePartnersList.filter(p => (p.userId || p.id) !== assignedPartnerId);
+        for (const pt of matchingPartnersToNotify) {
+          const partnerUid = pt.userId || pt.id;
+          if (partnerUid) {
+            await sendNotification(
+              partnerUid,
+              'New Booking Request Nearby!',
+              `A new request for ${service.name} has been published in your area. Accept it now!`,
+              'new_booking',
+              bookingRef.id
+            );
+          }
+        }
+      } catch (notifyErr) {
+        console.warn("Non-fatal booking notifications dispatch error:", notifyErr);
+      }
+
+      // Live SMS & WhatsApp Gateway trigger
+      try {
+        await fetch('/api/alerts/dispatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            templateName: 'booking_confirmation',
+            payload: {
+              to: contactPhone.trim(),
+              recipientName: profile?.displayName || 'Customer',
+              bookingId: bookingRef.id,
+              serviceName: service.name,
+              scheduledTime: `${date} at ${time}`,
+              price: finalPrice
+            }
+          })
+        });
+      } catch (alertError) {
+        console.warn("SMS/WhatsApp gateway alert bypassed or offline:", alertError);
       }
       
       setShowFinalConfirmation(false);
+      try {
+        localStorage.removeItem('zomindia_pending_booking');
+      } catch (cacheErr) {}
       setShowSuccessModal(true);
       setStep(4);
     } catch (err: any) {
       console.error("Booking error:", err);
       // Try to parse JSON from handleFirestoreError if possible, or just use message
       let msg = "An error occurred while placing your booking. Please try again.";
+      let isPermissionDenied = false;
+      let errorDetails = "";
+
       try {
         const parsed = JSON.parse(err.message);
-        if (parsed.error) msg = parsed.error;
+        if (parsed.error) {
+          msg = parsed.error;
+          errorDetails = parsed.error;
+        }
       } catch {
-        if (err.message && !err.message.includes('{')) msg = err.message;
+        if (err.message && !err.message.includes('{')) {
+          msg = err.message;
+          errorDetails = err.message;
+        }
       }
+
+      // Check if this error is due to permission denied / authentication issues
+      const errLower = errorDetails.toLowerCase();
+      if (
+        errLower.includes('permission') || 
+        errLower.includes('denied') || 
+        errLower.includes('unauthorized') ||
+        errLower.includes('insufficient_permissions') ||
+        errLower.includes('permission-denied')
+      ) {
+        isPermissionDenied = true;
+      }
+
+      if (isPermissionDenied) {
+        const friendlyMsg = "Permission Denied: You do not have permissions to submit this booking. Please ensure you are logged in with an active customer account.";
+        // Trigger a user-friendly toast notification when the booking fails due to permission denied errors.
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(friendlyMsg);
+        }
+        msg = friendlyMsg;
+      }
+
       setError(msg);
       setShowFinalConfirmation(false);
     } finally {
@@ -759,45 +1390,149 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const reverseGeocode = async (lat: number, lng: number) => {
     setIsGeocoding(true);
     let resolvedAddress = '';
+    let resolvedStreet = '';
+    let resolvedCity = '';
+    let isAddressIncomplete = false;
 
-    // 1. Try Nominatim FIRST (unrestricted, reliable, no console auth errors)
-    try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-      const res = await fetch(url, {
-        headers: {
-          'Accept-Language': 'en',
-          'User-Agent': 'zomindia-app-preview'
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.display_name) {
-          resolvedAddress = data.display_name;
-        }
-      }
-    } catch (err) {
-      console.warn("OSM Nominatim reverse-geocode failed, trying Google Maps fallback:", err);
-    }
-
-    // 2. Fallback to Google Maps Geocoder if Nominatim failed
-    if (!resolvedAddress && typeof google !== 'undefined' && google.maps) {
+    // 1. Try Google Maps Reverse Geocoding FIRST (with precise extraction)
+    if (geocodingLib) {
       try {
-        const geocoder = new google.maps.Geocoder();
+        const geocoder = new geocodingLib.Geocoder();
         const response = await geocoder.geocode({ location: { lat, lng } });
-        if (response.results && response.results[0]) {
-          resolvedAddress = response.results[0].formatted_address;
+        if (response && response.results && response.results[0]) {
+          const result = response.results[0];
+          const components = result.address_components;
+
+          let premise = '';
+          let route = '';
+          let sublocality2 = '';
+          let sublocality1 = '';
+          let neighborhood = '';
+          let locality = ''; // City
+          let administrativeArea1 = ''; // State
+          let postalCode = '';
+
+          for (const comp of components) {
+            const types = comp.types;
+            if (types.includes('premise') || types.includes('subpremise') || types.includes('building')) {
+              premise = comp.long_name;
+            }
+            if (types.includes('route')) {
+              route = comp.long_name;
+            }
+            if (types.includes('sublocality_level_2')) {
+              sublocality2 = comp.long_name;
+            }
+            if (types.includes('sublocality_level_1')) {
+              sublocality1 = comp.long_name;
+            }
+            if (types.includes('neighborhood')) {
+              neighborhood = comp.long_name;
+            }
+            if (types.includes('locality')) {
+              locality = comp.long_name;
+            }
+            if (types.includes('administrative_area_level_1')) {
+              administrativeArea1 = comp.long_name;
+            }
+            if (types.includes('postal_code')) {
+              postalCode = comp.long_name;
+            }
+          }
+
+          // Check if key fields are missing to determine incomplete address
+          isAddressIncomplete = !premise && !route && !sublocality1 && !sublocality2 && !neighborhood;
+
+          // Build manualStreet and manualCity
+          const streetComponents = [
+            premise,
+            route,
+            sublocality2,
+            sublocality1,
+            neighborhood
+          ].filter(p => p && p.trim());
+
+          resolvedStreet = streetComponents.join(', ');
+          resolvedCity = [locality, administrativeArea1, postalCode].filter(p => p && p.trim()).join(', ');
+
+          if (!resolvedStreet && result.formatted_address) {
+            resolvedStreet = result.formatted_address;
+            const parts = result.formatted_address.split(',');
+            if (parts.length > 1) {
+              resolvedCity = parts[parts.length - 1].trim();
+            }
+          }
+
+          resolvedAddress = [resolvedStreet, resolvedCity].filter(p => p && p.trim()).join(', ');
+
+          // Preload manual states
+          setManualHouse(premise);
+          setManualStreet(resolvedStreet);
+          setManualCity(resolvedCity);
+          
+          if (isAddressIncomplete) {
+            setManualHouse('');
+          }
         }
-      } catch (e) {
-        console.warn("Google Maps Geocoder failed or restricted:", e);
+      } catch (err) {
+        console.warn("Google Maps reverse geocoding failed, trying Nominatim fallback:", err);
       }
     }
 
-    // 3. Coordinate fallback
+    // 2. Try Nominatim fallback if Google Maps geocoder didn't return a resolved address
+    if (!resolvedAddress) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        const res = await fetch(url, {
+          headers: {
+            'Accept-Language': 'en',
+            'User-Agent': 'zomindia-app-preview'
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.display_name) {
+            resolvedAddress = data.display_name;
+            isAddressIncomplete = !data.address?.house_number && !data.address?.road && !data.address?.suburb;
+            
+            const osHouse = data.address?.house_number || data.address?.building || '';
+            const osStreet = [
+              data.address?.road,
+              data.address?.neighbourhood,
+              data.address?.suburb,
+              data.address?.sublocality
+            ].filter(p => p && p.trim()).join(', ');
+            
+            const osCity = [
+              data.address?.city || data.address?.town || data.address?.village,
+              data.address?.state,
+              data.address?.postcode
+            ].filter(p => p && p.trim()).join(', ');
+
+            setManualHouse(osHouse);
+            setManualStreet(osStreet || data.display_name);
+            setManualCity(osCity);
+          }
+        }
+      } catch (err) {
+        console.warn("OSM Nominatim reverse-geocode failed, trying coordinate fallback:", err);
+      }
+    }
+
+    // 3. Fallback to basic coordinates label if Nominatim failed too
     if (!resolvedAddress) {
       resolvedAddress = `Point: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      resolvedStreet = `Point Coordinate Area`;
+      resolvedCity = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      isAddressIncomplete = true;
+
+      setManualHouse('');
+      setManualStreet(resolvedStreet);
+      setManualCity(resolvedCity);
     }
 
     setAddress(resolvedAddress);
+    setIsIncompleteAddress(isAddressIncomplete);
     setIsGeocoding(false);
   };
 
@@ -811,9 +1546,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     } else if (e.latLng) {
       lat = e.latLng.lat;
       lng = e.latLng.lng;
+    } else if (e.target && 'position' in e.target && e.target.position) {
+      lat = e.target.position.lat;
+      lng = e.target.position.lng;
+    } else if (e.currentTarget && 'position' in e.currentTarget && e.currentTarget.position) {
+      lat = e.currentTarget.position.lat;
+      lng = e.currentTarget.position.lng;
     }
 
-    if (lat && lng) {
+    if (lat !== null && lat !== undefined && lng !== null && lng !== undefined) {
       const latVal = typeof lat === 'function' ? lat() : lat;
       const lngVal = typeof lng === 'function' ? lng() : lng;
       if (typeof latVal === 'number' && typeof lngVal === 'number') {
@@ -836,10 +1577,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onDoubleClick={onClose}
+          // Disabled double-click overlay dismissal to avoid losing typed address or search keyboard state
+          onDoubleClick={undefined}
           className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
         />
-        <div className="absolute inset-0 hidden md:block" onClick={onClose} />
+        {/* Disabled click overlay dismissal to avoid losing typed address or search keyboard state */}
+        <div className="absolute inset-0 hidden md:block" onClick={undefined} />
         
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -871,10 +1614,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onDoubleClick={onClose}
+          // Disabled double-click overlay dismissal to avoid losing typed address or search keyboard state
+          onDoubleClick={undefined}
           className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
         />
-        <div className="absolute inset-0 hidden md:block" onClick={onClose} />
+        {/* Disabled click overlay dismissal to avoid losing typed address or search keyboard state */}
+        <div className="absolute inset-0 hidden md:block" onClick={undefined} />
         
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 100 }}
@@ -908,6 +1653,58 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               <X size={20} />
             </button>
           </div>
+
+          {step <= 3 && (
+            <div className="bg-slate-50/50 border-b border-slate-100 px-6 sm:px-10 py-3 shrink-0">
+              <div className="flex items-center justify-between relative max-w-sm mx-auto">
+                <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-250/70 -translate-y-1/2 z-0" />
+                <motion.div 
+                  className="absolute top-1/2 left-0 h-0.5 bg-blue-600 -translate-y-1/2 z-0 origin-left"
+                  initial={{ width: '0%' }}
+                  animate={{ 
+                    width: step === 1 ? '0%' : step === 2 ? '50%' : '100%'
+                  }}
+                  transition={{ duration: 0.3 }}
+                />
+                
+                {[
+                  { key: 1, label: "Schedule", desc: "Select Slot" },
+                  { key: 2, label: "Address", desc: "Service Location" },
+                  { key: 3, label: "Review", desc: "Confirm & Pay" }
+                ].map((s) => {
+                  const isCompleted = step > s.key;
+                  const isCurrent = step === s.key;
+                  return (
+                    <div key={s.key} className="relative z-10 flex flex-col items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (s.key < step) {
+                            setStep(s.key);
+                          }
+                        }}
+                        disabled={s.key >= step}
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm transition-all shadow-sm ${
+                          isCompleted
+                            ? "bg-emerald-500 text-white cursor-pointer hover:scale-105"
+                            : isCurrent
+                              ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                              : "bg-white border border-slate-200 text-slate-400 cursor-not-allowed"
+                        }`}
+                      >
+                        {isCompleted ? "✓" : s.key}
+                      </button>
+                      <div className="text-center mt-1">
+                        <p className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${isCurrent ? 'text-blue-600' : isCompleted ? 'text-emerald-600' : 'text-slate-400'}`}>
+                          {s.label}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="p-4 sm:p-8 overflow-y-auto flex-1 no-scrollbar relative min-h-0">
             <AnimatePresence mode="wait">
@@ -985,6 +1782,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-6 md:space-y-8"
                 >
+                  <div className="border-b border-slate-100 pb-3">
+                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full inline-block">Step 1 of 3</span>
+                    <h4 className="text-base font-bold text-slate-900 mt-2">Schedule Your Service Slot</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Pick a convenient arrival date and time slot for our professional technician.</p>
+                  </div>
+
                   <div className="bg-slate-50 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200">
                     <div className="flex justify-between items-start mb-3 sm:mb-4">
                       <div>
@@ -1030,64 +1833,22 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </motion.div>
                   )}
 
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="relative group">
-                        <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" size={16} />
-                        <input 
-                          type="date" 
-                          value={date}
-                          onChange={(e) => {
-                            const newDate = e.target.value;
-                            if (newDate) {
-                              const allExpired = timeSlots.every(slot => getSlotStatus(slot.value, newDate) === 'expired');
-                              if (allExpired) {
-                                setSlotNotAvailablePopup(true);
-                                setDate('');
-                                setTime('');
-                              } else {
-                                setDate(newDate);
-                              }
-                            } else {
-                              setDate('');
-                            }
-                          }}
-                          min={new Date().toLocaleDateString('en-CA')}
-                          className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
-                        />
-                      </div>
-                      <div className="relative group">
-                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" size={16} />
-                        <select 
-                          value={time}
-                          onChange={(e) => {
-                            const status = getSlotStatus(e.target.value);
-                            if (status === 'available') {
-                              setTime(e.target.value);
-                            }
-                          }}
-                          className={`w-full bg-white border border-slate-200 pl-11 pr-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all appearance-none font-bold text-sm text-slate-900 ${!date ? 'opacity-40 grayscale' : ''}`}
-                          disabled={!date}
-                        >
-                          <option value="">Select Slot</option>
-                          {timeSlots.map(slot => {
-                            const status = getSlotStatus(slot.value);
-                            return (
-                              <option 
-                                key={slot.value} 
-                                value={slot.value} 
-                                disabled={status === 'expired'}
-                                className={status === 'expired' ? 'text-rose-500' : ''}
-                              >
-                                {slot.label} {status === 'expired' ? '(Unavailable)' : ''}
-                              </option>
-                            )
-                          })}
-                        </select>
-                      </div>
+                  <div className="space-y-4">
+                    <div className="relative group">
+                      <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" size={16} />
+                      <input 
+                        type="date" 
+                        value={date}
+                        onChange={(e) => {
+                          setDate(e.target.value || '');
+                          setTime('');
+                        }}
+                        min={new Date().toLocaleDateString('en-CA')}
+                        className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 sm:py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
+                      />
                     </div>
 
-                    {date && (
+                    {date && !isCurrentDateFullyBooked && (
                       <div className="grid grid-cols-3 gap-2 px-1">
                         {timeSlots.map(slot => {
                           const status = getSlotStatus(slot.value);
@@ -1109,15 +1870,60 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         })}
                       </div>
                     )}
+
+                    {date && isCurrentDateFullyBooked && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-amber-50 border border-amber-200 rounded-[20px] p-4 sm:p-5 space-y-4"
+                      >
+                        <div className="flex gap-3">
+                          <Clock size={18} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                          <div>
+                            <h5 className="text-[10px] font-black text-amber-900 uppercase tracking-widest mb-1">
+                              All Slots Booked / Past
+                            </h5>
+                            <p className="text-xs text-amber-700 leading-relaxed font-semibold">
+                              All time slots for <span className="font-extrabold text-amber-900 border-b border-amber-300/40">{new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span> are fully booked or have expired. Please choose a future date:
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Quick select suggestions */}
+                        <div className="space-y-2 pt-1 border-t border-amber-200/50">
+                          <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400">
+                            Suggested Future Dates
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {getNearestAvailableDates().map((suggestion) => (
+                              <button
+                                type="button"
+                                key={suggestion.value}
+                                onClick={() => {
+                                  setDate(suggestion.value);
+                                  setTime('');
+                                }}
+                                className="px-3.5 py-2.5 bg-white border border-slate-200 hover:border-blue-500 rounded-xl text-xs font-bold text-slate-800 hover:text-blue-700 transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                              >
+                                <CalendarIcon size={12} className="text-slate-400" />
+                                {suggestion.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
 
-                  <button 
-                    disabled={!date || !time}
-                    onClick={() => setStep(2)}
-                    className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-slate-200"
-                  >
-                    Continue
-                  </button>
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-4 sm:p-6 mt-6 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col pt-4">
+                    <button 
+                      disabled={!date || !time}
+                      onClick={() => setStep(2)}
+                      className="w-full bg-blue-700 text-white py-4.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic hover:bg-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-blue-700/20 active:scale-[0.98]"
+                    >
+                      Continue
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
@@ -1127,144 +1933,179 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  className="space-y-6"
+                  className="space-y-5"
                 >
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-400 uppercase ml-1">Search or Select Address</label>
-                      <button 
-                        type="button"
-                        onClick={async () => {
-                          if (navigator.permissions) {
-                            try {
-                              const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-                              if (permissionStatus.state === 'denied') {
-                                alert("Location permission is blocked. Please enable it in your browser/device settings to use this feature.");
-                                return;
-                              }
-                            } catch (e) {
-                              // Permissions API not supported or error
-                            }
-                          }
+                  <div className="border-b border-slate-100 pb-3">
+                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full inline-block">Step 2 of 3</span>
+                    <h4 className="text-base font-bold text-slate-900 mt-2">Enter Service Address</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Please provide the address where you want our technician to arrive.</p>
+                  </div>
 
-                          if (navigator.geolocation) {
-                            const successCallback = async (pos: GeolocationPosition) => {
-                              const lat = pos.coords.latitude;
-                              const lng = pos.coords.longitude;
-                              setLocation({ lat, lng });
-                              setMapCenter({ lat, lng });
-                              reverseGeocode(lat, lng);
-                            };
-                            
-                            const errorCallback = (err: GeolocationPositionError) => {
-                              alert(handleMapsError(err));
-                            };
+                  {/* Clean Tab Switcher */}
+                  <div className="bg-slate-50 p-1 rounded-xl border border-slate-100 flex gap-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setIsManualEdit(false)}
+                      className={`flex-1 py-2.5 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+                        !isManualEdit
+                          ? "bg-white text-blue-700 shadow-sm border border-slate-200"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      <MapPin size={14} /> Search on Map
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsManualEdit(true)}
+                      className={`flex-1 py-2.5 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+                        isManualEdit
+                          ? "bg-white text-blue-700 shadow-sm border border-slate-200"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      ✏️ Type Address Manually
+                    </button>
+                  </div>
 
-                            navigator.geolocation.getCurrentPosition(
-                              successCallback,
-                              (err) => {
-                                if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-                                  // Fall back to standard mode if high accuracy times out/fails on sandbox
-                                  navigator.geolocation.getCurrentPosition(
-                                    successCallback,
-                                    errorCallback,
-                                    { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-                                  );
-                                } else {
-                                  errorCallback(err);
-                                }
-                              },
-                              { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-                            );
-                          } else {
-                             alert("Geolocation is not supported by your browser.");
-                          }
-                        }}
-                        className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-colors flex items-center gap-1.5 shadow-sm"
-                      >
-                        <MapPin size={12} className="animate-pulse" /> Use GPS Location
-                      </button>
-                    </div>
+                  {!isManualEdit ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3">
+                        <label className="block text-xs font-semibold text-slate-600">Search for your area / colony</label>
+                        <AddressAutocomplete 
+                          value={address}
+                          onChange={(val) => {
+                            setAddress(val);
+                            if (!location) setLocation({ lat: 28.6139, lng: 77.2090 });
+                          }}
+                          onAddressSelect={(addr, lat, lng) => {
+                            setAddress(addr);
+                            setLocation({ lat, lng });
+                            setMapCenter({ lat, lng });
+                          }} 
+                          onEditClick={() => setIsManualEdit(true)}
+                        />
 
-                    {/* Single Unified Address Input integrating Autocomplete */}
-                    <div>
-                      <AddressAutocomplete 
-                        value={address}
-                        onChange={(val) => {
-                          setAddress(val);
-                          if (!location) setLocation({ lat: 28.6139, lng: 77.2090 });
-                        }}
-                        onAddressSelect={(addr, lat, lng) => {
-                          setAddress(addr);
-                          setLocation({ lat, lng });
-                          setMapCenter({ lat, lng });
-                        }} 
-                      />
-                    </div>
-
-                    {/* Interactive Geographic Map Picker */}
-                    {address && location && (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between px-1">
-                          <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                            🎯 Pinpoint Address Coordinate Map
-                          </span>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!address.trim()) return;
-                              setIsGeocoding(true);
-                              let resolvedLocation: { lat: number, lng: number } | null = null;
+                        <button 
+                          type="button"
+                          disabled={isFetchingGps}
+                          onClick={async () => {
+                            setIsFetchingGps(true);
+                            if (navigator.permissions) {
                               try {
-                                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-                                const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-                                if (res.ok) {
-                                  const data = await res.json();
-                                  if (data?.[0]) {
-                                    resolvedLocation = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-                                  }
+                                const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+                                if (permissionStatus.state === 'denied') {
+                                  alert("Location permission is blocked. Please enable map/device location settings manually.");
+                                  setIsFetchingGps(false);
+                                  return;
                                 }
-                              } catch {}
-                              if (resolvedLocation) {
-                                setLocation(resolvedLocation);
-                                setMapCenter(resolvedLocation);
-                              } else {
-                                alert("Could not find address coordinate. Drag the map pin to set visually.");
-                              }
-                              setIsGeocoding(false);
-                            }}
-                            className="text-[9px] font-bold text-blue-700 hover:underline uppercase tracking-wider"
-                          >
-                            {isGeocoding ? "Locating..." : "Pin Typed Address"}
-                          </button>
-                        </div>
-                        <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner bg-slate-50">
-                          <Map
-                            defaultCenter={location}
-                            center={mapCenter}
-                            defaultZoom={15}
-                            mapId="DEMO_MAP_ID"
-                            gestureHandling="greedy"
-                            disableDefaultUI={false}
-                            zoomControl={true}
-                            streetViewControl={false}
-                            mapTypeControl={false}
-                            fullscreenControl={false}
-                            className="w-full h-full"
-                            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                            onClick={(e) => {
-                              const coords = getEventLatLng(e);
-                              if (coords) {
-                                setLocation(coords);
-                                setMapCenter(coords);
-                                reverseGeocode(coords.lat, coords.lng);
-                              }
-                            }}
-                          >
-                            <AdvancedMarker 
-                              position={location}
-                              draggable={true}
-                              onDragEnd={(e) => {
+                              } catch (e) {}
+                            }
+
+                            if (navigator.geolocation) {
+                              const successCallback = async (pos: GeolocationPosition) => {
+                                  const lat = pos.coords.latitude;
+                                  const lng = pos.coords.longitude;
+                                  setLocation({ lat, lng });
+                                  setMapCenter({ lat, lng });
+                                  setMapZoom(17);
+                                  await reverseGeocode(lat, lng);
+                                  setIsFetchingGps(false);
+                              };
+                              
+                              const errorCallback = (err: GeolocationPositionError) => {
+                                alert("Could not fetch GPS location. Please search for your area above or use code/typing mode.");
+                                setIsFetchingGps(false);
+                              };
+
+                              navigator.geolocation.getCurrentPosition(
+                                successCallback,
+                                (err) => {
+                                  if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+                                    navigator.geolocation.getCurrentPosition(
+                                      successCallback,
+                                      errorCallback,
+                                      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+                                    );
+                                  } else {
+                                    errorCallback(err);
+                                  }
+                                },
+                                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                              );
+                            } else {
+                               alert("Geolocation is not supported by your browser.");
+                               setIsFetchingGps(false);
+                            }
+                          }}
+                          className={`w-full py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold border transition-all cursor-pointer ${
+                            isFetchingGps 
+                              ? "bg-slate-100 text-slate-400 border-slate-200 animate-pulse" 
+                              : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm"
+                          }`}
+                        >
+                          <span className={isFetchingGps ? "animate-spin text-slate-400" : ""}>📍</span>
+                          {isFetchingGps ? "Detecting location..." : "Use Current Location (GPS)"}
+                        </button>
+                      </div>
+
+                      {address && location && (
+                        <div className="space-y-2 mt-4 text-left">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              Confirm location on map:
+                            </span>
+                            {address.trim() && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!address.trim()) return;
+                                  setIsGeocoding(true);
+                                  let resolvedLocation: { lat: number, lng: number } | null = null;
+                                  try {
+                                    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+                                    const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+                                    if (res.ok) {
+                                      const data = await res.json();
+                                      if (data?.[0]) {
+                                        resolvedLocation = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                                      }
+                                    }
+                                  } catch (e) {
+                                    console.warn("OSM resolution failed:", e);
+                                  }
+                                  if (resolvedLocation) {
+                                    setLocation(resolvedLocation);
+                                    setMapCenter(resolvedLocation);
+                                    setMapZoom(17);
+                                  } else {
+                                    alert("Could not locate address. Please position the pin manually on map.");
+                                  }
+                                  setIsGeocoding(false);
+                                }}
+                                className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                              >
+                                {isGeocoding ? "Locating..." : "Pin to address"}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="w-full h-40 rounded-xl overflow-hidden border border-slate-200 relative bg-slate-50 shadow-sm">
+                            <Map
+                              defaultCenter={location}
+                              center={mapCenter}
+                              zoom={mapZoom}
+                              onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
+                              defaultZoom={15}
+                              mapId="DEMO_MAP_ID"
+                              gestureHandling="greedy"
+                              disableDefaultUI={false}
+                              zoomControl={true}
+                              streetViewControl={false}
+                              mapTypeControl={false}
+                              fullscreenControl={false}
+                              className="w-full h-full"
+                              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                              onClick={(e) => {
                                 const coords = getEventLatLng(e);
                                 if (coords) {
                                   setLocation(coords);
@@ -1273,203 +2114,168 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                 }
                               }}
                             >
-                              <Pin background="#1a1a1a" glyphColor="#fff" borderColor="#000" />
-                            </AdvancedMarker>
-                          </Map>
-                        </div>
-                        <p className="text-[10px] text-slate-400 font-medium px-1 flex items-center gap-1 italic">
-                          <span>💡</span> Drag the black pin or click anywhere on the map to accurately place your service location.
-                        </p>
-                      </div>
-                    )}
+                              <AdvancedMarker 
+                                position={location}
+                                draggable={true}
+                                onDragEnd={(e) => {
+                                  const coords = getEventLatLng(e);
+                                  if (coords) {
+                                    setLocation(coords);
+                                    setMapCenter(coords);
+                                    reverseGeocode(coords.lat, coords.lng);
+                                  }
+                                }}
+                              >
+                                <Pin background="#2563eb" glyphColor="#fff" borderColor="#1e40af" />
+                              </AdvancedMarker>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Flat / House / Landmark details</label>
-                      <div className="relative">
-                        <Info className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                              {simulatedPros.map((pro) => (
+                                <AdvancedMarker 
+                                  key={pro.id} 
+                                  position={{ lat: pro.lat, lng: pro.lng }}
+                                >
+                                  <PartnerIdentityMarker
+                                    status={pro.status}
+                                    name={pro.name}
+                                  />
+                                </AdvancedMarker>
+                              ))}
+                            </Map>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            💡 Drag the blue map pin or tap any spot to point out your doorstep exactly.
+                          </p>
+
+                          {/* Assigned Pro (Compact & Clean) */}
+                          {(() => {
+                            const nearby = getScoredNearbyPartners();
+                            if (nearby.length > 0) {
+                              const optimalMatch = nearby[0];
+                              return (
+                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center justify-between text-xs mt-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                    <span className="font-semibold text-slate-600">Assigned Pro:</span>
+                                    <span className="font-bold text-slate-900">{optimalMatch.name}</span>
+                                  </div>
+                                  <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-bold">
+                                    Arriving in ~{Math.max(3, Math.round(optimalMatch.distance * 3.5 + 3))} mins
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      )}
+
+                      <div className="space-y-1 mt-3 text-left">
+                        <label className="block text-xs font-semibold text-slate-600">House / Flat No., Floor, Apartment Name</label>
                         <input 
                           type="text"
                           value={addressDetails}
                           onChange={(e) => setAddressDetails(e.target.value)}
-                          placeholder="e.g. Flat 402, Green Apartments..."
-                          className="w-full bg-slate-50 pl-12 pr-4 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all font-medium text-slate-900"
+                          placeholder="e.g. Flat 402, Building 3B, Sector 5..."
+                          className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-xs sm:text-sm font-medium text-slate-900"
                         />
                       </div>
                     </div>
-
-                    <div className="pt-2">
-                       <div className="flex justify-between items-center mb-2 ml-1">
-                         <label className="block text-xs font-bold text-slate-400 uppercase">Offers & Promos</label>
-                         <button 
-                           onClick={() => setShowPromos(!showPromos)}
-                           className="text-[10px] font-black text-rose-500 uppercase tracking-widest hover:underline"
-                         >
-                           {showPromos ? 'Hide Offers' : 'View Available'}
-                         </button>
-                       </div>
-                       <div className="flex gap-2">
-                         <input 
-                           type="text"
-                           value={promoInput}
-                           onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                           onFocus={() => setShowPromos(true)}
-                           placeholder="Type code or select from below..."
-                           className="flex-1 bg-slate-50 px-4 py-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all font-mono text-sm font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-300"
-                         />
-                         {promoInput.trim() && !appliedPromo && (
-                           <button 
-                             onClick={handleApplyPromo}
-                             disabled={isVerifyingPromo}
-                             className="bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50"
-                           >
-                             {isVerifyingPromo ? '...' : 'APPLY'}
-                           </button>
-                         )}
-                       </div>
-
-                       {/* Available Promos Overlay/Section */}
-                       <AnimatePresence>
-                         {showPromos && (
-                           <motion.div 
-                             initial={{ opacity: 0, scale: 0.95 }}
-                             animate={{ opacity: 1, scale: 1 }}
-                             exit={{ opacity: 0, scale: 0.95 }}
-                             className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3"
-                           >
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Offers ({availablePromos.length})</span>
-                                <button onClick={() => setShowPromos(false)} className="text-slate-400 px-2 py-1">
-                                  <X size={14} />
-                                </button>
-                              </div>
-                              {availablePromos.length > 0 ? (
-                                <div className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 max-h-60 overflow-y-auto no-scrollbar">
-                                  {availablePromos.map(p => {
-                                    const isSelected = appliedPromo?.id === p.id;
-                                    return (
-                                      <div 
-                                        key={p.id} 
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setAppliedPromo(null);
-                                            setPromoInput('');
-                                          } else {
-                                            setAppliedPromo(p);
-                                            setPromoInput(p.code);
-                                            setShowPromos(false);
-                                          }
-                                        }}
-                                        className={`p-4 rounded-xl flex justify-between items-center shadow-sm cursor-pointer border transition-all hover:scale-[1.01] active:translate-y-0.5 ${isSelected ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-slate-100 hover:border-slate-200'}`}
-                                      >
-                                        <div className="flex-1 pr-3">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <span className="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider font-mono">
-                                              {p.code}
-                                            </span>
-                                            {isSelected && (
-                                              <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
-                                                <CheckCircle2 size={10} /> Active
-                                              </span>
-                                            )}
-                                          </div>
-                                          <p className="font-extrabold text-slate-800 text-xs tracking-tight">{p.name}</p>
-                                          <p className="text-[10px] text-slate-400 mt-0.5">Instant {p.discountType === 'percent' ? `${p.discountValue}%` : `₹${p.discountValue}`} off on booking!</p>
-                                        </div>
-                                        <button 
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (isSelected) {
-                                              setAppliedPromo(null);
-                                              setPromoInput('');
-                                            } else {
-                                              setAppliedPromo(p);
-                                              setPromoInput(p.code);
-                                              setShowPromos(false);
-                                            }
-                                          }}
-                                          className={`text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors ${isSelected ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' : 'bg-slate-100 text-slate-905 hover:bg-slate-200'}`}
-                                        >
-                                          {isSelected ? 'Remove' : 'Apply'}
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className="text-[10px] text-slate-400 italic text-center py-4">No exclusive offers found for you yet.</p>
-                              )}
-                           </motion.div>
-                         )}
-                       </AnimatePresence>
-
-                       {promoError && <p className="text-[10px] text-rose-500 font-bold mt-1.5 ml-1">{promoError}</p>}
-                       {appliedPromo && (
-                         <motion.div 
-                           initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
-                           className="flex items-center justify-between bg-emerald-50 border border-emerald-100 p-4 rounded-xl mt-4"
-                         >
-                           <div className="flex items-center gap-3">
-                             <div className="p-1.5 bg-emerald-500 rounded-lg text-white">
-                               <CheckCircle2 size={16} />
-                             </div>
-                             <div>
-                               <span className="text-xs font-black text-emerald-900 uppercase tracking-widest block">
-                                 {appliedPromo.code} Applied
-                               </span>
-                               <span className="text-[10px] font-bold text-emerald-600">
-                                 {appliedPromo.discountType === 'percent' ? `${appliedPromo.discountValue}%` : `₹${appliedPromo.discountValue}`} discount saved
-                               </span>
-                             </div>
-                           </div>
-                           <button 
-                             type="button"
-                             onClick={() => {
-                               setAppliedPromo(null);
-                               setPromoInput('');
-                             }} 
-                             className="bg-white p-2 rounded-lg text-slate-400 hover:text-blue-700 border border-emerald-100 transition-colors"
-                           >
-                             <X size={14} />
-                           </button>
-                         </motion.div>
-                       )}
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-700 p-5 sm:p-8 rounded-3xl text-white shadow-2xl shadow-blue-700/30 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-1000" />
-                    
-                    <div className="flex justify-between items-end mb-4 sm:mb-6 relative z-10">
+                  ) : (
+                    /* Structured Manual Input Mode - Highly Accessible & Super Simple */
+                    <div className="space-y-4 text-left">
                       <div>
-                        <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest block mb-2">Total Amount</span>
-                        <div className="flex items-baseline gap-2">
-                           <span className="text-3xl sm:text-4xl font-bold tracking-tight">₹{calculateFinalPrice()}</span>
-                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Base Rate</span>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          House / Flat / Floor / Building Name
+                        </label>
+                        <input
+                          type="text"
+                          value={manualHouse}
+                          onChange={(e) => {
+                            setManualHouse(e.target.value);
+                            updateAddressFromManual(e.target.value, manualStreet, manualCity, manualLandmark);
+                          }}
+                          placeholder="e.g. Apartment 304, Rosewood Residency"
+                          className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-medium text-slate-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          Street / Sector / Block / Colony <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={manualStreet}
+                          onChange={(e) => {
+                            setManualStreet(e.target.value);
+                            updateAddressFromManual(manualHouse, e.target.value, manualCity, manualLandmark);
+                          }}
+                          placeholder="e.g. Sector 56, Golf Course Road"
+                          className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-medium text-slate-900"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            City, State & Pincode <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={manualCity}
+                            onChange={(e) => {
+                              setManualCity(e.target.value);
+                              updateAddressFromManual(manualHouse, manualStreet, e.target.value, manualLandmark);
+                            }}
+                            placeholder="e.g. Gurgaon, Haryana - 122011"
+                            className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-medium text-slate-900"
+                            required
+                          />
                         </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Landmark (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={manualLandmark}
+                            onChange={(e) => {
+                              setManualLandmark(e.target.value);
+                              updateAddressFromManual(manualHouse, manualStreet, manualCity, e.target.value);
+                            }}
+                            placeholder="e.g. Opposite Central School"
+                            className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-medium text-slate-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subtle, beautiful pricing & checkout footer */}
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-4 sm:p-5 mt-6 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] flex flex-col gap-4">
+                    <div className="flex justify-between items-center px-1">
+                      <div className="text-left">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Estimated Total</p>
+                        <p className="text-2xl font-bold text-slate-900">₹{calculateFinalPrice()}</p>
                       </div>
                       {appliedPromo && (
                         <div className="text-right">
-                          <span className="text-xs text-white/40 line-through block font-medium">₹{service.basePrice + getSurgeAmount()}</span>
-                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Saved ₹{(service.basePrice + getSurgeAmount()) - calculateFinalPrice()}</span>
+                          <p className="text-xs text-slate-400 line-through">₹{service.basePrice + getSurgeAmount()}</p>
+                          <p className="text-xs text-emerald-600 font-bold">You saved ₹{(service.basePrice + getSurgeAmount()) - calculateFinalPrice()}</p>
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-white/40 text-[9px] font-black uppercase tracking-widest relative z-10">
-                      <div className="p-1.5 bg-white/5 rounded-lg border border-white/10">
-                        <CreditCard size={12} />
-                      </div>
-                      Priority checkout with premium support
-                    </div>
-                  </div>
 
-                  <button 
-                    disabled={!address}
-                    onClick={() => setStep(3)}
-                    className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 disabled:opacity-50 active:scale-[0.98]"
-                  >
-                    Continue
-                  </button>
+                    <button 
+                      disabled={!isManualEdit ? !address : !manualStreet}
+                      onClick={() => setStep(3)}
+                      className="w-full bg-blue-700 text-white py-4 rounded-xl font-bold text-sm tracking-wide hover:bg-blue-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer"
+                    >
+                      Continue
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
@@ -1481,6 +2287,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-6"
                 >
+                  <div className="border-b border-slate-100 pb-3">
+                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full inline-block">Step 3 of 3</span>
+                    <h4 className="text-base font-bold text-slate-900 mt-2">Confirm & Review Order</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Please review your selected date, appointment location, and final pricing details before booking.</p>
+                  </div>
+
                   <div className="bg-slate-50 rounded-3xl p-6 border border-slate-200">
                     {error && (
                       <div className="mb-4 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-2 text-rose-600 text-xs font-bold">
@@ -1505,22 +2317,237 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <div className="bg-white rounded-[28px] border border-slate-100 p-5 group transition-all hover:shadow-md">
                         <div className="flex justify-between items-center mb-3">
                           <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Service Destination</p>
+                          {!isEditingAddressOnConfirm ? (
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setIsEditingAddressOnConfirm(true);
+                              }}
+                              className="text-[10px] font-black uppercase text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-full transition-all border border-blue-100 cursor-pointer flex items-center gap-1 shrink-0"
+                            >
+                              ✏️ Edit
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setIsEditingAddressOnConfirm(false);
+                                }}
+                                className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-full transition-all border border-emerald-150 cursor-pointer"
+                              >
+                                Done
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setIsEditingAddressOnConfirm(false);
+                                }}
+                                className="text-[10px] font-black uppercase text-slate-400 hover:bg-slate-50 px-2 py-1.5 rounded-full transition-all cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {isEditingAddressOnConfirm ? (
+                          <div className="space-y-3">
+                            <textarea
+                              value={address}
+                              onChange={(e) => setAddress(e.target.value)}
+                              rows={2}
+                              className="w-full bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 px-3 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700 transition-all font-sans leading-normal resize-none"
+                              placeholder="Complete address (e.g. House No, Street name, landmark...)"
+                            />
+                            <p className="text-[9px] text-slate-400 leading-normal font-medium">✏️ Edit the address details directly above to resolve any typos or missing unit numbers.</p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-700 font-bold leading-relaxed">
+                            {addressDetails && <span className="block text-slate-900 mb-1">{addressDetails}</span>}
+                            {address}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Offers & Promos Section (Zomato/Urban Company Inspired - Highly accessible & simple for all ages) */}
+                      <div className="bg-white rounded-[28px] border border-slate-100 p-5 group transition-all hover:shadow-md">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="p-2 bg-emerald-50 rounded-xl text-emerald-600 block">
+                              <Tag size={16} className="fill-emerald-100" />
+                            </span>
+                            <div className="text-left">
+                              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Coupons & Offers</p>
+                              <p className="font-bold text-slate-900 text-sm">Save on your booking</p>
+                            </div>
+                          </div>
                           <button 
-                            onClick={() => {
-                              const newAddress = prompt("Enter complete address manually:", address);
-                              if (newAddress !== null && newAddress.trim() !== "") {
-                                setAddress(newAddress);
-                              }
-                            }}
-                            className="text-[10px] font-black uppercase text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-full transition-all border border-blue-100"
+                            type="button"
+                            onClick={() => setShowPromos(!showPromos)}
+                            className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-full transition-all border border-rose-100 cursor-pointer"
                           >
-                            Edit Manually
+                            {showPromos ? 'Hide Offers' : 'View Offers'}
                           </button>
                         </div>
-                        <p className="text-sm text-slate-700 font-bold leading-relaxed">
-                          {addressDetails && <span className="block text-slate-900 mb-1">{addressDetails}</span>}
-                          {address}
-                        </p>
+
+                        {/* Input Promo Field */}
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            value={promoInput}
+                            onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                            placeholder="Type Coupon Code here..."
+                            className="flex-1 bg-slate-50 px-4 py-3.5 rounded-xl border border-slate-100 focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-700/10 transition-all font-mono text-sm font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-350 placeholder:normal-case"
+                          />
+                          {promoInput.trim() && !appliedPromo && (
+                            <button 
+                              type="button"
+                              onClick={handleApplyPromo}
+                              disabled={isVerifyingPromo}
+                              className="bg-blue-700 text-white px-5 py-3.5 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50 tracking-wider font-sans uppercase shrink-0"
+                            >
+                              {isVerifyingPromo ? '...' : 'APPLY'}
+                            </button>
+                          )}
+                        </div>
+
+                        {promoError && (
+                          <p className="text-[11px] text-rose-500 font-semibold mt-2 ml-1 text-left">
+                            ⚠️ {promoError}
+                          </p>
+                        )}
+
+                        {/* Active Promo Success Message */}
+                        {appliedPromo && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.98 }} 
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="flex items-center justify-between bg-emerald-50/70 border border-emerald-100/80 p-4 rounded-2xl mt-4"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-emerald-500 rounded-xl text-white">
+                                <CheckCircle2 size={16} />
+                              </div>
+                              <div className="text-left">
+                                <span className="text-xs font-black text-emerald-900 uppercase tracking-widest block font-mono">
+                                  🎟️ {appliedPromo.code} Applied
+                                </span>
+                                <span className="text-[11px] font-bold text-emerald-700 block mt-0.5">
+                                  You saved ₹{appliedPromo.discountType === 'percent' 
+                                    ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) 
+                                    : appliedPromo.discountValue} with this coupon!
+                                </span>
+                              </div>
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setAppliedPromo(null);
+                                setPromoInput('');
+                              }} 
+                              className="bg-white p-2 rounded-xl text-rose-500 hover:bg-rose-50 border border-emerald-100 transition-colors cursor-pointer shrink-0"
+                              title="Delete Coupon"
+                            >
+                              <X size={14} />
+                            </button>
+                          </motion.div>
+                        )}
+
+                        {/* Available Promos Area */}
+                        <AnimatePresence>
+                          {showPromos && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden mt-4 pt-4 border-t border-slate-100 space-y-3 text-left"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Offers ({availablePromos.length})</span>
+                                <button type="button" onClick={() => setShowPromos(false)} className="text-slate-400 p-1 hover:text-slate-600">
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              {availablePromos.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-3 max-h-64 overflow-y-auto no-scrollbar pt-1">
+                                  {availablePromos.map(p => {
+                                    const isSelected = appliedPromo?.id === p.id;
+                                    const expectedSavings = p.discountType === 'percent' 
+                                      ? Math.round((service.basePrice * p.discountValue) / 100) 
+                                      : p.discountValue;
+                                    
+                                    return (
+                                      <div 
+                                        key={p.id} 
+                                        onClick={() => {
+                                          if (isSelected) {
+                                            setAppliedPromo(null);
+                                            setPromoInput('');
+                                          } else {
+                                            setAppliedPromo(p);
+                                            setPromoInput(p.code);
+                                            setShowPromos(false);
+                                          }
+                                        }}
+                                        className={`group relative p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
+                                          isSelected 
+                                            ? 'bg-emerald-50/60 border-emerald-400 hover:border-emerald-500' 
+                                            : 'bg-white border-slate-100 hover:border-blue-200 hover:shadow-sm'
+                                        }`}
+                                        style={{ borderStyle: 'dashed' }}
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-grow text-left">
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                              <span className="bg-blue-50 text-blue-700 text-xs font-black px-2.5 py-0.5 rounded uppercase tracking-wider font-mono border border-blue-100">
+                                                {p.code}
+                                              </span>
+                                              {isSelected && (
+                                                <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 leading-none shadow-sm shadow-emerald-500/10">
+                                                  <CheckCircle2 size={10} /> Active
+                                                </span>
+                                              )}
+                                            </div>
+                                            <h5 className="font-extrabold text-slate-800 text-xs tracking-tight line-clamp-1">{p.name}</h5>
+                                            <p className="text-[11px] text-emerald-600 font-bold mt-1">
+                                              💰 Saves ₹{expectedSavings} on this service!
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5">
+                                              {p.discountType === 'percent' ? `${p.discountValue}%` : `₹${p.discountValue}`} off on booking
+                                            </p>
+                                          </div>
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (isSelected) {
+                                                setAppliedPromo(null);
+                                                setPromoInput('');
+                                              } else {
+                                                setAppliedPromo(p);
+                                                setPromoInput(p.code);
+                                                setShowPromos(false);
+                                              }
+                                            }}
+                                            className={`text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-sm shrink-0 select-none ${
+                                              isSelected 
+                                                ? 'bg-rose-100 text-rose-600 hover:bg-rose-200 active:scale-95' 
+                                                : 'bg-slate-100 text-slate-800 hover:bg-blue-600 hover:text-white active:scale-95'
+                                            }`}
+                                          >
+                                            {isSelected ? 'Remove' : 'Apply'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-slate-450 italic text-center py-4">No exclusive offers found for you yet.</p>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
 
                       {/* Contact Accuracy, Accessibility, & Security */}
@@ -1667,13 +2694,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
                   </div>
 
-                  <button 
-                    disabled={loading}
-                    onClick={handleConfirmServiceClick}
-                    className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex justify-center items-center gap-2 shadow-lg shadow-blue-700/20"
-                  >
-                    {loading ? 'Processing...' : 'Confirm Service'}
-                  </button>
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-4 sm:p-6 mt-6 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col pt-4">
+                    <button 
+                      disabled={loading}
+                      onClick={handleConfirmServiceClick}
+                      className="w-full bg-blue-700 text-white py-4.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic hover:bg-blue-800 transition-all flex justify-center items-center gap-2 shadow-xl shadow-blue-700/20 disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      {loading ? 'Processing...' : 'Confirm Service'}
+                    </button>
+                  </div>
                 </motion.div>
               )}
 

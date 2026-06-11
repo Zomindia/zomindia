@@ -33,7 +33,7 @@ export default function BottomNav({ activeTab, setActiveTab, hasNotifications, i
               onClick={() => setActiveTab(item.id)}
               className="relative flex flex-col items-center justify-center py-2 transition-all flex-1"
             >
-              <div className={`relative px-5 py-2.5 rounded-2xl transition-all duration-500 flex flex-col items-center gap-1 ${isActive ? 'text-blue-700' : 'text-slate-400 active:scale-90'}`}>
+              <div className={`relative px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 flex flex-col items-center gap-1 ${isActive ? 'text-blue-700' : 'text-slate-400 active:scale-90'}`}>
                 {isActive && (
                   <motion.div 
                     layoutId="active-pill"

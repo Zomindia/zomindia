@@ -107,12 +107,14 @@ export default function SupportTicketsView({ profile }: { profile: UserProfile }
 
       {activeSubTab === 'faqs' ? (
         <div className="space-y-8 animate-in fade-in duration-200">
-          <div className="relative">
+          <div className="relative" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
             <span className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400">
               <Search size={18} />
             </span>
             <input
               type="text"
+              inputMode="text"
+              enterKeyHint="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search knowledge base articles, questions, or replies..."

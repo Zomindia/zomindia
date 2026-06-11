@@ -97,7 +97,17 @@ try {
   }
 } catch (e: any) {
   console.error("[Startup] Failed to initialize firestore instance:", e.message);
-  db = admin.firestore();
+  try {
+    if (admin.apps.length > 0) {
+      db = admin.firestore();
+    } else {
+      console.warn("[Startup] No Firebase Admin apps initialized. Database instance set to null on startup.");
+      db = null;
+    }
+  } catch (innerErr: any) {
+    console.error("[Startup] Failed fallback to admin.firestore:", innerErr.message);
+    db = null;
+  }
 }
 
 async function startServer() {
@@ -185,6 +195,124 @@ async function startServer() {
     }
   });
 
+  app.post("/api/send-gupshup-notification", async (req, res) => {
+    try {
+      const { userId, title, message, phoneNumber } = req.body;
+      if (!userId && !phoneNumber) {
+        return res.status(400).json({ error: "Either userId or phoneNumber is required" });
+      }
+
+      if (!db && !phoneNumber) {
+        return res.status(500).json({ error: "Firestore Admin Database is not yet initialized on the server." });
+      }
+
+      let destinationPhone = phoneNumber;
+      if (!destinationPhone && userId) {
+        const userSnap = await db.collection("users").doc(userId).get();
+        if (userSnap.exists) {
+          const userData = userSnap.data();
+          destinationPhone = userData.phoneNumber;
+        }
+      }
+
+      if (!destinationPhone) {
+        return res.json({ success: true, message: "User has no phone number registered. Gupshup bypass active." });
+      }
+
+      // Format E.164 phone number
+      let cleanPhone = destinationPhone.replace(/\D/g, "");
+      if (cleanPhone.length === 10) {
+        cleanPhone = "91" + cleanPhone;
+      }
+
+      const gupshupApiKey = process.env.GUPSHUP_API_KEY;
+      const gupshupSource = process.env.GUPSHUP_WHATSAPP_SOURCE || "919000000000";
+      const gupshupSmsUserid = process.env.GUPSHUP_SMS_USERID;
+      const gupshupSmsPassword = process.env.GUPSHUP_SMS_PASSWORD;
+
+      let whatsappSent = false;
+      let smsSent = false;
+      let whatsappStatus = "Not Configured";
+      let smsStatus = "Not Configured";
+
+      // 1. WhatsApp API via Gupshup (api.gupshup.io)
+      if (gupshupApiKey) {
+        try {
+          const waUrl = "https://api.gupshup.io/sm/api/v1/msg";
+          const form = new URLSearchParams();
+          form.append("channel", "whatsapp");
+          form.append("source", gupshupSource);
+          form.append("destination", cleanPhone);
+          form.append("message", JSON.stringify({
+            type: "text",
+            text: `*${title}*\n\n${message}\n\n_Delivered via zomindia Live Sync_`
+          }));
+
+          const waRes = await axios.post(waUrl, form, {
+            headers: {
+              "apikey": gupshupApiKey,
+              "Content-Type": "application/x-www-form-urlencoded"
+            }
+          });
+          whatsappSent = true;
+          whatsappStatus = JSON.stringify(waRes.data);
+          console.log(`[Gupshup WhatsApp] Delivered to ${cleanPhone}:`, waRes.data);
+        } catch (waErr: any) {
+          whatsappStatus = `Error: ${waErr.message}`;
+          const errData = waErr.response?.data;
+          const errMsg = typeof errData === "object" ? JSON.stringify(errData) : String(errData || waErr.message);
+          if (errMsg.includes("Portal User Not Found With APIKey")) {
+            console.warn(`[Gupshup WhatsApp Integration] Warning: Your GUPSHUP_API_KEY is configured on the server, but the portal user associated with it wasn't found or is currently inactive on Gupshup side.`);
+          } else {
+            console.error("[Gupshup WhatsApp Error]:", errData || waErr.message);
+          }
+        }
+      }
+
+      // 2. SMS API via Gupshup Gateway
+      if (gupshupSmsUserid && gupshupSmsPassword) {
+        try {
+          const smsUrl = "https://enterprise.smsgupshup.com/GatewayAPI/rest";
+          const smsRes = await axios.get(smsUrl, {
+            params: {
+              method: "SendMessage", // Using proper case-sensitive "SendMessage" for standard Gupshup Enterprise API compliance
+              send_to: cleanPhone,
+              msg: `${title}: ${message}`,
+              msg_type: "TEXT",
+              userid: gupshupSmsUserid,
+              auth_scheme: "plain",
+              password: gupshupSmsPassword,
+              v: "1.1",
+              format: "text"
+            }
+          });
+          smsStatus = String(smsRes.data);
+          if (smsStatus.includes("error") || smsStatus.includes("106") || smsStatus.toLowerCase().includes("not supported")) {
+            smsSent = false;
+            console.warn(`[Gupshup SMS Integration] Warning: Gupshup SMS gateway responded with error payload '${smsStatus}'. This usually means either your Gateway Account userid/password does not support SMS dispatch or the method name casing is restricted on this enterprise account tier.`);
+          } else {
+            smsSent = true;
+            console.log(`[Gupshup SMS] Delivered to ${cleanPhone}:`, smsRes.data);
+          }
+        } catch (smsErr: any) {
+          smsStatus = `Error: ${smsErr.message}`;
+          console.error("[Gupshup SMS Error]:", smsErr.response?.data || smsErr.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        whatsapp: { sent: whatsappSent, status: whatsappStatus },
+        sms: { sent: smsSent, status: smsStatus },
+        recipient: cleanPhone
+      });
+
+    } catch (err: any) {
+      console.error("[Gupshup Server Proxy Error]:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/create-razorpay-order", async (req, res) => {
     try {
       const { amount, bookingId } = req.body;
@@ -201,6 +329,102 @@ async function startServer() {
       res.json(order);
     } catch (err: any) {
       console.error("Razorpay Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/download-invoice", async (req, res) => {
+    try {
+      const { bookingId } = req.query;
+      if (!bookingId) return res.status(400).json({ error: "Booking ID is required" });
+
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      const bookingRef = db.collection("bookings").doc(bookingId);
+      const bookingDoc = await bookingRef.get();
+
+      if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
+      const bookingData = bookingDoc.data()!;
+
+      const userDoc = await db.collection("users").doc(bookingData.customerId).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "Customer not found" });
+      const userData = userDoc.data()!;
+
+      // Generate PDF
+      const docPdf = new PDFDocument({ margin: 50 });
+      let buffers: any[] = [];
+      docPdf.on("data", buffers.push.bind(buffers));
+      
+      const pdfBufferPromise = new Promise<Buffer>((resolve) => {
+        docPdf.on("end", () => {
+          resolve(Buffer.concat(buffers));
+        });
+      });
+
+      // PDF Content (mirrors the original PDFKit logic in server.ts but adapted for invoice downloading)
+      docPdf.fontSize(24).font('Helvetica-Bold').text("INVOICE / BILL", { align: "center", underline: true });
+      docPdf.moveDown();
+      docPdf.fontSize(12).font('Helvetica').text(`Invoice Reference: INV-${(bookingId as string).slice(0, 8).toUpperCase()}`);
+      
+      let dateText = "N/A";
+      if (bookingData.scheduledAt) {
+        if (typeof bookingData.scheduledAt.toDate === "function") {
+          dateText = bookingData.scheduledAt.toDate().toLocaleDateString();
+        } else if (bookingData.scheduledAt._seconds) {
+          dateText = new Date(bookingData.scheduledAt._seconds * 1000).toLocaleDateString();
+        } else {
+          dateText = new Date(bookingData.scheduledAt).toLocaleDateString();
+        }
+      }
+      docPdf.text(`Date of Service: ${dateText}`);
+      docPdf.text(`Customer Name: ${userData.displayName || "Customer"}`);
+      docPdf.text(`Email Address: ${userData.email || "N/A"}`);
+      docPdf.text(`Service Address: ${bookingData.address || "N/A"}`);
+      
+      if (bookingData.partnerId) {
+        try {
+          const partnerDoc = await db.collection("users").doc(bookingData.partnerId).get();
+          if (partnerDoc.exists) {
+            docPdf.text(`Assigned Pro: ${partnerDoc.data()?.displayName || "Verified Partner"}`);
+          }
+        } catch (partnerErr) {
+          console.error("Partner details fetch error:", partnerErr);
+        }
+      }
+
+      docPdf.moveDown();
+
+      docPdf.fontSize(16).font('Helvetica-Bold').text("Charges Breakdown:", { underline: true });
+      docPdf.moveDown(0.5);
+      
+      const extraAmt = bookingData.additionalCharges?.reduce((acc: any, c: any) => acc + c.amount, 0) || 0;
+      const baseAmt = bookingData.totalPrice - extraAmt;
+      
+      docPdf.fontSize(12).font('Helvetica').text(`Base Price of Service: ₹${baseAmt}`);
+      
+      if (bookingData.additionalCharges && bookingData.additionalCharges.length > 0) {
+        docPdf.moveDown(0.5);
+        docPdf.text("Add-on / Extra Charges:");
+        bookingData.additionalCharges.forEach((charge: any) => {
+          docPdf.text(`- ${charge.reason}: ₹${charge.amount}`);
+        });
+      }
+
+      docPdf.moveDown();
+      docPdf.fontSize(16).font('Helvetica-Bold').text(`Grand Total Paid: ₹${bookingData.totalPrice}`);
+      docPdf.moveDown(2);
+      docPdf.fontSize(10).font('Helvetica-Oblique').text("Thank you for using zomindia! Generated electronically.", { align: "center" });
+      
+      docPdf.end();
+      const pdfBuffer = await pdfBufferPromise;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=invoice_${bookingId}.pdf`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("Download Invoice Error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -351,9 +575,13 @@ async function startServer() {
         model: "gemini-3.5-flash",
         contents: `Context: ${JSON.stringify(context || {})}\nUser: ${message}`,
         config: {
-          systemInstruction: `You are the zomindia AI support assistant. You are helpful, professional, and knowledgeable about home services. 
+          systemInstruction: `You are Sarthak, the zomindia AI support chatbot. You are helpful, professional, friendly, and highly knowledgeable about home services.
+          Always identify yourself as Sarthak when greeting or speaking to users.
           You have access to the user's profile and their recent bookings (if any). Use this context to provide specific, personalized help. 
           For customers, help with their bookings and service queries. For partners, help them with their assigned jobs and earnings queries. 
+
+          CRITICAL language instruction: Detect the language the user is speaking or asking in (whether English, Hindi, Bengali, Tamil, Telugu, Marathi, Malayalam, Kannada, Gujarati, Punjabi, etc.) or refer to the requested language in context (context.language). You MUST reply to the user entirely in that same language (e.g., if they speak in Hindi, respond in fluent Hindi; if in Tamil, respond in Tamil).
+
           If you cannot resolve an issue, suggest they contact human support at ${process.env.VITE_WHATSAPP_SUPPORT_NUMBER || 'WhatsApp'}. 
           Always keep answers concise and avoid over-explaining. If the user asks for a WhatsApp link, provide it: https://wa.me/${(process.env.VITE_WHATSAPP_SUPPORT_NUMBER || '').replace(/\D/g, '')}`,
         }
@@ -363,10 +591,10 @@ async function startServer() {
       console.error("Gemini AI Error:", err);
       // Smart offline fallback to ensure chat always responds smoothly
       const txt = (req.body.message || "").toLowerCase();
-      let replyMessage = "I am here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp at https://wa.me/919876543210 for immediate assistance!";
+      let replyMessage = "I am Sarthak, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
       
       if (txt.includes("hello") || txt.includes("hi") || txt.includes("hey")) {
-        replyMessage = "Hello! I am your zomindia AI Assistant. How can I help you today? Ask me about booking a home service, pricing, or managing your active jobs!";
+        replyMessage = "hi welcom to zomindia ai chat support and i am sarthak to help you. How can I assist you with your booking or service query today?";
       } else if (txt.includes("price") || txt.includes("cost") || txt.includes("charge")) {
         replyMessage = "Our standard packages start from as low as ₹499. You can explore exact charges and customize packages directly on our discovery feed on the dashboard.";
       } else if (txt.includes("book") || txt.includes("schedule")) {
@@ -761,9 +989,37 @@ async function startServer() {
         t.update(bookingRef, {
           paymentStatus: 'paid',
           paymentMethod: 'wallet',
-          status: 'finalized',
+          status: 'completed',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        
+        // Atomically update partner's total earnings and reward credits if assigned
+        const partnerId = bookingDoc.data()?.partnerId;
+        if (partnerId) {
+          const partnerRef = db.collection('partners').doc(partnerId);
+          const partnerDoc = await t.get(partnerRef);
+          if (partnerDoc.exists) {
+            const currentEarnings = partnerDoc.data()?.totalEarnings || 0;
+            const currentCredits = partnerDoc.data()?.rewardCredits || 0;
+            const rewardPts = 10;
+            t.update(partnerRef, {
+              totalEarnings: currentEarnings + totalPrice,
+              rewardCredits: currentCredits + rewardPts,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Add earnings history record
+            const earnRef = db.collection('partners').doc(partnerId).collection('earningsHistory').doc();
+            t.set(earnRef, {
+              type: 'booking_earning',
+              amount: totalPrice,
+              credits: rewardPts,
+              bookingId: bookingId,
+              reason: `Completed service (Wallet payment)`,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
         
         // Also write to transaction history
         const txRef = db.collection('walletTransactions').doc();

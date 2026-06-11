@@ -5,6 +5,8 @@ import { db, auth } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info, CheckCircle, Smartphone, MapPin, ShieldCheck, Clock } from 'lucide-react';
+import { playSuccessChime } from '../lib/audio';
+import logoImg from '../assets/images/regenerated_image_1780775052361.webp';
 
 interface Props {
   onNavigate?: (tab: any, arg?: string) => void;
@@ -47,20 +49,28 @@ export default function NotificationSystem({ onNavigate }: Props) {
       const newNotifications = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      } as any));
       
       // Filter out notifications we've already seen in this session to avoid double-notifying
       setNotifications(prev => {
         const prevIds = new Set(prev.map(n => n.id));
         const entirelyNew = newNotifications.filter(n => !prevIds.has(n.id));
         
+        // Play success chime sound for confirmed or finalized bookings
+        const hasBookingSuccess = entirelyNew.some(notif => 
+          notif.type === 'booking_confirmed' || notif.type === 'payment_received'
+        );
+        if (hasBookingSuccess) {
+          playSuccessChime();
+        }
+
         // Trigger native notification for entirely new ones
         if (entirelyNew.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
           entirelyNew.forEach((notif: any) => {
             try {
               new Notification(notif.title || 'New Notification', {
                 body: notif.message,
-                icon: '/icon.svg'
+                icon: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133'
               });
             } catch (e) {
               console.error('Error showing native notification', e);
@@ -111,18 +121,21 @@ export default function NotificationSystem({ onNavigate }: Props) {
               'bg-slate-900 text-white border-slate-800 shadow-slate-900/20'
             }`}
           >
-            <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center ring-4 ring-white/10 ${
-              (notif.type?.includes('success') || notif.type === 'job_completed' || notif.type === 'payment_received' || notif.type === 'job_finalized') ? 'bg-emerald-500 shadow-lg shadow-emerald-500/20' :
-              (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? 'bg-blue-600 shadow-lg shadow-blue-600/20' :
-              (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? 'bg-orange-500 shadow-lg shadow-orange-500/20' :
-              (notif.type?.includes('error') || notif.type === 'booking_cancelled') ? 'bg-rose-600 shadow-lg shadow-rose-600/20' :
-              'bg-slate-800 shadow-lg shadow-slate-800/20'
-            }`}>
-              {(notif.type?.includes('success') || notif.type === 'job_completed' || notif.type === 'payment_received' || notif.type === 'job_finalized') ? <CheckCircle size={22} className="text-white" strokeWidth={2.5} /> :
-               (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? <ShieldCheck size={22} className="text-white" strokeWidth={2.5} /> :
-               (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? <Clock size={22} className="text-white" strokeWidth={2.5} /> :
-               (notif.type?.includes('error') || notif.type === 'booking_cancelled') ? <X size={22} className="text-white" strokeWidth={2.5} /> :
-               <Bell size={22} className="text-white group-hover:animate-bounce" strokeWidth={2.5} />}
+            <div className="shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-150 ring-4 ring-white/10 relative overflow-visible">
+              <img src={logoImg} alt="Notification Logo" className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
+              <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white border border-white text-[8px] font-bold shadow-sm ${
+                (notif.type?.includes('success') || notif.type === 'job_completed' || notif.type === 'payment_received' || notif.type === 'job_finalized') ? 'bg-emerald-500' :
+                (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? 'bg-blue-600' :
+                (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? 'bg-orange-500' :
+                (notif.type?.includes('error') || notif.type === 'booking_cancelled') ? 'bg-rose-600' :
+                'bg-slate-800'
+              }`}>
+                {(notif.type?.includes('success') || notif.type === 'job_completed' || notif.type === 'payment_received' || notif.type === 'job_finalized') ? <CheckCircle size={10} strokeWidth={3} /> :
+                 (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? <ShieldCheck size={10} strokeWidth={3} /> :
+                 (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? <Clock size={10} strokeWidth={3} /> :
+                 (notif.type?.includes('error') || notif.type === 'booking_cancelled') ? <X size={10} strokeWidth={3} /> :
+                 <Bell size={10} strokeWidth={3} />}
+              </div>
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <h4 className="font-extrabold tracking-tight text-sm text-white mb-0.5">{notif.title}</h4>

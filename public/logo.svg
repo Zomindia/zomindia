@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 180" width="100%" height="100%" fill="none" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <!-- We load Google Fonts Outfit (which is a perfect geometric sans-serif matching the uploaded image exactly) -->
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@700;900&amp;display=swap');
+      .brand-title {
+        font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-weight: 900;
+        font-size: 92px;
+        fill: #050ca6;
+        letter-spacing: -2.5px;
+      }
+      .brand-subtitle {
+        font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-weight: 700;
+        font-size: 26px;
+        fill: #2C2C2C;
+        letter-spacing: 5px;
+      }
+    </style>
+  </defs>
+  
+  <!-- Brand wordmark 'ZOMINDIA' -->
+  <text x="35" y="105" class="brand-title">ZOMINDIA</text>
+  
+  <!-- Beautiful Premium Yellow Rounded Triangle outline from the uploaded logo positioned precisely inline -->
+  <path d="M 540 105 L 598 105 L 569 45 Z" stroke="#ECB22E" stroke-width="14" stroke-linejoin="round" stroke-linecap="round" fill="none" />
+  
+  <!-- Subtitle: DIGITAL HOME SERVICES centered gracefully below matching the upload exactly -->
+  <text x="320" y="152" class="brand-subtitle" text-anchor="middle">DIGITAL HOME SERVICES</text>
+</svg>

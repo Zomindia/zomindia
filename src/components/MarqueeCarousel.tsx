@@ -28,10 +28,10 @@ export default function MarqueeCarousel({ promotions, services, onPromotionClick
       <motion.div 
         className="flex gap-8 px-4"
         animate={{
-          x: [0, -100 * items.length],
+          x: ["0%", "-33.3333%"],
         }}
         transition={{
-          duration: items.length * 10,
+          duration: Math.max(15, items.length * 6),
           repeat: Infinity,
           ease: "linear",
         }}

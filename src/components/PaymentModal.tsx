@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, getDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking, UserProfile } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -108,9 +108,33 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               razorpayPaymentId: response.razorpay_payment_id,
               razorpayOrderId: response.razorpay_order_id,
               razorpaySignature: response.razorpay_signature,
-              status: 'finalized',
+              status: 'completed',
               updatedAt: Timestamp.now()
             });
+
+            // Credit the partner's earnings & rewards
+            if (booking.partnerId) {
+              const partnerRef = doc(db, 'partners', booking.partnerId);
+              const partnerSnap = await getDoc(partnerRef);
+              if (partnerSnap.exists()) {
+                const partnerData = partnerSnap.data();
+                const rewardPts = 10;
+                await updateDoc(partnerRef, {
+                  totalEarnings: (partnerData.totalEarnings || 0) + booking.totalPrice,
+                  rewardCredits: (partnerData.rewardCredits || 0) + rewardPts,
+                  updatedAt: Timestamp.now()
+                });
+
+                await addDoc(collection(db, 'partners', booking.partnerId, 'earningsHistory'), {
+                  type: 'booking_earning',
+                  amount: booking.totalPrice,
+                  credits: rewardPts,
+                  bookingId: booking.id,
+                  reason: `Completed service (Razorpay online)`,
+                  createdAt: Timestamp.now()
+                });
+              }
+            }
 
             // Trigger final bill email
             try {
@@ -167,7 +191,8 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        // Disabled backdrop dismissal to prevent accidental screen close on keyboard mistouches (e.g. typing payment details)
+        onClick={undefined}
         className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
       />
       

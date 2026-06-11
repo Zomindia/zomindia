@@ -19,6 +19,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import AdminUpload from './AdminUpload';
+import { BrandedButtonSpinner } from './LoadingIndicator';
 
 interface Props {
   profile: UserProfile;
@@ -385,7 +386,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                     className="flex-[2] bg-blue-700 text-white py-5 rounded-[28px] font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 disabled:opacity-50 flex items-center justify-center gap-3 italic"
                   >
                     {loading ? (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <BrandedButtonSpinner className="w-4 h-4" />
                     ) : (
                       currentStep === 3 ? 'Dispatch Application' : 'Continue'
                     )}

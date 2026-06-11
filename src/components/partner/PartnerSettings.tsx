@@ -16,10 +16,12 @@ import {
   Globe,
   Bell,
   Wallet,
-  Bot
+  Bot,
+  LogOut
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, WorkingHours } from '../../types';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import AdminUpload from '../AdminUpload';
@@ -138,8 +140,8 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
             </div>
          </div>
          <div>
-            <h2 className="text-2xl font-black italic text-slate-900 leading-tight">{profile.displayName}</h2>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Certified Professional</p>
+            <h2 className="text-2xl font-black text-slate-900 leading-tight">{profile.displayName}</h2>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Verified Partner</p>
          </div>
       </section>
 
@@ -152,10 +154,10 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
                </div>
                <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    {partner?.isVerified ? 'Certified Provider' : partner?.kycStatus === 'pending' ? 'Verification In Progress' : partner?.kycStatus === 'rejected' ? 'KYC Claim Rejected' : 'KYC Required'}
+                    {partner?.isVerified ? 'Verified Partner' : partner?.kycStatus === 'pending' ? 'Verification In Progress' : partner?.kycStatus === 'rejected' ? 'KYC Claim Rejected' : 'KYC Required'}
                   </h4>
                   <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">
-                    {partner?.isVerified ? 'Access to Elite Jobs' : partner?.kycStatus === 'pending' ? 'Awaiting administrator audit' : partner?.kycStatus === 'rejected' ? 'Action required: upload valid docs' : 'Some features locked'}
+                    {partner?.isVerified ? 'Access to all bookings' : partner?.kycStatus === 'pending' ? 'Awaiting admin approval' : partner?.kycStatus === 'rejected' ? 'Action required: upload valid docs' : 'Some features locked'}
                   </p>
                </div>
             </div>
@@ -181,15 +183,15 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
 
       {/* Navigation Options */}
       <section className="space-y-3">
-         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 mb-4">Account Control</h3>
+         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 mb-4">Account Settings</h3>
          
          {[
-           { icon: Wallet, label: 'ZOM Wallet', value: `₹${profile.walletBalance || 0}`, onClick: () => onNavigate('wallet') },
+           { icon: Wallet, label: 'Partner Wallet', value: `₹${profile.walletBalance || 0}`, onClick: () => onNavigate('wallet') },
            { icon: Briefcase, label: 'Service Skills', value: `${partner?.categories.length || 0} active`, onClick: () => setIsEditing(true) },
            { icon: Clock, label: 'Work Schedule', value: 'Customizable', onClick: () => setIsEditing(true) },
            { icon: Bell, label: 'Notifications', value: 'Enabled', onClick: () => onNavigate('notifications') },
            { icon: Globe, label: 'Service Areas', value: 'City Wide', onClick: () => {} },
-           { icon: Bot, label: '🤖 AI Partner Support', value: 'Online Assistance', onClick: () => window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } })) },
+           { icon: Bot, label: '🤖 AI Support Assistant', value: 'Online Assistance', onClick: () => window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } })) },
          ].map((opt, idx) => (
            <button 
              key={idx}
@@ -208,6 +210,22 @@ export default function PartnerSettings({ partner, profile, onNavigate }: Props)
               </div>
            </button>
          ))}
+
+         <button 
+           onClick={() => signOut(auth)}
+           className="w-full bg-rose-50/50 p-5 rounded-[28px] border border-rose-100 flex justify-between items-center active:scale-98 transition-all group mt-2"
+         >
+            <div className="flex items-center gap-4">
+               <div className="w-10 h-10 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-md shadow-rose-200 group-hover:scale-105 transition-transform">
+                  <LogOut size={16} />
+               </div>
+               <span className="font-extrabold text-rose-600 text-sm italic">Log Out of App</span>
+            </div>
+            <div className="flex items-center gap-3">
+               <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">End Session</span>
+               <ChevronRight size={16} className="text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+         </button>
       </section>
 
       {/* Full Screen Editing Layer */}

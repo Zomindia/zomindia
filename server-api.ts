@@ -1,19 +1,44 @@
 import express from "express";
 import crypto from "crypto";
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import realAdmin from "firebase-admin";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import { initializeFirestore } from "firebase/firestore";
 
-// Patch admin's firestore namespace to map directly to client compatibility firestore
-// This resolves the PERMISSION_DENIED issues occurring because of default service account limitations.
-try {
-  (admin as any).firestore = firebase.firestore;
-} catch (patchErr) {
-  console.error("[Patch] Failed to route admin.firestore to firebase.firestore:", patchErr);
-}
+// Create a robust wrapper proxy for admin to dynamically route database/static value accesses
+// This avoids read-only getter TypeError and handles client-compatibility vs admin SDK differences safely
+const admin: any = new Proxy(realAdmin, {
+  get(target, prop, receiver) {
+    if (prop === "firestore") {
+      const dbIsClient = firebase.apps.some(app => app.name === "client-backend");
+      
+      const firestoreFunc = () => {
+        if (dbIsClient) {
+          return firebase.app("client-backend").firestore();
+        }
+        return target.firestore();
+      };
+
+      const currentNamespace = dbIsClient ? firebase.firestore : (target as any).firestore;
+      
+      Object.defineProperty(firestoreFunc, "FieldValue", {
+        get: () => currentNamespace.FieldValue,
+        configurable: true,
+        enumerable: true
+      });
+
+      Object.defineProperty(firestoreFunc, "Timestamp", {
+        get: () => currentNamespace.Timestamp,
+        configurable: true,
+        enumerable: true
+      });
+
+      return firestoreFunc;
+    }
+    return Reflect.get(target, prop, receiver);
+  }
+});
 
 import path from "path";
 import { readFileSync } from "fs";
@@ -42,7 +67,17 @@ const getDb = () => {
       );
     } catch (e: any) {
       console.error("[API getDb Error] Failed to read firebase config or initialize custom db:", e.message);
-      _db = admin.firestore();
+      try {
+        if (admin.apps.length > 0) {
+          _db = admin.firestore();
+        } else {
+          console.warn("[API getDb Error] No Admin apps found for fallback. _db is null.");
+          _db = null;
+        }
+      } catch (innerErr: any) {
+        console.error("[API getDb Error] Failed fallback to admin.firestore:", innerErr.message);
+        _db = null;
+      }
     }
   }
   return _db;

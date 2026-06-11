@@ -83,19 +83,28 @@ export default defineConfig(({ mode }) => {
           display: 'standalone',
           icons: [
             {
-              src: '/icon.svg',
-              sizes: 'any',
-              type: 'image/svg+xml'
-            },
-            {
-              src: '/icon.svg',
+              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
               sizes: '192x192',
-              type: 'image/svg+xml'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: '/icon.svg',
+              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
               sizes: '512x512',
-              type: 'image/svg+xml'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }

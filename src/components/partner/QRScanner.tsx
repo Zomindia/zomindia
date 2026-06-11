@@ -4,15 +4,15 @@ import { Camera, AlertCircle, Sparkles, Check, X, ShieldAlert } from 'lucide-rea
 import { motion, AnimatePresence } from 'motion/react';
 
 interface QRScannerProps {
-  bookingId: string;
-  expectedCode: string;
-  onScanSuccess: () => void;
+  bookingId?: string;
+  expectedCode?: string;
+  onScanSuccess: (scannedData?: string) => void;
   onClose: () => void;
 }
 
 export const QRScanner: React.FC<QRScannerProps> = ({
-  bookingId,
-  expectedCode,
+  bookingId = '',
+  expectedCode = 'any',
   onScanSuccess,
   onClose
 }) => {
@@ -26,7 +26,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    let animationFrameId: number;
+    let activeStream: MediaStream | null = null;
 
     const startCamera = async () => {
       try {
@@ -35,11 +35,16 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           video: { facingMode: 'environment' }
         });
         
+        activeStream = stream;
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS
-          videoRef.current.play();
+          try {
+            await videoRef.current.play();
+          } catch (playErr) {
+            console.warn("Failed to play video element:", playErr);
+          }
           setHasCamera(true);
           setCameraState('active');
         }
@@ -57,7 +62,57 @@ export const QRScanner: React.FC<QRScannerProps> = ({
 
     startCamera();
 
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []); // Run ONLY on mount to prevent infinite toggle loops
+
+  // Track scanning states in refs to prevent triggering the ticker effect repeatedly
+  const isScanningRef = useRef(isScanning);
+  const scanResultRef = useRef(scanResult);
+
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
+
+  useEffect(() => {
+    scanResultRef.current = scanResult;
+  }, [scanResult]);
+
+  const handleCodeScanned = (data: string) => {
+    const cleanData = data.trim();
+    const isGlobal = expectedCode === 'any';
+    const isAccepted = isGlobal || cleanData === expectedCode || (bookingId && cleanData.includes(bookingId));
+
+    if (isAccepted) {
+      setScanResult(cleanData);
+      setIsScanning(false);
+      // Play a short mock success sound or show success state
+      setTimeout(() => {
+        onScanSuccess(cleanData);
+      }, 1500);
+    } else {
+      console.warn("Mismatched QR Code scanned:", cleanData);
+    }
+  };
+
+  const handleCodeScannedRef = useRef(handleCodeScanned);
+  useEffect(() => {
+    handleCodeScannedRef.current = handleCodeScanned;
+  }, [expectedCode, bookingId, onScanSuccess]);
+
+  useEffect(() => {
+    if (cameraState !== 'active') return;
+
+    let animationFrameId: number;
+
     const tick = () => {
+      if (!isScanningRef.current || scanResultRef.current) {
+        return;
+      }
+
       if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
         const canvas = canvasRef.current;
         const video = videoRef.current;
@@ -69,57 +124,46 @@ export const QRScanner: React.FC<QRScannerProps> = ({
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: 'dontInvert'
-            });
+            try {
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'dontInvert'
+              });
 
-            if (code && code.data) {
-              handleCodeScanned(code.data);
-              return; // Stop scanning once match is found
+              if (code && code.data) {
+                handleCodeScannedRef.current(code.data);
+                return; // Stop scanning once match is found
+              }
+            } catch (err) {
+              console.warn("jsQR processing error:", err);
             }
           }
         }
       }
-      
-      if (isScanning && !scanResult) {
-        animationFrameId = requestAnimationFrame(tick);
-      }
+
+      animationFrameId = requestAnimationFrame(tick);
     };
 
-    // Delay start of frame analysis slightly to allow video feed initialization
+    // Delay start of frame analysis slightly to allow video feed to initialize
     const timer = setTimeout(() => {
-      if (cameraState === 'active' || hasCamera) {
-        animationFrameId = requestAnimationFrame(tick);
-      }
-    }, 1000);
+      animationFrameId = requestAnimationFrame(tick);
+    }, 500);
 
     return () => {
       clearTimeout(timer);
       cancelAnimationFrame(animationFrameId);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
     };
-  }, [isScanning, scanResult, cameraState, hasCamera]);
-
-  const handleCodeScanned = (data: string) => {
-    const cleanData = data.trim();
-    if (cleanData === expectedCode || cleanData.includes(bookingId)) {
-      setScanResult(cleanData);
-      setIsScanning(false);
-      // Play a short mock success sound or show success state
-      setTimeout(() => {
-        onScanSuccess();
-      }, 1500);
-    } else {
-      console.warn("Mismatched QR Code scanned:", cleanData);
-    }
-  };
+  }, [cameraState]);
 
   // Safe manual bypass simulation for environment testing
   const handleSimulatedScan = () => {
-    handleCodeScanned(expectedCode);
+    if (expectedCode === 'any') {
+      // For general simulation, choose a sensible mock QR code based on bookingId if present, or generic
+      const mockCode = bookingId ? `zomindia_start:${bookingId}:1234` : 'zomindia_start:mock_booking_id:1234';
+      handleCodeScanned(mockCode);
+    } else {
+      handleCodeScanned(expectedCode);
+    }
   };
 
   return (
@@ -149,7 +193,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           </div>
           <h3 className="text-xl font-black text-slate-900 tracking-tight">QR Code Verification</h3>
           <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mt-1">
-            {expectedCode.includes('start') ? 'Scan Customer Start QR Code' : 'Scan Customer Completion QR Code'}
+            {expectedCode === 'any' ? 'Scan Customer Start or Complete QR Code' : expectedCode.includes('start') ? 'Scan Customer Start QR Code' : 'Scan Customer Completion QR Code'}
           </p>
         </div>
 
@@ -187,7 +231,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
               </motion.div>
               <h4 className="text-lg font-black tracking-tight">Verification Success</h4>
               <p className="text-[10px] text-emerald-100 font-extrabold uppercase tracking-wider mt-1">
-                {expectedCode.includes('start') ? 'Service Unlocked & Started' : 'Job Finalized Successfully'}
+                {expectedCode === 'any' ? (scanResult?.includes('start') ? 'Service Unlocked & Started' : 'Job Finalized Successfully') : expectedCode.includes('start') ? 'Service Unlocked & Started' : 'Job Finalized Successfully'}
               </p>
             </div>
           ) : (
@@ -211,11 +255,13 @@ export const QRScanner: React.FC<QRScannerProps> = ({
         </div>
 
         {/* Assistance / Active Status */}
-        <div className="mt-6 text-center">
-          <p className="text-[11px] text-slate-500 font-medium">
-            This booking ID: <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{bookingId}</span>
-          </p>
-        </div>
+        {bookingId && (
+          <div className="mt-6 text-center">
+            <p className="text-[11px] text-slate-500 font-medium">
+              This booking ID: <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{bookingId}</span>
+            </p>
+          </div>
+        )}
 
         {/* Symmetrical Simulator / Manual verification block */}
         <div className="mt-6 border-t border-slate-100 pt-5 space-y-3">

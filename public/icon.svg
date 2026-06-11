@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#ffffff" />
-  
-  <ellipse cx="256" cy="220" rx="180" ry="120" fill="#0018a8" transform="rotate(-50 256 220)" />
-  
-  <text x="256" y="280" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="160" fill="#ffffff" text-anchor="middle" letter-spacing="-5">Z</text>
-  
-  <text x="256" y="440" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="64" fill="#0018a8" text-anchor="middle" letter-spacing="-1">zomindia</text>
+  <rect width="512" height="512" fill="#ffffff" rx="128" />
+  <!-- Rounded yellow triangle representing 2.png -->
+  <path d="M 256 70 L 430 370 A 32 32 0 0 1 402 420 L 110 420 A 32 32 0 0 1 82 370 Z" fill="#FFCD00" stroke="#E5B800" stroke-width="8" stroke-linejoin="round" />
+  <!-- Center cutout / background representing the white inner part -->
+  <path d="M 256 135 L 375 340 A 16 16 0 0 1 361 365 L 151 365 A 16 16 0 0 1 137 340 Z" fill="#ffffff" />
+  <!-- Deep Blue Letter Z in the center -->
+  <text x="256" y="325" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="140" fill="#050CA6" text-anchor="middle">Z</text>
 </svg>

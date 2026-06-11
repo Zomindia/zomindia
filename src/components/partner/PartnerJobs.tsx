@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import { 
   Briefcase, 
   History, 
@@ -23,7 +24,11 @@ import {
   Star,
   Calendar,
   RefreshCw,
-  QrCode
+  QrCode,
+  Trophy,
+  Sparkles,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource } from '@capacitor/camera';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
@@ -32,16 +37,18 @@ import { db, auth } from '../../lib/firebase';
 import { notifyBookingUpdate } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import ChatWindow from '../ChatWindow';
-import AudioCall from '../AudioCall';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { useLocationTracking } from '../../hooks/useLocationTracking';
 import { QRScanner } from './QRScanner';
+import { offlineSyncEngine } from '../../lib/offlineQueue';
 
 interface Props {
   partner: PartnerProfile | null;
   bookings: Booking[];
   initialExpandedBookingId?: string | null;
   profile?: UserProfile | null;
+  lastSyncedAt?: Date | null;
+  isTrackingActive?: boolean;
 }
 
 function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, address: string, lat?: number | null, lng?: number | null }) {
@@ -72,18 +79,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
             console.warn("OSM Fallback error in PartnerJobs useEffect:", err);
           }
 
-          // 2. Try Google Geocoder backup
-          if (!resolved && typeof google !== 'undefined' && google.maps) {
-            try {
-              const geocoder = new google.maps.Geocoder();
-              const response = await geocoder.geocode({ location: { lat, lng } });
-              if (response.results?.[0]) {
-                resolved = response.results[0].formatted_address;
-              }
-            } catch (err) {
-              console.warn("Google reverse geocoding in PartnerJobs failed:", err);
-            }
-          }
+          // 2. Try Google Geocoder backup bypassed to avoid API authorization logs.
 
           setLocalAddress(resolved || address);
         };
@@ -114,20 +110,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
         console.warn("OSM address search failure, trying Google backup:", err);
       }
 
-      // 2. Google Maps fallback
-      if (!resolvedLoc && typeof google !== 'undefined' && google.maps) {
-        try {
-          const geocoder = new google.maps.Geocoder();
-          const response = await geocoder.geocode({ address });
-          if (response.results?.[0]) {
-            const loc = response.results[0].geometry.location;
-            resolvedLoc = { lat: loc.lat(), lng: loc.lng() };
-            resolvedAddr = response.results[0].formatted_address;
-          }
-        } catch (err) {
-          console.warn("Google Maps address lookup restricted/failed:", err);
-        }
-      }
+      // 2. Google Maps fallback bypassed to avoid API authorization logs.
 
       if (resolvedLoc) {
         setCoords(resolvedLoc);
@@ -152,35 +135,21 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
     setIsUpdating(true);
     
     let newAddress = '';
+    // 1. Try Nominatim reverse-geocode FIRST (unrestricted)
     try {
-      const geocoder = new google.maps.Geocoder();
-      const results = await new Promise<google.maps.GeocoderResult[] | null>((resolve) => {
-        geocoder.geocode({ location: newCoords }, (res, status) => {
-          if (status === 'OK' && res) resolve(res);
-          else resolve(null);
-        });
-      });
-      if (results && results[0]) {
-        newAddress = results[0].formatted_address;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${newCoords.lat}&lon=${newCoords.lng}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          newAddress = data.display_name;
+        }
       }
     } catch (err) {
-      console.warn('Google Maps Geocoder failed on click, trying fallback...', err);
+      console.warn('OSM reverse-geocode on map click failed, trying Google fallback:', err);
     }
 
-    if (!newAddress) {
-      try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${newCoords.lat}&lon=${newCoords.lng}`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.display_name) {
-            newAddress = data.display_name;
-          }
-        }
-      } catch (err) {
-        console.error('OSM Fallback on map click failed:', err);
-      }
-    }
+    // 2. Cascade fallback to Google Maps Geocoder bypassed to avoid API authorization logs.
 
     if (!newAddress) {
       newAddress = `Point: ${newCoords.lat.toFixed(6)}, ${newCoords.lng.toFixed(6)}`;
@@ -246,8 +215,204 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
   );
 }
 
-export default function PartnerJobs({ partner, bookings, initialExpandedBookingId, profile }: Props) {
-  const [tab, setTab] = useState<'pending' | 'ongoing' | 'history'>('ongoing');
+interface MiniMapProps {
+  bookings: Booking[];
+  customers: Record<string, UserProfile>;
+  services: Record<string, Service>;
+  onSelectBooking: (booking: Booking) => void;
+}
+
+function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking }: MiniMapProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
+
+  const activeTasks = useMemo(() => {
+    return bookings.filter(b => 
+      ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status) &&
+      typeof b.lat === 'number' && 
+      typeof b.lng === 'number'
+    );
+  }, [bookings]);
+
+  const mapCenter = useMemo(() => {
+    if (activeTasks.length === 0) {
+      return { lat: 19.0760, lng: 72.8777 }; // Default Mumbai
+    }
+    if (activeMarkerId) {
+      const selected = activeTasks.find(t => t.id === activeMarkerId);
+      if (selected && typeof selected.lat === 'number' && typeof selected.lng === 'number') {
+        return { lat: selected.lat, lng: selected.lng };
+      }
+    }
+    // Average
+    let totalLat = 0;
+    let totalLng = 0;
+    activeTasks.forEach(t => {
+      totalLat += t.lat as number;
+      totalLng += t.lng as number;
+    });
+    return {
+      lat: totalLat / activeTasks.length,
+      lng: totalLng / activeTasks.length
+    };
+  }, [activeTasks, activeMarkerId]);
+
+  const highlightedBooking = useMemo(() => {
+    return activeTasks.find(t => t.id === activeMarkerId);
+  }, [activeTasks, activeMarkerId]);
+
+  if (activeTasks.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-slate-200/80 rounded-[32px] p-5 shadow-sm overflow-hidden transition-all duration-300">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-650 flex items-center justify-center">
+            <MapPin size={16} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold font-display text-blue-950 uppercase tracking-tight">Active Task Locations</h3>
+            <p className="text-[10px] text-indigo-950/60 font-medium font-sans">Tracking {activeTasks.length} customer {activeTasks.length === 1 ? 'location' : 'locations'}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-xs text-indigo-900 bg-indigo-50 hover:bg-slate-100 font-semibold px-3 py-1.5 rounded-xl border border-indigo-100/60 uppercase tracking-widest active:scale-95 transition-all font-sans cursor-pointer"
+        >
+          {isExpanded ? 'Hide Map' : 'Show Map'}
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden space-y-3"
+          >
+            <div className="w-full h-52 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner">
+              <Map
+                defaultCenter={mapCenter}
+                center={mapCenter}
+                defaultZoom={11}
+                zoom={activeMarkerId ? 14 : 11}
+                mapId="PARTNER_APP_ASSIGNED_TASKS_MAP"
+                gestureHandling="auto"
+                disableDefaultUI
+                className="w-full h-full"
+                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+              >
+                {activeTasks.map(t => {
+                  const isHighlighted = t.id === activeMarkerId;
+                  
+                  // Color codes based on status
+                  let pinColor = '#f59e0b'; // Amber for assigned
+                  if (t.status === 'confirmed') pinColor = '#10b981'; // Emerald
+                  if (t.status === 'on_the_way') pinColor = '#6366f1'; // Indigo
+                  if (t.status === 'arrived') pinColor = '#06b6d4'; // Cyan
+                  if (t.status === 'in_progress') pinColor = '#2563eb'; // Blue
+
+                  return (
+                    <AdvancedMarker
+                      key={t.id}
+                      position={{ lat: t.lat as number, lng: t.lng as number }}
+                      onClick={() => setActiveMarkerId(t.id === activeMarkerId ? null : t.id)}
+                    >
+                      <Pin 
+                        background={pinColor} 
+                        borderColor="#ffffff" 
+                        glyphColor="#ffffff"
+                        scale={isHighlighted ? 1.25 : 1.0}
+                      />
+                    </AdvancedMarker>
+                  );
+                })}
+              </Map>
+
+              {/* Status guides */}
+              <div className="absolute top-2 left-2 right-2 bg-indigo-950/90 backdrop-blur-xs text-white text-[9px] font-sans font-medium p-2 rounded-xl flex items-center justify-between gap-2 shadow-lg z-10 select-none overflow-x-auto scrollbar-none">
+                <span className="flex items-center gap-1 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" /> New</span>
+                <span className="flex items-center gap-1 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" /> Accepted</span>
+                <span className="flex items-center gap-1 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" /> Transit</span>
+                <span className="flex items-center gap-1 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[#06b6d4]" /> Arrived</span>
+                <span className="flex items-center gap-1 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]" /> Ongoing</span>
+              </div>
+            </div>
+
+            {highlightedBooking ? (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 flex flex-col gap-2 relative shadow-xs font-sans animate-in fade-in"
+              >
+                <div className="flex items-center justify-between leading-none">
+                  <span className="text-[9px] font-bold font-mono text-indigo-950 uppercase tracking-widest bg-indigo-100/70 px-2 py-1 rounded">
+                    Status: {highlightedBooking.status.replace('_', ' ')}
+                  </span>
+                  <button 
+                    onClick={() => setActiveMarkerId(null)}
+                    className="text-slate-400 hover:text-slate-600 font-bold p-1 shrink-0 cursor-pointer text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="flex items-start justify-between gap-4 mt-1">
+                  <div>
+                    <h4 className="text-sm font-bold text-blue-950 leading-tight font-display">
+                      {services[highlightedBooking.serviceId]?.name || 'Loading service...'}
+                    </h4>
+                    <p className="text-xs text-indigo-950/70 mt-1 font-semibold flex items-center gap-1 font-sans">
+                      <User size={12} className="text-indigo-950/40" />
+                      Client: {customers[highlightedBooking.customerId]?.displayName || 'Customer'}
+                    </p>
+                    <p className="text-[11px] text-indigo-950/60 font-normal mt-1 leading-normal">
+                      📍 {highlightedBooking.address}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[9px] text-indigo-950/55 uppercase tracking-widest block font-bold">Payout</span>
+                    <span className="text-base font-bold text-emerald-600 font-display leading-tight">₹{highlightedBooking.totalPrice}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2.5 mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectBooking(highlightedBooking);
+                    }}
+                    className="flex-1 bg-indigo-900 hover:bg-indigo-950 text-white text-[10px] font-black uppercase tracking-widest py-2.5 rounded-xl text-center active:scale-95 transition-all outline-none border-0 cursor-pointer"
+                  >
+                    Manage Job ⚡
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${highlightedBooking.lat},${highlightedBooking.lng}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-widest px-3.5 py-2.5 rounded-xl border border-slate-200 active:scale-95 transition-all outline-none cursor-pointer"
+                  >
+                    Navigate
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <p className="text-[10px] text-indigo-950/50 italic font-medium text-center py-1 font-sans">
+                💡 Select any marker on the map to view instant location details & quick actions
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export default function PartnerJobs({ partner, bookings, initialExpandedBookingId, profile, lastSyncedAt: propsLastSyncedAt, isTrackingActive: propsIsTrackingActive }: Props) {
+  const [tab, setTab] = useState<'ongoing' | 'history' | 'pending'>('ongoing');
   const [customers, setCustomers] = useState<Record<string, UserProfile>>({});
   const [services, setServices] = useState<Record<string, Service>>({});
   const [activeChat, setActiveChat] = useState<Booking | null>(null);
@@ -305,8 +470,125 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [verifyingOTPId, setVerifyingOTPId] = useState<string | null>(null);
   const [completingBookingId, setCompletingBookingId] = useState<string | null>(null);
   const [confirmFinishId, setConfirmFinishId] = useState<string | null>(null);
+  const [completedSuccessBooking, setCompletedSuccessBooking] = useState<Booking | null>(null);
   const [scanningQRId, setScanningQRId] = useState<string | null>(null);
   const [startScanningBookingId, setStartScanningBookingId] = useState<string | null>(null);
+  const [globalQRScanning, setGlobalQRScanning] = useState(false);
+  const [globalQRMessage, setGlobalQRMessage] = useState<string | null>(null);
+  const [globalQRError, setGlobalQRError] = useState<string | null>(null);
+  const [showPartnerQRId, setShowPartnerQRId] = useState<string | null>(null);
+  const [partnerQRValue, setPartnerQRValue] = useState<string>('');
+
+  const [serviceNotes, setServiceNotes] = useState<string>('');
+  const [isListeningNotes, setIsListeningNotes] = useState<boolean>(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-IN'; // Elegant default supporting English & regional context
+
+      rec.onresult = (event: any) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript) {
+          setServiceNotes(prev => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${finalTranscript.trim()}` : finalTranscript.trim();
+          });
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.error("Speech Recognition Error:", event.error);
+        setIsListeningNotes(false);
+      };
+
+      rec.onend = () => {
+        setIsListeningNotes(false);
+      };
+
+      recognitionRef.current = rec;
+    }
+  }, []);
+
+  const toggleListeningNotes = () => {
+    if (!recognitionRef.current) {
+      alert("Web Speech Dictation API is not fully supported in your current browser session. Please enter notes manually.");
+      return;
+    }
+
+    if (isListeningNotes) {
+      recognitionRef.current.stop();
+      setIsListeningNotes(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListeningNotes(true);
+      } catch (err) {
+        console.error("Failed to start speech recognition:", err);
+      }
+    }
+  };
+
+  const handleGlobalQRScanSuccess = async (scannedData?: string) => {
+    if (!scannedData) return;
+    setGlobalQRScanning(false);
+    setGlobalQRMessage(null);
+    setGlobalQRError(null);
+    
+    const parts = scannedData.split(':');
+    if (parts.length < 2) {
+      setGlobalQRError("Invalid QR format scanned. Ensure it is a valid zomindia customer QR code.");
+      return;
+    }
+    
+    const actionType = parts[0]; 
+    const bookingId = parts[1];
+    
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) {
+      setGlobalQRError(`No matching active job with ID #${bookingId.substring(0, 6).toUpperCase()} found in your list.`);
+      return;
+    }
+    
+    if (actionType === 'zomindia_start') {
+      try {
+        const bRef = doc(db, 'bookings', bookingId);
+        await updateDoc(bRef, {
+          status: 'in_progress',
+          otpVerified: true,
+          updatedAt: Timestamp.now()
+        });
+        
+        notifyBookingUpdate(
+          { ...booking, status: 'in_progress', otpVerified: true },
+          'in_progress',
+          partner?.userId || profile?.uid || ''
+        );
+        
+        setGlobalQRMessage(`Verified! Started job: ${services[booking.serviceId]?.name || 'Service'}`);
+        if (selectedBooking?.id === bookingId) {
+          setSelectedBooking(prev => prev ? { ...prev, status: 'in_progress', otpVerified: true } : null);
+        }
+      } catch (err) {
+        setGlobalQRError("Failed to update status. Please try again.");
+      }
+    } else if (actionType === 'zomindia_completion') {
+      setCompletingBookingId(bookingId);
+      setConfirmFinishId(bookingId);
+      setGlobalQRMessage(`Recognized completion QR! Confirm details to finalize.`);
+    } else {
+      setGlobalQRError("Invalid action code scanned.");
+    }
+  };
   const [chargeForm, setChargeForm] = useState({ amount: '', reason: '' });
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState(false);
@@ -366,13 +648,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   };
 
   // Implement real-time location tracking
-  const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
+  const fallbackTracker = useLocationTracking(
+    (propsLastSyncedAt !== undefined || propsIsTrackingActive !== undefined) ? undefined : partner?.id, 
+    bookings, 
+    partner?.availabilityStatus
+  );
+  
+  const lastSyncedAt = propsLastSyncedAt !== undefined ? propsLastSyncedAt : fallbackTracker.lastSyncedAt;
+  const isTrackingActive = propsIsTrackingActive !== undefined ? propsIsTrackingActive : fallbackTracker.isTrackingActive;
 
   useEffect(() => {
     if (initialExpandedBookingId) {
       const b = bookings.find(x => x.id === initialExpandedBookingId);
       if (b) {
-        if (['pending'].includes(b.status)) setTab('pending');
+        if (['pending'].includes(b.status)) setTab('ongoing');
         else if (['completed', 'finalized', 'cancelled'].includes(b.status)) setTab('history');
         else setTab('ongoing');
         
@@ -420,14 +709,76 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const handleFinishJob = async (booking: Booking) => {
     setLoading(true);
     try {
+      let finalTotalPrice = booking.totalPrice || 0;
+      let finalAdditionalCharges = booking.additionalCharges || [];
+
+      // If extra charges were typed in chargeForm, apply them automatically before transitioning
+      if (chargeForm.amount && !isNaN(Number(chargeForm.amount))) {
+        const extraAmt = parseFloat(chargeForm.amount);
+        const newCharge = {
+          amount: extraAmt,
+          reason: chargeForm.reason || 'Service Diagnostic Adjustment & Material Charges',
+          createdAt: Timestamp.now()
+        };
+        finalAdditionalCharges = [...finalAdditionalCharges, newCharge];
+        finalTotalPrice += extraAmt;
+      }
+
       await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'completed', 
-        paymentStatus: booking.paymentMethod === 'cash' ? 'paid' : booking.paymentStatus,
+        status: 'payment_pending',
+        additionalCharges: finalAdditionalCharges,
+        totalPrice: finalTotalPrice,
         completionPhotos: completionPhoto ? [completionPhoto] : [],
+        notes: serviceNotes || '', // Add dictated service notes/feedback here
         updatedAt: Timestamp.now()
       });
 
-      // Update partner earnings
+      // Reset extra charges form
+      setChargeForm({ amount: '', reason: '' });
+
+      if (isListeningNotes && recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+        setIsListeningNotes(false);
+      }
+
+      // Trigger final bill email
+      fetch('/api/send-final-bill', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ bookingId: booking.id })
+      }).catch(err => console.error('Failed to trigger bill email', err));
+
+      notifyBookingUpdate({ ...booking, status: 'payment_pending', totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, notes: serviceNotes }, 'payment_pending', partner?.userId || '');
+      setCompletingBookingId(null);
+      setCompletionPhoto(null);
+      setServiceNotes('');
+      
+      const updatedBooking = { ...booking, status: 'payment_pending' as const, totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges } as Booking;
+      if (selectedBooking?.id === booking.id) {
+        setSelectedBooking(updatedBooking);
+      }
+      // Show success modal for completing the tasks
+      setCompletedSuccessBooking(updatedBooking);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmCashCollectedByPartner = async (booking: Booking) => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'completed',
+        paymentStatus: 'paid',
+        paymentMethod: 'cash',
+        updatedAt: Timestamp.now()
+      });
+
+      // Update partner earnings because payment is now successfully received in cash!
       if (partner) {
         const rewardPts = 10;
         await updateDoc(doc(db, 'partners', partner.id), {
@@ -441,7 +792,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           amount: booking.totalPrice,
           credits: rewardPts,
           bookingId: booking.id,
-          reason: `Completed service: ${services[booking.serviceId]?.name || 'Job'}`,
+          reason: `Completed service (Cash Collected): ${services[booking.serviceId]?.name || 'Job'}`,
           createdAt: Timestamp.now()
         });
       }
@@ -453,19 +804,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          body: JSON.stringify({ customerId: booking.customerId })
       }).catch(err => console.error('Failed to trigger referral reward', err));
 
-      // Trigger final bill email
-      fetch('/api/send-final-bill', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ bookingId: booking.id })
-      }).catch(err => console.error('Failed to trigger bill email', err));
-
-      notifyBookingUpdate({ ...booking, status: 'completed' }, 'completed', partner?.userId || '');
-      setCompletingBookingId(null);
-      setCompletionPhoto(null);
+      notifyBookingUpdate({ ...booking, status: 'completed', paymentStatus: 'paid', paymentMethod: 'cash' }, 'completed', partner?.userId || '');
+      
+      const updatedBooking = { ...booking, status: 'completed' as const, paymentStatus: 'paid' as const, paymentMethod: 'cash' as const } as Booking;
       if (selectedBooking?.id === booking.id) {
-        setSelectedBooking(prev => prev ? { ...prev, status: 'completed' } : null);
+        setSelectedBooking(updatedBooking);
       }
+      alert("Success: Cash payment of ₹" + booking.totalPrice + " confirmed and service marked completed!");
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
     } finally {
@@ -537,7 +882,14 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const handleBookingUpdate = async (id: string, update: Partial<Booking>) => {
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'bookings', id), { ...update, updatedAt: Timestamp.now() });
+      await offlineSyncEngine.executeWrite(
+        'UPDATE_BOOKING_STATUS',
+        `bookings/${id}`,
+        { ...update },
+        async () => {
+          await updateDoc(doc(db, 'bookings', id), { ...update, updatedAt: Timestamp.now() });
+        }
+      );
       const b = bookings.find(x => x.id === id);
       if (b) {
          notifyBookingUpdate({ ...b, ...update }, update.status as any, partner?.userId || '');
@@ -655,6 +1007,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   </div>
                   <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm ${
                     booking.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
+                    booking.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/30' :
                     ['on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
                     booking.status === 'cancelled' ? 'bg-rose-500 text-white' :
                     'bg-slate-100 text-slate-500'
@@ -677,12 +1030,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                      type="button"
                      onClick={(e) => {
                        e.stopPropagation();
-                       setStartScanningBookingId(booking.id);
+                       setSelectedBooking(booking); setVerifyingOTPId(booking.id);
                      }}
-                     className="bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
+                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
                    >
-                     <Camera size={11} className="text-emerald-400" />
-                     Start Service via QR
+                     <ShieldCheck size={11} className="text-white" />
+                     Verify OTP to Start
                    </button>
                  </div>
                )}
@@ -736,6 +1089,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           </div>
           <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
             booking.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
+            booking.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-lg shadow-amber-500/25' :
             booking.status === 'completed' || booking.status === 'finalized' ? 'bg-emerald-50 text-emerald-600' :
             'bg-slate-50 text-slate-500'
           }`}>
@@ -1009,10 +1363,10 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                            Back
                          </button>
                          <button 
-                           onClick={() => setScanningQRId(booking.id)}
-                           className="flex-[2] bg-emerald-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                           onClick={() => setConfirmFinishId(booking.id)}
+                           className="flex-[2] bg-blue-700 hover:bg-blue-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest"
                          >
-                           Scan QR to Complete
+                           Confirm & Complete Job
                          </button>
                        </div>
                     </div>
@@ -1026,26 +1380,102 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   )}
                 </div>
               )}
+
+              {booking.status === 'payment_pending' && (
+                <div className="space-y-4">
+                  <div className="p-5 bg-slate-50 border border-slate-200/60 rounded-3xl text-left shadow-xs">
+                    <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest leading-none mb-1.5">Awaiting Payment Completion</p>
+                    <p className="text-xs text-slate-500 font-semibold mt-1 leading-normal">
+                      The service has been completed! Awaiting payment of <span className="font-extrabold text-slate-950">₹{booking.totalPrice}</span> from the customer.
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-2.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 font-mono">
+                        Method: {booking.paymentMethod || 'UPI / card'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button 
+                      onClick={() => handleConfirmCashCollectedByPartner(booking)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                    >
+                      💵 Confirm Cash Received
+                    </button>
+                    {booking.paymentMethod !== 'cash' && (
+                      <button 
+                        onClick={async () => {
+                          if (confirm("Change payment method to Cash and collect cash right now?")) {
+                            await handleConfirmCashCollectedByPartner(booking);
+                          }
+                        }}
+                        className="w-full bg-slate-150 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-black uppercase tracking-wider text-[9px] cursor-pointer"
+                      >
+                        Switch to Cash collect
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => {
+                        const upiUrl = `upi://pay?pa=zomindia@oksbi&pn=ZomatoHomeServices&am=${booking.totalPrice}&cu=INR&tn=Invoice_${booking.id.slice(-6).toUpperCase()}`;
+                        setPartnerQRValue(upiUrl);
+                        setShowPartnerQRId(showPartnerQRId === booking.id ? null : booking.id);
+                      }}
+                      className="w-full bg-slate-855 hover:bg-slate-900 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-[9px] cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      ⚡ Generate Pay QR
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {showPartnerQRId === booking.id && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xl flex flex-col items-center justify-center gap-3 text-slate-800 mt-3"
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Scan to Pay via UPI</span>
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150 flex items-center justify-center">
+                          <QRCodeSVG
+                            value={partnerQRValue}
+                            size={140}
+                            level="M"
+                          />
+                        </div>
+                        <p className="text-xs font-black text-slate-900 flex flex-col items-center gap-0.5">
+                          <span>Amount: ₹{booking.totalPrice}</span>
+                          <span className="text-[9px] font-semibold text-slate-450 tracking-wider">UPI: zomindia@oksbi</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await updateDoc(doc(db, 'bookings', booking.id), {
+                                paymentStatus: 'paid',
+                                paymentMethod: 'qr_merchant',
+                                status: 'completed',
+                                updatedAt: Timestamp.now()
+                              });
+                              alert("Direct QR Code payment confirmed successfully!");
+                              setShowPartnerQRId(null);
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider py-3.5 rounded-2xl transition-all active:scale-95 cursor-pointer text-center border-0"
+                        >
+                          Confirm Payment Received
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {booking.status === 'in_progress' && (
-          <div className="fixed bottom-28 right-6 z-30">
-            <button
-              onClick={() => {
-                setCompletingBookingId(booking.id);
-                setScanningQRId(booking.id);
-              }}
-              className="flex items-center gap-2 bg-slate-900 border border-slate-800 text-white font-black uppercase tracking-widest text-[9px] px-5 py-4 rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer"
-              id="fab-verification-scan"
-              title="Quick Verify Completed Service"
-            >
-              <QrCode size={16} className="text-emerald-400 animate-pulse" />
-              <span>Quick Scan</span>
-            </button>
-          </div>
-        )}
+
       </motion.div>
     );
   };
@@ -1057,7 +1487,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          <div className="bg-slate-100 p-1 rounded-2xl flex w-full">
             {[
               { id: 'ongoing', label: 'Work', count: ongoingJobs.length },
-              { id: 'pending', label: 'New', count: pendingInvitations.length },
               { id: 'history', label: 'Past', count: historyJobs.length },
             ].map(t => (
               <button
@@ -1086,15 +1515,31 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             {refreshSuccess || 'Live Connection Active'}
           </span>
         </div>
-        <button
-          onClick={handleRefreshStatus}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-blue-700 bg-blue-50/50 hover:bg-blue-105 px-3 py-1.5 rounded-xl border border-blue-100/50 active:scale-95 transition-all shrink-0 cursor-pointer"
-        >
-          <RefreshCw size={10} className={`${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing...' : 'Refresh Status'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleRefreshStatus}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-blue-700 bg-blue-50/50 hover:bg-blue-105 px-3 py-1.5 rounded-xl border border-blue-100/50 active:scale-95 transition-all shrink-0 cursor-pointer"
+          >
+            <RefreshCw size={10} className={`${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
+
+      {/* Global QR Feedback Banner */}
+      {globalQRMessage && (
+        <div className="bg-emerald-50 border-b border-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase tracking-wider py-2.5 px-6 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1">
+          <span className="truncate">{globalQRMessage}</span>
+          <button onClick={() => setGlobalQRMessage(null)} className="text-emerald-600 font-bold hover:text-emerald-800">✕</button>
+        </div>
+      )}
+      {globalQRError && (
+        <div className="bg-rose-50 border-b border-rose-100 text-rose-700 text-[10px] font-extrabold uppercase tracking-wider py-2.5 px-6 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1">
+          <span className="truncate">{globalQRError}</span>
+          <button onClick={() => setGlobalQRError(null)} className="text-rose-600 font-bold hover:text-rose-850">✕</button>
+        </div>
+      )}
 
       {/* GPS Geo-tracking Synchronization Control Banner */}
       <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between border-b border-slate-800 shadow-inner">
@@ -1120,6 +1565,16 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       </div>
 
       <div className="p-6 space-y-6 pb-24">
+        <AssignedTasksMiniMap 
+          bookings={bookings} 
+          customers={customers} 
+          services={services} 
+          onSelectBooking={(b) => {
+            setSelectedBooking(b);
+            setChatHidden(false);
+          }} 
+        />
+
         <AnimatePresence mode="wait">
           {tab === 'ongoing' && (
             <motion.div 
@@ -1199,25 +1654,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   <h3 className="text-2xl font-black italic mb-2">Service Lock</h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">Ask customer for the 4-digit OTP</p>
                   
-                  {/* QR Code Scanner Trigger Option */}
-                  <div className="mb-2">
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setStartScanningBookingId(verifyingOTPId);
-                        setVerifyingOTPId(null);
-                      }}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 px-4 rounded-2xl font-black uppercase tracking-widest text-[9px] shadow-lg shadow-black/10 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Camera size={14} className="text-emerald-400" />
-                      Scan Customer Start QR
-                    </button>
-                    <div className="flex items-center gap-2 my-4 px-2">
-                      <div className="h-px bg-slate-100 flex-1" />
-                      <span className="text-[8px] font-black uppercase text-slate-300 tracking-widest">or enter OTP pin</span>
-                      <div className="h-px bg-slate-100 flex-1" />
-                    </div>
-                  </div>
+
 
                   <div className="space-y-6" id="otp-input-container">
                      <motion.div
@@ -1309,6 +1746,66 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Complete payout and close service order permanently.</p>
                 </div>
 
+                {/* VOICE DICTATION FOR SERVICE NOTES & CUSTOMER FEEDBACK */}
+                <div className="border border-slate-100 rounded-3xl p-4 bg-slate-50 space-y-3">
+                    <div className="flex items-center justify-between">
+                       <p className="text-[10px] uppercase font-black tracking-widest text-slate-400 pl-1 text-left">Service Notes / Feedback</p>
+                       <button
+                         type="button"
+                         onClick={toggleListeningNotes}
+                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer select-none ${
+                           isListeningNotes
+                             ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/20'
+                             : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                         }`}
+                       >
+                         {isListeningNotes ? (
+                           <>
+                             <MicOff size={10} className="animate-spin" />
+                             <span>Listening...</span>
+                           </>
+                         ) : (
+                           <>
+                             <Mic size={10} className="text-blue-700" />
+                             <span>Dictate Notes</span>
+                           </>
+                         )}
+                       </button>
+                    </div>
+
+                    <div className="relative">
+                      <textarea
+                        value={serviceNotes}
+                        onChange={(e) => setServiceNotes(e.target.value)}
+                        placeholder={
+                          isListeningNotes
+                            ? "Listening to voice dictation active... speak now"
+                            : "Provide notes, feedback, or dictate items completed..."
+                        }
+                        className="w-full h-24 bg-white border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none font-sans text-left"
+                      />
+                      {isListeningNotes && (
+                        <div className="absolute top-3 right-3 flex gap-0.5 items-center">
+                          <span className="w-1 h-2.5 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '50ms' }} />
+                          <span className="w-1 h-3.5 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-2.5 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '250ms' }} />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {serviceNotes && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setServiceNotes('')}
+                          className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          Clear Notes
+                        </button>
+                      </div>
+                    )}
+                </div>
+
                 {/* NATIVE DEVICE CAMERA RESOLUTION */}
                 <div className="border border-slate-100 rounded-3xl p-4 bg-slate-50 space-y-3">
                    <p className="text-[10px] uppercase font-black tracking-widest text-slate-400 pl-1 text-left">Completion proof (Optional)</p>
@@ -1364,63 +1861,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {scanningQRId && (
-          <QRScanner 
-            bookingId={scanningQRId}
-            expectedCode={`zomindia_completion:${scanningQRId}`}
-            onScanSuccess={() => {
-              setScanningQRId(null);
-              setConfirmFinishId(scanningQRId);
-            }}
-            onClose={() => setScanningQRId(null)}
-          />
-        )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {startScanningBookingId && (() => {
-          const bookingForScan = bookings.find(b => b.id === startScanningBookingId);
-          const computedPartnerId = partner?.userId || profile?.uid;
-          const expectedCodeVal = bookingForScan?.serviceOtp ? `zomindia_start:${startScanningBookingId}:${bookingForScan.serviceOtp}` : `zomindia_start:${startScanningBookingId}`;
-          return (
-            <QRScanner 
-              bookingId={startScanningBookingId}
-              expectedCode={expectedCodeVal}
-              onScanSuccess={async () => {
-                const bId = startScanningBookingId;
-                setStartScanningBookingId(null);
-                
-                try {
-                  // Direct backend/firebase update to change status to 'in_progress' and verify
-                  const bRef = doc(db, 'bookings', bId);
-                  await updateDoc(bRef, {
-                    status: 'in_progress',
-                    otpVerified: true,
-                    updatedAt: Timestamp.now()
-                  });
-                  
-                  if (bookingForScan && computedPartnerId) {
-                    notifyBookingUpdate(
-                      { ...bookingForScan, status: 'in_progress', otpVerified: true },
-                      'in_progress',
-                      computedPartnerId
-                    );
-                  }
-                  
-                  if (selectedBooking?.id === bId) {
-                    setSelectedBooking(prev => prev ? { ...prev, status: 'in_progress', otpVerified: true } : null);
-                  }
-                  console.log("QR Code Service Start completed successfully via scanner!");
-                } catch (err) {
-                  console.error("Error updating booking status via starting QR", err);
-                }
-              }}
-              onClose={() => setStartScanningBookingId(null)}
-            />
-          );
-        })()}
-      </AnimatePresence>
 
       <AnimatePresence>
         {activeChat && (
@@ -1435,15 +1876,323 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeCoordinatedCallBooking && (
-          <AudioCall 
-            bookingId={activeCoordinatedCallBooking.id}
-            activeCall={activeCoordinatedCallBooking.activeCall}
-            otherUser={customers[activeCoordinatedCallBooking.customerId] || null}
-            isIncoming={activeCoordinatedCallBooking.activeCall?.callerId !== (auth.currentUser?.uid || profile?.uid)}
-            onAnswer={() => handleAnswerCall(activeCoordinatedCallBooking)}
-            onEndCall={() => handleEndCall(activeCoordinatedCallBooking)}
+        {completedSuccessBooking && (
+          <JobCompletionSuccess 
+            booking={completedSuccessBooking}
+            partner={partner}
+            serviceName={services[completedSuccessBooking.serviceId]?.name || 'Premium Service'}
+            onClose={() => setCompletedSuccessBooking(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Audio call system bypassed */}
+    </div>
+  );
+}
+
+interface JobCompletionSuccessProps {
+  booking: Booking;
+  partner: PartnerProfile | null;
+  serviceName: string;
+  onClose: () => void;
+}
+
+function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCompletionSuccessProps) {
+  const [progress, setProgress] = useState(0);
+  const [step, setStep] = useState(0); // 0: proof, 1: payout, 2: credits, 3: finalize, 4: summary
+  const [showSummary, setShowSummary] = useState(false);
+
+  useEffect(() => {
+    // Elegant Multi-Stage Progress transitions
+    const stepIntervals = [
+      { prg: 25, stp: 1, time: 600 },
+      { prg: 60, stp: 2, time: 1300 },
+      { prg: 90, stp: 3, time: 2000 },
+      { prg: 100, stp: 4, time: 2605 }
+    ];
+
+    const timers = stepIntervals.map(item => 
+      setTimeout(() => {
+        setProgress(item.prg);
+        setStep(item.stp);
+      }, item.time)
+    );
+
+    const summaryTimer = setTimeout(() => {
+      setShowSummary(true);
+    }, 3105);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearTimeout(summaryTimer);
+    };
+  }, []);
+
+  const progressSteps = [
+    { label: "VERIFYING PHOTO CLARITY", value: 25 },
+    { label: "CALCULATING PARTNER PAYOUT", value: 60 },
+    { label: "CREATING REWARD BALANCE", value: 90 },
+    { label: "GENERATING CUSTOMER INVOICE", value: 100 }
+  ];
+
+  // We can render custom vector sparkles / particles
+  const particles = Array.from({ length: 24 }).map((_, i) => {
+    const angle = (i / 24) * 360;
+    const distance = Math.floor(Math.random() * 80) + 100;
+    const size = Math.floor(Math.random() * 6) + 4;
+    const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'];
+    const color = colors[i % colors.length];
+    
+    return {
+      index: i,
+      x: Math.cos((angle * Math.PI) / 180) * distance,
+      y: Math.sin((angle * Math.PI) / 180) * distance,
+      size,
+      color,
+      delay: Math.random() * 0.4
+    };
+  });
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md overflow-y-auto">
+      <AnimatePresence mode="wait">
+        {!showSummary ? (
+          <motion.div 
+            key="loading"
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 1.05, opacity: 0 }}
+            className="bg-slate-900 border border-slate-800/80 rounded-[40px] p-8 w-full max-w-sm text-center shadow-3xl space-y-8 my-auto animate-fade-in"
+          >
+            {/* Spinning/Radial neon loading indicator */}
+            <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+              {/* Outer Pulsing Aura */}
+              <div className="absolute inset-0 rounded-full bg-blue-500/10 blur-xl animate-pulse" />
+              
+              {/* Rotating Circular Progress */}
+              <svg className="w-full h-full -rotate-90">
+                <circle 
+                  cx="56"
+                  cy="56"
+                  r="50"
+                  className="stroke-slate-800"
+                  strokeWidth="6"
+                  fill="none"
+                />
+                <motion.circle 
+                  cx="56"
+                  cy="56"
+                  r="50"
+                  className="stroke-emerald-500"
+                  strokeWidth="6"
+                  fill="none"
+                  strokeDasharray="314"
+                  animate={{ strokeDashoffset: 314 - (314 * progress) / 100 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                />
+              </svg>
+              
+              {/* Absolute Center Icon depending on current step */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <AnimatePresence mode="wait">
+                  {step === 0 && (
+                    <motion.div
+                      key="step0"
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.7, opacity: 0 }}
+                    >
+                      <Camera className="text-emerald-400 w-8 h-8 animate-pulse" />
+                    </motion.div>
+                  )}
+                  {step === 1 && (
+                    <motion.div
+                      key="step1"
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.7, opacity: 0 }}
+                    >
+                      <DollarSign className="text-emerald-400 w-8 h-8" />
+                    </motion.div>
+                  )}
+                  {step === 2 && (
+                    <motion.div
+                      key="step2"
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.7, opacity: 0 }}
+                    >
+                      <Trophy className="text-amber-400 w-8 h-8 animate-bounce" />
+                    </motion.div>
+                  )}
+                  {step >= 3 && (
+                    <motion.div
+                      key="step3"
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.7, opacity: 0 }}
+                    >
+                      <Sparkles className="text-blue-400 w-8 h-8" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Step messages */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-black tracking-widest text-emerald-400 uppercase">
+                Completing Order
+              </h4>
+              <div className="h-6 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {progressSteps[Math.min(step, 3)].label}
+                </span>
+              </div>
+            </div>
+
+            {/* Fine Percentage Indicator and track bar */}
+            <div className="space-y-2">
+              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden relative">
+                <motion.div 
+                  className="absolute left-0 top-0 bottom-0 bg-emerald-500 rounded-full"
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                />
+              </div>
+              <p className="text-[10px] font-black text-slate-500 font-mono tracking-wider">
+                PROCESSED {progress}%
+              </p>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="summary"
+            initial={{ scale: 0.9, y: 30, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1, transition: { type: "spring", stiffness: 100, damping: 15 } }}
+            className="bg-slate-900 border border-slate-800/80 rounded-[44px] p-8 w-full max-w-sm text-center shadow-3xl text-white relative overflow-hidden my-auto"
+          >
+            {/* Lottie-style Sparkle Burst on Load */}
+            {particles.map((p) => (
+              <motion.div
+                key={p.index}
+                initial={{ x: 0, y: 0, scale: 0, opacity: 0 }}
+                animate={{ 
+                  x: p.x, 
+                  y: p.y, 
+                  scale: [0, 1.2, 0.8, 0],
+                  opacity: [0, 1, 0.8, 0]
+                }}
+                transition={{ 
+                  duration: 1.6, 
+                  delay: p.delay, 
+                  ease: "easeOut" 
+                }}
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '25%',
+                  width: p.size,
+                  height: p.size,
+                  borderRadius: '50%',
+                  backgroundColor: p.color,
+                  pointerEvents: 'none'
+                }}
+              />
+            ))}
+
+            {/* Glowing Big Seal of Achievement */}
+            <div className="relative w-20 h-20 bg-emerald-500/15 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(16,185,129,0.2)] border border-emerald-500/30">
+              <motion.div
+                initial={{ scale: 0, rotate: -45 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.2 }}
+              >
+                <CheckCircle2 size={40} className="stroke-[2.5]" />
+              </motion.div>
+              
+              <motion.div 
+                className="absolute -top-1 -right-1 text-amber-400 bg-slate-900 border border-slate-800 rounded-lg p-1"
+                animate={{ scale: [1, 1.25, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ repeat: Infinity, duration: 4, delay: 1 }}
+              >
+                <Trophy size={14} />
+              </motion.div>
+            </div>
+
+            <div className="space-y-1.5 mt-6">
+              <h3 className="text-xl font-black italic tracking-tight uppercase">
+                Success, Partner!
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                Service Order Completed Successfully
+              </p>
+            </div>
+
+            {/* Summary Details */}
+            <div className="bg-slate-950/50 border border-slate-800/80 rounded-3xl p-5 mt-6 space-y-4">
+              <div className="flex justify-between items-center text-left">
+                <div>
+                  <p className="text-[8px] text-slate-500 font-black uppercase tracking-widest">
+                    Service Rendered
+                  </p>
+                  <p className="text-xs font-black truncate max-w-[200px]">
+                    {serviceName}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[8px] text-slate-500 font-black uppercase tracking-widest">
+                    ID Prefix
+                  </p>
+                  <p className="text-[10px] font-mono font-black text-slate-400">
+                    #{booking.id.substring(0, 6).toUpperCase()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="h-[1px] bg-slate-800/60" />
+
+              {/* Earnings breakdown */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 text-center shadow-sm">
+                  <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block mb-1">
+                    Book Earning
+                  </span>
+                  <div className="flex items-center justify-center gap-0.5 text-emerald-400">
+                    <span className="text-xs font-black">₹</span>
+                    <span className="text-lg font-black">{booking.totalPrice}</span>
+                  </div>
+                </div>
+
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 text-center shadow-sm">
+                  <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block mb-1">
+                    Reward points
+                  </span>
+                  <div className="flex items-center justify-center gap-1 text-amber-400">
+                    <Trophy size={14} className="animate-pulse" />
+                    <span className="text-lg font-black leading-none">+10</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Positive affirmation text */}
+            <p className="text-[9px] text-slate-400 font-bold mt-6 leading-relaxed">
+              Earnings and reward credits have been added directly to your Partner Wallet balance instantly. Keep up the phenomenal work!
+            </p>
+
+            {/* Complete workflow submit button */}
+            <div className="pt-6">
+              <button 
+                onClick={onClose}
+                className="w-full bg-linear-to-r from-emerald-500 to-teal-500 text-slate-950 font-black py-4.5 px-6 rounded-2xl uppercase tracking-widest text-[9px] shadow-lg shadow-emerald-500/15 active:scale-98 transition-all hover:scale-101 hover:shadow-xl hover:shadow-emerald-500/30 font-sans cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Claim Rewards & Dismiss</span>
+                <Sparkles size={12} className="text-slate-950 animate-bounce" />
+              </button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

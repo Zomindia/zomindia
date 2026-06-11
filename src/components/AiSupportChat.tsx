@@ -1,24 +1,111 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, X, Send, Bot, User } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Globe, Mic, Phone, Mail, MessageCircle } from 'lucide-react';
 import { UserProfile, Booking } from '../types';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+
+const LANGUAGES = [
+  { code: 'hi-IN', name: 'हिंदी (Hindi)', label: 'हिं' },
+  { code: 'en-IN', name: 'English (India)', label: 'EN' },
+  { code: 'bn-IN', name: 'বাংলা (Bengali)', label: 'BN' },
+  { code: 'ta-IN', name: 'தமிழ் (Tamil)', label: 'TA' },
+  { code: 'te-IN', name: 'తెలుగు (Telugu)', label: 'TE' },
+  { code: 'mr-IN', name: 'मराठी (Marathi)', label: 'MR' },
+  { code: 'gu-IN', name: 'ગુજરાતી (Gujarati)', label: 'GU' },
+  { code: 'kn-IN', name: 'ಕನ್ನಡ (Kannada)', label: 'KN' },
+  { code: 'ml-IN', name: 'മലയാളം (Malayalam)', label: 'ML' },
+  { code: 'pa-IN', name: 'ਪੰਜਾਬੀ (Punjabi)', label: 'PA' },
+];
 
 export default function AiSupportChat({ userProfile, isPartner, bookings }: { userProfile?: UserProfile, isPartner?: boolean, bookings?: Booking[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{role: 'ai'|'user', text: string}[]>([
     { 
       role: 'ai', 
-      text: isPartner 
-        ? 'Hello Pro! I am your partner support assistant. How can I help you manage your jobs today?' 
-        : 'Hi! I am your zomindia AI assistant. Looking for help with a booking or a service? Ask me anything!' 
+      text: 'hi welcom to zomindia ai chat support and i am sarthak to help you' 
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Multilingual voice-to-text configurations
+  const [selectedLang, setSelectedLang] = useState('hi-IN'); // Defaulting to Hindi as asked - "sarthak" friendly greeting
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Speech Recognition API setup
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    setMicError(null);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setMicError("Voice input is not supported in this browser. Please try Chrome or Safari!");
+      setTimeout(() => setMicError(null), 5000);
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = selectedLang;
+
+      rec.onstart = () => {
+        setIsListening(true);
+      };
+
+      rec.onerror = (e: any) => {
+        console.error("Speech Recognition Error:", e);
+        if (e.error === 'not-allowed') {
+          setMicError("Mic access blocked. Please enable permissions!");
+        } else if (e.error === 'no-speech') {
+          setMicError("No voice detected. Please speak closer to microphone.");
+        } else {
+          setMicError(`Voice error: ${e.error}`);
+        }
+        setIsListening(false);
+        setTimeout(() => setMicError(null), 5000);
+      };
+
+      rec.onend = () => {
+        setIsListening(false);
+      };
+
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setInput(prev => prev ? prev + " " + transcript : transcript);
+        }
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Error starting speech recognition:", err);
+      setIsListening(false);
+    }
+  };
+
+  // Turn off mic when shutting chat view
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const scrollToBottom = () => {
@@ -84,9 +171,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
     setMessages([
       { 
         role: 'ai', 
-        text: isPartner 
-          ? 'Hello Pro! I am your partner support assistant. How can I help you manage your jobs today?' 
-          : 'Hi! I am your zomindia AI assistant. Looking for help with a booking or a service? Ask me anything!' 
+        text: 'hi welcom to zomindia ai chat support and i am sarthak to help you' 
       }
     ]);
   }, [isPartner]);
@@ -94,6 +179,16 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
   const sendMessage = async () => {
     if (!input.trim()) return;
     
+    // Auto turn-off recording if active when sending
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn(err);
+      }
+      setIsListening(false);
+    }
+
     const userMsg = input.trim();
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setInput('');
@@ -106,6 +201,7 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
         body: JSON.stringify({
           message: userMsg,
           context: {
+            language: LANGUAGES.find(l => l.code === selectedLang)?.name || 'Hindi',
             user: userProfile ? {
               name: userProfile.displayName,
               role: userProfile.role,
@@ -164,13 +260,49 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
               <div className="flex items-center gap-2">
                 <Bot size={20} className="text-amber-400" />
                 <div>
-                  <h3 className="font-bold text-sm">AI Support</h3>
-                  <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">zomindia Assistant</p>
+                  <h3 className="font-bold text-sm">Sarthak</h3>
+                  <p className="text-[10px] text-slate-200 font-medium tracking-widest uppercase">zomindia AI Chatbot</p>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors">
                 <X size={20} />
               </button>
+            </div>
+
+            {/* Direct Support Connect Bar */}
+            <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-600 font-semibold select-none shrink-0">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Live Connect</span>
+              <div className="flex items-center gap-2">
+                {/* Click-to-WhatsApp */}
+                <a
+                  href="https://wa.me/918517071009?text=Hi%20Sarthak%20zomindia"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 p-1.5 rounded-lg border border-emerald-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                  title="Connect via WhatsApp"
+                >
+                  <MessageCircle size={15} />
+                </a>
+
+                {/* Click-to-Call */}
+                <a
+                  href="tel:8517071009"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg border border-blue-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                  title="Call Support Team"
+                >
+                  <Phone size={15} />
+                </a>
+
+                {/* Click-to-Email */}
+                <a
+                  href="mailto:help@zomindia.com?subject=zomindia%20Support%20Request"
+                  className="bg-slate-50 hover:bg-slate-200 text-slate-700 hover:text-blue-700 px-2 py-1 rounded-lg border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 font-bold text-[10px]"
+                  title="Email help@zomindia.com"
+                >
+                  <Mail size={13} className="text-slate-500 shrink-0" />
+                  <span>help@zomindia.com</span>
+                </a>
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -206,23 +338,95 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Language Selection Bar / Alerts */}
+            {micError && (
+              <div className="px-4 py-1.5 bg-red-50 text-red-600 text-xs font-semibold border-t border-red-100 flex items-center justify-between animate-pulse">
+                <span>{micError}</span>
+                <button onClick={() => setMicError(null)} className="text-red-400 hover:text-red-600">
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            {isListening && (
+              <div className="px-4 py-1.5 bg-amber-50 text-amber-700 text-[11px] font-semibold border-t border-amber-100 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                <span>🎙️ Listening in <span className="font-bold underline">{LANGUAGES.find(l => l.code === selectedLang)?.name}</span>. Speak now...</span>
+              </div>
+            )}
+
             {/* Input Area */}
-            <div className="p-3 bg-white border-t border-slate-100">
+            <div className="p-3 bg-white border-t border-slate-100 relative">
+              {/* Language Selector Dropdown */}
+              {isLangDropdownOpen && (
+                <div className="absolute bottom-16 left-3 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-[120] w-48 max-h-48 overflow-y-auto">
+                  <p className="text-[9px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider">Choose Voice/Type Lang</p>
+                  <div className="scrollable-container space-y-1">
+                    {LANGUAGES.map((lang) => (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLang(lang.code);
+                          setIsLangDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between ${
+                          selectedLang === lang.code
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span>{lang.name}</span>
+                        <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{lang.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
+                {/* Language Pill Selector */}
+                <button
+                  type="button"
+                  onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
+                  className="bg-slate-100 hover:bg-slate-200 border border-slate-250 text-slate-700 px-2.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
+                  title="Select Chat Language"
+                >
+                  <Globe size={14} className="text-blue-700" />
+                  <span>{LANGUAGES.find(l => l.code === selectedLang)?.label}</span>
+                </button>
+
+                {/* Main Input Text Field */}
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                  placeholder="Type your question..."
-                  className="flex-1 bg-slate-100 text-sm py-3 px-4 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-700 font-medium"
+                  placeholder={isListening ? "Listening natively..." : "Type or speak to Sarthak..."}
+                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 text-sm py-2.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-700 font-medium"
                 />
+
+                {/* Microphone Button */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 border cursor-pointer active:scale-95 ${
+                    isListening
+                      ? 'bg-red-500 border-red-500 text-white animate-pulse shadow-md shadow-red-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600 hover:text-slate-800'
+                  }`}
+                  title="Speak with Sarthak"
+                >
+                  <Mic size={16} />
+                </button>
+
+                {/* Send Button */}
                 <button
                   onClick={sendMessage}
                   disabled={!input.trim() || isLoading}
-                  className="bg-blue-700 text-white p-3 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50"
+                  className="bg-blue-700 text-white p-2.5 rounded-xl hover:bg-blue-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow-md shadow-blue-500/10 active:scale-95 cursor-pointer"
                 >
-                  <Send size={18} />
+                  <Send size={16} />
                 </button>
               </div>
             </div>

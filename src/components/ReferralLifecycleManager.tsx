@@ -505,10 +505,12 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
           <div className="space-y-4">
             {/* Search and Filters toolbar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
-              <div className="relative flex-1 max-w-sm">
+              <div className="relative flex-1 max-w-sm" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
                 <Search size={14} className="absolute left-4 top-3.5 text-slate-400" />
                 <input 
                   type="text" 
+                  inputMode="text"
+                  enterKeyHint="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search Referrer, Referee or Code..."

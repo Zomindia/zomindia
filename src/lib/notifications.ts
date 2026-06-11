@@ -70,8 +70,15 @@ export const sendNotification = async (userId: string, title: string, message: s
        headers: { 'Content-Type': 'application/json' },
        body: JSON.stringify({ userId, title, message })
     }).catch(err => console.error('[Push System] Background trigger failed:', err));
+
+    // Trigger real SMS & WhatsApp via Gupshup Express backend proxy
+    fetch('/api/send-gupshup-notification', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ userId, title, message })
+    }).catch(err => console.error('[Gupshup System] Background trigger failed:', err));
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, 'notifications');
+    console.error(`[Notification System] Suppressed non-fatal notification trigger error for user ${userId}:`, err);
   }
 };
 

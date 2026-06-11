@@ -196,10 +196,12 @@ export default function AmcManagement({ amcs, users, services, onUpdateStatus }:
                 </button>
              ))}
           </div>
-          <div className="relative">
+          <div className="relative" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
              <input 
                type="text" 
+               inputMode="text"
+               enterKeyHint="search"
                placeholder="Search by ID or Name..." 
                value={searchTerm}
                onChange={(e) => setSearchTerm(e.target.value)}

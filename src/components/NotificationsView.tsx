@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, Clock, Info, ShieldCheck, Trash2, X, MapPin, Smartphone } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { LoadingScreen } from './LoadingIndicator';
+import logoImg from '../assets/images/regenerated_image_1780775052361.webp';
 
 interface Notification {
   id: string;
@@ -123,21 +124,24 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
                   </div>
                 )}
                 <div className="flex gap-8">
-                    <div className={`w-16 h-16 rounded-[28px] flex items-center justify-center shrink-0 shadow-lg ${
-                    (n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
-                    (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? 'bg-blue-700 text-white shadow-blue-700/20' :
-                    (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? 'bg-orange-500 text-white shadow-orange-500/20' :
-                    (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? 'bg-rose-600 text-white shadow-rose-600/20' :
-                    (n.type === 'promotional' || n.type === 'offer_active') ? 'bg-violet-600 text-white shadow-violet-600/20' :
-                    'bg-slate-900 text-white shadow-slate-900/20'
-                  }`}>
-                    {(n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? <CheckCircle2 size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? <ShieldCheck size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? <Clock size={32} strokeWidth={2.5} /> :
-                     (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? <X size={32} strokeWidth={2.5} /> :
-                     (n.type === 'promotional' || n.type === 'offer_active') ? <Smartphone size={32} strokeWidth={2.5} /> :
-                     <Info size={32} strokeWidth={2.5} />}
-                  </div>
+                    <div className="w-16 h-16 rounded-[28px] flex items-center justify-center shrink-0 bg-slate-50 ring-4 ring-slate-100 relative overflow-visible">
+                      <img src={logoImg} alt="Notification Logo" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
+                      <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-white border-2 border-white text-[10px] font-bold shadow-md ${
+                        (n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? 'bg-emerald-500' :
+                        (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? 'bg-blue-700' :
+                        (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? 'bg-orange-500' :
+                        (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? 'bg-rose-600' :
+                        (n.type === 'promotional' || n.type === 'offer_active') ? 'bg-violet-600' :
+                        'bg-slate-900'
+                      }`}>
+                        {(n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? <CheckCircle2 size={12} strokeWidth={3} /> :
+                         (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? <ShieldCheck size={12} strokeWidth={3} /> :
+                         (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? <Clock size={12} strokeWidth={3} /> :
+                         (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? <X size={12} strokeWidth={3} /> :
+                         (n.type === 'promotional' || n.type === 'offer_active') ? <Smartphone size={12} strokeWidth={3} /> :
+                         <Info size={12} strokeWidth={3} />}
+                      </div>
+                    </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${

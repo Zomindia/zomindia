@@ -20,12 +20,12 @@ interface EarningsViewProps {
   bookings: Booking[];
   earnings?: EarningsHistory[];
   role: 'admin' | 'partner';
-  platformFeePercentage?: number; // default 15
+  platformFeePercentage?: number; // default 20
 }
 
 type TimeRange = '7d' | '30d' | 'lifetime';
 
-export default function EarningsView({ bookings, earnings = [], role, platformFeePercentage = 15 }: EarningsViewProps) {
+export default function EarningsView({ bookings, earnings = [], role, platformFeePercentage = 20 }: EarningsViewProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutRequested, setPayoutRequested] = useState(false);

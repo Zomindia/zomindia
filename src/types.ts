@@ -22,6 +22,12 @@ export interface UserProfile {
     bookingUpdates: boolean;
     promotionalMessages: boolean;
   };
+  gender?: string;
+  languagePreference?: string;
+  houseType?: string;
+  bhkSize?: string;
+  preferredTimeSlot?: string;
+  secondaryPhone?: string;
   createdAt: any;
 }
 
@@ -49,6 +55,7 @@ export interface Service {
   rating?: number;
   reviewCount?: number;
   predefinedTasks?: string[];
+  createdAt?: any;
 }
 
 export interface WorkingHours {

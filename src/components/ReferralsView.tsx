@@ -39,7 +39,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-export default function ReferralsView({ profile }: { profile: UserProfile }) {
+export default function ReferralsView({ profile, onBack }: { profile: UserProfile; onBack?: () => void }) {
   const [copied, setCopied] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -118,6 +118,7 @@ export default function ReferralsView({ profile }: { profile: UserProfile }) {
   const copyReferralCode = () => {
     navigator.clipboard.writeText(myReferralCode);
     setCopied(true);
+    (window as any).__showCopyToast?.(myReferralCode);
     displayMessage("Referral code copied successfully!");
     setTimeout(() => setCopied(false), 2000);
   };
@@ -344,6 +345,7 @@ ${profile.displayName || 'Your Friend'}`;
   const copyEmailTemplate = () => {
     const preformattedText = `Subject: ${emailSubject}\n\n${emailBody}`;
     navigator.clipboard.writeText(preformattedText);
+    (window as any).__showCopyToast?.("Email Template text");
     displayMessage("Email template copied! Paste in your inbox.");
   };
 
@@ -444,6 +446,15 @@ ${profile.displayName || 'Your Friend'}`;
       </AnimatePresence>
 
       <div className="mb-12">
+        {onBack && (
+          <button 
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-xs font-bold uppercase text-[#050CA6] hover:text-[#040980] bg-[#050CA6]/5 hover:bg-[#050CA6]/10 px-4 py-2 rounded-xl transition-all mb-5 cursor-pointer max-w-xs focus:outline-hidden"
+          >
+            &larr; Back to Profile Settings
+          </button>
+        )}
         <span className="px-3.5 py-1.5 bg-blue-50 text-blue-700 text-[10px] font-black tracking-widest uppercase rounded-full border border-blue-100 mb-3 inline-block">
           💝 Gift a Friend, Reward Yourself
         </span>

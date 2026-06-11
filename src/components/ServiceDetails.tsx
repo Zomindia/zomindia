@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Service, Review, FAQ, PartnerProfile, UserProfile, Category } from '../types';
@@ -21,9 +21,11 @@ import {
   Phone,
   ChevronRight,
   ArrowRight,
-  Share2
+  Share2,
+  Sparkles
 } from 'lucide-react';
 import BookingModal from './BookingModal';
+import PartnerIdentityMarker from './PartnerIdentityMarker';
 import { LoadingScreen } from './LoadingIndicator';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import FAQList from './FAQ';
@@ -34,6 +36,7 @@ interface ServiceDetailsProps {
   onBack: () => void;
   onAuthRequired: () => void;
   onSuccess: () => void;
+  onServiceSelect?: (id: string) => void;
 }
 
 interface PartnerWithUserInfo extends PartnerProfile {
@@ -148,9 +151,10 @@ export function ImageCarousel({ images }: { images: string[] }) {
 }
 
 function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
-  const availablePros = partners.filter(p => (p.availabilityStatus === 'Available' || p.availabilityStatus === 'Busy') && p.lat && p.lng);
+  const availablePros = partners.filter(p => (p.availabilityStatus === 'Available' || p.availabilityStatus === 'Busy' || p.availabilityStatus === 'Offline') && p.lat && p.lng);
   
   const [center, setCenter] = useState<{lat: number, lng: number}>({ lat: 28.6139, lng: 77.2090 }); // Default Delhi
+  const [mapType, setMapType] = useState<'terrain' | 'satellite'>('terrain');
 
   useEffect(() => {
     if (availablePros.length > 0) {
@@ -188,6 +192,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
         center={center}
         defaultZoom={12}
         mapId="NEARBY_PROS_MAP"
+        mapTypeId={mapType}
         className="w-full h-full"
         gestureHandling="greedy"
         disableDefaultUI
@@ -195,16 +200,10 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
       >
         {availablePros.map(pro => (
           <AdvancedMarker key={pro.id} position={{ lat: pro.lat!, lng: pro.lng! }}>
-            <div className="relative group/marker">
-              <div className={`p-2 rounded-full shadow-lg border-2 border-white text-white ${
-                pro.availabilityStatus === 'Available' ? 'bg-emerald-500' : 'bg-amber-500'
-              }`}>
-                <Users size={16} />
-              </div>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-blue-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/marker:opacity-100 transition-opacity">
-                {pro.displayName} · {pro.rating}★
-              </div>
-            </div>
+            <PartnerIdentityMarker
+              status={pro.availabilityStatus === 'Busy' ? 'On Job' : 'Available'}
+              name={pro.displayName}
+            />
           </AdvancedMarker>
         ))}
       </Map>
@@ -217,14 +216,39 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
            </div>
          </div>
       </div>
+      
+      {/* Floating Map View Controls */}
+      <div className="absolute top-6 right-6 z-10 flex gap-2">
+        <button 
+          type="button"
+          onClick={() => setMapType(prev => prev === 'terrain' ? 'satellite' : 'terrain')}
+          className="bg-white/95 backdrop-blur shadow-lg border border-slate-200/80 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none"
+          title={`Switch map mode to ${mapType === 'terrain' ? 'Satellite' : 'Terrain'}`}
+        >
+          {mapType === 'terrain' ? '🛰️ Satellite view' : '🗺️ Terrain view'}
+        </button>
+      </div>
     </div>
   );
 }
 
-export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequired, onSuccess }: ServiceDetailsProps) {
+export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequired, onSuccess, onServiceSelect }: ServiceDetailsProps) {
   const [service, setService] = useState<Service | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
+  const [isDescOpen, setIsDescOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allServices, setAllServices] = useState<Service[]>([]);
+  const [carouselActiveCategoryId, setCarouselActiveCategoryId] = useState<string | null>(null);
+  const [currentServiceId, setCurrentServiceId] = useState(serviceId);
+  const carouselScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCurrentServiceId(serviceId);
+  }, [serviceId]);
+
+  useEffect(() => {
+    setIsDescOpen(false);
+  }, [currentServiceId]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [partners, setPartners] = useState<PartnerWithUserInfo[]>([]);
@@ -233,6 +257,91 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
   const [activeDetailsTab, setActiveDetailsTab] = useState<'overview' | 'experts' | 'reviews'>('overview');
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [qrCodeValue, setQrCodeValue] = useState('');
+
+  // Proximity-based dynamic sorting and coordinate states
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number, lng: number } | null>(null);
+  const [typedAddress, setTypedAddress] = useState(profile?.address || '');
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
+  const [sortBy, setSortBy] = useState<'rating' | 'distance'>('rating');
+
+  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // distance in km
+  };
+
+  const resolveAddressToCoords = async (addrStr: string) => {
+    if (!addrStr || !addrStr.trim()) return;
+    setIsResolvingAddress(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addrStr)}&limit=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.[0]) {
+          const resolved = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+          setSelectedLocation(resolved);
+          setIsResolvingAddress(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("OSM geocoding failed, trying fallback:", e);
+    }
+    
+    if (!selectedLocation) {
+      setSelectedLocation({ lat: 28.6139, lng: 77.2090 }); // Default Delhi
+    }
+    setIsResolvingAddress(false);
+  };
+
+  useEffect(() => {
+    if (profile?.address) {
+      resolveAddressToCoords(profile.address);
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setSelectedLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          setSelectedLocation({ lat: 28.6139, lng: 77.2090 });
+        }
+      );
+    } else {
+      setSelectedLocation({ lat: 28.6139, lng: 77.2090 });
+    }
+  }, [profile?.address]);
+
+  const processedPartners = useMemo(() => {
+    if (!partners || partners.length === 0) return [];
+    
+    const listWithDistance = partners.map(partner => {
+      let distance: number | null = null;
+      if (partner.lat && partner.lng && selectedLocation) {
+        distance = parseFloat(haversineDistance(selectedLocation.lat, selectedLocation.lng, partner.lat, partner.lng).toFixed(2));
+      }
+      return {
+        ...partner,
+        distance
+      };
+    });
+
+    if (sortBy === 'distance') {
+      return [...listWithDistance].sort((a, b) => {
+        if (a.distance === null) return 1;
+        if (b.distance === null) return -1;
+        return a.distance - b.distance;
+      });
+    } else {
+      return [...listWithDistance].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    }
+  }, [partners, selectedLocation, sortBy]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -243,8 +352,13 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
         const categoriesList = categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
         setCategories(categoriesList);
 
+        // Fetch All Services for the category carousel
+        const servicesSnap = await getDocs(collection(db, 'services'));
+        const servicesList = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
+        setAllServices(servicesList);
+
         // 2. Fetch Service
-        const serviceSnap = await getDoc(doc(db, 'services', serviceId));
+        const serviceSnap = await getDoc(doc(db, 'services', currentServiceId));
         if (serviceSnap.exists()) {
           const serviceData = { id: serviceSnap.id, ...serviceSnap.data() } as Service;
           setService(serviceData);
@@ -253,6 +367,9 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
           const foundCategory = categoriesList.find(c => c.id === serviceData.categoryId);
           if (foundCategory) {
             setCategory(foundCategory);
+            setCarouselActiveCategoryId(foundCategory.id);
+          } else if (categoriesList.length > 0) {
+            setCarouselActiveCategoryId(categoriesList[0].id);
           }
 
           // 4. Fetch FAQs for this category
@@ -292,7 +409,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
           // 6. Fetch Reviews (Prioritize serviceId, filter by related partners if needed)
           const reviewQuery = query(
             collection(db, 'reviews'),
-            where('serviceId', '==', serviceId),
+            where('serviceId', '==', currentServiceId),
             orderBy('createdAt', 'desc'),
             limit(10)
           );
@@ -321,7 +438,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
     };
 
     fetchData();
-  }, [serviceId]);
+  }, [currentServiceId]);
 
   if (loading) {
     return <LoadingScreen message="Retrieving service specifications & ratings..." />;
@@ -343,41 +460,63 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
   return (
     <div className="min-h-screen bg-slate-50/50">
       {/* Header Sticky */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-16 md:top-20 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="sticky top-16 md:top-24 z-30 transition-all duration-300 px-0 sm:px-6 lg:px-8 sm:py-3"
+      >
+        <div className="bg-white/85 backdrop-blur-md border-b border-slate-100 sm:border sm:border-slate-100/85 sm:rounded-3xl sm:shadow-lg sm:shadow-slate-100/40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-start transition-all duration-300">
            <button 
              onClick={onBack} 
-             className="flex items-center gap-2 text-slate-500 hover:text-blue-700 font-black text-xs uppercase tracking-widest transition-all hover:-translate-x-1"
+             className="flex items-center gap-2 text-slate-500 hover:text-blue-700 font-black text-xs uppercase tracking-[0.18em] transition-all hover:-translate-x-1 py-1.5 cursor-pointer select-none"
            >
-             <ChevronLeft size={16} /> Back to discover
+             <ChevronLeft size={15} className="stroke-[2.5]" /> Back to discover
            </button>
-           <div className="flex items-center gap-6">
-             <div className="hidden md:block text-right">
-               <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-0.5">Investment</p>
-               <p className="text-xl font-black text-slate-900 italic tracking-tighter">₹{service.basePrice}</p>
-             </div>
-             <button 
-               onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-               className="bg-blue-700 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-700/20 hover:bg-blue-800 transition-all active:scale-95"
-             >
-               Book Now
-             </button>
-           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-4 md:pt-6 md:pb-4">
+        <motion.div 
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: {
+                staggerChildren: 0.12,
+                delayChildren: 0.05
+              }
+            }
+          }}
+          className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 xl:gap-16 items-start"
+        >
           {/* Main Content */}
-          <div className="lg:col-span-8 space-y-12 md:space-y-20">
+          <motion.div 
+            variants={{
+              hidden: { opacity: 0, y: 30 },
+              visible: { 
+                opacity: 1, 
+                y: 0,
+                transition: {
+                  type: "spring",
+                  stiffness: 70,
+                  damping: 15,
+                  duration: 0.6
+                }
+              }
+            }}
+            className="lg:col-span-8 space-y-12 md:space-y-20"
+          >
             {/* Hero Info */}
             <motion.section 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white rounded-[32px] p-6 md:p-8 border border-slate-100 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start bg-white rounded-[32px] p-6 md:p-10 border border-slate-100 shadow-sm">
                 {/* Left side: Title, Description, Pricing, Metadata */}
-                <div className="lg:col-span-7 space-y-5">
+                <div className="lg:col-span-7 space-y-6 md:space-y-8">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="px-3 py-1.5 bg-blue-700 text-white rounded-full text-[9px] font-black uppercase tracking-[0.25em]">
                       {category?.name || 'Expert Service'}
@@ -390,34 +529,97 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                     </span>
                   </div>
 
-                  <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">{service.name}</h1>
-                  <p className="text-sm text-slate-500 leading-relaxed font-medium">{service.description}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-8 border-b border-slate-100 pb-8 w-full">
+                    {service.imageURL && (
+                      <div className="w-full sm:w-80 h-40 sm:h-44 rounded-2xl overflow-hidden shadow-lg shrink-0 border-4 border-white ring-1 ring-slate-150 flex items-center justify-center bg-slate-50 transition-all duration-500 hover:scale-[1.02] hover:shadow-xl group">
+                        <img 
+                          src={service.imageURL} 
+                          alt={service.name} 
+                          className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105" 
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <h1 className="text-2xl sm:text-3.5xl md:text-4.5xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">{service.name}</h1>
+                    </div>
+                  </div>
                   
-                  <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <div className="flex flex-wrap items-center gap-4 pt-1">
                     <button 
                       onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-                      className="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-700/10 transition-all active:scale-95 flex items-center justify-center gap-2"
+                      className="bg-blue-700 hover:bg-blue-800 text-white px-8 py-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-700/15 transition-all active:scale-95 flex items-center justify-center gap-2"
                     >
                       <Calendar size={14} /> Book Service
                     </button>
-                    <div className="flex items-center gap-4 px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-5 px-5 py-3 bg-slate-50 rounded-xl border border-slate-100">
                       <div>
                         <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">Price</p>
-                        <p className="text-xs font-black text-slate-900 tracking-tight">₹{service.basePrice}</p>
+                        <p className="text-sm font-black text-slate-920 tracking-tight">₹{service.basePrice}</p>
                       </div>
                       <div className="w-px h-6 bg-slate-200" />
                       <div>
                         <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">Time</p>
-                        <p className="text-xs font-black text-slate-900 tracking-tight">{service.duration || '60m'}</p>
+                        <p className="text-sm font-black text-slate-920 tracking-tight">{service.duration || '60m'}</p>
                       </div>
                     </div>
                   </div>
+
+                  {!isDescOpen ? (
+                    <button 
+                      type="button"
+                      onClick={() => setIsDescOpen(true)}
+                      className="group w-full inline-flex items-center justify-between px-6 py-4.5 bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-slate-950/10 hover:shadow-blue-700/20 active:scale-[0.99] transition-all duration-300 select-none cursor-pointer border border-slate-800 hover:border-blue-600"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <span className="text-[14px] animate-pulse">💡</span> Explore service description
+                      </span>
+                      <span className="text-[10px] text-slate-400 group-hover:text-white transition-colors">View Details ➔</span>
+                    </button>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white border-2 border-indigo-150 rounded-3xl p-6 shadow-xl relative text-left overflow-hidden flex flex-col gap-4 w-full"
+                    >
+                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full blur-2xl opacity-70 pointer-events-none" />
+                      
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-750 rounded-lg">
+                            <Sparkles size={14} />
+                          </span>
+                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Service Overview</h4>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => setIsDescOpen(false)}
+                          className="p-1 text-slate-400 hover:text-slate-650 transition-colors"
+                          title="Close details"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      
+                      <p className="text-slate-800 text-base sm:text-lg font-bold leading-relaxed">
+                        {service.description}
+                      </p>
+                      
+                      <button 
+                        type="button"
+                        onClick={() => setIsDescOpen(false)}
+                        className="self-end mt-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md shadow-slate-900/10"
+                      >
+                        Close Info ✕
+                      </button>
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Right side: Imagecarousel */}
-                <div className="lg:col-span-5 w-full">
+                <div className="lg:col-span-5 w-full lg:sticky lg:top-36">
                   {serviceImages.length > 0 && (
-                    <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-150">
+                    <div className="rounded-3xl overflow-hidden shadow-lg border border-slate-150">
                       <ImageCarousel images={serviceImages} />
                     </div>
                   )}
@@ -476,7 +678,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                   <h3 className="text-sm font-black text-slate-900 mb-4 tracking-tight uppercase">Service Highlights</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
-                      { icon: ShieldCheck, title: "Zom-Shield Protection", desc: "100% secure with verified partner insurance coverage up to ₹10,000.", bg: "bg-emerald-500/10 text-emerald-800" },
+                      { icon: ShieldCheck, title: "Zom-Shield Protection", desc: "100% secure with verified partner insurance coverage up to ₹3,500.", bg: "bg-emerald-500/10 text-emerald-800" },
                       { icon: Clock, title: "On-Time Guarantee", desc: "Partners arrive at scheduled slots with equipped kits or get ₹100 refund.", bg: "bg-blue-500/10 text-blue-800" },
                       { icon: Star, title: "High-Rated Professionals", desc: "Only top 2% of experts with background verification handle your place.", bg: "bg-amber-500/10 text-amber-800" },
                       { icon: AlertCircle, title: "No Hidden Costs", desc: "Upfront pricing transparently verified before starting real tasks.", bg: "bg-rose-500/10 text-rose-800" }
@@ -506,14 +708,71 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                     <h4 className="text-sm font-black text-slate-900 tracking-tight uppercase">Active Service Experts</h4>
                     <p className="text-[10px] text-slate-500 font-medium mt-0.5">Verify live locations and credentials of background-checked partners.</p>
                   </div>
+
+                  {/* Proximity Location / Sorting Header */}
+                  <div className="bg-slate-50 rounded-2xl p-4.5 border border-slate-100/80 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <div className="space-y-1.5 flex-1 max-w-lg">
+                      <span className="text-[9px] font-black uppercase text-blue-700 tracking-[0.2em] block">📌 Proximity Reference Location</span>
+                      <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          value={typedAddress}
+                          onChange={(e) => setTypedAddress(e.target.value)}
+                          placeholder="Type address to see distances..."
+                          className="bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full shadow-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => resolveAddressToCoords(typedAddress)}
+                          disabled={isResolvingAddress}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all active:scale-95 whitespace-nowrap shadow-md shadow-blue-600/10 cursor-pointer select-none"
+                        >
+                          {isResolvingAddress ? 'Solving...' : 'Sort Live'}
+                        </button>
+                      </div>
+                      {selectedLocation && (
+                        <p className="text-[10px] text-slate-500 font-medium">
+                          Active coordinates: <span className="font-bold text-slate-700">{selectedLocation.lat.toFixed(4)}°N, {selectedLocation.lng.toFixed(4)}°E</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 shrink-0 self-start md:self-auto">
+                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] block">Sort Professionals By</span>
+                      <div className="flex bg-slate-200/50 p-1 rounded-xl border border-slate-200/50">
+                        <button
+                          type="button"
+                          onClick={() => setSortBy('rating')}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none cursor-pointer ${
+                            sortBy === 'rating' 
+                              ? 'bg-white text-slate-900 shadow-sm font-bold' 
+                              : 'text-slate-400 hover:text-slate-700'
+                          }`}
+                        >
+                          Rating desc ★
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSortBy('distance')}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all select-none cursor-pointer ${
+                            sortBy === 'distance' 
+                              ? 'bg-white text-slate-900 shadow-sm font-bold' 
+                              : 'text-slate-400 hover:text-slate-700'
+                          }`}
+                        >
+                          Proximity 📍
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   
                   <div className="mb-6">
-                    <NearbyProsMap partners={partners} />
+                    <NearbyProsMap partners={processedPartners} />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {partners.slice(0, 4).map((partner) => (
-                      <div key={partner.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col gap-4 group hover:bg-white hover:border-blue-700 transition-all duration-500">
+                    {processedPartners.slice(0, 6).map((partner) => (
+                      <div key={partner.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col gap-4 group hover:bg-white hover:border-blue-700 transition-all duration-500 shadow-sm">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="relative">
@@ -531,7 +790,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                               }`} />
                             </div>
                             <div>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <h4 className="text-xs font-black text-slate-900">{partner.displayName}</h4>
                                 <span className={`px-1 py-0.5 rounded-full text-[7px] font-bold uppercase tracking-wider ${
                                   partner.availabilityStatus === 'Available' ? 'bg-emerald-50 text-emerald-700' : 
@@ -540,6 +799,11 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                                 }`}>
                                   {partner.availabilityStatus || 'Offline'}
                                 </span>
+                                {partner.distance !== undefined && partner.distance !== null && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[7px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center gap-0.5" title={`Calculated from your sorting reference location`}>
+                                    📍 {partner.distance} km
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1 mt-0.5 text-[9px] font-bold text-slate-500">
                                 <Star size={9} fill="currentColor" className="text-amber-500" />
@@ -560,7 +824,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                         )}
                       </div>
                     ))}
-                    {partners.length === 0 && (
+                    {processedPartners.length === 0 && (
                       <div className="col-span-full py-12 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-100">
                         No matches found in this sector right now.
                       </div>
@@ -632,41 +896,91 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
 
           {/* Sidebar */}
-          <div className="lg:col-span-4">
+          <motion.div 
+            variants={{
+              hidden: { opacity: 0, y: 40 },
+              visible: { 
+                opacity: 1, 
+                y: 0,
+                transition: {
+                  type: "spring",
+                  stiffness: 60,
+                  damping: 14,
+                  duration: 0.7
+                }
+              }
+            }}
+            className="lg:col-span-4"
+          >
              <div className="sticky top-40 space-y-8">
                 {/* Booking Summary Card */}
-                <div className="bg-blue-700 rounded-[40px] p-10 text-white shadow-2xl relative overflow-hidden group">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  whileHover={{ y: -4 }}
+                  transition={{ duration: 0.4 }}
+                  className="bg-gradient-to-br from-blue-700 via-indigo-750 to-blue-900 rounded-[40px] p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden group border border-blue-600/50"
+                >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
                   
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-8">Summary</p>
+                  <div className="flex items-center justify-between mb-8">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200/90 flex items-center gap-1.5 leading-none">
+                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" /> Booking Summary
+                    </p>
+                  </div>
                   
-                  <div className="space-y-6 mb-10">
-                    <div className="flex justify-between items-center text-xl font-bold tracking-tight">
-                       <span className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">Base Rate</span>
-                       <span>₹{service.basePrice}</span>
+                  {/* High Conversion Banner */}
+                  <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1 relative overflow-hidden">
+                    <div className="flex items-center gap-2 text-amber-300 text-xs font-black uppercase tracking-wider animate-pulse">
+                      <Sparkles size={14} className="text-amber-400" /> High Demand Spot
                     </div>
-                    <div className="flex justify-between items-center text-xl font-bold tracking-tight">
-                       <span className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">Insurance</span>
-                       <span className="text-emerald-400">Included</span>
+                    <p className="text-[11px] text-blue-100 font-bold leading-normal">
+                      We are currently experiencing high demand in Indore's posh areas like <span className="text-amber-300 font-extrabold">Vijay Nagar, Palasia, Nipania, Saket, and Mahalaxmi Nagar</span>. Lock in your booking now!
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 mb-8">
+                    <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                       <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">Base Rate</span>
+                       <span className="font-display font-black text-lg">₹{service.basePrice}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                       <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">Insurance (Zom-Shield)</span>
+                       <span className="text-emerald-400 text-xs font-black uppercase tracking-wider flex items-center gap-1">
+                         <ShieldCheck size={13} /> FREE COVER
+                       </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                       <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">Convenience Fee</span>
+                       <span className="text-emerald-400 text-xs font-black uppercase tracking-wider">₹0 (WAIVED)</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm font-bold pt-1">
+                       <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">Estimated Taxes</span>
+                       <span className="text-white text-xs font-bold">Inclusive</span>
+                    </div>
+                    <div className="p-4 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl flex justify-between items-center text-xl font-black mt-2">
+                       <span className="text-emerald-300 uppercase text-[10px] tracking-[0.15em] font-black">Total Price</span>
+                       <span className="font-display italic tracking-tight text-white">₹{service.basePrice}</span>
                     </div>
                   </div>
 
-                  <div className="pt-8 border-t border-white/10 mb-10">
-                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">You get</p>
-                     <ul className="space-y-4">
+                  <div className="pt-6 border-t border-white/10 mb-8">
+                     <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-4">Immediate Privileges</p>
+                     <ul className="space-y-3.5">
                         {[
-                          'Verified mastery', 
-                          'Service warranty', 
-                          '24/7 Priority support'
+                          '100% Verified mastery & KYC cleared partner', 
+                          '30-day post-service quality warranty covered', 
+                          '24/7 Priority support with real-time tracking',
+                          'Zero cancellation fee if cancelled 2 hours prior'
                         ].map((item, i) => (
-                           <li key={i} className="flex items-center gap-3 text-xs font-bold text-slate-300">
-                             <div className="p-1 bg-emerald-500/20 text-emerald-400 rounded-md">
-                               <CheckCircle2 size={12} />
+                           <li key={i} className="flex items-start gap-2.5 text-[11px] font-bold text-slate-200 leading-snug">
+                             <div className="p-0.5 bg-emerald-500/20 text-emerald-400 rounded-md shrink-0 mt-0.5">
+                               <CheckCircle2 size={12} fill="currentColor" className="fill-emerald-500/10 text-emerald-400" />
                              </div>
-                             {item}
+                             <span>{item}</span>
                            </li>
                         ))}
                      </ul>
@@ -674,9 +988,9 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
 
                   <button 
                     onClick={() => profile ? setIsBookingModalOpen(true) : onAuthRequired()}
-                    className="w-full bg-white text-slate-900 py-5 rounded-2xl font-bold tracking-tight text-base hover:bg-slate-100 transition-all active:scale-95 shadow-xl shadow-black/20"
+                    className="w-full bg-white text-indigo-950 hover:bg-amber-300 hover:text-slate-955 py-5 rounded-2xl font-black text-center text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/20 border border-transparent hover:border-amber-400 cursor-pointer select-none group/btn flex items-center justify-center gap-2"
                   >
-                    Confirm Booking
+                    Confirm Booking <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                   </button>
 
                   <button 
@@ -688,51 +1002,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                   >
                     <Share2 size={13} /> Share Booking Info
                   </button>
-
-                  <button 
-                    onClick={() => {
-                      const upiUrl = `upi://pay?pa=zomindia@oksbi&pn=ZomatoHomeServices&am=${service.basePrice}&cu=INR&tn=Service_${service.id.slice(-6).toUpperCase()}_${Date.now().toString().slice(-4)}`;
-                      setQrCodeValue(upiUrl);
-                      setShowPaymentQR(prev => !prev);
-                    }}
-                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-500/10 flex items-center justify-center gap-2"
-                  >
-                    ⚡ Generate Instant Payment QR
-                  </button>
-
-                  <AnimatePresence>
-                    {showPaymentQR && (
-                      <motion.div 
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-4 p-4 bg-white rounded-3xl flex flex-col items-center justify-center gap-3 text-slate-900 border border-slate-200 shadow-xl overflow-hidden"
-                      >
-                        <h5 className="font-extrabold text-[10px] uppercase tracking-widest text-slate-500">Scan to Pay Fee</h5>
-                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center">
-                          <QRCodeSVG 
-                            value={qrCodeValue} 
-                            size={140}
-                            level="H"
-                            includeMargin={false}
-                          />
-                        </div>
-                        <p className="text-[11px] font-black tracking-tight text-blue-700 max-w-[200px] text-center leading-normal">
-                          ₹{service.basePrice} (UPI Auto-filled)
-                        </p>
-                        <p className="text-[8px] font-semibold text-slate-450 text-center uppercase tracking-wider max-w-[220px] leading-relaxed">
-                          Scan via PhonePe, GPay, Paytm, or any UPI App to instant clear booking fee.
-                        </p>
-                        <button 
-                          onClick={() => setShowPaymentQR(false)}
-                          className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:underline cursor-pointer pt-1"
-                        >
-                          Close QR Code
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-               </div>
+               </motion.div>
 
                {/* Trust Indicators */}
                <div className="bg-white rounded-[40px] p-8 border border-slate-100 space-y-6">
@@ -756,9 +1026,138 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                   </div>
                </div>
              </div>
+          </motion.div>
+        </motion.div>
+
+        {/* Modern Categories & Services Carousel */}
+        <div className="mt-8 border-t border-slate-100 pt-8">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10 pb-4 border-b border-slate-50">
+            <div>
+              <span className="text-[10px] sm:text-xs font-black uppercase text-blue-700 tracking-[0.25em] mb-2 flex items-center gap-2">
+                <Sparkles size={14} className="animate-pulse text-amber-500" /> Discover Alternative Solutions
+              </span>
+              <h3 className="text-3xl font-black text-slate-900 tracking-tight uppercase font-display">
+                Browse Categories & Services
+              </h3>
+            </div>
+            
+            {/* Category Quick Filter Pills */}
+            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 shrink-0 max-w-full">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCarouselActiveCategoryId(cat.id)}
+                  type="button"
+                  className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
+                    carouselActiveCategoryId === cat.id
+                      ? 'bg-blue-700 border-blue-700 text-white shadow-xl shadow-blue-700/15 font-bold'
+                      : 'bg-white border-slate-105 text-slate-400 hover:text-slate-950 hover:bg-slate-50'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative group/carousel">
+            {/* Left Scroll Navigation Button */}
+            <button
+              onClick={() => {
+                if (carouselScrollRef.current) {
+                  carouselScrollRef.current.scrollBy({ left: -320, behavior: 'smooth' });
+                }
+              }}
+              type="button"
+              className="absolute -left-4 top-[calc(50%-24px)] -translate-y-1/2 z-20 bg-white/95 backdrop-blur shadow-xl border border-slate-100 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-11 h-11 rounded-full items-center justify-center transition-all duration-300 cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100 hover:bg-slate-50"
+              title="Scroll alternative services left"
+            >
+              <ChevronLeft size={18} className="stroke-[2.5]" />
+            </button>
+
+            {/* Right Scroll Navigation Button */}
+            <button
+              onClick={() => {
+                if (carouselScrollRef.current) {
+                  carouselScrollRef.current.scrollBy({ left: 320, behavior: 'smooth' });
+                }
+              }}
+              type="button"
+              className="absolute -right-4 top-[calc(50%-24px)] -translate-y-1/2 z-20 bg-white/95 backdrop-blur shadow-xl border border-slate-100 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-11 h-11 rounded-full items-center justify-center transition-all duration-300 cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100 hover:bg-slate-50"
+              title="Scroll alternative services right"
+            >
+              <ChevronRight size={18} className="stroke-[2.5]" />
+            </button>
+
+            <div 
+              ref={carouselScrollRef}
+              className="flex gap-6 overflow-x-auto no-scrollbar pb-6 pt-2 scroll-smooth"
+            >
+              {allServices
+                .filter(s => s.categoryId === carouselActiveCategoryId && s.id !== currentServiceId)
+                .map((srv) => (
+                  <div
+                    key={srv.id}
+                    onClick={() => {
+                      setCurrentServiceId(srv.id);
+                      if (onServiceSelect) onServiceSelect(srv.id);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="flex-shrink-0 w-76 sm:w-80 group cursor-pointer"
+                  >
+                    <div className="bg-white border border-slate-105 rounded-[32px] p-5 hover:border-blue-700 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-300 flex flex-col gap-5 shadow-sm">
+                      {/* Image container */}
+                      <div className="w-full h-40 rounded-2xl overflow-hidden relative bg-slate-50 border border-slate-100 shrink-0">
+                        {srv.imageURL ? (
+                          <img
+                            src={srv.imageURL}
+                            alt={srv.name}
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                            <span className="text-white/20 font-black text-3xl italic tracking-tighter uppercase">{srv.name.slice(0, 2)}</span>
+                          </div>
+                        )}
+                        <span className="absolute top-3.5 right-3.5 px-3 py-1.5 bg-slate-950 text-white rounded-xl text-[9px] font-black italic tracking-widest uppercase">
+                          ₹{srv.basePrice}
+                        </span>
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex flex-col justify-between flex-1 gap-4">
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-black text-slate-905 group-hover:text-blue-700 transition-colors uppercase tracking-tight line-clamp-1 font-display">
+                            {srv.name}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2 font-medium">
+                            {srv.description}
+                          </p>
+                        </div>
+                        
+                        <div className="w-full flex items-center justify-between border-t border-slate-105 pt-4 mt-1">
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 leading-none">
+                            ⏱️ {srv.duration || '60 mins'}
+                          </span>
+                          <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1 group-hover:translate-x-1.5 transition-transform leading-none">
+                            Book Service ➔
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              
+              {allServices.filter(s => s.categoryId === carouselActiveCategoryId && s.id !== currentServiceId).length === 0 && (
+                <div className="w-full py-12 text-center text-slate-450 font-bold text-xs italic bg-slate-50/50 rounded-[32px] border-2 border-dashed border-slate-105 flex flex-col items-center justify-center gap-2">
+                  <span>✨ Exploring more services inside {categories.find(c => c.id === carouselActiveCategoryId)?.name || 'this category'}...</span>
+                  <p className="text-[10px] text-slate-400 not-italic font-medium">No alternative options are live right now.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
 
       </div>
 

@@ -7,7 +7,7 @@ interface Props {
   onBack: () => void;
 }
 
-export default function StaticPage({ title, content, onBack }: Props) {
+export default function StaticPage({ title, content, onBack, children }: Props & { children?: React.ReactNode }) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -23,11 +23,13 @@ export default function StaticPage({ title, content, onBack }: Props) {
 
       <h1 className="text-5xl font-bold text-slate-900 mb-12 tracking-tight">{title}</h1>
       
-      <div className="prose prose-stone max-w-none space-y-8 text-slate-600 leading-relaxed text-lg">
+      <div className="prose prose-stone max-w-none space-y-8 text-slate-600 leading-relaxed text-lg mb-16">
         {content.split('\n\n').map((paragraph, i) => (
           <p key={i}>{paragraph}</p>
         ))}
       </div>
+
+      {children}
     </motion.div>
   );
 }

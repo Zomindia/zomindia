@@ -13,18 +13,39 @@
   --color-blue-200: #cdd0ff;
   --color-blue-300: #aeb2ff;
   --color-blue-400: #888dff;
-  --color-blue-500: #6265fa;
-  --color-blue-600: #423deb;
+  --color-blue-500: #050ca6;
+  --color-blue-600: #050ca6;
   --color-blue-700: #050ca6;
-  --color-blue-800: #060ba1;
-  --color-blue-900: #080d85;
-  --color-blue-950: #02054a;
+  --color-blue-800: #03086b;
+  --color-blue-900: #02054a;
+  --color-blue-950: #010224;
+
+  --color-amber-400: #fcd34d;
+  --color-amber-500: #FAC213;
+  --color-amber-600: #EAB308;
+  --color-amber-700: #D97706;
+
+  --color-yellow-400: #fcd34d;
+  --color-yellow-500: #FAC213;
+  --color-yellow-600: #EAB308;
+  --color-yellow-700: #D97706;
 
   --color-brand-accent: var(--color-blue-700);
   --color-brand-muted: #64748B;
   --color-brand-surface: #F8FAFC;
-  --color-brand-gold: #EAB308;
+  --color-brand-gold: #FAC213;
   --color-luxury-gold: #C5A059;
+
+  --animate-shimmer: shimmer 1.8s infinite;
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -34,11 +55,21 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply antialiased text-slate-900 bg-slate-50 dark:text-slate-100 dark:bg-slate-950 selection:bg-blue-700 selection:text-white leading-relaxed transition-colors duration-200;
+    @apply antialiased text-slate-900 bg-white selection:bg-blue-700 selection:text-white leading-relaxed transition-colors duration-200;
+  }
+  
+  button, 
+  a, 
+  [role="button"], 
+  input[type="submit"], 
+  input[type="button"],
+  select,
+  input {
+    touch-action: manipulation;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight text-slate-900 dark:text-slate-100 font-bold;
+    @apply font-display tracking-tight text-slate-900 font-bold;
   }
 
   p {
@@ -52,6 +83,7 @@
   }
   -ms-overflow-style: none;
   scrollbar-width: none;
+  cursor: grab;
 }
 
 @layer utilities {
@@ -64,7 +96,7 @@
   }
 
   .glass-dark {
-    @apply bg-blue-900/40 backdrop-blur-md border border-white/10;
+    @apply bg-blue-50/70 backdrop-blur-md border border-blue-100/50;
   }
 }
 

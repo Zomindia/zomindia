@@ -32,6 +32,7 @@ import OffersView from './OffersView';
 import { LoadingScreen } from './LoadingIndicator';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { useLocationTracking } from '../hooks/useLocationTracking';
 
 interface Props {
   profile: UserProfile;
@@ -44,6 +45,16 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [activeScreen, setActiveScreen] = useState<'home' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab as any);
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Active global background service that periodic/live updates coordinate markers in firebase
+  const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
 
   useEffect(() => {
     if (initialTargetId) {
@@ -61,11 +72,6 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     setTargetBookingId(targetId);
     setActiveScreen(screen);
   };
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showStatusModal, setShowStatusModal] = useState(false);
 
   useEffect(() => {
     // Fetch partner data
@@ -144,7 +150,10 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         availabilityStatus: status,
         updatedAt: Timestamp.now()
       });
+      setToastMessage(`Status updated to "${status}" successfully.`);
+      setShowToast(true);
       setShowStatusModal(false);
+      setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'partners');
     }
@@ -159,7 +168,16 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'home':
         return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
       case 'jobs':
-        return <PartnerJobs partner={partner} bookings={bookings} initialExpandedBookingId={targetBookingId} profile={profile} />;
+        return (
+          <PartnerJobs 
+            partner={partner} 
+            bookings={bookings} 
+            initialExpandedBookingId={targetBookingId} 
+            profile={profile} 
+            lastSyncedAt={lastSyncedAt}
+            isTrackingActive={isTrackingActive}
+          />
+        );
       case 'wallet':
         return <PartnerWallet partner={partner} />;
       case 'settings':
@@ -174,6 +192,12 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
     }
   };
+
+  const hasUrgentPoolRequest = bookings.some(b => 
+    b.status === 'pending' && 
+    !b.partnerId && 
+    (b.partnerPriority === 'high' || b.isPriority === true)
+  );
 
   const navItems = [
     { id: 'home', icon: BarChart3, label: 'Stats' },
@@ -243,6 +267,26 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         </div>
       </header>
 
+      {/* Global Background Dispatch Tracking Banner */}
+      {partner && isTrackingActive && (
+        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-white select-none shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-100 truncate">
+              Continuous background dispatch active
+            </span>
+          </div>
+          <span className="text-[8px] font-mono font-bold text-slate-400 bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded shrink-0 select-none">
+            {lastSyncedAt 
+              ? `Locked • ${lastSyncedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` 
+              : 'Acquiring lock...'}
+          </span>
+        </div>
+      )}
+
       {/* Screen Content */}
       <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
         <AnimatePresence mode="wait">
@@ -273,6 +317,36 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                 className="relative flex flex-col items-center justify-center pt-2 pb-1.5 px-1 transition-all flex-1"
               >
                 <div className={`relative p-2 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/30 scale-110' : 'text-slate-400 active:scale-90 hover:text-slate-600'}`}>
+                  {tab.id === 'jobs' && hasUrgentPoolRequest && !isActive && (
+                    <>
+                      <motion.span
+                        className="absolute inset-0 rounded-2xl bg-amber-500/30 pointer-events-none"
+                        animate={{
+                          scale: [1, 2.4],
+                          opacity: [0.7, 0],
+                        }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 2,
+                          ease: "easeOut",
+                        }}
+                      />
+                      <motion.span
+                        className="absolute inset-0 rounded-2xl bg-amber-500/20 pointer-events-none"
+                        animate={{
+                          scale: [1, 1.7],
+                          opacity: [0.5, 0],
+                        }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 2,
+                          delay: 0.6,
+                          ease: "easeOut",
+                        }}
+                      />
+                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />
+                    </>
+                  )}
                   <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
                 </div>
                 <span className={`text-[8px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-slate-900 opacity-100 transform translate-y-0' : 'text-slate-400 opacity-60 translate-y-0.5'}`}>
@@ -293,47 +367,108 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       {/* Status Picker Modal */}
       <AnimatePresence>
         {showStatusModal && (
-          <div className="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-blue-700/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            onClick={() => setShowStatusModal(false)}
+            className="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-slate-950/50 backdrop-blur-sm"
+          >
              <motion.div 
                initial={{ y: '100%' }}
                animate={{ y: 0 }}
                exit={{ y: '100%' }}
-               className="bg-white rounded-[32px] w-full max-w-md p-8 pb-12 shadow-2xl relative"
+               transition={{ type: "spring", damping: 26, stiffness: 240 }}
+               onClick={(e) => e.stopPropagation()}
+               className="bg-white rounded-t-[32px] rounded-b-[24px] sm:rounded-[32px] w-full max-w-md p-6 sm:p-8 pb-10 sm:pb-12 shadow-2xl relative"
              >
-                <div className="flex justify-between items-center mb-8">
-                   <h3 className="text-xl font-bold italic">Update Availability</h3>
-                   <button onClick={() => setShowStatusModal(false)} className="p-2 text-slate-400"><X size={20} /></button>
+                {/* Visual Native Bottom-Sheet Notch Indicator */}
+                <div className="flex justify-center mb-4">
+                  <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
+                </div>
+
+                <div className="flex justify-between items-center mb-6">
+                   <h3 className="text-xl font-bold tracking-tight text-slate-900">Update Availability</h3>
+                   <button 
+                     onClick={() => setShowStatusModal(false)} 
+                     className="p-2 hover:bg-slate-100 active:scale-95 text-slate-400 hover:text-slate-600 rounded-full transition-all"
+                   >
+                     <X size={20} />
+                   </button>
                 </div>
                 <div className="grid grid-cols-1 gap-3">
-                   {[
+                    {[
                      { id: 'Available', color: 'emerald', label: 'Ready for Work', desc: 'Auto-accept job invitations' },
                      { id: 'Busy', color: 'amber', label: 'On a Break', desc: 'Pausing new requests temporarily' },
                      { id: 'Offline', color: 'stone', label: 'Go Offline', desc: 'Finish current work and disconnect' },
-                   ].map(st => (
-                     <button
-                       key={st.id}
-                       onClick={() => updateStatus(st.id as any)}
-                       className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all ${
-                         partner?.availabilityStatus === st.id 
-                           ? `bg-blue-700 border-blue-700 text-white shadow-xl` 
-                           : `bg-white border-slate-100 hover:border-slate-200`
-                       }`}
-                     >
-                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                         partner?.availabilityStatus === st.id ? 'bg-white/10' : `bg-slate-50 text-slate-400`
-                       }`}>
-                         <Zap size={20} className={partner?.availabilityStatus === st.id ? 'text-white' : ''} />
-                       </div>
-                       <div className="flex-1">
-                          <p className="font-bold">{st.label}</p>
-                          <p className={`text-[10px] font-medium ${partner?.availabilityStatus === st.id ? 'text-white/50' : 'text-slate-400'}`}>{st.desc}</p>
-                       </div>
-                       {partner?.availabilityStatus === st.id && <CheckCircle2 size={20} className="text-emerald-400" />}
-                     </button>
-                   ))}
+                   ].map(st => {
+                     const isSelected = partner?.availabilityStatus === st.id;
+                     const dotColorClass = 
+                       st.id === 'Available' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 
+                       st.id === 'Busy' ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 
+                       'bg-slate-400';
+
+                     return (
+                       <motion.button
+                         key={st.id}
+                         onClick={() => updateStatus(st.id as any)}
+                         animate={isSelected ? {
+                           scale: [1, 1.015, 1],
+                           boxShadow: [
+                             '0 10px 15px -3px rgba(29, 78, 216, 0.15), 0 4px 6px -4px rgba(29, 78, 216, 0.15)',
+                             '0 15px 25px -3px rgba(29, 78, 216, 0.35), 0 10px 10px -5px rgba(29, 78, 216, 0.2)',
+                             '0 10px 15px -3px rgba(29, 78, 216, 0.15), 0 4px 6px -4px rgba(29, 78, 216, 0.15)'
+                           ]
+                         } : {}}
+                         transition={isSelected ? {
+                           repeat: Infinity,
+                           duration: 2.2,
+                           ease: "easeInOut"
+                         } : {}}
+                         whileTap={{ scale: 0.98 }}
+                         className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all ${
+                           isSelected 
+                             ? `bg-blue-700 border-blue-700 text-white` 
+                             : `bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50/50`
+                         }`}
+                       >
+                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                           isSelected ? 'bg-white/10' : `bg-slate-50 text-slate-400`
+                         }`}>
+                           <Zap size={20} className={isSelected ? 'text-white' : ''} />
+                         </div>
+                         <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${dotColorClass} transition-all ${st.id === 'Available' ? 'animate-pulse' : ''}`} />
+                              <p className="font-bold">{st.label}</p>
+                            </div>
+                            <p className={`text-[10px] font-medium ${isSelected ? 'text-white/50' : 'text-slate-400'}`}>{st.desc}</p>
+                         </div>
+                         {isSelected && <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />}
+                       </motion.button>
+                     );
+                   })}
                 </div>
              </motion.div>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {showToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
+            className="fixed top-6 left-1/2 z-[110] flex items-center gap-2.5 bg-slate-900 border border-slate-850 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold whitespace-nowrap"
+          >
+            <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+               <CheckCircle2 size={12} />
+            </div>
+            <span>{toastMessage}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

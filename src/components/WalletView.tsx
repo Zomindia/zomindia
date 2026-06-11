@@ -120,6 +120,15 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
 
       <div className="flex justify-between items-end mb-12">
         <div>
+          {setActiveTab && (
+            <button 
+              type="button"
+              onClick={() => setActiveTab('profile')}
+              className="flex items-center gap-1.5 text-xs font-bold uppercase text-[#050CA6] hover:text-[#040980] bg-[#050CA6]/5 hover:bg-[#050CA6]/10 px-4 py-2 rounded-xl transition-all mb-5 cursor-pointer max-w-xs focus:outline-hidden"
+            >
+              &larr; Back to Profile Settings
+            </button>
+          )}
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Wallet & Rewards</h1>
           <p className="text-slate-500">Manage your balance and referrals.</p>
         </div>

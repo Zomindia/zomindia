@@ -13,7 +13,6 @@ import AdminUpload from './AdminUpload';
 import { LoadingScreen, LoadingSpinner } from './LoadingIndicator';
 import AmcManagement from './AmcManagement';
 import ReferralLifecycleManager from './ReferralLifecycleManager';
-import AudioCall from './AudioCall';
 import ChatWindow from './ChatWindow';
 import PartnerTrackingMap from './PartnerTrackingMap';
 import { 
@@ -62,6 +61,20 @@ import {
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
 type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
+
+const triggerEcosystemUpdate = async (reason: string) => {
+  try {
+    const dynamicPatch = Math.floor(Date.now() / 1000);
+    const newVersion = `1.0.${dynamicPatch}`;
+    await addDoc(collection(db, 'system_updates'), {
+      reason,
+      version: newVersion,
+      createdAt: Timestamp.now()
+    });
+  } catch (err) {
+    console.warn("Unable to dispatch automatic ecosystem update:", err);
+  }
+};
 
 export default function AdminDashboard({ profile, setActiveTab, initialAdminTab = 'overview' }: { profile: UserProfile, setActiveTab: (tab: any) => void, initialAdminTab?: AdminTab }) {
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(initialAdminTab);
@@ -148,7 +161,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   }, []);
 
   const totalRevenue = bookings.reduce((acc, b) => (b.status === 'completed' || b.status === 'finalized') ? acc + b.totalPrice : acc, 0);
-  const platformFee = totalRevenue * 0.15;
+  const platformFee = totalRevenue * 0.20;
 
   const bookingTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
@@ -261,7 +274,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     window.location.reload();
   };
 
-  if (loading) return <LoadingScreen message="Initializing zomindia master control terminal..." />;
+  if (loading) return <LoadingScreen message="Initializing ZomIndia Admin Panel..." />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative overflow-x-hidden">
@@ -286,17 +299,18 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       >
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-             <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-xl shadow-blue-700/10 shrink-0">
-                <Settings size={20} />
+             <div className="w-10 h-10 bg-[#050CA6] rounded-xl flex items-center justify-center text-white shadow-xl shadow-[#050CA6]/10 shrink-0 font-black text-lg select-none">
+                Z
              </div>
              {!isCollapsed && (
-               <motion.span 
+               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="font-bold text-lg tracking-tight italic whitespace-nowrap"
+                className="flex flex-col select-none"
                >
-                 zomindia PRO
-               </motion.span>
+                 <span className="font-bold tracking-tight text-slate-900 text-lg leading-tight">ZomIndia</span>
+                 <span className="text-[9px] font-black uppercase tracking-widest text-[#050CA6] mt-0.5 leading-none">Admin PRO</span>
+               </motion.div>
              )}
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-blue-700 transition-colors">
@@ -371,10 +385,12 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
               >
                 <RotateCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
               </button>
-              <div className="hidden sm:block relative">
+              <div className="hidden sm:block relative" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                  <input 
                    type="text" 
+                   inputMode="text"
+                   enterKeyHint="search"
                    placeholder="Global Search..." 
                    value={searchTerm}
                    onChange={(e) => setSearchTerm(e.target.value)}
@@ -421,7 +437,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                     <StatCard title="Total Volume" value={`₹${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
                     <StatCard title="Total Customers" value={users.length.toString()} icon={Users} color="bg-blue-700" />
-                    <StatCard title="Earnings (15%)" value={`₹${platformFee.toLocaleString()}`} icon={TrendingUp} color="bg-indigo-600" />
+                    <StatCard title="Earnings (20%)" value={`₹${platformFee.toLocaleString()}`} icon={TrendingUp} color="bg-indigo-600" />
                     <StatCard title="Pending Requests" value={bookings.filter(b => b.status === 'pending').length.toString()} icon={Clock} color="bg-amber-500" />
                   </div>
 
@@ -646,6 +662,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   });
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [showChat, setShowChat] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
   const [showCall, setShowCall] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
 
@@ -801,6 +818,10 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   };
 
   const updateBookingStatus = async (id: string, status: Booking['status']) => {
+    if (profile?.role !== 'admin') {
+      alert("Unauthorized: Only administrators can update booking statuses.");
+      return;
+    }
     try {
       await updateDoc(doc(db, 'bookings', id), { status, updatedAt: Timestamp.now() });
       const b = bookings.find(x => x.id === id);
@@ -812,6 +833,10 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
 
   const handleCancelBooking = async () => {
     if (!cancellingBookingId || !cancelReason) return;
+    if (profile?.role !== 'admin') {
+      alert("Unauthorized: Only administrators can cancel bookings.");
+      return;
+    }
     setLoading(true);
     try {
       const booking = bookings.find(b => b.id === cancellingBookingId);
@@ -836,6 +861,10 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   };
 
   const assignPartner = async (bookingId: string, partnerId: string) => {
+    if (profile?.role !== 'admin') {
+      alert("Unauthorized: Only administrators can assign partners.");
+      return;
+    }
     try {
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
       await updateDoc(doc(db, 'bookings', bookingId), { 
@@ -873,17 +902,35 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
   const historyBookings = bookings.filter(b => ['completed', 'finalized', 'closed', 'cancelled'].includes(b.status));
 
   const deleteAllBookings = async () => {
-    if (!window.confirm("CRITICAL ACTION: Are you absolutely sure you want to delete ALL booking records? This action is irreversible and will wipe all order history.")) return;
-    
+    setShowPurgeConfirm(true);
+  };
+
+  const executePurge = async () => {
+    setShowPurgeConfirm(false);
     setLoading(true);
     try {
-      const batch = writeBatch(db);
       const snapshot = await getDocs(collection(db, 'bookings'));
-      snapshot.forEach((doc) => {
-        batch.delete(doc.ref);
+      const docs = snapshot.docs;
+      
+      const batchSize = 400;
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + batchSize);
+        chunk.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        adminId: auth.currentUser?.uid || profile.uid,
+        action: 'Purge Bookings',
+        targetId: 'all_bookings',
+        details: `Admin ${profile.displayName || 'Unknown Admin'} (${profile.email}) purged all ${docs.length} bookings from the database.`,
+        createdAt: Timestamp.now()
       });
-      await batch.commit();
-      setShowSuccessModal("Database Cleanse Complete: All booking records have been purged from the system.");
+
+      setShowSuccessModal(`Database Cleanse Complete: All ${docs.length} booking records have been successfully purged, and a permanent compliance record has been written to the 'AuditLog' collection.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'bookings');
     } finally {
@@ -908,28 +955,6 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
 
   return (
     <div className="space-y-10">
-      {/* Maintenance Quick Action - Head Admin Only */}
-      {profile?.adminSubRole === 'head' && (
-        <div className="bg-rose-50 border border-rose-100 rounded-[32px] p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-           <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/20">
-                 <AlertCircle size={24} />
-              </div>
-              <div>
-                 <h4 className="text-lg font-bold text-rose-900 leading-tight">Database Maintenance</h4>
-                 <p className="text-xs text-rose-600 font-medium">Use these tools for deep cleaning and testing resets.</p>
-              </div>
-           </div>
-           <button 
-             onClick={deleteAllBookings}
-             disabled={loading}
-             className="px-6 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center gap-2 shadow-lg shadow-rose-600/20"
-           >
-              Purge All Booking History
-           </button>
-        </div>
-      )}
-
       <AnimatePresence>
         {cancellingBookingId && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
@@ -995,6 +1020,47 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
             </motion.div>
           </div>
         )}
+
+        {showPurgeConfirm && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[40px] p-8 max-w-md w-full shadow-2xl space-y-6"
+            >
+              <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-[24px] flex items-center justify-center mx-auto">
+                <AlertCircle size={32} />
+              </div>
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-slate-900 leading-tight">Delete All Bookings?</h3>
+                <p className="text-slate-500 text-sm mt-3 leading-relaxed">
+                  Are you absolutely sure you want to delete <span className="font-extrabold text-rose-600">ALL</span> booking records? This will permanently wipe all order history. This action is irreversible.
+                </p>
+              </div>
+              
+              <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-xs text-rose-700 leading-relaxed font-bold">
+                ⚠️ WARNING: An automated persistent log entry of this action will be registered in the 'AuditLog' collection for compliance checks.
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowPurgeConfirm(false)}
+                  className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={executePurge}
+                  disabled={loading}
+                  className="flex-1 bg-rose-600 text-white py-4 rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/10 uppercase tracking-widest text-[10px] disabled:opacity-50"
+                >
+                  {loading ? 'Purging...' : 'Wipe Everything'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden">
@@ -1048,15 +1114,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
            <div className="hidden sm:block px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400">
               Total Stream: {bookings.length}
            </div>
-           {bookings.length > 0 && profile.adminSubRole === 'head' && (
-             <button 
-               onClick={deleteAllBookings}
-               className="px-6 py-3 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all flex items-center gap-2"
-             >
-               <Trash2 size={14} />
-               Purge All
-             </button>
-           )}
+
         </div>
       </div>
 
@@ -1347,12 +1405,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
           </div>
         )}
 
-        {showCall && (
-          <AudioCall 
-            otherUser={users.find(u => u.uid === showCall.id) || (partners.find(p => p.userId === showCall.id) as any) || null}
-            onEndCall={() => setShowCall(null)}
-          />
-        )}
+        {/* Audio call system bypassed */}
       </AnimatePresence>
     </div>
   );
@@ -1363,16 +1416,118 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
   const partner = partners.find(p => p.userId === booking.partnerId);
   const service = services.find(s => s.id === booking.serviceId);
 
+  // Status mapping for premium custom colors, icons & indicators
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return {
+          bgClass: 'bg-amber-500/10 text-amber-700 border-amber-200/50',
+          dotClass: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
+          pulse: false,
+          accentColor: '#f59e0b',
+          gradient: ['linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)', 'linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)']
+        };
+      case 'confirmed':
+      case 'assigned':
+        return {
+          bgClass: 'bg-indigo-500/10 text-indigo-700 border-indigo-200/50',
+          dotClass: 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]',
+          pulse: false,
+          accentColor: '#6366f1',
+          gradient: ['linear-gradient(90deg, #3b82f6, #6366f1, #3b82f6)', 'linear-gradient(90deg, #6366f1, #3b82f6, #6366f1)']
+        };
+      case 'on_the_way':
+      case 'arrived':
+        return {
+          bgClass: 'bg-violet-500/10 text-violet-700 border-violet-200/50',
+          dotClass: 'bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]',
+          pulse: true,
+          accentColor: '#8b5cf6',
+          gradient: ['linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #6366f1)', 'linear-gradient(90deg, #8b5cf6, #3b82f6, #6366f1, #8b5cf6)']
+        };
+      case 'in_progress':
+        return {
+          bgClass: 'bg-blue-500/10 text-blue-750 border-blue-200/50 hover:shadow-blue-500/10',
+          dotClass: 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65)]',
+          pulse: true,
+          accentColor: '#3b82f6',
+          gradient: ['linear-gradient(90deg, #3b82f6, #06b6d4, #10b981, #3b82f6)', 'linear-gradient(90deg, #06b6d4, #10b981, #3b82f6, #06b6d4)']
+        };
+      case 'completed':
+      case 'finalized':
+      case 'closed':
+        return {
+          bgClass: 'bg-emerald-500/10 text-emerald-700 border-emerald-200/50',
+          dotClass: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]',
+          pulse: false,
+          accentColor: '#10b981',
+          gradient: ['linear-gradient(90deg, #10b981, #34d399, #10b981)', 'linear-gradient(90deg, #34d399, #10b981, #34d399)']
+        };
+      case 'pending_parts':
+      case 'payment_pending':
+        return {
+          bgClass: 'bg-amber-500/10 text-amber-700 border-amber-200/50',
+          dotClass: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
+          pulse: true,
+          accentColor: '#f59e0b',
+          gradient: ['linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)', 'linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)']
+        };
+      case 'cancelled':
+        return {
+          bgClass: 'bg-rose-500/10 text-rose-700 border-rose-200/50',
+          dotClass: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]',
+          pulse: false,
+          accentColor: '#f43f5e',
+          gradient: ['linear-gradient(90deg, #f43f5e, #fda4af, #f43f5e)', 'linear-gradient(90deg, #fda4af, #f43f5e, #fda4af)']
+        };
+      default:
+        return {
+          bgClass: 'bg-slate-500/10 text-slate-700 border-slate-200/50',
+          dotClass: 'bg-slate-400',
+          pulse: false,
+          accentColor: '#94a3b8',
+          gradient: ['linear-gradient(90deg, #94a3b8, #cbd5e1, #94a3b8)', 'linear-gradient(90deg, #cbd5e1, #94a3b8, #cbd5e1)']
+        };
+    }
+  };
+
+  const config = getStatusConfig(booking.status);
+
   return (
-    <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-slate-100 hover:border-blue-700/30 hover:shadow-2xl hover:shadow-blue-900/5 transition-all duration-500 group relative overflow-hidden">
-      {/* Visual Indicator */}
-      <div className={`absolute top-0 left-0 w-2 h-full ${
-        ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress'].includes(booking.status) ? 'bg-emerald-500' :
-        ['pending', 'pending_parts', 'payment_pending'].includes(booking.status) ? 'bg-amber-400' :
-        booking.status === 'completed' ? 'bg-blue-700' :
-        booking.status === 'cancelled' ? 'bg-rose-500' :
-        'bg-slate-200'
-      }`} />
+    <motion.div 
+      layout
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ 
+        opacity: 1, 
+        y: 0,
+        borderColor: config.accentColor + '20',
+        boxShadow: ['in_progress', 'on_the_way'].includes(booking.status)
+          ? '0 12px 30px -10px rgba(59, 130, 246, 0.15)'
+          : '0 4px 15px -3px rgba(0, 0, 0, 0.02)'
+      }}
+      transition={{ duration: 0.4 }}
+      id={`admin-booking-card-${booking.id}`}
+      className="bg-white rounded-[32px] p-6 sm:p-8 border hover:shadow-2xl hover:shadow-slate-900/5 transition-all duration-500 group relative overflow-hidden"
+    >
+      {/* Top shifting gradient ambient neon indicator */}
+      <div className="absolute top-0 left-0 right-0 h-[4px] overflow-hidden">
+        <motion.div 
+          className="w-full h-full"
+          animate={{
+            background: config.gradient
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: ['in_progress', 'on_the_way'].includes(booking.status) ? 3 : 5,
+            ease: "linear"
+          }}
+        />
+      </div>
+
+      {/* Side Color Visual Indicator Badge */}
+      <div className="absolute top-0 left-0 w-2 h-full opacity-65 group-hover:opacity-100 transition-opacity" 
+        style={{ backgroundColor: config.accentColor }} 
+      />
 
       <div className="flex flex-col lg:flex-row lg:items-center gap-8 pl-4">
         <div className="flex items-center gap-5 lg:w-1/4">
@@ -1387,16 +1542,13 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
                )}
             </div>
             <h4 className="text-lg font-black text-slate-900 truncate leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">{service?.name || 'Loading...'}</h4>
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] shadow-sm ${
-              booking.status === 'pending' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-              ['confirmed', 'assigned', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-              'bg-blue-50 text-blue-700 border border-blue-100'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                 booking.status === 'pending' ? 'bg-amber-400' :
-                 ['confirmed', 'assigned', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500' :
-                 'bg-blue-700'
-              }`} />
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border shadow-sm transition-all duration-300 ${config.bgClass}`}>
+              <div className="relative flex items-center justify-center">
+                {config.pulse && (
+                  <span className={`absolute inline-flex h-2.5 w-2.5 rounded-full ${config.dotClass} opacity-75 animate-ping`} />
+                )}
+                <div className={`w-1.5 h-1.5 rounded-full ${config.dotClass}`} />
+              </div>
               {booking.status.replace('_', ' ')}
             </div>
           </div>
@@ -1461,13 +1613,162 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
           </div>
           <button 
             onClick={onManage}
-            className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all shadow-xl shadow-slate-900/10"
+            className="w-8 h-8 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-slate-900/5 shrink-0"
+            title="Manage Booking Details"
           >
-            <Settings size={20} strokeWidth={2.5} />
+            <Settings size={14} strokeWidth={2} />
           </button>
         </div>
       </div>
       
+      {/* Live Booking Tracker Channel & Address Geocoding Accuracy */}
+      <div className="mt-6 p-5 sm:p-6 bg-slate-50/40 rounded-[24px] border border-slate-100 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[10px] font-black uppercase text-slate-800 tracking-wider font-mono">
+              Live Dispatch Channel
+            </span>
+          </div>
+          {booking.lat && booking.lng ? (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 text-[9px] font-bold font-mono">
+              🎯 {booking.lat.toFixed(5)}, {booking.lng.toFixed(5)}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md border border-amber-100 text-[9px] font-black uppercase tracking-wider font-mono">
+              ⚠️ Offline Mode
+            </div>
+          )}
+        </div>
+
+        {/* Address and Landmark Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+          <div className="space-y-0.5">
+            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">Target Destination</span>
+            <p className="text-xs font-semibold text-slate-700 leading-relaxed font-sans">
+              {booking.address}
+            </p>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">Geocoding Integrity</span>
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+              {booking.lat && booking.lng ? (
+                <>
+                  <span className="px-2 py-0.5 bg-blue-50/70 text-blue-700 rounded-md text-[8.5px] font-black uppercase border border-blue-100/50 font-mono">
+                    GPS PIN DETECTED
+                  </span>
+                  <span className="px-2 py-0.5 bg-indigo-50/70 text-indigo-700 rounded-md text-[8.5px] font-black uppercase border border-indigo-100/50 font-sans">
+                    PRECISE MATCH
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="px-2 py-0.5 bg-amber-50/70 text-amber-700 rounded-md text-[8.5px] font-black uppercase border border-amber-100/50 font-mono">
+                    FALLBACK LAYOUT
+                  </span>
+                  <span className="px-2 py-0.5 bg-slate-100/70 text-slate-600 rounded-md text-[8.5px] font-bold uppercase border border-slate-200/50 font-sans">
+                    VERIFIED TEXTUAL ADDRESS
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Booking Confirmation Milestones Tracker */}
+        <div className="pt-2 border-t border-slate-200/40">
+          <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block mb-4 text-left font-sans">Real-Time Confirmation Workflow Status</span>
+          
+          <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5 py-2">
+            {/* Horizontal timeline connector lines for desktop */}
+            <div className="hidden sm:block absolute left-[10%] right-[10%] top-[18px] h-0.5 bg-slate-100 z-0" />
+            
+            {/* Step 1 */}
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                ['pending', 'confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'completed', 'finalized', 'closed', 'payment_pending', 'pending_parts'].includes(booking.status)
+                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+                  : 'bg-white border-slate-200 text-slate-300'
+              }`}>
+                <Check size={14} strokeWidth={3} />
+              </div>
+              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                ['pending', 'confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'completed', 'finalized', 'closed', 'payment_pending', 'pending_parts'].includes(booking.status)
+                  ? 'text-emerald-700'
+                  : 'text-slate-400'
+              }`}>
+                1. Scheduled
+              </span>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">Verified Slot</p>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                booking.lat && booking.lng
+                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+                  : 'bg-amber-50 border-amber-300 text-amber-700'
+              }`}>
+                {booking.lat ? (
+                  <MapPin size={14} strokeWidth={2.5} />
+                ) : (
+                  <AlertCircle size={14} />
+                )}
+              </div>
+              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                booking.lat ? 'text-emerald-700' : 'text-amber-700'
+              }`}>
+                2. Geocoded
+              </span>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">
+                {booking.lat ? 'GPS pin match' : 'Manual entry'}
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                booking.partnerId
+                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+              }`}>
+                <User size={14} strokeWidth={2.5} />
+              </div>
+              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                booking.partnerId ? 'text-emerald-700' : 'text-indigo-700'
+              }`}>
+                3. Expert Assigned
+              </span>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 truncate w-full px-1 leading-tight">
+                {booking.partnerId ? partner?.displayName || 'Expert' : 'Awaiting match'}
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                ['completed', 'finalized', 'closed'].includes(booking.status)
+                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+                  : 'bg-white border-slate-200 text-slate-300'
+              }`}>
+                <Award size={14} strokeWidth={2.5} />
+              </div>
+              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                ['completed', 'finalized', 'closed'].includes(booking.status)
+                  ? 'text-emerald-700'
+                  : 'text-slate-400'
+              }`}>
+                4. Completed
+              </span>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">Finished</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-8 pt-4 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
          <div className="flex flex-wrap items-center gap-6">
            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-500 italic">
@@ -1508,7 +1809,7 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
            )}
          </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1523,6 +1824,7 @@ function CategoryManager({ categories }: { categories: Category[] }) {
       await addDoc(collection(db, 'categories'), newCategory);
       setIsAdding(false);
       setNewCategory({ name: '', icon: 'Sparkles', description: '', imageURL: '', iconURL: '', images: [] });
+      await triggerEcosystemUpdate(`A brand new category profile was deployed: ${newCategory.name}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'categories');
     }
@@ -1536,6 +1838,7 @@ function CategoryManager({ categories }: { categories: Category[] }) {
         ...data,
       });
       setEditingCategory(null);
+      await triggerEcosystemUpdate(`Category structure sync: ${editingCategory.name} layout refreshed.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `categories/${editingCategory.id}`);
     }
@@ -1544,6 +1847,7 @@ function CategoryManager({ categories }: { categories: Category[] }) {
   const deleteCategory = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'categories', id));
+      await triggerEcosystemUpdate(`Cleaned up deprecated or legacy categories from the dashboard.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `categories/${id}`);
     }
@@ -1806,6 +2110,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
         reviewCount: 0,
         predefinedTasks: []
       });
+      await triggerEcosystemUpdate(`New premium maintenance package introduced: ${newService.name}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'services');
     }
@@ -1820,6 +2125,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
         updatedAt: Timestamp.now()
       });
       setEditingService(null);
+      await triggerEcosystemUpdate(`Catalog update: ${editingService.name} options & pricing tweaked.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `services/${editingService.id}`);
     }
@@ -1834,6 +2140,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
       });
       setUpdatingImageId(null);
       setTempImageUrl('');
+      await triggerEcosystemUpdate(`Catalog visual style refreshed with hot-swapped brand assets.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `services/${updatingImageId}`);
     }
@@ -1842,6 +2149,7 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
   const deleteService = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'services', id));
+      await triggerEcosystemUpdate(`Removed obsolete maintenance packages from user-facing screens.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `services/${id}`);
     }
@@ -3053,6 +3361,12 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
 function UserManager({ users, bookings, currentUserProfile }: { users: UserProfile[], bookings: Booking[], currentUserProfile: UserProfile }) {
   const isHeadAdmin = !currentUserProfile.adminSubRole || currentUserProfile.adminSubRole === 'head';
 
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
   const updateUserRole = async (userId: string, targetRole: UserRole, targetSubRole?: AdminSubRole | null) => {
     try {
       const updateData: any = { role: targetRole, updatedAt: Timestamp.now() };
@@ -3078,6 +3392,197 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
     }
   };
 
+  const handleEraseUserAndData = async (userId: string) => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    setDeleteSuccess(null);
+    try {
+      // 1. Delete associated Partner profile (if any) and its earningsHistory subcollection
+      try {
+        const partnerQuery = query(collection(db, 'partners'), where('userId', '==', userId));
+        const partnerSnap = await getDocs(partnerQuery);
+        for (const partnerDoc of partnerSnap.docs) {
+          try {
+            const historyCol = collection(db, 'partners', partnerDoc.id, 'earningsHistory');
+            const historySnap = await getDocs(historyCol);
+            for (const historyDoc of historySnap.docs) {
+              await deleteDoc(doc(db, 'partners', partnerDoc.id, 'earningsHistory', historyDoc.id));
+            }
+          } catch (ehError) {
+            console.error('Non-blocking partner earnings history delete error:', ehError);
+          }
+          await deleteDoc(doc(db, 'partners', partnerDoc.id));
+        }
+      } catch (partnerError) {
+        console.error('Non-blocking partner delete error:', partnerError);
+      }
+
+      // 2. Delete bookings where this user is customer or partner
+      try {
+        const bookingsCustomerQuery = query(collection(db, 'bookings'), where('customerId', '==', userId));
+        const bookingsCustomerSnap = await getDocs(bookingsCustomerQuery);
+        for (const bDoc of bookingsCustomerSnap.docs) {
+          await deleteDoc(doc(db, 'bookings', bDoc.id));
+        }
+      } catch (bCustError) {
+        console.error('Non-blocking customer bookings delete error:', bCustError);
+      }
+
+      try {
+        const bookingsPartnerQuery = query(collection(db, 'bookings'), where('partnerId', '==', userId));
+        const bookingsPartnerSnap = await getDocs(bookingsPartnerQuery);
+        for (const bDoc of bookingsPartnerSnap.docs) {
+          await deleteDoc(doc(db, 'bookings', bDoc.id));
+        }
+      } catch (bPartError) {
+        console.error('Non-blocking partner bookings delete error:', bPartError);
+      }
+
+      // 3. Delete support tickets where user is userId
+      try {
+        const ticketsQuery = query(collection(db, 'tickets'), where('userId', '==', userId));
+        const ticketsSnap = await getDocs(ticketsQuery);
+        for (const tDoc of ticketsSnap.docs) {
+          await deleteDoc(doc(db, 'tickets', tDoc.id));
+        }
+      } catch (ticketsError) {
+        console.error('Non-blocking tickets delete error:', ticketsError);
+      }
+
+      // 4. Delete notifications where user is userId
+      try {
+        const notificationsQuery = query(collection(db, 'notifications'), where('userId', '==', userId));
+        const notificationsSnap = await getDocs(notificationsQuery);
+        for (const nDoc of notificationsSnap.docs) {
+          await deleteDoc(doc(db, 'notifications', nDoc.id));
+        }
+      } catch (notifError) {
+        console.error('Non-blocking notifications delete error:', notifError);
+      }
+
+      // 5. Delete redemptions where user is userId
+      try {
+        const redemptionsQuery = query(collection(db, 'redemptions'), where('userId', '==', userId));
+        const redemptionsSnap = await getDocs(redemptionsQuery);
+        for (const rDoc of redemptionsSnap.docs) {
+          await deleteDoc(doc(db, 'redemptions', rDoc.id));
+        }
+      } catch (redempError) {
+        console.error('Non-blocking redemptions delete error:', redempError);
+      }
+
+      // 6. Delete AMCs where customerId is userId
+      try {
+        const amcsQuery = query(collection(db, 'amcs'), where('customerId', '==', userId));
+        const amcsSnap = await getDocs(amcsQuery);
+        for (const aDoc of amcsSnap.docs) {
+          await deleteDoc(doc(db, 'amcs', aDoc.id));
+        }
+      } catch (amcError) {
+        console.error('Non-blocking AMCs delete error:', amcError);
+      }
+
+      // 7. Delete reviews where this user is customer or partner
+      try {
+        const reviewsCustomerQuery = query(collection(db, 'reviews'), where('customerId', '==', userId));
+        const reviewsCustomerSnap = await getDocs(reviewsCustomerQuery);
+        for (const revDoc of reviewsCustomerSnap.docs) {
+          await deleteDoc(doc(db, 'reviews', revDoc.id));
+        }
+      } catch (revCustError) {
+        console.error('Non-blocking customer reviews delete error:', revCustError);
+      }
+
+      try {
+        const reviewsPartnerQuery = query(collection(db, 'reviews'), where('partnerId', '==', userId));
+        const reviewsPartnerSnap = await getDocs(reviewsPartnerQuery);
+        for (const revDoc of reviewsPartnerSnap.docs) {
+          await deleteDoc(doc(db, 'reviews', revDoc.id));
+        }
+      } catch (revPartError) {
+        console.error('Non-blocking partner reviews delete error:', revPartError);
+      }
+
+      // 8. Delete wallet transactions where user is userId
+      try {
+        const walletQuery = query(collection(db, 'walletTransactions'), where('userId', '==', userId));
+        const walletSnap = await getDocs(walletQuery);
+        for (const wDoc of walletSnap.docs) {
+          await deleteDoc(doc(db, 'walletTransactions', wDoc.id));
+        }
+      } catch (walletError) {
+        console.error('Non-blocking wallet transactions delete error:', walletError);
+      }
+
+      // 9. Delete WhatsApp alerts where user is userId
+      try {
+        const whatsappQuery = query(collection(db, 'whatsapp_alerts'), where('userId', '==', userId));
+        const whatsappSnap = await getDocs(whatsappQuery);
+        for (const waDoc of whatsappSnap.docs) {
+          await deleteDoc(doc(db, 'whatsapp_alerts', waDoc.id));
+        }
+      } catch (whatsappError) {
+        console.error('Non-blocking whatsapp alerts delete error:', whatsappError);
+      }
+
+      // 10. Delete audit logs referencing this user (as admin or target)
+      try {
+        const auditQuery1 = query(collection(db, 'auditLogs'), where('adminId', '==', userId));
+        const auditSnap1 = await getDocs(auditQuery1);
+        for (const aDoc of auditSnap1.docs) {
+          await deleteDoc(doc(db, 'auditLogs', aDoc.id));
+        }
+      } catch (audit1Error) {
+        console.error('Non-blocking auditLogs adminId delete error:', audit1Error);
+      }
+
+      try {
+        const auditQuery2 = query(collection(db, 'auditLogs'), where('targetId', '==', userId));
+        const auditSnap2 = await getDocs(auditQuery2);
+        for (const aDoc of auditSnap2.docs) {
+          await deleteDoc(doc(db, 'auditLogs', aDoc.id));
+        }
+      } catch (audit2Error) {
+        console.error('Non-blocking auditLogs targetId delete error:', audit2Error);
+      }
+
+      // 11. Finally, delete the primary user document
+      await deleteDoc(doc(db, 'users', userId));
+
+      // Record audit log of the erase action itself
+      try {
+        await addDoc(collection(db, 'auditLogs'), {
+          adminId: currentUserProfile.uid,
+          action: 'ERASE_USER_DATA_COMPLETE',
+          targetId: userId,
+          details: 'Permanently deleted user and erased all linked bookings, tickets, partner records, notifications, redemptions, AMCs, reviews, wallet logs, and alerts.',
+          createdAt: Timestamp.now()
+        });
+      } catch (auditLogError) {
+        console.error('Non-blocking audit log creation error:', auditLogError);
+      }
+
+      // Dispatch ecosystem update
+      try {
+        await triggerEcosystemUpdate(`Permanently erased user ${userId} and all related data and bookings.`);
+      } catch (triggerError) {
+        console.error('Non-blocking ecosystem update trigger error:', triggerError);
+      }
+      
+      setDeleteSuccess('User records and associated database matches have been successfully deleted.');
+      setConfirmInput('');
+      setTimeout(() => {
+        setDeletingUser(null);
+        setDeleteSuccess(null);
+      }, 2500);
+    } catch (err) {
+      console.error('Critical failure in handleEraseUserAndData:', err);
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
        <div className="overflow-x-auto">
@@ -3088,7 +3593,8 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                    <th className="px-8 py-5">Mobile</th>
                    <th className="px-8 py-5">Access Management</th>
                    <th className="px-8 py-5">History</th>
-                   <th className="px-8 py-5 text-right">Acquisition</th>
+                   <th className="px-8 py-5">Acquisition</th>
+                   <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
              </thead>
              <tbody>
@@ -3171,8 +3677,22 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                           <p className="text-sm font-bold text-slate-900">{userBookings.length} Bookings</p>
                           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">₹{userBookings.reduce((a, b) => a + b.totalPrice, 0)} LTV</p>
                        </td>
-                       <td className="px-8 py-6 text-right">
+                       <td className="px-8 py-6 text-left">
                           <p className="text-xs text-slate-500">{u.createdAt?.toDate?.() ? u.createdAt.toDate().toLocaleDateString() : new Date(u.createdAt).toLocaleDateString()}</p>
+                       </td>
+                       <td className="px-8 py-6 text-right">
+                          {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
+                            <button
+                              onClick={() => setDeletingUser(u)}
+                              className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm inline-flex items-center gap-1 text-xs font-bold"
+                              title="Erase all data and user"
+                            >
+                              <Trash2 size={14} />
+                              <span className="hidden sm:inline">Erase</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-bold italic">Protected</span>
+                          )}
                        </td>
                     </tr>
                   );
@@ -3180,6 +3700,127 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
              </tbody>
           </table>
        </div>
+
+       <AnimatePresence>
+        {deletingUser && (
+          <div key="erase-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              key="erase-motion"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[40px] max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-red-100 text-left"
+            >
+              {/* Header */}
+              <div className="px-10 py-6 border-b border-red-50 shrink-0 bg-red-50/50 flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                      <AlertCircle size={18} />
+                    </div>
+                    <h3 className="text-2xl font-bold text-red-700 tracking-tight">Erase User Data</h3>
+                  </div>
+                  <p className="text-red-500/80 text-xs font-semibold uppercase tracking-wider">CRITICAL DESTRUCTIVE ACTION</p>
+                </div>
+                <button 
+                  disabled={isDeleting}
+                  onClick={() => {
+                    setConfirmInput('');
+                    setDeletingUser(null);
+                  }} 
+                  className="p-2 hover:bg-slate-155 rounded-xl transition-colors shrink-0"
+                >
+                  <X size={20} className="text-slate-400" />
+                </button>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
+                <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-sm text-red-800 leading-relaxed space-y-3">
+                  <p className="font-bold">This action is permanent and completely irreversible.</p>
+                  <p>Deleting user <span className="font-extrabold text-red-950 underline">{deletingUser.displayName || deletingUser.email}</span> will forever wipe out their profile along with:</p>
+                  <ul className="list-disc pl-5 space-y-1 text-xs text-red-950/80 font-medium">
+                    <li>Their Customer role & login authentication settings in our databases</li>
+                    <li>All historic & pending bookings and service scheduling entries (LTV info)</li>
+                    <li>All created support tickets and complaints</li>
+                    <li>Active Annual Maintenance Contracts & warranties</li>
+                    <li>Coupon and reward redemptions, wallet logs & transactional metrics</li>
+                    <li>Reviews and rating stars given to services/partners</li>
+                    <li>Any associated Partner profile, KYC docs, and payout spreadsheets</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                    Confirm Target Name / E-mail
+                  </label>
+                  <p className="text-sm font-semibold text-slate-600">
+                    To proceed, type <span className="font-mono text-red-600 font-bold select-all bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-250 select-text cursor-copy">{deletingUser.displayName || deletingUser.email}</span> below:
+                  </p>
+                  <input 
+                    type="text"
+                    disabled={isDeleting}
+                    value={confirmInput}
+                    onChange={(e) => setConfirmInput(e.target.value)}
+                    placeholder="Enter exactly as shown above"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
+                  />
+                </div>
+
+                {deleteError && (
+                  <div className="p-4 bg-rose-50 text-rose-850 border border-rose-100 rounded-2xl text-xs font-bold leading-relaxed">
+                    ⚠️ Deletion interrupted: {deleteError}
+                  </div>
+                )}
+                {deleteSuccess && (
+                  <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-2xl text-xs font-bold leading-relaxed animate-pulse">
+                    ✓ {deleteSuccess}
+                  </div>
+                )}
+              </div>
+
+              {/* Action bar */}
+              <div className="p-8 border-t border-slate-50 bg-slate-50/50 flex flex-col-reverse sm:flex-row justify-end gap-3.5">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => {
+                    setConfirmInput('');
+                    setDeleteError(null);
+                    setDeleteSuccess(null);
+                    setDeletingUser(null);
+                  }}
+                  className="px-6 py-3.5 text-sm font-bold text-slate-500 hover:text-slate-800 rounded-2xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting || confirmInput.trim().toLowerCase() !== (deletingUser.displayName || deletingUser.email).trim().toLowerCase()}
+                  onClick={() => handleEraseUserAndData(deletingUser.uid)}
+                  className={`px-8 py-3.5 text-sm font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg ${
+                    confirmInput.trim().toLowerCase() === (deletingUser.displayName || deletingUser.email).trim().toLowerCase() && !isDeleting
+                      ? 'bg-red-600 hover:bg-red-700 shadow-red-250/50 shadow-lg'
+                      : 'bg-red-300 pointer-events-none opacity-60 shadow-none'
+                  }`}
+                >
+                  {isDeleting ? (
+                    <>
+                      <LoadingSpinner />
+                      <span>Erasing Every Record...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      <span>Confirm Complete Deletion</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3272,10 +3913,12 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
         const { id } = dataToSave as any;
         await updateDoc(doc(db, 'promotions', editingPromo.id), dataToSave);
         setSuccess('Offer updated successfully!');
+        await triggerEcosystemUpdate(`Campaign update: promotional coupon ${dataToSave.code} parameters altered.`);
       } else {
         (dataToSave as any).createdAt = Timestamp.now();
         await addDoc(collection(db, 'promotions'), dataToSave);
         setSuccess('New offer launched successfully!');
+        await triggerEcosystemUpdate(`Dynamic reward launch: Campaign coupon ${dataToSave.code} deployed.`);
       }
       
       // Auto-close after short delay to show success
@@ -3310,9 +3953,11 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
 
   const togglePromo = async (promo: Promotion) => {
     try {
+      const nextActive = !promo.active;
       await updateDoc(doc(db, 'promotions', promo.id), {
-        active: !promo.active
+        active: nextActive
       });
+      await triggerEcosystemUpdate(`Campaign parameters synchronized: Coupon ${promo.code} was ${nextActive ? 'activated' : 'deactivated'}.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `promotions/${promo.id}`);
     }
@@ -3321,6 +3966,7 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
   const deletePromo = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'promotions', id));
+      await triggerEcosystemUpdate(`Cleaned up deprecated or expired promotional campaigns.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `promotions/${id}`);
     }
@@ -4391,7 +5037,7 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
     <div className="space-y-10">
       <div className="flex justify-between items-center bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
         <div>
-          <h3 className="text-2xl font-bold italic font-display">Governance Unit</h3>
+          <h3 className="text-2xl font-bold font-display text-slate-900">System Administrators</h3>
           <p className="text-sm text-slate-400">Manage administrative roles and access levels.</p>
         </div>
         {isHead && (
@@ -4400,7 +5046,7 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
             className="bg-blue-700 text-white px-8 py-4 rounded-2xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-blue-800 shadow-xl shadow-blue-700/20"
           >
             {isAdminCreating ? <X size={18} /> : <UserPlus size={18} />}
-            {isAdminCreating ? 'Abort Operation' : 'Initialize New Admin'}
+            {isAdminCreating ? 'Cancel' : 'Add New Admin'}
           </button>
         )}
       </div>
@@ -4912,8 +5558,8 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-display font-bold italic">Analytics Terminal</h2>
-          <p className="text-slate-400 text-sm">Real-time performance intelligence</p>
+          <h2 className="text-3xl font-display font-bold text-slate-900">System Analytics</h2>
+          <p className="text-slate-400 text-sm">Real-time platform insights</p>
         </div>
         <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
           {(['daily', 'weekly', 'monthly'] as const).map(range => (
@@ -5039,7 +5685,7 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
 
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm lg:col-span-2">
            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold italic font-display">Partner Efficiency Matrix</h3>
+              <h3 className="text-xl font-bold font-display text-slate-900">Partner Performance</h3>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue Leaderboard</p>
            </div>
            <div className="overflow-x-auto">
