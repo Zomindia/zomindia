@@ -607,7 +607,42 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       const timer = setTimeout(() => {
         otpInputRef.current?.focus();
       }, 150);
-      return () => clearTimeout(timer);
+      
+      let ac: AbortController | null = null;
+      if (typeof window !== 'undefined' && 'OTPCredential' in window) {
+        ac = new AbortController();
+        navigator.credentials.get({
+          otp: { transport: ['sms'] },
+          signal: ac.signal
+        } as any).then((otp: any) => {
+          if (otp && otp.code) {
+            const digits = otp.code.replace(/\D/g, '').slice(0, 4);
+            if (digits.length === 4) {
+              console.log('[WebOTP] Auto-detected 4-digit booking verification code:', digits);
+              setOtpInput(digits);
+              
+              // Trigger click on verification button after brief visual feedback
+              setTimeout(() => {
+                const startBtn = document.querySelector('#otp-input-container button.bg-emerald-500') as HTMLButtonElement;
+                if (startBtn && !startBtn.disabled) {
+                  startBtn.click();
+                }
+              }, 600);
+            }
+          }
+        }).catch((err) => {
+          if (err.name !== 'AbortError' && err.name !== 'SecurityError' && !err.message?.toLowerCase().includes('otp-credentials')) {
+            console.error('[WebOTP API] Error auto-detecting booking verification OTP:', err);
+          } else {
+            console.log('[WebOTP API] Booking OTP auto-detection bypassed (sandbox/iframe restrictions or aborted).');
+          }
+        });
+      }
+
+      return () => {
+        clearTimeout(timer);
+        if (ac) ac.abort();
+      };
     }
   }, [verifyingOTPId]);
 
@@ -1342,6 +1377,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                        <div className="grid grid-cols-2 gap-3">
                           <input 
                             type="number" 
+
+
                             placeholder="Rs"
                             value={chargeForm.amount}
                             onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
@@ -1686,7 +1723,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                          value={otpInput}
                          onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
                          className={`w-full bg-slate-50 border py-6 rounded-2xl text-center text-4xl font-black tracking-[0.2em] outline-none transition-all appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${otpError ? 'border-rose-500 text-rose-500 shadow-rose-100 ring-4 ring-rose-500/10' : 'border-slate-100 focus:ring-4 focus:ring-blue-700/10'}`}
-                         placeholder="0000"
+                         inputMode="numeric" autoComplete="one-time-code" placeholder="0000"
                        />
                      </motion.div>
                      {otpError && <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest animate-bounce">Invalid PIN. Try Again.</p>}

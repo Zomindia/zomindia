@@ -270,37 +270,45 @@ export default function AiSupportChat({ userProfile, isPartner, bookings }: { us
             </div>
 
             {/* Direct Support Connect Bar */}
-            <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-600 font-semibold select-none shrink-0">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Live Connect</span>
-              <div className="flex items-center gap-2">
+            <div className="bg-slate-100 border-b border-slate-200 p-3 flex flex-col gap-2 select-none shrink-0" id="chat-support-connect-bar">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Live Connect</span>
+                <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">Agents Online</span>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center items-center w-full px-2 mt-2">
                 {/* Click-to-WhatsApp */}
                 <a
                   href="https://wa.me/918517071009?text=Hi%20Sarthak%20zomindia"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 p-1.5 rounded-lg border border-emerald-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                  className="flex-1 min-w-[90px] w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl border border-emerald-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-sm whitespace-normal break-words font-semibold"
                   title="Connect via WhatsApp"
+                  id="chat-whatsapp-btn"
                 >
-                  <MessageCircle size={15} />
+                  <MessageCircle size={14} className="shrink-0" />
+                  <span>WhatsApp</span>
                 </a>
 
                 {/* Click-to-Call */}
                 <a
                   href="tel:8517071009"
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg border border-blue-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                  className="flex-1 min-w-[90px] w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-sm whitespace-normal break-words font-semibold"
                   title="Call Support Team"
+                  id="chat-call-btn"
                 >
-                  <Phone size={15} />
+                  <Phone size={14} className="shrink-0" />
+                  <span>Call Support</span>
                 </a>
 
                 {/* Click-to-Email */}
                 <a
                   href="mailto:help@zomindia.com?subject=zomindia%20Support%20Request"
-                  className="bg-slate-50 hover:bg-slate-200 text-slate-700 hover:text-blue-700 px-2 py-1 rounded-lg border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 font-bold text-[10px]"
+                  className="flex-1 min-w-[90px] w-full bg-slate-50 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-sm whitespace-normal break-words font-semibold"
                   title="Email help@zomindia.com"
+                  id="chat-email-btn"
                 >
                   <Mail size={13} className="text-slate-500 shrink-0" />
-                  <span>help@zomindia.com</span>
+                  <span>Email Help</span>
                 </a>
               </div>
             </div>

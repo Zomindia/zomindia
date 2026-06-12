@@ -60,7 +60,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
         
         let friendlyMsg = "No camera found, or permission blocked in this environment.";
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          friendlyMsg = "Camera access denied. Please unlock permission authority in your URL bar or use the manual simulator below.";
+          friendlyMsg = "Camera access denied. Please allow camera access in your URL bar or device settings to scan.";
         } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
           friendlyMsg = "Webcam is locked! Another app/tab is using your camera hardware. Close other apps and retry.";
         }
@@ -261,7 +261,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
                 <div className="space-y-2 px-2">
                   <ShieldAlert size={28} className="text-amber-500 mx-auto" />
                   <p className="text-[10px] text-slate-400 leading-relaxed font-bold">
-                    Webcam is unavailable in sandbox mode. Use the direct simulator bypass below to proceed.
+                    Camera is not available or permission denied. Please allow camera access in your URL bar or device settings.
                   </p>
                 </div>
               )}
@@ -278,26 +278,12 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           </div>
         )}
 
-        {/* Symmetrical Simulator / Manual verification block */}
-        <div className="mt-6 border-t border-slate-100 pt-5 space-y-3">
-          <div className="flex items-center gap-1.5 justify-center text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            <Sparkles size={11} className="text-yellow-500 animate-spin" />
-            <span>Developer Sandbox Controls</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSimulatedScan}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 px-4 rounded-2xl font-black uppercase tracking-widest text-[9px] shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Check size={12} className="text-emerald-400" />
-            Simulate Customer QR Code Scan
-          </button>
-          
+        {/* Close button at bottom */}
+        <div className="mt-6 border-t border-slate-100 pt-5">
           <button
             type="button"
             onClick={onClose}
-            className="w-full text-slate-400 hover:text-slate-600 py-2.5 rounded-xl font-bold uppercase tracking-wider text-[9px] transition-all cursor-pointer"
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold uppercase tracking-wider text-[10px] transition-all cursor-pointer"
           >
             Cancel and Return
           </button>

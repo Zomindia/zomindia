@@ -65,7 +65,7 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
         
         let friendlyMsg = "No camera found, or permission blocked in this environment.";
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          friendlyMsg = "Camera access denied. Please unlock permission authority in your URL bar or use the manual simulator below.";
+          friendlyMsg = "Camera access denied. Please allow camera access in your URL bar or device settings to scan.";
         } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
           friendlyMsg = "Webcam is locked! Another app/tab is using your camera hardware. Close other apps and retry.";
         }
@@ -304,10 +304,10 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
                 </div>
                 <div>
                   <h4 className="text-xs font-black tracking-widest text-blue-400 uppercase font-mono mb-1">
-                    Secure Sandbox Active
+                    Secure Payment Scanner
                   </h4>
-                  <p className="text-[10px] text-slate-450 font-bold leading-normal max-w-[200px]">
-                    Point a QR code here or <span className="text-blue-400 underline font-extrabold decoration-dashed">TAP SCREEN</span> to auto-scan instantly in sandbox mode.
+                  <p className="text-[10px] text-slate-400 font-bold leading-normal max-w-[200px]">
+                    Point a payment QR code here to scan and process your invoice payment securely.
                   </p>
                 </div>
               </div>
@@ -315,40 +315,14 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
           )}
         </div>
 
-        {/* Dynamic Sandbox Controls */}
-        <div className="mt-6 border-t border-slate-100 pt-5 space-y-3">
-          <div className="flex items-center gap-1.5 justify-center text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            <Sparkles size={11} className="text-yellow-500 animate-spin" />
-            <span>Developer Sandbox Controls</span>
-          </div>
-
-          <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-            <p className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider text-left pl-1">Target Booking to unpaid</p>
-            {unpaidBookings.length > 0 ? (
-              <select
-                value={selectedSimBookingId}
-                onChange={(e) => setSelectedSimBookingId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl text-xs px-3 py-2 font-bold focus:outline-none focus:border-blue-700 font-sans"
-              >
-                {unpaidBookings.map(b => (
-                  <option key={b.id} value={b.id}>
-                    ID: {b.id.toUpperCase().slice(0, 8)} (₹{b.totalPrice})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <p className="text-[10px] text-slate-450 font-bold italic py-1 pl-1">No unpaid bookings found.</p>
-            )}
-          </div>
-
+        {/* Close/Cancel control at bottom */}
+        <div className="mt-6 border-t border-slate-100 pt-5">
           <button
             type="button"
-            onClick={handleSimulatedScan}
-            disabled={!selectedSimBookingId}
-            className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white py-4 px-4 rounded-2xl font-black uppercase tracking-widest text-[9px] shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer font-sans"
+            onClick={onClose}
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold uppercase tracking-wider text-[10px] transition-all cursor-pointer font-sans"
           >
-            <CreditCard size={12} className="text-emerald-400" />
-            Simulate Scan Partner's Payment QR
+            Cancel and Return
           </button>
         </div>
       </motion.div>

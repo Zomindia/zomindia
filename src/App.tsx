@@ -58,6 +58,7 @@ const ServiceDetails = lazy(() => import('./components/ServiceDetails'));
 const NotificationsView = lazy(() => import('./components/NotificationsView'));
 const OffersView = lazy(() => import('./components/OffersView'));
 const PartnerApp = lazy(() => import('./components/PartnerApp'));
+const PartnerPortalLanding = lazy(() => import('./components/partner/PartnerPortalLanding'));
 const CustomerAmcView = lazy(() => import('./components/CustomerAmcView'));
 const SupportTicketsView = lazy(() => import('./components/SupportTicketsView'));
 const AiSupportChat = lazy(() => import('./components/AiSupportChat'));
@@ -890,7 +891,9 @@ export default function App() {
             transition={{ duration: 0.2, ease: "easeInOut" }}
             className="w-full"
           >
-            <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+            <Suspense fallback={<LoadingScreen />}>
+              <PartnerPortalLanding onLogin={() => setIsAuthModalOpen(true)} onExploreServices={() => setActiveTab('home')} />
+            </Suspense>
           </motion.div>
         );
       }
