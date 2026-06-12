@@ -35,7 +35,8 @@ import {
   Sparkles,
   AlertTriangle,
   Copy,
-  Check
+  Check,
+  Pencil
 } from 'lucide-react';
 
 // Modules
@@ -174,6 +175,27 @@ function isVersionHigher(newVer: string, oldVer: string): boolean {
 export default function App() {
   useKeyboardFriendlyInputs();
   const [user, setUser] = useState<User | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        try {
+          localStorage.setItem('custom_zomindia_brand_logo', reader.result);
+          window.dispatchEvent(new Event('storage'));
+          setToastMessage("Custom branding logo updated successfully! 🎨");
+        } catch (err) {
+          console.error("Local storage quota limit or failed write:", err);
+          setToastMessage("Image is too large. Please select a smaller standard image under 1MB.");
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -459,6 +481,37 @@ export default function App() {
   const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
   const [verificationFeedbackError, setVerificationFeedbackError] = useState<string | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  // 60-Second Cooldown Timer effect for spam prevention
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownSeconds(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
+
+  // Real-time Background Polling to auto-detect verified links without requiring a refresh
+  useEffect(() => {
+    if (!user || user.emailVerified) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        await user.reload();
+        const updatedUser = auth.currentUser;
+        if (updatedUser && updatedUser.emailVerified) {
+          setUser({ ...updatedUser } as any);
+          setVerificationFeedback("Email successfully verified! Unlocking application dashboard...");
+          setTimeout(() => setVerificationFeedback(null), 6000);
+        }
+      } catch (err) {
+        console.debug("Silent user status verification reload:", err);
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [user?.uid, user?.emailVerified]);
 
   useEffect(() => {
     seedDatabase();
@@ -1170,13 +1223,64 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <div
-              className="flex items-center cursor-pointer group"
+            <motion.div
+              className="flex items-center cursor-pointer group relative px-2.5 py-1.5 rounded-2xl transition-all duration-300"
               onClick={() => setActiveTab('home')}
               id="nav-logo"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
             >
-              <Logo size={undefined} className="h-7 sm:h-9 md:h-10" src={headerLogoImg} />
-            </div>
+              {/* Premium backlighting ambient blur glow */}
+              <div className="absolute inset-0 bg-blue-600/[0.04] rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              
+              <Logo 
+                size={undefined} 
+                className="h-7 sm:h-9 md:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
+                src={headerLogoImg} 
+              />
+
+              {/* Head Admin Upload Input & Edit Controls */}
+              {user?.email === 'sarthakwebtech@gmail.com' && (
+                <>
+                  <input
+                    type="file"
+                    ref={logoInputRef}
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    accept="image/*"
+                  />
+                  <div className="absolute -top-1.5 -right-1.5 flex gap-1 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        logoInputRef.current?.click();
+                      }}
+                      className="p-1 bg-blue-600 text-white rounded-full hover:bg-blue-700 hover:scale-110 active:scale-95 shadow-md transition-all duration-200 cursor-pointer"
+                      title="Upload Custom Brand Logo"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    {localStorage.getItem('custom_zomindia_brand_logo') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm("Reset logo back to default branding?")) {
+                            localStorage.removeItem('custom_zomindia_brand_logo');
+                            window.dispatchEvent(new Event('storage'));
+                            setToastMessage("Logo reset to default successfully! ✨");
+                          }
+                        }}
+                        className="p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 hover:scale-110 active:scale-95 shadow-md transition-all duration-200 cursor-pointer"
+                        title="Reset Logo to Default"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </motion.div>
 
             {renderNavigation()}
 
@@ -1318,25 +1422,43 @@ Marketing: We may send you promotional offers if you have opted in to receive th
           </div>
           <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto pl-8 sm:pl-0">
             <button
-              disabled={verificationLoading}
+              disabled={verificationLoading || cooldownSeconds > 0}
               onClick={async () => {
+                if (cooldownSeconds > 0) return;
                 setVerificationLoading(true);
                 setVerificationFeedback(null);
                 setVerificationFeedbackError(null);
                 try {
-                  await sendEmailVerification(user);
-                  setVerificationFeedback("Verification email sent! Please check your inbox.");
-                  setTimeout(() => setVerificationFeedback(null), 6000);
+                  const redirectUrl = `${window.location.origin}/#settings`;
+                  const actionCodeSettings = {
+                    url: redirectUrl,
+                    handleCodeInApp: true,
+                  };
+                  await sendEmailVerification(user, actionCodeSettings);
+                  setVerificationFeedback(`Verification email sent to ${user.email}! Please check your inbox.`);
+                  setCooldownSeconds(60); // 60 seconds spam prevention cooldown
+                  setTimeout(() => setVerificationFeedback(null), 8000);
                 } catch (err: any) {
-                  setVerificationFeedbackError(err.message || "Failed to resend verification link.");
-                  setTimeout(() => setVerificationFeedbackError(null), 6000);
+                  let userFriendlyMsg = "Failed to resend verification link.";
+                  if (err.code === 'auth/too-many-requests') {
+                    userFriendlyMsg = "Spam protection: Too many requests. Please wait a few minutes before resending.";
+                  } else if (err.code === 'auth/invalid-email') {
+                    userFriendlyMsg = "The email address has an invalid format.";
+                  } else if (err.code === 'auth/user-not-found') {
+                    userFriendlyMsg = "No user found associated with current credentials.";
+                  } else {
+                    userFriendlyMsg = `${err.message || err}`;
+                  }
+                  
+                  setVerificationFeedbackError(userFriendlyMsg);
+                  setTimeout(() => setVerificationFeedbackError(null), 8000);
                 } finally {
                   setVerificationLoading(false);
                 }
               }}
-              className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-100/50 rounded-xl transition-all uppercase tracking-wider text-[9px] font-black"
+              className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-100/50 rounded-xl transition-all uppercase tracking-wider text-[9px] font-black disabled:opacity-50"
             >
-              Resend Link
+              {cooldownSeconds > 0 ? `Resend (${cooldownSeconds}s)` : "Resend Link"}
             </button>
             <button
               disabled={verificationLoading}
@@ -1414,7 +1536,12 @@ Marketing: We may send you promotional offers if you have opted in to receive th
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={() => setIsAuthModalOpen(false)}
+        onSuccess={() => {
+          if (auth.currentUser) {
+            setUser({ ...auth.currentUser } as any);
+          }
+          setIsAuthModalOpen(false);
+        }}
       />
 
       {/* Main Content */}

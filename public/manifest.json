@@ -1,0 +1,108 @@
+{
+  "name": "ZomIndia",
+  "short_name": "ZomIndia",
+  "description": "India's premium service marketplace connecting homeowners with professional service partners for cleaning, repairs, beauty, and maintenance.",
+  "start_url": "/?utm_source=pwa",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#050ca6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

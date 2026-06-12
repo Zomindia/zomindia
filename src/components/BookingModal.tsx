@@ -6,6 +6,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { sendNotification } from '../lib/notifications';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
 import { handleMapsError } from '../lib/maps-errors';
+import AuthModal from './AuthModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Map,
@@ -929,6 +930,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [showFinalConfirmation, setShowFinalConfirmation] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastBookingId, setLastBookingId] = useState<string | null>(null);
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
 
   const handleConfirmServiceClick = () => {
     setError(null);
@@ -1144,141 +1146,105 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         console.error("Partner matching failed, falling back to manual assignment:", matchErr);
       }
 
-      const batch = writeBatch(db);
+      const bookingRef = doc(collection(db, bookingPath));
+      const bookingId = bookingRef.id;
+      setLastBookingId(bookingId);
 
-      // Backfill simulated pro details if assigned
+      // SILENT TOKEN SILENT REFRESH (Robust verification)
+      let idToken = "";
+      try {
+        if (!auth.currentUser) {
+          throw new Error("You must be logged in to book a service.");
+        }
+        idToken = await auth.currentUser.getIdToken(true);
+      } catch (tokenErr: any) {
+        console.error("Token silent refresh failed:", tokenErr);
+        try {
+          localStorage.setItem('zomindia_pending_booking', JSON.stringify({
+            serviceId: service.id,
+            step,
+            address: fullAddress,
+            location,
+            date,
+            time,
+            paymentMethod,
+            activeAmc,
+            useAmc
+          }));
+        } catch (saveErr) {}
+        setShowLocalLogin(true);
+        throw new Error("Your session is expired or invalid. Saving your booking draft. Please sign in again.");
+      }
+
+      // Prepare simulated partner data if assigned
+      let simulatedPartner = null;
       if (assignedPartnerId && assignedPartnerId.startsWith('booking_sim_pro_')) {
         const scoredNearby = getScoredNearbyPartners();
         const matchedPro = scoredNearby.find(p => p.id === assignedPartnerId);
         if (matchedPro) {
-          const simUserRef = doc(db, 'users', matchedPro.id);
-          batch.set(simUserRef, {
-            uid: matchedPro.id,
-            displayName: matchedPro.name,
-            email: `${matchedPro.name.toLowerCase().replace(/\s+/g, '')}@zomindia-mock.com`,
-            role: 'partner',
-            phoneNumber: '+919999999999',
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now()
-          }, { merge: true });
-
-          const simPartnerRef = doc(db, 'partners', matchedPro.id);
-          batch.set(simPartnerRef, {
-            userId: matchedPro.id,
-            categories: [service.categoryId],
+          simulatedPartner = {
+            id: matchedPro.id,
+            name: matchedPro.name,
             rating: matchedPro.rating,
             reviewCount: matchedPro.reviewCount,
-            isVerified: true,
-            status: 'active',
-            availabilityStatus: 'Available',
             lat: matchedPro.lat,
             lng: matchedPro.lng,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now()
-          }, { merge: true });
+            categoryId: service.categoryId
+          };
         }
       }
 
-      // Security Helper to inject the authenticated UID as key-value 'customerId' in data payload before saving
-      const injectCustomerIdInBooking = (payload: any) => {
-        const uid = profile?.uid || auth.currentUser?.uid;
-        if (!uid) {
-          throw new Error("Unable to create booking: No authenticated user found.");
-        }
-        return {
-          ...payload,
-          customerId: uid
-        };
-      };
-
-      const bookingRef = doc(collection(db, bookingPath));
-      setLastBookingId(bookingRef.id);
-      
-      const bookingPayload = injectCustomerIdInBooking({
-        serviceId: service.id,
-        partnerId: assignedPartnerId,
-        status: bookingStatus,
-        paymentStatus: useAmc ? 'paid' : 'unpaid',
-        scheduledAt: Timestamp.fromDate(scheduledAt),
-        address: fullAddress,
-        lat: location?.lat || null,
-        lng: location?.lng || null,
-        totalPrice: finalPrice,
-        promoCode: appliedPromo?.code || null,
-        discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
-        paymentMethod: useAmc ? 'wallet' : paymentMethod,
-        isAmcBooking: useAmc,
-        amcId: useAmc ? activeAmc?.id : null,
-        serviceOtp,
-        otpVerified: false,
-        customerBookedEmail: contactEmail.trim(),
-        customerBookedPhone: contactPhone.trim(),
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
+      // Submit booking details secure full-stack API route (resolves authorization, RBAC role-checking & transactional DB commits)
+      const submitResponse = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          bookingId,
+          serviceId: service.id,
+          partnerId: assignedPartnerId,
+          status: bookingStatus,
+          paymentStatus: useAmc ? 'paid' : 'unpaid',
+          scheduledAtIso: scheduledAt.toISOString(),
+          address: fullAddress,
+          lat: location?.lat || null,
+          lng: location?.lng || null,
+          totalPrice: finalPrice,
+          promoCode: appliedPromo?.code || null,
+          discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
+          paymentMethod: useAmc ? 'wallet' : paymentMethod,
+          isAmcBooking: useAmc,
+          amcId: useAmc ? activeAmc?.id : null,
+          serviceOtp,
+          customerBookedEmail: contactEmail.trim(),
+          customerBookedPhone: contactPhone.trim(),
+          simulatedPartner
+        })
       });
 
-      batch.set(bookingRef, bookingPayload);
-
-      // Backfill user profile in Firestore if email or phoneNumber was missing
-      const userRef = doc(db, 'users', profile?.uid || auth.currentUser?.uid || '');
-      const profileUpdates: any = {};
-      
-      if (contactEmail.trim() && !profile?.email) {
-        profileUpdates.email = contactEmail.trim();
-      }
-      if (contactPhone.trim() && !profile?.phoneNumber) {
-        profileUpdates.phoneNumber = contactPhone.trim();
-      }
-      if (Object.keys(profileUpdates).length > 0) {
-        profileUpdates.updatedAt = Timestamp.now();
-        batch.update(userRef, profileUpdates);
-      }
-
-      // Update AMC usage if applicable
-      if (useAmc && activeAmc) {
-        const amcRef = doc(db, 'amcs', activeAmc.id);
-        batch.update(amcRef, {
-          serviceBookingIds: [...activeAmc.serviceBookingIds, bookingRef.id],
-          updatedAt: Timestamp.now()
-        });
-      }
-
-      // Increment promo usage
-      if (appliedPromo && !useAmc) {
-        batch.update(doc(db, 'promotions', appliedPromo.id), {
-          usageCount: (appliedPromo.usageCount || 0) + 1,
-          updatedAt: Timestamp.now()
-        });
+      if (!submitResponse.ok) {
+        const errData = await submitResponse.json().catch(() => ({}));
+        const errMsg = errData.error || `Server returned error status code: ${submitResponse.status}`;
         
-        const match = redemptions.find(r => r.promotionId === appliedPromo.id);
-        if (match) {
-          batch.update(doc(db, 'redemptions', match.id), { status: 'used', updatedAt: Timestamp.now() });
+        if (submitResponse.status === 401 || submitResponse.status === 403) {
+          try {
+            localStorage.setItem('zomindia_pending_booking', JSON.stringify({
+              serviceId: service.id,
+              step,
+              address: fullAddress,
+              location,
+              date,
+              time,
+              paymentMethod,
+              activeAmc,
+              useAmc
+            }));
+          } catch (saveErr) {}
+          setShowLocalLogin(true);
         }
-      }
-
-      // OTP Secret
-      batch.set(doc(db, `bookings/${bookingRef.id}/secrets`, 'otp'), { code: serviceOtp });
-      
-      try {
-        await batch.commit();
-      } catch (comError: any) {
-        // Specifically log the exact error details from the Firebase SDK, including auth state vs permissions
-        console.error("Firebase SDK booking batch commit failure details:", {
-          errorMessage: comError?.message,
-          errorCode: comError?.code,
-          errorName: comError?.name,
-          errorStack: comError?.stack,
-          currentAuthState: auth.currentUser ? {
-            uid: auth.currentUser.uid,
-            email: auth.currentUser.email,
-            emailVerified: auth.currentUser.emailVerified,
-            isAnonymous: auth.currentUser.isAnonymous,
-            providerId: auth.currentUser.providerId
-          } : "USER IS NOT LOGGED IN"
-        });
-
-        // Use the existing 'handleFirestoreError' utility to format and throw
-        handleFirestoreError(comError, OperationType.CREATE, `bookings/${bookingRef.id}`);
+        throw new Error(errMsg);
       }
 
       // Notify key stakeholders (wrapped inside safety block to ensure notification dispatch failure never halts booking completion)
@@ -2732,6 +2698,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {showLocalLogin && (
+              <AuthModal
+                isOpen={showLocalLogin}
+                onClose={() => setShowLocalLogin(false)}
+                onSuccess={() => {
+                  setShowLocalLogin(false);
+                  handleBooking();
+                }}
+              />
+            )}
           </div>
 
           <AnimatePresence>

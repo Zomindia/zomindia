@@ -10,6 +10,9 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   ConfirmationResult,
+  updateProfile,
+  updateEmail,
+  sendEmailVerification,
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, Timestamp, getDoc, updateDoc } from 'firebase/firestore';
@@ -127,6 +130,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       setView('otp-entry');
       setTimer(30);
     } catch (err: any) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error("SMS dispatch failed in production env:", err);
+        setError(`Failed to send SMS OTP: ${err.message || 'Please use standard auth channels or contact support.'}`);
+        return;
+      }
       console.warn("SMS limit exceeded or untracked credentials. Switching gracefully to Demo Sandbox mode.", err);
       // Fallback sandbox simulation so preview testing users never get frustrated with missing API bounds
       setIsDemoMode(true);
@@ -217,6 +225,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setError(null);
 
     try {
+      // Production Environment Validation
+      if (process.env.NODE_ENV === 'production') {
+        if (isDemoMode) {
+          setIsDemoMode(false);
+          throw new Error('Sandbox/Demo Mode is strictly suspended in production. Please use real SMS authentication.');
+        }
+        if (code === '123456') {
+          throw new Error('Mock authentication code 123456 is strictly banned in production environment.');
+        }
+      }
+
       let userObj: any = null;
 
       if (isDemoMode) {
@@ -294,6 +313,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       setError('Name is required');
       return;
     }
+    if (!email.trim()) {
+      setError('Email address is required');
+      return;
+    }
     if (!verifiedUid) return;
 
     setLoading(true);
@@ -304,6 +327,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const formattedPhone = `+91${cleanPhone}`;
       const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
+      // 1. Explicitly update the authenticated user's Auth profile and email
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        // Enforce strict production environment checks
+        if (process.env.NODE_ENV === 'production') {
+          if (email.trim().endsWith('@zomindia-sandbox.com') || email.trim().toLowerCase().includes('sandbox')) {
+            throw new Error('Sandbox/Staging email domains are strictly rejected in production.');
+          }
+        }
+
+        // Update Auth Profile Display Name
+        await updateProfile(currentUser, { displayName: displayName.trim() });
+        
+        // Update user's authentication email address with the ACTUAL submitted email
+        await updateEmail(currentUser, email.trim());
+        
+        // Dispatch real verification link via live Firebase Auth gateway
+        const actionCodeSettings = {
+          url: window.location.origin || 'https://zomindia.com',
+          handleCodeInApp: true,
+        };
+        await sendEmailVerification(currentUser, actionCodeSettings);
+
+        // Reload user stats to ensure state sync
+        await currentUser.reload();
+      }
+
       const userRef = doc(db, 'users', verifiedUid);
       const userSnap = await getDoc(userRef);
 
@@ -311,7 +361,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         // Safe partial update of only user-controllable fields
         const updatePayload: any = {
           displayName: displayName.trim(),
-          email: email.trim() || `${verifiedUid}@zomindia-user.com`,
+          email: email.trim(),
           phoneNumber: formattedPhone,
           updatedAt: Timestamp.now()
         };
@@ -326,7 +376,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         const initialProfile: any = {
           uid: verifiedUid,
           displayName: displayName.trim(),
-          email: email.trim() || `${verifiedUid}@zomindia-user.com`,
+          email: email.trim(),
           phoneNumber: formattedPhone,
           role: isSarthakEmail ? 'admin' : 'customer',
           createdAt: Timestamp.now(),
@@ -352,6 +402,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         resetForm();
       }, 1500);
     } catch (err: any) {
+      console.error("Profile registration error: ", err);
       setError('Failed to setup profile: ' + (err.message || 'Error occurred'));
     } finally {
       setLoading(false);
@@ -725,10 +776,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
                   <div>
                     <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                      Email Address (Optional)
+                      Email Address
                     </label>
                     <input 
                       type="email"
+                      required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="jane.doe@example.com"

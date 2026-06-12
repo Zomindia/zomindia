@@ -13,6 +13,8 @@ import { UserProfile } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { handleMapsError } from '../lib/maps-errors';
 import { motion, AnimatePresence } from 'motion/react';
+
+const HardwarePermissionDiagnoser = React.lazy(() => import('./HardwarePermissionDiagnoser'));
 import { 
   User, 
   Bell, 
@@ -39,7 +41,10 @@ import {
   Coins,
   History,
   Copy,
-  Plus
+  Plus,
+  Cpu,
+  Mic,
+  Camera
 } from 'lucide-react';
 
 interface Props {
@@ -48,7 +53,7 @@ interface Props {
   setActiveTab: (tab: any) => void;
 }
 
-type SubSectionType = 'basic' | 'wallet' | 'addresses' | 'referrals' | 'alerts' | 'privacy' | 'history' | 'active';
+type SubSectionType = 'basic' | 'wallet' | 'addresses' | 'referrals' | 'alerts' | 'privacy' | 'history' | 'active' | 'hardware';
 
 export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Props) {
   const [activeSub, setActiveSub] = useState<SubSectionType>('basic');
@@ -402,11 +407,25 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
     setEmailLoading(true);
     setVerificationError(null);
     try {
+      if (process.env.NODE_ENV === 'production') {
+        if (newEmail.trim().endsWith('@zomindia-sandbox.com') || newEmail.trim().toLowerCase().includes('sandbox')) {
+          throw new Error('Sandbox email addresses are strictly rejected in production environment.');
+        }
+      }
+
       if (newEmail !== auth.currentUser.email) {
         await updateEmail(auth.currentUser, newEmail);
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          email: newEmail
+        });
       }
-      await sendEmailVerification(auth.currentUser);
-      alert("Verification link sent! Please check your email inbox to verify.");
+      
+      const actionCodeSettings = {
+        url: `${window.location.origin}/#settings`,
+        handleCodeInApp: true,
+      };
+      await sendEmailVerification(auth.currentUser, actionCodeSettings);
+      alert(`Verification link sent to ${newEmail}! Please check your email inbox to verify.`);
       setIsVerifyModalOpen(false);
     } catch (err: any) {
       setVerificationError(err.message || "Failed to trigger email verification");
@@ -445,7 +464,17 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
     setPhoneLoading(true);
     setVerificationError(null);
     try {
-      if (otp === '123456' || !confirmationResult) {
+      // Production validation check
+      if (process.env.NODE_ENV === 'production') {
+        if (otp === '123456') {
+          throw new Error('Sandbox verification code 123456 is strictly banned in production environment.');
+        }
+        if (!confirmationResult) {
+          throw new Error('No live verification session was initialized.');
+        }
+      }
+
+      if ((otp === '123456' || !confirmationResult) && process.env.NODE_ENV !== 'production') {
         // sandbox / fallback linking bypass
         const cleanPhone = `+91${newPhone.replace(/\D/g, '')}`;
         await updateDoc(doc(db, 'users', profile.uid), {
@@ -463,6 +492,9 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
         setIsVerifyModalOpen(false);
         setOtp('');
       } else {
+        if (!confirmationResult) {
+          throw new Error('No active verification session found. Please request a new code.');
+        }
         await confirmationResult.confirm(otp);
         const cleanPhone = `+91${newPhone.replace(/\D/g, '')}`;
         await updateDoc(doc(db, 'users', profile.uid), {
@@ -739,6 +771,26 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
               </div>
             </div>
             <ChevronRight size={14} className={activeSub === 'privacy' ? 'text-white' : 'text-neutral-400'} />
+          </button>
+
+          <button 
+            onClick={() => setActiveSub('hardware')}
+            className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
+              activeSub === 'hardware' 
+                ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
+                : 'text-neutral-600 hover:bg-neutral-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === 'hardware' ? 'bg-white/10 text-white' : 'bg-neutral-100 text-neutral-600'}`}>
+                <Cpu size={15} />
+              </div>
+              <div>
+                <p className="font-extrabold text-sm">PWA Sensor Access</p>
+                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'hardware' ? 'text-white/60' : 'text-neutral-400'}`}>Verify GPS, Camera & Mic</p>
+              </div>
+            </div>
+            <ChevronRight size={14} className={activeSub === 'hardware' ? 'text-white' : 'text-neutral-400'} />
           </button>
 
           <button 
@@ -1469,6 +1521,25 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
               </motion.div>
             )}
 
+            {/* VIEW 6.2: Hardware Permissions Sensor Diagnoses */}
+            {activeSub === 'hardware' && (
+              <motion.div
+                key="hardware"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6 text-left"
+              >
+                <React.Suspense fallback={
+                  <div className="p-12 text-center text-xs font-semibold text-neutral-400 flex flex-col items-center gap-2">
+                    <RefreshCw className="animate-spin text-[#050CA6]" size={18} />
+                    <span>Loading PWA Sensor Suite...</span>
+                  </div>
+                }>
+                  <HardwarePermissionDiagnoser />
+                </React.Suspense>
+              </motion.div>
+            )}
 
 
             {/* VIEW 6.5: Live Active Trackers */}

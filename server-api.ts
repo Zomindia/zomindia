@@ -368,6 +368,205 @@ router.get("/services/:serviceId", async (req: any, res: any) => {
  * ============================================================================
  */
 
+// POST /api/bookings (Secured Endpoint with explicit JWT verify, RBAC, and atomic transactional writes)
+router.post("/bookings", async (req: any, res: any) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized: Missing and/or invalid Authorization header format." });
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: Bearer token is empty." });
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await realAdmin.auth().verifyIdToken(token);
+    } catch (tokenErr: any) {
+      console.error("[Token Verification Failure]:", tokenErr.message);
+      return res.status(401).json({ error: `Unauthorized: Token is expired or invalid. ${tokenErr.message}` });
+    }
+
+    const customerId = decodedToken.uid;
+    const db = getDb();
+
+    // Role Enforcement: check if user.role === 'customer' or admin
+    const userRef = db.collection("users").doc(customerId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      return res.status(403).json({ error: "Permission Denied: User profile does not exist in the database." });
+    }
+
+    const userData = userDoc.data();
+    if (userData.role !== "customer" && userData.role !== "admin") {
+      return res.status(403).json({ 
+        error: "Permission Denied: You do not have permissions to submit this booking. Please ensure you are logged in with an active customer account." 
+      });
+    }
+
+    const {
+      bookingId,
+      serviceId,
+      partnerId,
+      status,
+      paymentStatus,
+      scheduledAtIso,
+      address,
+      lat,
+      lng,
+      totalPrice,
+      promoCode,
+      discountApplied,
+      paymentMethod,
+      isAmcBooking,
+      amcId,
+      serviceOtp,
+      customerBookedEmail,
+      customerBookedPhone,
+      simulatedPartner
+    } = req.body;
+
+    if (!serviceId || !scheduledAtIso || !address) {
+      return res.status(400).json({ error: "Missing mandatory fields: serviceId, scheduledAtIso, address" });
+    }
+
+    const batch = db.batch();
+    const finalBookingId = bookingId || db.collection("bookings").doc().id;
+    const bookingDocRef = db.collection("bookings").doc(finalBookingId);
+
+    const scheduledAtDate = new Date(scheduledAtIso);
+    const scheduledAtTimestamp = admin.firestore.Timestamp.fromDate(scheduledAtDate);
+
+    // Structure secure booking payload (ensure customerId matches authenticated token UID!)
+    const bookingPayload = {
+      customerId: customerId,
+      serviceId,
+      partnerId: partnerId || null,
+      status: status || "pending",
+      paymentStatus: paymentStatus || "unpaid",
+      scheduledAt: scheduledAtTimestamp,
+      address,
+      lat: lat !== undefined ? lat : null,
+      lng: lng !== undefined ? lng : null,
+      totalPrice: Number(totalPrice || 0),
+      promoCode: promoCode || null,
+      discountApplied: Number(discountApplied || 0),
+      paymentMethod: paymentMethod || "online",
+      isAmcBooking: !!isAmcBooking,
+      amcId: amcId || null,
+      serviceOtp: serviceOtp || "1234",
+      otpVerified: false,
+      customerBookedEmail: customerBookedEmail ? customerBookedEmail.trim() : "",
+      customerBookedPhone: customerBookedPhone ? customerBookedPhone.trim() : "",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    batch.set(bookingDocRef, bookingPayload);
+
+    // 1. Backfill user profile if missing
+    const profileUpdates: any = {};
+    if (customerBookedEmail && !userData.email) {
+      profileUpdates.email = customerBookedEmail.trim();
+    }
+    if (customerBookedPhone && !userData.phoneNumber) {
+      profileUpdates.phoneNumber = customerBookedPhone.trim();
+    }
+    if (Object.keys(profileUpdates).length > 0) {
+      profileUpdates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      batch.update(userRef, profileUpdates);
+    }
+
+    // 2. Update AMC usage if applicable
+    if (isAmcBooking && amcId) {
+      const amcRef = db.collection("amcs").doc(amcId);
+      const amcDoc = await amcRef.get();
+      if (amcDoc.exists) {
+        const currentBookingIds = amcDoc.data()?.serviceBookingIds || [];
+        if (!currentBookingIds.includes(finalBookingId)) {
+          batch.update(amcRef, {
+            serviceBookingIds: [...currentBookingIds, finalBookingId],
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      }
+    }
+
+    // 3. Update promotions usage if applicable
+    if (promoCode && !isAmcBooking) {
+      const promotionsQuery = await db.collection("promotions").where("code", "==", promoCode).limit(1).get();
+      if (!promotionsQuery.empty) {
+        const promoDoc = promotionsQuery.docs[0];
+        const promoData = promoDoc.data();
+        batch.update(promoDoc.ref, {
+          usageCount: (promoData.usageCount || 0) + 1,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        const redemptionsQuery = await db.collection("redemptions")
+          .where("userId", "==", customerId)
+          .where("promotionId", "==", promoDoc.id)
+          .where("status", "==", "active")
+          .limit(1)
+          .get();
+        if (!redemptionsQuery.empty) {
+          batch.update(redemptionsQuery.docs[0].ref, {
+            status: "used",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      }
+    }
+
+    // 4. Save serviceOtp secret inside subcollection
+    const otpSecretRef = db.collection("bookings").doc(finalBookingId).collection("secrets").doc("otp");
+    batch.set(otpSecretRef, { code: serviceOtp || "1234" });
+
+    // 5. Setup simulated partner profile if assigned
+    if (simulatedPartner && partnerId && partnerId.startsWith("booking_sim_pro_")) {
+      const simUserRef = db.collection("users").doc(partnerId);
+      batch.set(simUserRef, {
+        uid: partnerId,
+        displayName: simulatedPartner.name,
+        email: `${simulatedPartner.name.toLowerCase().replace(/\s+/g, '')}@zomindia-mock.com`,
+        role: "partner",
+        phoneNumber: "+919999999999",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      const simPartnerRef = db.collection("partners").doc(partnerId);
+      batch.set(simPartnerRef, {
+        userId: partnerId,
+        categories: [simulatedPartner.categoryId],
+        rating: simulatedPartner.rating,
+        reviewCount: simulatedPartner.reviewCount,
+        isVerified: true,
+        status: "active",
+        availabilityStatus: "Available",
+        lat: simulatedPartner.lat,
+        lng: simulatedPartner.lng,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    await batch.commit();
+
+    return res.status(201).json({
+      success: true,
+      bookingId: finalBookingId,
+      message: "Booking submitted successfully via secure API handler."
+    });
+
+  } catch (err: any) {
+    console.error("[Secure Booking Submission Error]:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/bookings/create
 router.post("/bookings/create", async (req: any, res: any) => {
   try {

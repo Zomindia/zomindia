@@ -420,7 +420,7 @@ service cloud.firestore {
         (resource.data.get('status', '') != 'cancelled' && resource.data.get('status', '') != 'rejected') ||
         isAdmin()
       );
-      allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming()) && (
+      allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming()) && incoming().customerId == request.auth.uid && (
         exists(/databases/$(database)/documents/services/$(incoming().serviceId)) || 
         !exists(/databases/$(database)/documents/services/$(incoming().serviceId))
       );

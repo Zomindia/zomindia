@@ -31,6 +31,11 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     const startCamera = async () => {
       try {
         setCameraState('requesting');
+        
+        if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("No mediaDevices support in current browser frame.");
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' }
         });
@@ -52,11 +57,15 @@ export const QRScanner: React.FC<QRScannerProps> = ({
         console.warn('Camera access denied or failed:', err);
         setHasCamera(false);
         setCameraState('failed');
-        setErrorMessage(
-          err.name === 'NotAllowedError' 
-            ? 'Camera access denied. Please grant permissions or use the simulator below.' 
-            : 'No camera found, or permission blocked in this iframe environment.'
-        );
+        
+        let friendlyMsg = "No camera found, or permission blocked in this environment.";
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          friendlyMsg = "Camera access denied. Please unlock permission authority in your URL bar or use the manual simulator below.";
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          friendlyMsg = "Webcam is locked! Another app/tab is using your camera hardware. Close other apps and retry.";
+        }
+        
+        setErrorMessage(friendlyMsg);
       }
     };
 
@@ -64,7 +73,13 @@ export const QRScanner: React.FC<QRScannerProps> = ({
 
     return () => {
       if (activeStream) {
-        activeStream.getTracks().forEach(track => track.stop());
+        activeStream.getTracks().forEach(track => {
+          track.stop();
+          console.log(`QRScanner clean stop: ${track.label}`);
+        });
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
       }
     };
   }, []); // Run ONLY on mount to prevent infinite toggle loops

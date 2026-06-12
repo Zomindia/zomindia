@@ -15,6 +15,7 @@ import AmcManagement from './AmcManagement';
 import ReferralLifecycleManager from './ReferralLifecycleManager';
 import ChatWindow from './ChatWindow';
 import PartnerTrackingMap from './PartnerTrackingMap';
+import ManageBrandView from './ManageBrandView';
 import { 
   Users, 
   BarChart3, 
@@ -60,7 +61,7 @@ import {
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
-type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
+type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile' | 'brand';
 
 const triggerEcosystemUpdate = async (reason: string) => {
   try {
@@ -90,6 +91,12 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   const [amcs, setAmcs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   useEffect(() => {
     // Listen to all core data
@@ -228,6 +235,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   };
 
   const isAdminAuthorized = (tabId: AdminTab) => {
+    if (tabId === 'brand') return profile.email === 'sarthakwebtech@gmail.com';
     if (tabId === 'my-profile') return true;
     if (!profile.adminSubRole || profile.adminSubRole === 'head') return true;
     
@@ -264,6 +272,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     { id: 'partner-promotions', icon: Gift, label: 'Partner Offers' },
     { id: 'help-center', icon: FileText, label: 'Help' },
     { id: 'tickets', icon: MessageSquare, label: 'Tickets' },
+    { id: 'brand', icon: ImageIcon, label: 'Manage Brand' },
     { id: 'admin-management', icon: ShieldAlert, label: 'Admins' },
   ] as { id: AdminTab; icon: any; label: string }[]).filter(item => isAdminAuthorized(item.id));
 
@@ -619,10 +628,30 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                   onUpdateStatus={handleUpdateAmcStatus}
                 />
               )}
+              {activeAdminTab === 'brand' && isAdminAuthorized('brand') && (
+                <ManageBrandView onNotify={triggerToast} />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Global Admin Dash Alert Toast */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
+            className="fixed top-6 left-1/2 z-[10000] flex items-center gap-2 bg-slate-900 border border-slate-800 text-white px-4 py-2 rounded-xl shadow-xl text-[10.5px] font-bold whitespace-nowrap"
+          >
+            <div className="w-3.5 h-3.5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+              <Check size={8} />
+            </div>
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
