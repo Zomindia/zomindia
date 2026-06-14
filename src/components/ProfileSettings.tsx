@@ -45,7 +45,9 @@ import {
   Plus,
   Cpu,
   Mic,
-  Camera
+  Camera,
+  ArrowLeft,
+  HelpCircle
 } from 'lucide-react';
 
 interface Props {
@@ -54,10 +56,11 @@ interface Props {
   setActiveTab: (tab: any) => void;
 }
 
-type SubSectionType = 'basic' | 'wallet' | 'addresses' | 'referrals' | 'alerts' | 'privacy' | 'history' | 'active' | 'hardware';
+type SubSectionType = 'basic' | 'wallet' | 'addresses' | 'referrals' | 'alerts' | 'privacy' | 'history' | 'active' | 'hardware' | 'faq';
 
 export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Props) {
-  const [activeSub, setActiveSub] = useState<SubSectionType>('basic');
+  const [activeSub, setActiveSub] = useState<SubSectionType | null>(null);
+  const [openFaq, setOpenFaq] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   
@@ -95,6 +98,24 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
   const [otp, setOtp] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recaptchaRef.current) {
+        try {
+          recaptchaRef.current.clear();
+        } catch (e) {
+          console.warn("Profile settings recaptcha cleanup on unmount failed:", e);
+        }
+      }
+      const anchor = document.getElementById('profile-recaptcha-dynamic');
+      if (anchor) {
+        try {
+          anchor.remove();
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   // Tab-based verification modals
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
@@ -448,9 +469,29 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
     setVerificationError(null);
     try {
       if (recaptchaRef.current) {
-        recaptchaRef.current.clear();
+        try {
+          recaptchaRef.current.clear();
+        } catch (e) {
+          console.warn("Existing recaptcha clear error bypassed:", e);
+        }
+        recaptchaRef.current = null;
       }
-      const verifier = new RecaptchaVerifier(auth, 'profile-recaptcha', {
+
+      const existingAnchor = document.getElementById('profile-recaptcha-dynamic');
+      if (existingAnchor) {
+        try {
+          existingAnchor.remove();
+        } catch (e) {
+          console.warn("Existing dynamic profile recaptcha anchor removal error bypassed:", e);
+        }
+      }
+
+      // Create fresh dynamic anchor
+      const freshAnchor = document.createElement('div');
+      freshAnchor.id = 'profile-recaptcha-dynamic';
+      document.body.appendChild(freshAnchor);
+
+      const verifier = new RecaptchaVerifier(auth, 'profile-recaptcha-dynamic', {
         'size': 'invisible'
       });
       await verifier.render();
@@ -547,8 +588,20 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
     }
   }, [showOtpInput]);
 
+  const handleSelectSub = (sub: SubSectionType) => {
+    setActiveSub(sub);
+    setTimeout(() => {
+      const container = document.getElementById('profile-settings-container');
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 50);
+  };
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 sm:py-12">
+    <div id="profile-settings-container" className="max-w-6xl mx-auto px-4 py-6 sm:py-12">
       
       {/* SECTION 1: Zomato/Urban Company Inspired High-Trust Header card */}
       <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-neutral-100 p-4.5 sm:p-8 mb-6 sm:mb-8 shadow-sm">
@@ -591,6 +644,34 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                   </>
                 )}
               </p>
+              
+              {(() => {
+                const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
+                if (isMobileOTP) {
+                  const hasVerifiedPhone = !!auth.currentUser?.phoneNumber || !!profile.phoneNumberVerified;
+                  return hasVerifiedPhone ? (
+                    <span className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1 mt-1 select-none">
+                      Phone: Verified ✓
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-extrabold flex items-center gap-1 mt-1 select-none">
+                      Phone: Not Verified ⚠️
+                    </span>
+                  );
+                } else {
+                  const isGoogleOrEmail = auth.currentUser?.providerData.some(p => p.providerId === 'google.com' || p.providerId === 'password') || (!!auth.currentUser?.email && !auth.currentUser?.phoneNumber);
+                  const isEmailVerified = !(isMobileOTP && !auth.currentUser?.emailVerified) && (isGoogleOrEmail || auth.currentUser?.emailVerified);
+                  return isEmailVerified ? (
+                    <span className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1 mt-1 select-none">
+                      Email: Verified ✓
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-extrabold flex items-center gap-1 mt-1 select-none">
+                      Email: Not Verified ⚠️
+                    </span>
+                  );
+                }
+              })()}
  
                <p className="text-[9px] sm:text-[10px] text-[#050CA6] font-extrabold uppercase tracking-widest mt-1.5 bg-blue-50/50 py-0.5 px-1.5 sm:px-2 rounded-lg inline-block">
                 Member Since {profile.createdAt ? new Date(profile.createdAt.toDate?.() || profile.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'June 2026'}
@@ -634,9 +715,9 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left Option List Panel */}
-        <div className="lg:col-span-4 bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm space-y-1">
+        <div className={`${activeSub ? 'hidden' : 'col-span-12 lg:col-span-12'} bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm space-y-1`}>
           <button 
-            onClick={() => setActiveSub('basic')}
+            onClick={() => handleSelectSub('basic')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'basic' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -656,23 +737,27 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveTab('wallet')}
-            className="w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all text-neutral-600 hover:bg-neutral-50 active:scale-98"
+            onClick={() => handleSelectSub('wallet')}
+            className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
+              activeSub === 'wallet' 
+                ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
+                : 'text-neutral-600 hover:bg-neutral-50'
+            }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-neutral-100 text-neutral-600">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === 'wallet' ? 'bg-white/10 text-white' : 'bg-neutral-100 text-neutral-600'}`}>
                 <Wallet size={15} />
               </div>
               <div>
                 <p className="font-extrabold text-sm">zomindia Wallet</p>
-                <p className="text-[10px] mt-0.5 font-medium text-neutral-400">Load cash & coupons</p>
+                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'wallet' ? 'text-white/60' : 'text-neutral-400'}`}>Load cash & coupons</p>
               </div>
             </div>
-            <ChevronRight size={14} className="text-neutral-400" />
+            <ChevronRight size={14} className={activeSub === 'wallet' ? 'text-white' : 'text-neutral-400'} />
           </button>
 
           <button 
-            onClick={() => setActiveSub('addresses')}
+            onClick={() => handleSelectSub('addresses')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'addresses' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -692,7 +777,7 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveSub('active')}
+            onClick={() => handleSelectSub('active')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'active' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -719,7 +804,7 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveSub('history')}
+            onClick={() => handleSelectSub('history')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'history' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -739,23 +824,27 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveTab('referrals')}
-            className="w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all text-neutral-600 hover:bg-neutral-50 active:scale-98"
+            onClick={() => handleSelectSub('referrals')}
+            className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
+              activeSub === 'referrals' 
+                ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
+                : 'text-neutral-600 hover:bg-neutral-50'
+            }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-neutral-100 text-neutral-600">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === 'referrals' ? 'bg-white/10 text-white' : 'bg-neutral-100 text-neutral-600'}`}>
                 <Gift size={15} />
               </div>
               <div>
                 <p className="font-extrabold text-sm">Refer & Claim Cash</p>
-                <p className="text-[10px] mt-0.5 font-medium text-neutral-400">Share with friends, get ₹100</p>
+                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'referrals' ? 'text-white/60' : 'text-neutral-400'}`}>Share with friends, get ₹100</p>
               </div>
             </div>
-            <ChevronRight size={14} className="text-neutral-400" />
+            <ChevronRight size={14} className={activeSub === 'referrals' ? 'text-white' : 'text-neutral-400'} />
           </button>
 
           <button 
-            onClick={() => setActiveSub('alerts')}
+            onClick={() => handleSelectSub('alerts')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'alerts' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -775,7 +864,7 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveSub('privacy')}
+            onClick={() => handleSelectSub('privacy')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'privacy' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -795,7 +884,7 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
           </button>
 
           <button 
-            onClick={() => setActiveSub('hardware')}
+            onClick={() => handleSelectSub('hardware')}
             className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
               activeSub === 'hardware' 
                 ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
@@ -807,11 +896,31 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                 <Cpu size={15} />
               </div>
               <div>
-                <p className="font-extrabold text-sm">PWA Sensor Access</p>
-                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'hardware' ? 'text-white/60' : 'text-neutral-400'}`}>Verify GPS, Camera & Mic</p>
+                <p className="font-extrabold text-sm">App Permissions & Safety</p>
+                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'hardware' ? 'text-white/60' : 'text-neutral-400'}`}>Configure Location, Camera & Microphone</p>
               </div>
             </div>
             <ChevronRight size={14} className={activeSub === 'hardware' ? 'text-white' : 'text-neutral-400'} />
+          </button>
+
+          <button 
+            onClick={() => handleSelectSub('faq')}
+            className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
+              activeSub === 'faq' 
+                ? 'bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10' 
+                : 'text-neutral-600 hover:bg-neutral-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === 'faq' ? 'bg-white/10 text-white' : 'bg-neutral-100 text-neutral-600'}`}>
+                <HelpCircle size={15} />
+              </div>
+              <div>
+                <p className="font-extrabold text-sm">Help & FAQ Desk</p>
+                <p className={`text-[10px] mt-0.5 font-medium ${activeSub === 'faq' ? 'text-white/60' : 'text-neutral-400'}`}>Answers to common questions</p>
+              </div>
+            </div>
+            <ChevronRight size={14} className={activeSub === 'faq' ? 'text-white' : 'text-neutral-400'} />
           </button>
 
           <button 
@@ -831,8 +940,6 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
             </div>
             <ChevronRight size={14} className="text-rose-400" />
           </button>
-
-
 
           {/* Quick shortcuts */}
           <div className="pt-4 mt-4 border-t border-neutral-100 px-3 pb-3 space-y-2">
@@ -869,7 +976,17 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
         </div>
 
         {/* Right sub-view form display panel */}
-        <div className="lg:col-span-8 bg-white rounded-3xl border border-neutral-100 p-6 sm:p-8 shadow-sm">
+        <div className={`${activeSub ? 'col-span-12' : 'hidden'} bg-white rounded-3xl border border-neutral-100 p-6 sm:p-8 shadow-sm`}>
+          
+          {activeSub && (
+            <button 
+              onClick={() => setActiveSub(null)}
+              className="mb-8 inline-flex items-center gap-2 text-xs font-black uppercase text-[#050CA6] bg-[#050CA6]/5 hover:bg-[#050CA6]/10 px-4 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+            >
+              <ArrowLeft size={14} />
+              <span>← Back to Menu</span>
+            </button>
+          )}
           
           <AnimatePresence mode="wait">
             
@@ -885,6 +1002,95 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                 <div>
                   <h3 className="text-lg font-bold text-neutral-900">Basic Information</h3>
                   <p className="text-xs text-neutral-500 mt-0.5">Keep your checkout details fresh to help partners locate you quickly.</p>
+                </div>
+
+                {/* Symmetrical Security Credentials Fields triggering unified Verify Popup */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3">
+                  {/* Email Verification Card */}
+                  <div 
+                    onClick={() => {
+                      setActiveVerifyTab('email');
+                      setVerificationError(null);
+                      setIsVerifyModalOpen(true);
+                    }}
+                    className="bg-neutral-50 border border-neutral-100 p-4 rounded-2xl cursor-pointer hover:bg-neutral-100/70 hover:border-neutral-200 transition-all flex flex-col justify-between min-h-[96px] group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Email Address</span>
+                      {(() => {
+                        const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
+                        const isGoogleOrEmail = auth.currentUser?.providerData.some(p => p.providerId === 'google.com' || p.providerId === 'password') || (!!auth.currentUser?.email && !auth.currentUser?.phoneNumber);
+                        
+                        if (isMobileOTP && !auth.currentUser?.emailVerified) {
+                          return (
+                            <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
+                              Not Verified ⚠️
+                            </span>
+                          );
+                        } else if (isGoogleOrEmail || auth.currentUser?.emailVerified) {
+                          return (
+                            <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <CheckCircle2 size={9} /> Verified ✓
+                            </span>
+                          );
+                        } else {
+                          return (
+                            <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider">
+                              Not Verified ⚠️
+                            </span>
+                          );
+                        }
+                      })()}
+                    </div>
+                    
+                    <p className="text-xs font-semibold text-neutral-700 mt-2 truncate">{profile.email || 'Click to link email'}</p>
+                    
+                    <div className="flex items-center justify-between text-[8px] font-black uppercase text-[#050CA6] tracking-wider mt-3">
+                      <span>Click to Change/Verify</span>
+                      <ChevronRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </div>
+
+                  {/* Phone Verification Card */}
+                  <div 
+                    onClick={() => {
+                      setActiveVerifyTab('phone');
+                      setVerificationError(null);
+                      setIsVerifyModalOpen(true);
+                    }}
+                    className="bg-neutral-50 border border-neutral-100 p-4 rounded-2xl cursor-pointer hover:bg-neutral-100/70 hover:border-neutral-200 transition-all flex flex-col justify-between min-h-[96px] group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Registered Mobile</span>
+                      {(() => {
+                        const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
+                        const hasVerifiedPhone = !!auth.currentUser?.phoneNumber || !!profile.phoneNumberVerified;
+                        
+                        if (isMobileOTP || hasVerifiedPhone) {
+                          return (
+                            <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <CheckCircle2 size={9} /> Verified ✓
+                            </span>
+                          );
+                        } else {
+                          return (
+                            <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
+                              Not Verified ⚠️
+                            </span>
+                          );
+                        }
+                      })()}
+                    </div>
+
+                    <p className="text-xs font-semibold text-neutral-700 mt-2">
+                      {profile.phoneNumber ? `+91 ${profile.phoneNumber.replace('+91', '')}` : 'Click to register mobile'}
+                    </p>
+
+                    <div className="flex items-center justify-between text-[8px] font-black uppercase text-[#050CA6] tracking-wider mt-3">
+                      <span>Click to Change/Verify</span>
+                      <ChevronRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </div>
                 </div>
 
                 {/* General Information Card Group */}
@@ -1077,71 +1283,6 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                       </div>
                     </div>
 
-                  </div>
-                </div>
-
-                {/* Symmetrical Security Credentials Fields triggering unified Verify Popup */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3">
-                  {/* Email Verification Card */}
-                  <div 
-                    onClick={() => {
-                      setActiveVerifyTab('email');
-                      setVerificationError(null);
-                      setIsVerifyModalOpen(true);
-                    }}
-                    className="bg-neutral-50 border border-neutral-100 p-4 rounded-2xl cursor-pointer hover:bg-neutral-100/70 hover:border-neutral-200 transition-all flex flex-col justify-between min-h-[96px] group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Email Address</span>
-                      {auth.currentUser?.emailVerified ? (
-                        <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
-                          <CheckCircle2 size={9} /> Verified
-                        </span>
-                      ) : (
-                        <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider">
-                          Verify Email
-                        </span>
-                      )}
-                    </div>
-                    
-                    <p className="text-xs font-semibold text-neutral-700 mt-2 truncate">{profile.email || 'Click to link email'}</p>
-                    
-                    <div className="flex items-center justify-between text-[8px] font-black uppercase text-[#050CA6] tracking-wider mt-3">
-                      <span>Click to Change/Verify</span>
-                      <ChevronRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  </div>
-
-                  {/* Phone Verification Card */}
-                  <div 
-                    onClick={() => {
-                      setActiveVerifyTab('phone');
-                      setVerificationError(null);
-                      setIsVerifyModalOpen(true);
-                    }}
-                    className="bg-neutral-50 border border-neutral-100 p-4 rounded-2xl cursor-pointer hover:bg-neutral-100/70 hover:border-neutral-200 transition-all flex flex-col justify-between min-h-[96px] group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Registered Mobile</span>
-                      {profile.phoneNumberVerified || profile.phoneNumber ? (
-                        <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1">
-                          <CheckCircle2 size={9} /> Linked
-                        </span>
-                      ) : (
-                        <span className="bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-wider">
-                          Not verified
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-xs font-semibold text-neutral-700 mt-2">
-                      {profile.phoneNumber ? `+91 ${profile.phoneNumber.replace('+91', '')}` : 'Click to register mobile'}
-                    </p>
-
-                    <div className="flex items-center justify-between text-[8px] font-black uppercase text-[#050CA6] tracking-wider mt-3">
-                      <span>Click to Change/Verify</span>
-                      <ChevronRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
-                    </div>
                   </div>
                 </div>
 
@@ -1710,7 +1851,7 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                           </div>
                           
                           {/* Live details: Partner details if assigned */}
-                          {booking.partnerId && (
+                          {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) && (
                             <div className="mt-8 p-4 bg-blue-50/40 rounded-2xl border border-blue-105/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-[#050CA6]/10 text-[#050CA6] font-black rounded-full flex items-center justify-center text-xs">
@@ -1848,9 +1989,9 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                                 <Calendar size={11} className="text-neutral-400" />
                                 {formattedDate}
                               </span>
-                              <span className="flex items-center gap-1 truncate max-w-full shrink-1" title={booking.address}>
+                              <span className="flex items-center gap-1 truncate max-w-full shrink-1" title={profile.role === 'partner' && ['completed', 'finalized', 'closed'].includes(booking.status) ? 'Address Masked' : booking.address}>
                                 <MapPin size={11} className="text-neutral-400" />
-                                {booking.address}
+                                {profile.role === 'partner' && ['completed', 'finalized', 'closed'].includes(booking.status) ? 'Address Masked for client privacy 🔒' : booking.address}
                               </span>
                             </div>
                           </div>
@@ -1872,6 +2013,69 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                     })}
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {activeSub === 'faq' && (
+              <motion.div
+                key="faq"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div>
+                  <h3 className="text-lg font-bold text-neutral-900">Help & FAQ Desk</h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">Find simple, straightforward answers to your most pressing questions about the zomindia platform.</p>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    {
+                      id: 'book',
+                      q: "How to book a service?",
+                      a: "Booking a service is incredibly simple! Search for or browse all available categories like plumbing, deep cleaning, or appliance repairs on your user dashboard. Pick the service type, customize any sub-details, confirm your current address dynamically utilizing our live Google Maps pin, log in with your verified OTP, and you are ready! An elite partner will accept your request immediately map-side."
+                    },
+                    {
+                      id: 'secure',
+                      q: "How is my payment secured?",
+                      a: "At zomindia, your transaction safety is our ultimate priority. We protect every single purchase utilizing an end-to-end encrypted ledger shield. Our payments process via verified credit card, UPI endpoints, or utilizing your pre-loaded zomindia wallet cash. Furthermore, we maintain a strict escrow hold: your payment is only paid out to partner accounts once you confirm full completion of the task."
+                    },
+                    {
+                      id: 'track',
+                      q: "How to track my active service?",
+                      a: "You can keep precise track of your service at any stage! Go to 'Live Active Trackers' right inside your user Profile menu. If you have an accepted, ongoing, or active booking, the tracker displays live progress. You can view your matched partner's coordinate positioning, dynamic route calculations, and their accurate ETA directly on our custom real-time maps system."
+                    },
+                    {
+                      id: 'partner',
+                      q: "Partner onboarding & earnings.",
+                      a: "Excellent choice! To join our community of elite service professionals and start earning high income immediately, click on 'Join as Elite Partner' to sign up. You must enter your mobile number and email, verify both utilizing secure OTP confirmation channels, and supply standard KYC details. Once verified, jobs will route to you instantly where you can accept work on demand and track your earnings cleanly in real-time."
+                    }
+                  ].map((item) => {
+                    const isOpen = openFaq === item.id;
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="bg-neutral-50 rounded-2xl border border-neutral-100/70 overflow-hidden transition-all duration-200"
+                      >
+                        <button
+                          onClick={() => setOpenFaq(isOpen ? null : item.id)}
+                          className="w-full flex items-center justify-between p-5 text-left font-bold text-neutral-800 hover:bg-[#050CA6]/5 transition-colors cursor-pointer"
+                        >
+                          <span className="text-sm">{item.q}</span>
+                          <span className="text-[#050CA6] font-bold text-lg select-none">
+                            {isOpen ? '−' : '+'}
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <div className="px-5 pb-5 pt-1 text-xs text-neutral-600 leading-relaxed border-t border-neutral-100 bg-white">
+                            {item.a}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </motion.div>
             )}
 
@@ -2055,9 +2259,6 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                     <span>{verificationError}</span>
                   </div>
                 )}
-
-                {/* Invisible reCAPTCHA Anchor */}
-                <div id="profile-recaptcha" className="flex justify-center"></div>
               </div>
             </motion.div>
           </div>

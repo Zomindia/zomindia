@@ -53,8 +53,44 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [timer, setTimer] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
+  const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
 
   const recaptchaRef = useRef<any>(null);
+
+  useEffect(() => {
+    const fetchBonus = async () => {
+      try {
+        const docRef = doc(db, 'system_config', 'global');
+        const snap = await getDoc(docRef);
+        if (snap.exists() && snap.data().walletJoiningBonus !== undefined) {
+          setWalletJoiningBonus(snap.data().walletJoiningBonus);
+        }
+      } catch (err) {
+        console.warn("Unable to fetch wallet joining bonus setting:", err);
+      }
+    };
+    if (isOpen) {
+      fetchBonus();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (recaptchaRef.current) {
+        try {
+          recaptchaRef.current.clear();
+        } catch (e) {
+          console.warn("Recaptcha cleanup on unmount failed:", e);
+        }
+      }
+      const anchor = document.getElementById('recaptcha-anchor-dynamic');
+      if (anchor) {
+        try {
+          anchor.remove();
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let interval: any;
@@ -138,13 +174,32 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     try {
       const formattedPhone = `+91${cleanPhone}`;
       
-      // Cleanup existing recaptcha verifier
+      // Cleanup existing recaptcha verifier and its DOM anchor
       if (recaptchaRef.current) {
-        recaptchaRef.current.clear();
+        try {
+          recaptchaRef.current.clear();
+        } catch (e) {
+          console.warn("Existing recaptcha clear error bypassed:", e);
+        }
+        recaptchaRef.current = null;
       }
 
+      const existingAnchor = document.getElementById('recaptcha-anchor-dynamic');
+      if (existingAnchor) {
+        try {
+          existingAnchor.remove();
+        } catch (e) {
+          console.warn("Existing dynamic recaptcha anchor removal error bypassed:", e);
+        }
+      }
+
+      // Create a fresh, isolated anchor directly appended to body to ensure it exists in the DOM
+      const freshAnchor = document.createElement('div');
+      freshAnchor.id = 'recaptcha-anchor-dynamic';
+      document.body.appendChild(freshAnchor);
+
       // Initialize Recaptcha Verifier
-      const verifier = new RecaptchaVerifier(auth, 'recaptcha-anchor', {
+      const verifier = new RecaptchaVerifier(auth, 'recaptcha-anchor-dynamic', {
         size: 'invisible',
         callback: () => {}
       });
@@ -306,14 +361,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       setError('Email address is required');
       return;
     }
-    if (!verifiedUid) return;
+    
+    const activeUid = verifiedUid || auth.currentUser?.uid;
+    if (!activeUid) {
+      setError('Active user session expired. Please sign in again.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
       const cleanPhone = phoneNumber.replace(/\D/g, '');
-      const formattedPhone = `+91${cleanPhone}`;
+      const formattedPhone = cleanPhone ? `+91${cleanPhone}` : (auth.currentUser?.phoneNumber || '');
       const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
       // 1. Explicitly update the authenticated user's Auth profile (setting display name only; avoiding direct email modification or verification to prevent firebase policies from throwing errors)
@@ -334,17 +394,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         }
       }
 
-      const userRef = doc(db, 'users', verifiedUid);
+      const userRef = doc(db, 'users', activeUid);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
+        const existingData = userSnap.data();
         // Safe partial update of only user-controllable fields
         const updatePayload: any = {
           displayName: displayName.trim(),
           email: email.trim(),
-          phoneNumber: formattedPhone,
+          phoneNumber: formattedPhone || existingData?.phoneNumber || '',
+          onboardingComplete: true,
           updatedAt: Timestamp.now()
         };
+        if (existingData?.walletBalance === undefined) {
+          updatePayload.walletBalance = walletJoiningBonus;
+        }
         // Omit role updates for normal clients to prevent any potential privilege-escalation/rule failures
         if (isSarthakEmail) {
           updatePayload.role = 'admin';
@@ -354,14 +419,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       } else {
         // Fallback document creation if auto-creation in App.tsx hasn't completed yet
         const initialProfile: any = {
-          uid: verifiedUid,
+          uid: activeUid,
           displayName: displayName.trim(),
           email: email.trim(),
           phoneNumber: formattedPhone,
           role: isSarthakEmail ? 'admin' : 'customer',
           createdAt: Timestamp.now(),
-          referralCode: `ZOM${verifiedUid.slice(-6).toUpperCase()}`,
-          walletBalance: 100, // ₹100 Welcome Bonus on onboarding!
+          referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,
+          walletBalance: walletJoiningBonus, // Dynamic Onboarding welcome credit!
+          onboardingComplete: true,
           notificationPreferences: {
             bookingUpdates: true,
             promotionalMessages: true
@@ -434,7 +500,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       setError('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!verifiedUid) {
+    
+    const activeUid = verifiedUid || auth.currentUser?.uid;
+    if (!activeUid) {
       setError('Active user session expired. Please sign in again.');
       return;
     }
@@ -445,19 +513,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     try {
       const formattedPhone = `+91${cleanPhone}`;
       const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-      const userRef = doc(db, 'users', verifiedUid);
+      const userRef = doc(db, 'users', activeUid);
       const userSnap = await getDoc(userRef);
 
       const profilePayload: any = {
-        uid: verifiedUid,
+        uid: activeUid,
         displayName: displayName.trim() || 'User',
         email: email.trim(),
         phoneNumber: formattedPhone,
+        onboardingComplete: true,
         role: isSarthakEmail ? 'admin' : (userSnap.exists() && userSnap.data()?.role ? userSnap.data()?.role : 'customer'),
         createdAt: userSnap.exists() && userSnap.data()?.createdAt ? userSnap.data()?.createdAt : Timestamp.now(),
         updatedAt: Timestamp.now(),
-        referralCode: userSnap.exists() && userSnap.data()?.referralCode ? userSnap.data()?.referralCode : `ZOM${verifiedUid.slice(0, 6).toUpperCase()}`,
-        walletBalance: userSnap.exists() && userSnap.data()?.walletBalance !== undefined ? userSnap.data()?.walletBalance : 100,
+        referralCode: userSnap.exists() && userSnap.data()?.referralCode ? userSnap.data()?.referralCode : `ZOM${activeUid.slice(0, 6).toUpperCase()}`,
+        walletBalance: userSnap.exists() && userSnap.data()?.walletBalance !== undefined ? userSnap.data()?.walletBalance : walletJoiningBonus,
         notificationPreferences: userSnap.exists() && userSnap.data()?.notificationPreferences ? userSnap.data()?.notificationPreferences : {
           bookingUpdates: true,
           promotionalMessages: true
@@ -540,7 +609,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     Welcome to zomindia
                   </h2>
                   <p className="text-xs text-neutral-500 max-w-[270px] mx-auto leading-relaxed">
-                    India's premium safe-marketplace for quality home services.
+                    Indore's trusted app for clean, hassle-free home services.
                   </p>
                 </div>
 
@@ -579,7 +648,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 )}
 
                 <div className="flex items-center gap-2.5 justify-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
-                  <span>Secure 256-bit SSL encryption</span>
+                  <span>Secure SSL connection</span>
                   <span>•</span>
                   <span>100% verified partners</span>
                 </div>
@@ -608,7 +677,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     Verify Mobile Number
                   </h2>
                   <p className="text-xs text-neutral-500 mt-1">
-                    An OTP will be sent to this number for quick validation.
+                    We'll send you an OTP to verify your number safely.
                   </p>
                 </div>
 
@@ -654,7 +723,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                       <BrandedButtonSpinner className="w-4 h-4" />
                     ) : (
                       <>
-                        <span>Proceed with OTP</span>
+                        <span>Send OTP</span>
                         <ArrowRight size={15} />
                       </>
                     )}
@@ -662,7 +731,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 </form>
 
                 <p className="text-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
-                  By clicking dynamic OTP verification, you agree to zomindia's <span className="text-neutral-700 font-semibold underline cursor-pointer">Terms & Security Rules</span>.
+                  By continuing, you agree to zomindia's <span className="text-neutral-700 font-semibold underline cursor-pointer">Terms & Privacy Policy</span>.
                 </p>
               </motion.div>
             )}
@@ -689,7 +758,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     Almost there! 🎉
                   </h2>
                   <p className="text-xs text-neutral-500 mt-1">
-                    Complete your details to finish setting up your account.
+                    Just a quick step to set up your profile.
                   </p>
                 </div>
 
@@ -749,7 +818,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                   <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
-                      <p className="text-xs text-neutral-500 font-medium">₹100 will be instantly added to your zomindia Wallet!</p>
+                      <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
                     </div>
                   </div>
 
@@ -768,7 +837,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     {loading ? (
                       <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
                     ) : (
-                      "Complete Setup & Enter"
+                      "Get Started"
                     )}
                   </button>
                 </form>
@@ -797,7 +866,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     Enter Verification Code
                   </h2>
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    We sent a 6-digit verification code to <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
+                    We've sent a 6-digit OTP to your phone <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
                   </p>
                 </div>
 
@@ -839,7 +908,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                       {loading ? (
                         <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
                       ) : (
-                        "Verify & Proceed"
+                        "Verify OTP"
                       )}
                     </button>
 
@@ -852,7 +921,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                           timer > 0 ? 'text-neutral-300' : 'text-[#050CA6] hover:text-[#040980]'
                         }`}
                       >
-                        {timer > 0 ? `Resend Code in ${timer}s` : 'Resend One-Time Code'}
+                        {timer > 0 ? `Resend code in ${timer}s` : 'Send OTP again'}
                       </button>
                     </div>
                   </div>
@@ -874,7 +943,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     Welcome to zomindia! 🎉
                   </h2>
                   <p className="text-xs text-neutral-500 mt-1">
-                    Help us customize your dashboard. Enter your details below.
+                    Just a quick step to set up your profile.
                   </p>
                 </div>
 
@@ -905,13 +974,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                       placeholder="jane.doe@example.com"
                       className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
                     />
-                    <p className="mt-1 text-[8px] text-neutral-400">For home booking invoices and dynamic checkouts.</p>
+                    <p className="mt-1 text-[8px] text-neutral-400">We will send your booking invoices here.</p>
                   </div>
 
                   <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
-                      <p className="text-xs text-neutral-500 font-medium">₹100 will be instantly added to your zomindia Wallet!</p>
+                      <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
                     </div>
                   </div>
 
@@ -930,7 +999,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     {loading ? (
                       <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
                     ) : (
-                      "Create Profile & Explore"
+                      "Create Profile"
                     )}
                   </button>
                 </form>
@@ -962,9 +1031,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="text-lg font-black text-neutral-900 uppercase tracking-tight">Authorized Seamlessly</h3>
+                  <h3 className="text-lg font-black text-neutral-900 uppercase tracking-tight">You're Logged In!</h3>
                   <p className="text-[10px] text-neutral-400 font-extrabold uppercase tracking-widest">
-                    Synchronizing your wallet & bookings...
+                    Loading your profile and wallet...
                   </p>
                 </div>
 
@@ -980,7 +1049,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             )}
 
           </AnimatePresence>
-          <div id="recaptcha-anchor"></div>
         </div>
       </motion.div>
     </div>

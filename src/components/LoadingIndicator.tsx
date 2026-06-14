@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
+import LoaderGif from '../assets/loader.gif';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 
@@ -12,16 +13,16 @@ export function LoadingScreen({
 }) {
   return (
     <div className="fixed inset-0 min-h-screen bg-white flex flex-col items-center justify-center overflow-hidden z-50 select-none">
-      <div className="relative flex flex-col items-center justify-center">
+      <div className="relative flex flex-col items-center justify-center font-sans text-center">
         {/* Simple & Clean Rotating Outer Track Ring */}
-        <div className="relative w-28 h-28 flex items-center justify-center">
+        <div className="relative w-28 h-28 flex items-center justify-center mb-6">
           <motion.div 
             className="absolute inset-0 rounded-full border-2 border-neutral-100 border-t-[#050CA6]"
             animate={{ rotate: 360 }}
             transition={{ repeat: Infinity, ease: "linear", duration: 1.2 }}
           />
           
-          {/* Animated zomindia Logo Shield */}
+          {/* Animated zomindia Logo Shield / Custom Loader Gif */}
           <div className="absolute w-16 h-16 flex items-center justify-center overflow-hidden rounded-2xl bg-neutral-50/50 shadow-sm border border-neutral-100/50">
             <motion.div 
               className="absolute w-12 h-12 flex items-center justify-center"
@@ -36,14 +37,24 @@ export function LoadingScreen({
               }}
             >
               <img 
-                src="https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133" 
-                alt="zomindia" 
+                src={LoaderGif} 
+                alt="zomindia loader" 
                 className="w-full h-full object-contain focus-image-align"
                 referrerPolicy="no-referrer"
               />
             </motion.div>
           </div>
         </div>
+
+        {/* Message */}
+        <motion.p 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="text-slate-500 text-sm font-semibold tracking-wide"
+        >
+          {message}
+        </motion.p>
       </div>
     </div>
   );

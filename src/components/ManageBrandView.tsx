@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, RotateCcw, Image as ImageIcon, Sparkles, AlertCircle, Check, Trash2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface ManageBrandViewProps {
   onNotify?: (message: string) => void;
@@ -12,6 +14,9 @@ export default function ManageBrandView({ onNotify }: ManageBrandViewProps) {
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultLogoUrl = "https://ik.imagekit.io/zomindia/zomindia%20logo%20H.png?updatedAt=1781064945841";
+
+  const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const loadLogo = () => {
     try {
@@ -29,6 +34,36 @@ export default function ManageBrandView({ onNotify }: ManageBrandViewProps) {
       window.removeEventListener('storage', loadLogo);
     };
   }, []);
+
+  useEffect(() => {
+    const fetchGlobalSettings = async () => {
+      try {
+        const docRef = doc(db, 'system_config', 'global');
+        const snap = await getDoc(docRef);
+        if (snap.exists() && snap.data().walletJoiningBonus !== undefined) {
+          setWalletJoiningBonus(snap.data().walletJoiningBonus);
+        }
+      } catch (err) {
+        console.error("Error loading welcome bonus setting:", err);
+      }
+    };
+    fetchGlobalSettings();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const docRef = doc(db, 'system_config', 'global');
+      await setDoc(docRef, { walletJoiningBonus }, { merge: true });
+      if (onNotify) {
+        onNotify("Wallet Joining Bonus updated successfully! 💰");
+      }
+    } catch (err) {
+      console.error("Error saving welcome bonus:", err);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const handleLogoData = (dataUrl: string) => {
     try {
@@ -246,6 +281,46 @@ export default function ManageBrandView({ onNotify }: ManageBrandViewProps) {
               <li>A transparent background ensures perfect compatibility with standard page header background properties.</li>
               <li>Always check responsive headers, footers, and app install popup blocks after modifying settings.</li>
             </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Global Operational Settings */}
+      <div className="bg-white rounded-[32px] border border-slate-150 p-8 md:p-10 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <Sparkles size={18} className="text-amber-500 animate-pulse" /> Operational & Global Settings
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 font-medium">Configure systemic multipliers, financial bonuses, and default welcome assets.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-slate-400">Wallet Joining Bonus (INR)</label>
+            <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+              The welcome signup promotional credit instantly deposited into a new customer's active wallet balance.
+            </p>
+            <div className="flex gap-3 max-w-sm pt-1">
+              <div className="relative flex-1">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs font-mono">₹</span>
+                <input 
+                  type="number"
+                  min="0"
+                  value={walletJoiningBonus}
+                  onChange={(e) => setWalletJoiningBonus(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl pl-8 pr-4 py-3 text-xs font-black text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-sm"
+                />
+              </div>
+              <button 
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="bg-[#050CA6] hover:bg-[#040980] disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest px-6 py-3 rounded-2xl transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
+              >
+                {savingSettings ? "Saving Settings..." : "Save Config"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

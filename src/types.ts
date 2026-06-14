@@ -9,6 +9,7 @@ export interface UserProfile {
   adminSubRole?: AdminSubRole;
   phoneNumber?: string;
   phoneNumberVerified?: boolean;
+  emailVerified?: boolean;
   photoURL?: string;
   address?: string;
   bio?: string;
@@ -119,7 +120,7 @@ export interface EarningsHistory {
   createdAt: any;
 }
 
-export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending';
+export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending' | 'Pending - Customer Unresponsive';
 
 export interface AdditionalCharge {
   amount: number;

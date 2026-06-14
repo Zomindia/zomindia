@@ -56,28 +56,28 @@ export default function OfflineSyncIndicator() {
           </div>
           <WifiOff className="h-4 w-4 text-amber-500" />
           <div className="text-xs font-semibold">
-            Offline Mode <span className="text-xxs text-amber-600 font-extrabold uppercase">({queueSize} queued)</span>
+            Offline mode <span className="text-xxs text-amber-600 font-extrabold uppercase">({queueSize} saved offline)</span>
           </div>
         </>
       ) : syncing ? (
         <>
           <RefreshCw className="h-4 w-4 text-indigo-500 animate-spin" />
           <div className="text-xs font-semibold text-slate-700">
-            Syncing updates...
+            Saving changes...
           </div>
         </>
       ) : showSuccess ? (
         <>
           <CheckCircle2 className="h-4 w-4 text-emerald-500 animate-pulse" />
           <div className="text-xs font-semibold text-emerald-600">
-            Synced successfully!
+            Changes saved!
           </div>
         </>
       ) : (
         <>
           <Wifi className="h-4 w-4 text-emerald-500" />
           <div className="text-xs font-semibold text-slate-600">
-            All updates synced
+            All changes saved
           </div>
         </>
       )}

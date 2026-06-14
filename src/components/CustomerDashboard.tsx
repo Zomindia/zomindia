@@ -11,6 +11,7 @@ import {
   doc,
   Timestamp,
   addDoc,
+  deleteField,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import {
@@ -56,6 +57,7 @@ import {
   QrCode,
   Camera,
   Shield,
+  ShieldCheck,
   ArrowRight,
   Compass,
   FileText,
@@ -228,6 +230,133 @@ function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified
   );
 }
 
+interface RescheduleSectorProps {
+  booking: Booking;
+  onReschedule: (bookingId: string, newDate: string, newTime: string) => Promise<void>;
+}
+
+function RescheduleSector({ booking, onReschedule }: RescheduleSectorProps) {
+  const [cooldown, setCooldown] = useState(900); // 15 minutes grace cooldown
+  const [bypass, setBypass] = useState(false);
+  const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0 || bypass) return;
+    const interval = setInterval(() => {
+      setCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldown, bypass]);
+
+  const handleApply = async () => {
+    if (!newDate || !newTime) {
+      alert("Please specify both a new Date and Time slot.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await onReschedule(booking.id, newDate, newTime);
+    } catch (err) {
+      console.error("Reschedule failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatSecs = (totalSecs: number) => {
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return `${m}m ${s < 10 ? "0" : ""}${s}s`;
+  };
+
+  const isLocked = cooldown > 0 && !bypass;
+
+  return (
+    <div className="bg-slate-950 text-white rounded-[32px] p-6 border border-slate-800 space-y-5 shadow-2xl relative overflow-hidden">
+      <div className="absolute -right-12 -top-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center shrink-0">
+          <HelpCircle size={20} className="animate-pulse" />
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-xs font-black uppercase tracking-widest text-amber-400">
+            ⚠️ Service Connection Hold (Grace Cooldown Active)
+          </h4>
+          <p className="text-[11px] text-slate-300 leading-normal">
+            Your Service Expert was unable to reach you. To protect your wallet and scheduling sequence, we have queued your booking in slot-retention mode. A 15-minute response grace cooldown is active.
+          </p>
+        </div>
+      </div>
+
+      {isLocked ? (
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-850 space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Response Grace Countdown</span>
+            <span className="text-sm font-mono font-black text-amber-400 animate-pulse">{formatSecs(cooldown)}</span>
+          </div>
+          <div className="h-1.5 bg-slate-850 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000"
+              style={{ width: `${(cooldown / 900) * 100}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-[9px] text-slate-500 font-bold uppercase">Safe Retention Mode Enabled</p>
+            <button
+              onClick={() => setBypass(true)}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[9px] uppercase tracking-wider rounded-lg transition-all cursor-pointer"
+            >
+              ⚡ Fast-Forward Cooldown
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-850 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+          <div className="space-y-1">
+            <h5 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+              <CheckCircle2 size={13} /> 🔄 Reschedule & Release Slot
+            </h5>
+            <p className="text-[10px] text-slate-405 leading-relaxed">
+              Cooldown period resolved. Pick a new date/time to instantly release this booking back to available partner dispatch pools.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5">
+            <div className="space-y-1.5 text-left">
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">New Service Date</label>
+              <input 
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
+              />
+            </div>
+            <div className="space-y-1.5 text-left">
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">New Slot Time</label>
+              <input 
+                type="time"
+                value={newTime}
+                onChange={(e) => setNewTime(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleApply}
+            disabled={loading}
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-55 text-slate-950 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-md mt-1 cursor-pointer"
+          >
+            {loading ? "Re-initializing Dispatch..." : "Confirm Reschedule & Release Reservation"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   profile: UserProfile;
   onServiceSelect?: (serviceId: string) => void;
@@ -277,6 +406,7 @@ export default function CustomerDashboard({
           "in_progress",
           "pending_parts",
           "payment_pending",
+          "Pending - Customer Unresponsive",
         ].includes(b.status),
       ),
     [bookings],
@@ -371,6 +501,22 @@ export default function CustomerDashboard({
       }, 1500);
     } catch (err) {
       console.error("Error ending firestore call: ", err);
+    }
+  };
+
+  const handleReschedule = async (bookingId: string, newDateStr: string, newTimeStr: string) => {
+    try {
+      const combinedDateTime = new Date(`${newDateStr}T${newTimeStr}`);
+      await updateDoc(doc(db, "bookings", bookingId), {
+        scheduledAt: Timestamp.fromDate(combinedDateTime),
+        status: "pending",
+        partnerId: deleteField() as any,
+        activeCall: null
+      });
+      setShowSuccessModal(`Booking rescheduled successfully to ${combinedDateTime.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}! Service has been safely released back into the dispatch pool.`);
+    } catch (err) {
+      console.error("Error rescheduling booking:", err);
+      alert("Failed to reschedule service. Please try again.");
     }
   };
 
@@ -1181,6 +1327,59 @@ export default function CustomerDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
+      {/* INCOMING SECURE CALL MODAL */}
+      <AnimatePresence>
+        {activeCoordinatedCallBooking && (
+          <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              className="bg-white rounded-[40px] p-8 max-w-sm w-full text-center shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] border border-slate-100"
+            >
+              <div className="relative w-20 h-20 mx-auto mb-6">
+                <div className="absolute inset-0 bg-emerald-500/10 rounded-full animate-ping animate-duration-1000" />
+                <div className="w-20 h-20 bg-emerald-600 rounded-[28px] border border-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-650/30">
+                  <Phone size={36} className="text-white animate-bounce" fill="currentColor" />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="inline-block px-3 py-1 bg-emerald-100 border border-emerald-250 rounded-full">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">🔒 Dynamic Privacy Mask Active</span>
+                </div>
+                <h3 className="text-xl font-black italic tracking-tight text-slate-900 uppercase">
+                  Incoming Voice Call
+                </h3>
+                <div className="bg-emerald-50/55 rounded-3xl p-4 border border-emerald-120">
+                  <p className="text-emerald-800 text-xs font-black leading-relaxed">
+                    "🔒 Verified Call: Your Zomindia Service Professional is connecting with you now. This call is 100% secure and free."
+                  </p>
+                </div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                  Supported by Zomindia Privacy Guard
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-8">
+                <button
+                  onClick={() => handleAnswerCall(activeCoordinatedCallBooking)}
+                  className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-black uppercase tracking-wider text-[10px] hover:bg-emerald-700 transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  Answer
+                </button>
+                <button
+                  onClick={() => handleEndCall(activeCoordinatedCallBooking)}
+                  className="w-full bg-rose-600 text-white py-3.5 rounded-xl font-black uppercase tracking-wider text-[10px] hover:bg-rose-700 transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  Decline
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Success Confirmation Modal */}
       <AnimatePresence>
         {showSuccessModal && (
@@ -2443,7 +2642,14 @@ export default function CustomerDashboard({
                           className="pt-6 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 space-y-8 cursor-default"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <BookingStatusTracker status={booking.status} />
+                          {booking.status === "Pending - Customer Unresponsive" ? (
+                            <RescheduleSector 
+                              booking={booking} 
+                              onReschedule={handleReschedule} 
+                            />
+                          ) : (
+                            <>
+                              <BookingStatusTracker status={booking.status} />
 
                           {/* OTP / Security PIN Code Widget */}
                           {[
@@ -2666,7 +2872,7 @@ export default function CustomerDashboard({
                           </div>
 
                           {/* Technician Card or Assignment Status */}
-                          {booking.partnerId ? (
+                          {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) ? (
                             <div className="booking-details-modal flex gap-4 p-5 rounded-[28px] bg-slate-900 text-white items-center relative overflow-hidden group border border-slate-800 shadow-xl">
                               <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/15 rounded-full blur-2xl group-hover:bg-blue-600/25 transition-all duration-500 pointer-events-none" />
                               <div className="w-12 h-12 rounded-2xl bg-white/10 overflow-hidden shrink-0 border border-white/10">
@@ -2737,6 +2943,13 @@ export default function CustomerDashboard({
                                 </button>
                               </div>
                             </div>
+                          ) : ['completed', 'finalized', 'closed'].includes(booking.status) ? (
+                            <div className="flex items-center gap-3 p-4 bg-emerald-50 text-emerald-800 rounded-3xl border border-emerald-100/50 select-none">
+                              <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
+                              <span className="text-[9.5px] font-black uppercase tracking-widest text-emerald-700">
+                                🔒 Zomindia Secure-Mask: Active partner details archived
+                              </span>
+                            </div>
                           ) : (
                             <div className="p-5 rounded-[28px] bg-slate-50 border border-slate-100 flex items-center gap-4 text-left">
                               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 shrink-0 flex items-center justify-center relative shadow-inner">
@@ -2756,6 +2969,7 @@ export default function CustomerDashboard({
                               </div>
                             </div>
                           )}
+                          </>)}
                         </div>
                       )}
                     </div>
@@ -3102,11 +3316,14 @@ export default function CustomerDashboard({
               >
                 {renderServiceThumbnail(booking.serviceId, "sm")}
                 <div className="min-w-0 flex-1">
-                  <div className="flex justify-between items-start mb-1">
-                    <h4 className="font-bold text-slate-900 truncate text-sm">
-                      {services[booking.serviceId]?.name}
-                    </h4>
-                    <div className="flex gap-1.5 items-center">
+                  <div className="flex justify-between items-start mb-1 gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-mono font-black text-slate-400 block tracking-wider mb-0.5">BOOKING ID: #{booking.id.toUpperCase().slice(-6)}</span>
+                      <h4 className="font-bold text-slate-900 truncate text-sm">
+                        {services[booking.serviceId]?.name}
+                      </h4>
+                    </div>
+                    <div className="flex gap-1.5 items-center shrink-0">
                       <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md">
                         {booking.status}
                       </span>
@@ -3117,9 +3334,16 @@ export default function CustomerDashboard({
                       </span>
                     </div>
                   </div>
-                  <p className="text-[9px] text-slate-400 mb-3 font-bold">
-                    {booking.scheduledAt?.toDate?.()?.toLocaleDateString()}
-                  </p>
+
+                  <div className="flex justify-between items-end mb-3 pt-1.5 border-t border-slate-50">
+                    <p className="text-[9px] text-slate-400 font-bold">
+                      Date: {booking.scheduledAt?.toDate?.()?.toLocaleDateString()}
+                    </p>
+                    <div className="text-right">
+                      <span className="text-[8px] font-black uppercase text-slate-400 block leading-none">Paid Amount</span>
+                      <span className="text-xs font-black text-slate-900">₹{booking.totalPrice || 0}</span>
+                    </div>
+                  </div>
 
                   {booking.completionPhotos && booking.completionPhotos[0] && (
                     <div className="mb-4 p-2 bg-slate-50 border border-slate-200/50 rounded-2xl flex flex-col gap-1.5 max-w-sm">
@@ -3674,13 +3898,13 @@ export default function CustomerDashboard({
                       </div>
                       <span className="text-[10.5px] font-extrabold text-slate-500">
                         {ratingZomIndia === 5
-                          ? "Love the application"
+                          ? "Love the app"
                           : ratingZomIndia === 4
-                            ? "Easy to operate"
+                            ? "Easy to use"
                             : ratingZomIndia === 3
                               ? "Average"
                               : ratingZomIndia > 0
-                                ? "Difficult to utilize"
+                                ? "Hard to use"
                                 : "Select Rating"}
                       </span>
                     </div>

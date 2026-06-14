@@ -84,7 +84,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [partners, setPartners] = useState<(PartnerProfile & { displayName?: string })[]>([]);
+  const [rawPartners, setRawPartners] = useState<(PartnerProfile & { displayName?: string })[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -92,6 +92,13 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const partners = useMemo(() => {
+    return rawPartners.map(p => {
+      const u = users.find(user => user.uid === p.userId);
+      return { ...p, displayName: u?.displayName || (p as any).displayName || 'Partner' };
+    });
+  }, [rawPartners, users]);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -107,12 +114,6 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       const userList = snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
       setUsers(userList);
-      
-      // Also update partners with display names if users are loaded
-      setPartners(prev => prev.map(p => {
-        const u = userList.find(user => user.uid === p.userId);
-        return { ...p, displayName: u?.displayName || p.displayName };
-      }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
 
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
@@ -126,15 +127,9 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     const unsubPartners = onSnapshot(collection(db, 'partners'), (snap) => {
       const pList = snap.docs.map(d => {
         const data = d.data() as PartnerProfile;
-        // In the current local state 'users', we might have the displayName
-        // We'll augment it here as well for safety
         return { id: d.id, ...data };
       });
-      
-      setPartners(pList.map(p => {
-        const u = users.find(user => user.uid === p.userId);
-        return { ...p, displayName: u?.displayName || (p as any).displayName };
-      }));
+      setRawPartners(pList);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'partners'));
 
     const unsubPromos = onSnapshot(query(collection(db, 'promotions'), orderBy('createdAt', 'desc')), (snap) => {
@@ -448,6 +443,62 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                     <StatCard title="Total Customers" value={users.length.toString()} icon={Users} color="bg-blue-700" />
                     <StatCard title="Earnings (20%)" value={`₹${platformFee.toLocaleString()}`} icon={TrendingUp} color="bg-indigo-600" />
                     <StatCard title="Pending Requests" value={bookings.filter(b => b.status === 'pending').length.toString()} icon={Clock} color="bg-amber-500" />
+                  </div>
+
+                  {/* Real-time Indore Booking Monitor */}
+                  <div className="bg-white rounded-[32px] border border-slate-150/70 p-8 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping shrink-0" />
+                          <h3 className="text-lg font-black text-slate-900 tracking-tight">🔴 Live Indore Booking Monitor</h3>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-400 mt-0.5">Live operational satellite feed of active service duties across Indore metropolis.</p>
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100/50 text-emerald-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-inner">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Indore Feed Active
+                      </span>
+                    </div>
+
+                    {bookings.filter(b => !['completed', 'finalized', 'cancelled'].includes(b.status)).length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 border border-slate-150/50 rounded-2xl">
+                        <p className="text-xs text-slate-400 font-bold italic">No active operations currently running in Indore.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {bookings.filter(b => !['completed', 'finalized', 'cancelled'].includes(b.status)).slice(0, 6).map(b => {
+                          const customer = users.find(u => u.uid === b.customerId);
+                          const serviceObj = services.find(s => s.id === b.serviceId);
+                          return (
+                            <div key={b.id} className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-lg transition-all relative overflow-hidden group">
+                              <span className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <span className="text-[9px] font-black font-mono text-slate-400 uppercase tracking-widest">IND-{b.id.slice(0, 6).toUpperCase()}</span>
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-sm ${
+                                  b.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
+                                  b.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/10' :
+                                  ['on_the_way', 'arrived'].includes(b.status) ? 'bg-emerald-600 text-white shadow-emerald-600/10' :
+                                  'bg-slate-200 text-slate-600 font-bold'
+                                }`}>
+                                  {b.status.replace('_', ' ')}
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-black text-slate-900 leading-tight uppercase truncate">{serviceObj?.name || 'Home Service'}</h4>
+                              <p className="text-[10px] text-slate-500 font-bold mt-1.5 flex items-center gap-1">
+                                <span className="text-slate-400 font-medium">Customer:</span> {customer?.displayName || 'Client'}
+                              </p>
+                              <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1 italic truncate">
+                                <span className="font-bold uppercase tracking-wider not-italic text-[8px]">Address:</span> {b.address}
+                              </p>
+                              <div className="mt-3.5 pt-3 border-t border-slate-100/60 flex items-center justify-between">
+                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest font-mono">Indore Hub</p>
+                                <span className="text-[10px] text-slate-800 font-mono font-black">₹{b.totalPrice}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2785,7 +2836,7 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
   const handleManualKYC = async () => {
     if (!manualKYCPartner) return;
     if ((!manualDocs[0]?.url && !manualDocs[0]?.documentNumber) || (!manualDocs[1]?.url && !manualDocs[1]?.documentNumber)) {
-      alert("Both ID Proof and Address Proof require either an image or a valid Document Number for manual verification.");
+      alert("Please upload an image or type a valid document number to verify this partner.");
       return;
     }
     try {
@@ -2942,7 +2993,7 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
 
                   {p.kycStatus === 'pending' && (
                     <div className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-                       <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Verification Details</p>
+                       <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Submitted Documents</p>
                        <div className="space-y-4">
                           <div className="p-3 bg-white rounded-xl border border-amber-100">
                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Target Categories</p>
@@ -3132,8 +3183,8 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
             >
               <div className="px-10 py-6 border-b border-slate-50 shrink-0 flex justify-between items-center">
                 <div>
-                   <h3 className="text-2xl font-bold italic">Manual Verification</h3>
-                   <p className="text-slate-500 text-sm font-medium">Upload KYC documents manually.</p>
+                   <h3 className="text-2xl font-bold italic">Add Documents</h3>
+                   <p className="text-slate-500 text-sm font-medium">Add identity documents manually.</p>
                 </div>
                 <button onClick={() => setManualKYCPartner(null)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
                   <X size={20} />
@@ -3620,6 +3671,8 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                 <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
                    <th className="px-8 py-5">User Profile</th>
                    <th className="px-8 py-5">Mobile</th>
+                    <th className="px-8 py-5">Phone Auth</th>
+                    <th className="px-8 py-5">Email Auth</th>
                    <th className="px-8 py-5">Access Management</th>
                    <th className="px-8 py-5">History</th>
                    <th className="px-8 py-5">Acquisition</th>
@@ -3645,6 +3698,31 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                        <td className="px-8 py-6">
                          <p className="text-sm font-bold text-slate-900">
                            {(!u.phoneNumber || import.meta.env.DEV) ? '--' : u.phoneNumber.replace('+91', '')}
+                          </p>
+                        </td>
+                        <td className="px-8 py-6">
+                           {(() => {
+                              const hasPhone = !!u.phoneNumber;
+                              const isPhoneVerified = hasPhone || !!u.phoneNumberVerified;
+                              return (
+                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isPhoneVerified ? 'bg-emerald-50 text-emerald-700 border border-emerald-100/50' : 'bg-amber-50 text-amber-700 border border-amber-100/50'}`}>
+                                    {isPhoneVerified ? 'Verified' : 'Not Verified'}
+                                 </span>
+                              );
+                           })()}
+                        </td>
+                        <td className="px-8 py-6">
+                           {(() => {
+                              const isEmailVerified = !!u.email && (u.role === 'admin' || !u.phoneNumber || u.emailVerified !== false);
+                              return (
+                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isEmailVerified ? 'bg-emerald-50 text-emerald-700 border border-emerald-100/50' : 'bg-amber-50 text-amber-700 border border-amber-100/50'}`}>
+                                    {isEmailVerified ? 'Verified' : 'Not Verified'}
+                                 </span>
+                              );
+                           })()}
+                        </td>
+                        <td className="className-does-not-matter shadow-none border-none p-0 hidden">
+                          <p className="hidden">
                          </p>
                        </td>
                        <td className="px-8 py-6">

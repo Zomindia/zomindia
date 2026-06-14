@@ -280,7 +280,7 @@ export default function PartnerPortalLanding({ onLogin, onExploreServices }: Pro
               Simple 4-Step Partner Activation
             </h2>
             <p className="text-slate-500 mt-4 text-base max-w-xl mx-auto font-medium">
-              We have built an offline-first and secure verification pipeline to let you get onboarded and ready for bookings quickly.
+              We help you get approved and ready for bookings quickly. High-security, low hassle.
             </p>
           </div>
 

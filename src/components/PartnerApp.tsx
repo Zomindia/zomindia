@@ -160,7 +160,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   };
 
   if (loading) {
-    return <LoadingScreen message="Syncing pro job pool & active leads..." />;
+    return <LoadingScreen message="Updating your jobs and clients..." />;
   }
 
   const renderScreen = () => {
@@ -181,7 +181,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'wallet':
         return <PartnerWallet partner={partner} />;
       case 'settings':
-        return <PartnerSettings partner={partner} profile={profile} onNavigate={navigateWithTarget} />;
+        return <PartnerSettings partner={partner} profile={profile} onNavigate={navigateWithTarget} bookings={bookings} services={services} users={users} />;
       case 'notifications':
         return <NotificationsView profile={profile} onNavigate={navigateWithTarget} />;
       case 'amc-leads':

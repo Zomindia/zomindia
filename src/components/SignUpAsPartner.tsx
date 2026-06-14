@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, setDoc, Timestamp, collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { UserProfile, Category } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
@@ -145,8 +145,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
         </motion.div>
         <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tighter italic uppercase">Application Logged.</h2>
         <p className="text-slate-500 mb-12 text-lg font-medium leading-relaxed">
-          Your partner profile is now being reviewed by our verification team. 
-          Expect a response within 24-48 hours. You can already access your dashboard in read-only mode.
+          We are currently checking your profile details. We usually approve applications within 24 to 48 hours. You can already access your dashboard in read-only mode.
         </p>
         <button 
           onClick={onSuccess}
@@ -181,7 +180,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                {[
                  { step: 1, label: 'Profile Registry', icon: User },
                  { step: 2, label: 'Specializations', icon: LayoutGrid },
-                 { step: 3, label: 'Verification Docs', icon: FileText }
+                 { step: 3, label: 'Upload Documents', icon: FileText }
                ].map((item) => (
                  <div key={item.step} className="flex items-center gap-4 group">
                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
@@ -247,7 +246,19 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
 
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                               <div>
-                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest px-1">Active Contact (Phone)</label>
+                                 <div className="flex justify-between items-center mb-3 px-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Contact (Phone)</label>
+                                    {(() => {
+                                      const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
+                                      const hasVerifiedPhone = !!auth.currentUser?.phoneNumber || !!profile.phoneNumberVerified;
+                                      
+                                      if (isMobileOTP || hasVerifiedPhone) {
+                                        return <span className="text-[8px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-black uppercase tracking-wider">Verified ✓</span>;
+                                      } else {
+                                        return <span className="text-[8px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-black uppercase tracking-wider">Not Verified ⚠️</span>;
+                                      }
+                                    })()}
+                                  </div>
                                  <input 
                                    type="tel"
                                    value={formData.phoneNumber}
@@ -265,7 +276,21 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                                  )}
                               </div>
                               <div>
-                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest px-1">Business Email</label>
+                                 <div className="flex justify-between items-center mb-3 px-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Business Email</label>
+                                    {(() => {
+                                      const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
+                                      const isGoogleOrEmail = auth.currentUser?.providerData.some(p => p.providerId === 'google.com' || p.providerId === 'password') || (!!auth.currentUser?.email && !auth.currentUser?.phoneNumber);
+                                      
+                                      if (isMobileOTP && !auth.currentUser?.emailVerified) {
+                                        return <span className="text-[8px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-black uppercase tracking-wider">Not Verified ⚠️</span>;
+                                      } else if (isGoogleOrEmail || auth.currentUser?.emailVerified) {
+                                        return <span className="text-[8px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-black uppercase tracking-wider">Verified ✓</span>;
+                                      } else {
+                                        return <span className="text-[8px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-black uppercase tracking-wider">Not Verified ⚠️</span>;
+                                      }
+                                    })()}
+                                  </div>
                                  <input 
                                    type="email"
                                    value={profile.email}
@@ -318,8 +343,8 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                     {currentStep === 3 && (
                       <motion.div key="step3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-12">
                          <div>
-                           <h2 className="text-3xl font-black text-slate-900 mb-2 uppercase italic">Verification.</h2>
-                           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">High-integrity document repository</p>
+                           <h2 className="text-3xl font-black text-slate-900 mb-2 uppercase italic">Identity Check.</h2>
+                           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">Secure document upload</p>
                         </div>
 
                         <div className="space-y-8">
@@ -336,7 +361,7 @@ export default function SignUpAsPartner({ profile, onSuccess }: Props) {
                            </div>
 
                            <div className="bg-slate-50 p-4 rounded-[40px] border border-slate-100/50">
-                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest ml-4">Address Verification</label>
+                              <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest ml-4">Address Proof</label>
                               <AdminUpload 
                                 label="Upload Address Proof (Utility Bill/Rental)"
                                 onUpload={(url) => setFormData({...formData, kycAddressUrl: url})}

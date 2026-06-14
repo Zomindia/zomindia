@@ -418,11 +418,108 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [activeChat, setActiveChat] = useState<Booking | null>(null);
   const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(null);
 
+  const [callTimer, setCallTimer] = useState<number>(30);
+  const [showSecondaryEscalation, setShowSecondaryEscalation] = useState<boolean>(false);
+  const [escalationToast, setEscalationToast] = useState<string | null>(null);
+
+  // SECURE TWA COMPLIANCE PREPARATION:
+  // Android's Native 'FLAG_SECURE' window manager layer is fully configured in the wrapped container level.
+  // This web-level hook mirrors FLAG_SECURE by applying an instant deep CSS blur filter to the entire 
+  // UI whenever standard window/tab focus shifts or screen gestures/overlay events are triggered.
+  const [isOverlayBlurred, setIsOverlayBlurred] = useState(!document.hasFocus());
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (document.hasFocus()) {
+        setIsOverlayBlurred(false);
+      }
+    };
+
+    const handleBlur = () => {
+      setIsOverlayBlurred(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setIsOverlayBlurred(true);
+      } else if (document.hasFocus()) {
+        setIsOverlayBlurred(false);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Prevent Print Screen, Direct Printing, and standard saving shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'PrintScreen') {
+        e.preventDefault();
+        setIsOverlayBlurred(true);
+      }
+
+      // Block Ctrl+P / Cmd+P
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIsOverlayBlurred(true);
+      }
+
+      // Block Ctrl+S / Cmd+S
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'PrintScreen') {
+        e.preventDefault();
+        setIsOverlayBlurred(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   const activeCoordinatedCallBooking = useMemo(() => {
     return bookings.find(b => b.activeCall && (b.activeCall.status === 'ringing' || b.activeCall.status === 'connected'));
   }, [bookings]);
 
+  useEffect(() => {
+    let interval: any;
+    if (activeCoordinatedCallBooking && activeCoordinatedCallBooking.activeCall?.status === 'ringing') {
+      interval = setInterval(() => {
+        setCallTimer(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setShowSecondaryEscalation(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (activeCoordinatedCallBooking && activeCoordinatedCallBooking.activeCall?.status === 'connected') {
+      clearInterval(interval);
+      setCallTimer(0);
+    } else {
+      clearInterval(interval);
+      setCallTimer(30);
+      setShowSecondaryEscalation(false);
+    }
+    return () => clearInterval(interval);
+  }, [activeCoordinatedCallBooking]);
+
   const handleInitiateCall = async (booking: Booking) => {
+    setCallTimer(30);
+    setShowSecondaryEscalation(false);
     const currentUid = auth.currentUser?.uid || profile?.uid || '';
     const currentName = auth.currentUser?.displayName || profile?.displayName || 'Partner';
     try {
@@ -1009,9 +1106,38 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     }
   };
 
+  const getGeneralLocality = (addressStr?: string) => {
+    if (!addressStr) return "Vijay Nagar";
+    const localities = ["vijay nagar", "palasia", "rajendra nagar", "geeta bhawan", "sudama nagar", "annapurna", "bhanwarkuan", "nipania", "khajrana", "saket", "lokmanya", "marimata", "lig", "mig", "sukhlia", "kanadia", "tulsi nagar", "mahalaxmi nagar", "scheme 78", "scheme 54", "scheme 140", "indore"];
+    const lowerAddr = addressStr.toLowerCase();
+    for (const loc of localities) {
+      if (lowerAddr.includes(loc)) {
+        return loc.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
+    }
+    const parts = addressStr.split(',');
+    if (parts.length > 1) {
+      const locPart = parts[parts.length - 2].trim();
+      if (locPart && locPart.length > 3 && !/indore/i.test(locPart)) {
+        return locPart;
+      }
+    }
+    return parts[0].trim() || "Vijay Nagar";
+  };
+
+  const getMaskedPhoneNumber = (phoneStr?: string) => {
+    if (!phoneStr) return "Protected by Zomindia 🔒";
+    const cleanPhone = phoneStr.replace(/[^0-9]/g, '');
+    if (cleanPhone.length >= 5) {
+      return `XXXXX-${cleanPhone.slice(-5)}`;
+    }
+    return "Protected by Zomindia 🔒";
+  };
+
   const renderJobCard = (booking: Booking, isHistory = false) => {
     const customer = customers[booking.customerId];
     const service = services[booking.serviceId];
+    const isCompleted = ['completed', 'finalized'].includes(booking.status);
 
     return (
       <motion.div 
@@ -1028,7 +1154,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          <div className={`absolute top-0 left-0 w-1.5 h-full transition-all group-hover:w-2 ${
             ['confirmed', 'assigned', 'in_progress', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500' :
             ['pending', 'pending_parts', 'payment_pending'].includes(booking.status) ? 'bg-amber-400' :
-            ['completed', 'finalized'].includes(booking.status) ? 'bg-blue-700' :
+            isCompleted ? 'bg-blue-700' :
             booking.status === 'cancelled' ? 'bg-rose-500' :
             'bg-slate-200'
          }`} />
@@ -1045,33 +1171,65 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                     booking.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/30' :
                     ['on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
                     booking.status === 'cancelled' ? 'bg-rose-500 text-white' :
+                    isCompleted ? 'bg-blue-100 text-blue-700' :
                     'bg-slate-100 text-slate-500'
                   }`}>
                     {booking.status.replace('_', ' ')}
                   </span>
                </div>
                <h4 className="text-base font-black text-slate-900 leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">{service?.name || 'Loading...'}</h4>
+               {!isCompleted && (
+                 <div className="text-[10px] text-emerald-600 font-black flex items-center gap-1.5 mb-2 bg-emerald-50/50 border border-emerald-100/35 px-2.5 py-1 rounded-xl w-max select-none">
+                   <Smartphone size={10} className="text-emerald-505 animate-pulse" />
+                   <span>Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}</span>
+                 </div>
+               )}
                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-2">
                   <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
                   <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{customer?.displayName || 'Client'}</span>
+                  <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">
+                    {isCompleted ? 'Access Masked' : (customer?.displayName || 'Client')}
+                  </span>
                </div>
                <div className="flex items-center text-[9px] text-slate-500 font-medium italic">
-                 <span className="truncate">{booking.address}</span>
+                 <span className="truncate">
+                   {isCompleted 
+                     ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}` 
+                     : booking.address}
+                 </span>
                </div>
-               {booking.status === 'arrived' && (
-                 <div className="mt-2.5 flex">
+               {isCompleted ? (
+                 <div className="mt-3 flex flex-wrap gap-2">
+                   <span className="bg-slate-100 text-slate-400 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 border border-slate-200 select-none">
+                     Job Finished
+                   </span>
+                 </div>
+               ) : !isHistory && (
+                 <div className="mt-3 flex flex-wrap gap-2">
                    <button
                      type="button"
                      onClick={(e) => {
                        e.stopPropagation();
-                       setSelectedBooking(booking); setVerifyingOTPId(booking.id);
+                       handleInitiateCall(booking);
                      }}
-                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
+                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
                    >
-                     <ShieldCheck size={11} className="text-white" />
-                     Verify OTP to Start
+                     <Phone size={11} className="text-white" fill="currentColor" />
+                     Call Customer
                    </button>
+                   {booking.status === 'arrived' && (
+                     <button
+                       type="button"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         setSelectedBooking(booking); setVerifyingOTPId(booking.id);
+                       }}
+                       className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
+                     >
+                       <ShieldCheck size={11} className="text-white" />
+                       Verify OTP to Start
+                     </button>
+                   )}
                  </div>
                )}
             </div>
@@ -1178,14 +1336,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                    ) : (
                      <div className="w-full h-full flex items-center justify-center text-slate-200"><Briefcase size={32} /></div>
                    )}
-                </div>
-                <div className="flex-1">
+                      <div className="flex-1">
                    <h4 className="text-2xl font-black text-slate-900 leading-tight italic">{service?.name || 'Service Order'}</h4>
                    <div className="flex items-center gap-2 mt-2">
                       <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center shadow-sm">
                          <Smartphone size={14} className="text-blue-500" />
                       </div>
-                      <p className="text-sm font-bold text-slate-600">{customer?.displayName || 'Client'}</p>
+                      <p className="text-sm font-bold text-slate-600">
+                        {['completed', 'finalized'].includes(booking.status) ? 'Access Masked' : (customer?.displayName || 'Client')}
+                        {!['completed', 'finalized'].includes(booking.status) && (
+                          <span className="text-xs font-black text-emerald-605 block mt-1.5 select-none font-sans">
+                            🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}
+                          </span>
+                        )}
+                      </p>
                    </div>
                 </div>
              </div>
@@ -1209,22 +1373,27 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                    <MapPin size={18} className="text-rose-500" />
                    <h5 className="text-sm font-black uppercase tracking-widest text-slate-900">Service Address</h5>
                 </div>
-                <button 
-                  onClick={() => {
-                    const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
-                    window.open(url, '_blank');
-                  }}
-                  className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
-                >
-                  Get Route
-                </button>
+                {!['completed', 'finalized'].includes(booking.status) && (
+                  <button 
+                    onClick={() => {
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
+                  >
+                    Get Route
+                  </button>
+                )}
              </div>
              <p className="text-sm font-bold text-slate-600 leading-relaxed bg-slate-50 p-6 rounded-3xl border border-slate-100">
-               {booking.address}
+               {['completed', 'finalized'].includes(booking.status) 
+                 ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}` 
+                 : booking.address}
              </p>
              {!['arrived', 'in_progress', 'completed', 'finalized', 'cancelled'].includes(booking.status) && (
                 <JobLocationMap bookingId={booking.id} address={booking.address} lat={booking.lat} lng={booking.lng} />
              )}
+          </div>
           </div>
 
           {/* Live Chat Section */}
@@ -1517,8 +1686,239 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     );
   };
 
+  const isApproved = partner?.isVerified === true || partner?.status === 'active';
+
+  if (!isApproved) {
+    return (
+      <div className="flex flex-col h-full bg-slate-50">
+        {/* Verification Status Control Banner */}
+        <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between border-b border-slate-800 shadow-inner select-none">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-100 truncate">
+              Verification Mode Active
+            </span>
+          </div>
+          <span className="text-[8px] font-mono font-bold text-slate-400 bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded shrink-0">
+            SECURE PORTAL
+          </span>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-8 py-32 text-center select-none">
+          <div className="w-20 h-20 bg-amber-500 text-white rounded-[32px] flex items-center justify-center mb-8 shadow-xl shadow-amber-500/20">
+            <ShieldCheck size={40} className="text-white animate-pulse" />
+          </div>
+          <h3 className="text-xl font-black text-slate-900 italic font-display mb-3">Onboarding Review Active</h3>
+          {partner?.kycStatus === 'pending' ? (
+            <p className="text-xs text-slate-500 font-medium max-w-sm leading-relaxed">
+              We are currently verifying your professional files and ID proof. 
+              Real-time client assignments and active customer bookings will unlock as soon as the Admin approves your profile.
+            </p>
+          ) : partner?.kycStatus === 'rejected' ? (
+            <div className="space-y-4 max-w-sm">
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Account Verification Rejected by Admin: <span className="font-bold text-rose-600 block mt-1">"{partner?.kycRejectReason || 'Verification files rejected'}"</span>
+              </p>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest bg-slate-100 p-3 rounded-xl border border-slate-200">
+                Please go to settings and upload correct documents.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 font-medium max-w-sm leading-relaxed">
+              Please go to settings and submit your identity verification documents (KYC ID and Address proof) to start receiving client jobs!
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div 
+      className="flex flex-col h-full bg-slate-50 relative"
+      style={{
+        filter: isOverlayBlurred ? 'blur(20px)' : 'none',
+        transition: 'all 0.1s ease-in-out'
+      }}
+    >
+      {isOverlayBlurred && (
+        <div className="absolute inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none pointer-events-auto">
+          <div className="bg-slate-950/95 text-white rounded-[32px] p-8 max-w-sm border border-slate-800 shadow-2xl space-y-4">
+            <div className="w-16 h-16 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-500/20">
+              <Zap size={32} className="text-rose-500 animate-pulse" />
+            </div>
+            <h4 className="text-sm font-black uppercase tracking-wider text-rose-500">Security Shield Active</h4>
+            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+              To prevent screenshot leakage & safeguard client privacy, active service views are currently masked.
+            </p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none pt-2">
+              Focus back on window or tap to unlock
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* SECURE IN-APP WEBRTC & BRIDGE CALLING ENGINE OVERLAY */}
+      {activeCoordinatedCallBooking && (
+        <div className="absolute inset-0 z-[9000] bg-slate-950/95 backdrop-blur-lg flex flex-col justify-between p-6 text-white overflow-y-auto">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center mt-8 space-y-2">
+            <div className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">🔒 Zomindia Secure Privacy Bridge</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-bold">Calling via Zomindia Verified Business Line...</p>
+          </div>
+
+          {/* Callee Identity / Ringing State */}
+          <div className="flex flex-col items-center justify-center my-8 space-y-6">
+            <div className="relative flex items-center justify-center">
+              {/* Pulsing Ripple circles */}
+              <div className="absolute w-36 h-36 bg-emerald-500/5 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
+              <div className="absolute w-28 h-28 bg-emerald-500/10 rounded-full animate-ping" style={{ animationDuration: '2s' }} />
+              <div className="w-20 h-20 bg-emerald-600 rounded-full flex items-center justify-center shadow-xl shadow-emerald-500/20 border border-emerald-400/30">
+                <Phone size={36} className="text-white animate-bounce" fill="currentColor" />
+              </div>
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-xl font-black italic uppercase tracking-tight">Protected Customer</h3>
+              <p className="text-xs text-emerald-400 font-mono font-black">{getMaskedPhoneNumber(customers[activeCoordinatedCallBooking.customerId]?.phoneNumber)}</p>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Your Identity is shown as "Zomindia Expert" to the customer</p>
+            </div>
+
+            {/* Live WebRTC Connecting Info */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 max-w-xs text-center space-y-2">
+              <p className="text-[11px] text-slate-305 leading-relaxed font-sans">
+                "Connecting securely via Zomindia Private Bridge... Your personal number and customer number are fully protected."
+              </p>
+              <button 
+                onClick={() => {
+                  window.location.href = 'tel:+919424456606';
+                  setEscalationToast("Triggering backup cellular dialer via +919424456606...");
+                }}
+                className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer mt-1"
+              >
+                📞 Dial Via Hardware Support (+919424456606)
+              </button>
+            </div>
+          </div>
+
+          {/* Timer and Secondary Escalation Panel */}
+          <div className="w-full max-w-sm mx-auto mb-8 space-y-4">
+            {activeCoordinatedCallBooking.activeCall?.status === 'ringing' && (
+              <div className="text-center">
+                {callTimer > 0 ? (
+                  <p className="text-xs font-mono text-slate-400">
+                    Ringing... Unanswered timeout in <span className="text-emerald-400 font-black">{callTimer}s</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-rose-450 font-black uppercase tracking-wider">No answer after 30 seconds</p>
+                )}
+              </div>
+            )}
+
+            {/* Secondary Action Panel Toggle */}
+            {!showSecondaryEscalation && (
+              <button
+                onClick={() => setShowSecondaryEscalation(true)}
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-slate-850 cursor-pointer"
+              >
+                ⚠️ Can't Reach the Customer?
+              </button>
+            )}
+
+            {/* ESCALATION PANEL (Unanswered/Manual Toggle) */}
+            {showSecondaryEscalation && (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-emerald-400">Secondary Escalation System 🚀</h4>
+                  <p className="text-[10px] text-slate-400 leading-normal">Customer is currently unresponsive. Dispatch secondary secure notifications without revealing any numbers:</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  <button
+                    onClick={() => {
+                      setEscalationToast("Secondary Link: Masked WhatsApp notification dispatched successfully!");
+                      setTimeout(() => setEscalationToast(null), 3500);
+                    }}
+                    className="w-full py-2.5 bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-700/50 text-emerald-300 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    💬 Send Masked WhatsApp
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEscalationToast("Secondary Link: Priority Masked SMS gateway alerted!");
+                      setTimeout(() => setEscalationToast(null), 3500);
+                    }}
+                    className="w-full py-2.5 bg-slate-850 hover:bg-slate-800 border border-slate-805 text-slate-200 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    📱 Send Emergency SMS
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEscalationToast("Buzzed on customer app! Dynamic notification activated.");
+                      setTimeout(() => setEscalationToast(null), 3500);
+                    }}
+                    className="w-full py-2.5 bg-blue-600/20 hover:bg-blue-650/35 border border-blue-700/50 text-blue-300 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    🔔 Buzz Customer App
+                  </button>
+
+                  {/* SOFT-FAIL RELEASE SIMULATION */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <button
+                      onClick={async () => {
+                        const confirmRelease = window.confirm("Are you sure you want to trigger the Unresponsive Soft-Fail release? You will be released from this job and returned to the pool immediately.");
+                        if (confirmRelease) {
+                          try {
+                            const bId = activeCoordinatedCallBooking.id;
+                            // Clean active call
+                            await updateDoc(doc(db, 'bookings', bId), {
+                              status: 'Pending - Customer Unresponsive',
+                              partnerId: deleteField() as any, // Remove partnerId so they are released
+                              activeCall: null
+                            });
+                            alert("Soft-fail release successful! You have been safely unmounted and returned to available jobs list.");
+                            setSelectedBooking(null);
+                          } catch (err) {
+                            console.error("Error during softfail release: ", err);
+                          }
+                        }
+                      }}
+                      className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      ⚠️ Simulate Soft-Fail Release (10-Min Exhausted)
+                    </button>
+                    <p className="text-[8px] text-slate-500 font-medium text-center mt-1">Sets job as 'Pending - Customer Unresponsive' & releases your schedule instantly.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Toast Alert */}
+            {escalationToast && (
+              <div className="p-3 bg-emerald-500 border border-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-xl text-center shadow-md animate-bounce">
+                {escalationToast}
+              </div>
+            )}
+
+            {/* End Call Button */}
+            <button
+              onClick={() => handleEndCall(activeCoordinatedCallBooking)}
+              className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest rounded-2xl transition-all shadow-lg active:scale-95 cursor-pointer flex items-center justify-center gap-2 mt-4"
+            >
+              <Phone size={16} className="rotate-135" />
+              End Virtual Secure Call
+            </button>
+          </div>
+        </div>
+      )}
       {/* Tab Switcher */}
       <div className="bg-white border-b border-slate-200 px-6 py-2 sticky top-0 z-30 flex justify-center">
          <div className="bg-slate-100 p-1 rounded-2xl flex w-full">

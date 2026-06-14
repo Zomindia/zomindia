@@ -164,16 +164,16 @@ export default function HardwarePermissionDiagnoser() {
       <div className="flex flex-col gap-1.5">
         <h3 className="text-xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-2">
           <Cpu className="text-[#050CA6] stroke-[2.5]" size={22} />
-          PWA Hardware & Sensor Control Center
+          App Permissions & Safety
         </h3>
         <p className="text-xs text-neutral-500 font-semibold leading-relaxed">
-          Verify and diagnose native mobile sensors. Granting authorities ensures real-time job-routing, active order navigation, and instant contactless validation scans.
+          Verify and configure permissions safely. Granting these permissions ensures accurate dispatch routing, live order navigation, and instant customer verification.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* SENSOR 1: HIGH-ACCURACY GEOLOCATION TEST BENCH */}
+        {/* SENSOR 1: HOME LOCATION (GPS) */}
         <div className="bg-white border border-neutral-150 rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -182,8 +182,8 @@ export default function HardwarePermissionDiagnoser() {
                   <MapPin size={16} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-neutral-800">High-Accuracy GPS</h4>
-                  <p className="text-[10px] text-neutral-400 font-semibold">Technician & Dispatch Routing</p>
+                  <h4 className="text-sm font-black text-neutral-800">Home Location (GPS)</h4>
+                  <p className="text-[10px] text-neutral-400 font-semibold">Technician & Order Routing</p>
                 </div>
               </div>
               <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
@@ -198,7 +198,7 @@ export default function HardwarePermissionDiagnoser() {
             </div>
 
             <p className="text-xs text-neutral-500 font-semibold leading-relaxed">
-              Coordinates must leverage cellular & GPS satellite locks. Standard browser fallbacks trigger if requests exceed 8000ms limit.
+              Your location is protected. Standard browser lookup triggers if high-accuracy fails or requests take too long.
             </p>
 
             {coords && (
@@ -214,9 +214,9 @@ export default function HardwarePermissionDiagnoser() {
               </div>
             )}
 
-            {/* Live GPS Console Stream */}
+            {/* GPS Activity Logs */}
             <div className="bg-neutral-900 border border-neutral-950 rounded-2xl p-3 h-28 overflow-y-auto text-[10px] font-mono text-emerald-400 space-y-1 block text-left">
-              <span className="text-neutral-500 block uppercase font-bold text-[8px] tracking-wider mb-1">Satellite Navigation Console Logs</span>
+              <span className="text-neutral-500 block uppercase font-bold text-[8px] tracking-wider mb-1">Location Logs</span>
               {geoLog.length === 0 ? (
                 <span className="text-neutral-500 italic block">Ready... Trigger test sequence below.</span>
               ) : (
@@ -253,7 +253,7 @@ export default function HardwarePermissionDiagnoser() {
           </div>
         </div>
 
-        {/* SENSOR 2: CAMERA STREAM LOCK & CAPTURE LAB */}
+        {/* SENSOR 2: CAMERA ACCESS */}
         <div className="bg-white border border-neutral-150 rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -262,8 +262,8 @@ export default function HardwarePermissionDiagnoser() {
                   <Camera size={16} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-neutral-800">Camera Media Stream</h4>
-                  <p className="text-[10px] text-neutral-400 font-semibold">QR Checks & Asset Auditing</p>
+                  <h4 className="text-sm font-black text-neutral-800">Camera Access</h4>
+                  <p className="text-[10px] text-neutral-400 font-semibold">QR Scanning & Photo Uploads</p>
                 </div>
               </div>
               <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
@@ -278,7 +278,7 @@ export default function HardwarePermissionDiagnoser() {
             </div>
 
             <p className="text-xs text-neutral-500 font-semibold leading-relaxed">
-              Bound web-RTC viewport with immediate backfacing video filters. Cleanup sequences trigger globally on unmount.
+              Required for scanning job QR codes and uploading work completion photos. Safe and secure.
             </p>
 
             {/* Video preview / Frozen Photo Frame */}
@@ -293,7 +293,7 @@ export default function HardwarePermissionDiagnoser() {
                     muted
                   />
                   <div className="absolute top-2 left-2 bg-emerald-500/90 text-white text-[8px] font-bold py-0.5 px-2 rounded-full uppercase animate-pulse flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white block" /> Live Stream Feed
+                    <span className="w-1.5 h-1.5 rounded-full bg-white block" /> Camera Preview
                   </div>
                   <button 
                     onClick={handleCapturePhoto}
@@ -310,13 +310,13 @@ export default function HardwarePermissionDiagnoser() {
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute top-2 left-2 bg-neutral-900/95 text-[#050CA6] border border-[#050CA6] text-[8.5px] font-black py-0.5 px-2 rounded-full uppercase">
-                    Captured Static
+                    Stored Image
                   </div>
                 </>
               ) : (
                 <div className="text-center p-4 text-neutral-600 flex flex-col items-center gap-2">
                   <VideoOff size={18} className="text-neutral-500" />
-                  <p className="text-[10px] font-semibold">Video hardware is currently dormant.</p>
+                  <p className="text-[10px] font-semibold">Camera is currently inactive.</p>
                 </div>
               )}
             </div>
@@ -333,18 +333,18 @@ export default function HardwarePermissionDiagnoser() {
             {isCameraActive ? (
               <>
                 <VideoOff size={12} />
-                <span>Shutdown Camera Stream</span>
+                <span>Turn Off Camera</span>
               </>
             ) : (
               <>
                 <Video size={12} />
-                <span>Initialize Camera Feed</span>
+                <span>Test Camera Connection</span>
               </>
             )}
           </button>
         </div>
 
-        {/* SENSOR 3: MICROPHONE & AUDIO VERIFICATION */}
+        {/* SENSOR 3: MICROPHONE ACCESS */}
         <div className="bg-white border border-neutral-150 rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-4 md:col-span-2">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -353,8 +353,8 @@ export default function HardwarePermissionDiagnoser() {
                   <Mic size={16} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-neutral-800">Voice Notes & Microphone Permission</h4>
-                  <p className="text-[10px] text-neutral-400 font-semibold">Technician briefings & VoIP channels</p>
+                  <h4 className="text-sm font-black text-neutral-800">Microphone Access</h4>
+                  <p className="text-[10px] text-neutral-400 font-semibold">Voice Notes & Customer Support</p>
                 </div>
               </div>
               <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
@@ -369,7 +369,7 @@ export default function HardwarePermissionDiagnoser() {
             </div>
 
             <p className="text-xs text-neutral-500 font-semibold leading-relaxed">
-              Verify your mobile audio capture input. Live recording integrates clean media streams that can be stored securely in local app directories.
+              Verify your mic connection. Audio permission is required to send voice notes or speak with customer support in emergencies.
             </p>
 
             {/* Audio Signal Visualizer and status bar */}
@@ -380,10 +380,10 @@ export default function HardwarePermissionDiagnoser() {
                 </div>
                 <div>
                   <p className="text-xs font-bold text-neutral-700">
-                    {isMicActive ? `Recording live voice note...` : `Voice transmission is currently inactive.`}
+                    {isMicActive ? `Recording audio preview...` : `Microphone is currently inactive.`}
                   </p>
                   <p className="text-[10px] text-neutral-400 font-semibold">
-                    {isMicActive ? `Elapsed: ${recordingSeconds}s` : 'Press start to authorize audio capture.'}
+                    {isMicActive ? `Elapsed: ${recordingSeconds}s` : 'Press below to test your audio.'}
                   </p>
                 </div>
               </div>

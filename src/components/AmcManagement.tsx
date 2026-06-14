@@ -515,10 +515,10 @@ export default function AmcManagement({ amcs, users, services, onUpdateStatus }:
                                <div className="w-8 h-8 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center font-bold text-[10px]">{i+1}</div>
                                <span className="text-xs font-bold text-slate-900 leading-none">Booking #{bid.slice(0, 8).toUpperCase()}</span>
                             </div>
-                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Utilized</span>
+                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Used</span>
                          </div>
                        )) : (
-                         <div className="p-6 text-center bg-slate-50 rounded-3xl text-xs text-slate-400 italic">No services utilized yet under this contract.</div>
+                         <div className="p-6 text-center bg-slate-50 rounded-3xl text-xs text-slate-400 italic">No services used yet under this contract.</div>
                        )}
                     </div>
                  </div>

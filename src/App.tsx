@@ -68,8 +68,12 @@ const ReferralsView = lazy(() => import('./components/ReferralsView'));
 import { useTranslation } from './lib/i18n';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
-const headerLogoImg = 'https://ik.imagekit.io/zomindia/zomindia%20logo%20H.png?updatedAt=1781064945841';
-const footerLogoImg = 'https://ik.imagekit.io/zomindia/zomindia%20logo%20H.png?updatedAt=1781064945841';
+import MainLogo from './assets/logo-main.png';
+import FooterLogo from './assets/logo-footer.png';
+import LoaderGif from './assets/loader.gif';
+
+const headerLogoImg = MainLogo;
+const footerLogoImg = FooterLogo;
 import teamMember1Img from './assets/images/regenerated_image_1780775603903.webp';
 import teamMember2Img from './assets/images/regenerated_image_1780775605334.webp';
 
@@ -173,6 +177,28 @@ function isVersionHigher(newVer: string, oldVer: string): boolean {
   return false;
 }
 
+export type ActiveTabType = 'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'refund' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs' | 'referrals';
+
+export const getTabFromUrl = (): ActiveTabType => {
+  if (typeof window === 'undefined') return 'home';
+  const path = window.location.pathname;
+  if (path === '/about-us') return 'about';
+  if (path === '/contact-us') return 'contact';
+  if (path === '/privacy-policy') return 'privacy';
+  if (path === '/terms-and-conditions' || path === '/terms-of-service') return 'terms';
+  if (path === '/refund-policy' || path === '/cancellation-and-refund') return 'refund';
+  if (path === '/help-center' || path === '/help') return 'help';
+
+  const hash = window.location.hash.replace('#', '');
+  if (hash === 'about-us' || hash === 'about') return 'about';
+  if (hash === 'contact-us' || hash === 'contact') return 'contact';
+  if (hash === 'privacy-policy' || hash === 'privacy') return 'privacy';
+  if (hash === 'terms-and-conditions' || hash === 'terms-of-service' || hash === 'terms') return 'terms';
+  if (hash === 'refund-policy' || hash === 'cancellation-and-refund' || hash === 'refund') return 'refund';
+  if (hash === 'help-center' || hash === 'help') return 'help';
+  return (hash as ActiveTabType) || 'home';
+};
+
 export default function App() {
   useKeyboardFriendlyInputs();
   const [user, setUser] = useState<User | null>(null);
@@ -201,7 +227,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeTab, setActiveTabState] = useState<'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs' | 'referrals'>('home');
+  const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => getTabFromUrl());
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -317,9 +343,32 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab) {
-      const currentHash = window.location.hash.replace('#', '');
-      if (currentHash !== activeTab) {
-        window.history.pushState(null, '', `#${activeTab}`);
+      const path = window.location.pathname;
+      const hash = window.location.hash.replace('#', '');
+
+      const publicPaths: Record<string, string> = {
+        'about': '/about-us',
+        'contact': '/contact-us',
+        'privacy': '/privacy-policy',
+        'terms': '/terms-and-conditions',
+        'refund': '/refund-policy',
+        'help': '/help-center'
+      };
+
+      const targetPath = publicPaths[activeTab];
+      if (targetPath) {
+        if (path !== targetPath) {
+          window.history.pushState(null, '', targetPath);
+        }
+      } else {
+        const isPublicPath = Object.values(publicPaths).includes(path);
+        const resolvedPath = isPublicPath ? '/' : path;
+        
+        if (activeTab === 'home' && isPublicPath) {
+          window.history.pushState(null, '', '/#home');
+        } else if (hash !== activeTab) {
+          window.history.pushState(null, '', `${resolvedPath === '/' ? '' : resolvedPath}#${activeTab}`);
+        }
       }
       localStorage.setItem('zomindia_last_active_tab', activeTab);
     }
@@ -350,26 +399,18 @@ export default function App() {
   }, [selectedServiceId]);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') as typeof activeTab;
-      if (hash) {
-        setActiveTabState(hash);
-      } else {
-        // Fallback to home when back button leads to root URL without hash
-        setActiveTabState('home');
-      }
+    const handleUrlChange = () => {
+      const tab = getTabFromUrl();
+      setActiveTabState(tab);
     };
 
-    // Set initial tab from hash if present, or fallback to standalone stored flow
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
 
-    const initialHash = window.location.hash.replace('#', '') as typeof activeTab;
-    if (initialHash) {
-      setActiveTabState(initialHash);
-    } else if (isStandalone) {
+    const hasSpecificRoute = window.location.pathname !== '/' || !!window.location.hash;
+    if (!hasSpecificRoute && isStandalone) {
       const savedTab = localStorage.getItem('zomindia_last_active_tab') as typeof activeTab | null;
       const savedCatId = localStorage.getItem('zomindia_last_selected_category_id');
       const savedBookingId = localStorage.getItem('zomindia_last_target_booking_id');
@@ -380,16 +421,15 @@ export default function App() {
         if (savedCatId) setSelectedCategoryId(savedCatId);
         if (savedBookingId) setTargetBookingId(savedBookingId);
         if (savedServiceId) setSelectedServiceId(savedServiceId);
-        window.history.replaceState(null, '', `#${savedTab}`);
-      } else {
-        window.history.replaceState(null, '', '#home');
       }
-    } else {
-      window.history.replaceState(null, '', '#home');
     }
 
-    window.addEventListener('popstate', handleHashChange);
-    return () => window.removeEventListener('popstate', handleHashChange);
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
   }, []);
 
 
@@ -503,7 +543,7 @@ export default function App() {
         const updatedUser = auth.currentUser;
         if (updatedUser && updatedUser.emailVerified) {
           setUser({ ...updatedUser } as any);
-          setVerificationFeedback("Email successfully verified! Unlocking application dashboard...");
+          setVerificationFeedback("Email verified successfully! Opening your dashboard...");
           setTimeout(() => setVerificationFeedback(null), 6000);
         }
       } catch (err) {
@@ -517,66 +557,14 @@ export default function App() {
   useEffect(() => {
     seedDatabase();
     let unsubscribeBookings = () => {};
+    let unsubscribeProfile = () => {};
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      unsubscribeProfile();
+      unsubscribeBookings();
+
       if (u) {
-        // ... previous profile logic
-        const profileDoc = await getDoc(doc(db, 'users', u.uid));
-
-        let profileEmail = '';
-        if (profileDoc.exists()) {
-          profileEmail = (profileDoc.data() as UserProfile).email || '';
-        }
-
-        const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
-                            profileEmail.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-
-        let userRole: UserRole = 'customer';
-
-        if (profileDoc.exists()) {
-          const currentProfile = profileDoc.data() as UserProfile;
-          userRole = currentProfile.role;
-
-          if (isAdminUser) {
-            userRole = 'admin';
-            if (currentProfile.role !== 'admin' || currentProfile.adminSubRole !== 'head') {
-              updateDoc(doc(db, 'users', u.uid), { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
-            }
-          }
-
-          const profileUpdate: any = {
-            ...currentProfile,
-            role: userRole
-          };
-          if (isAdminUser || currentProfile.adminSubRole) {
-            profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
-          }
-          setProfile(profileUpdate as UserProfile);
-        } else {
-          const newProfile: any = {
-            uid: u.uid,
-            displayName: u.displayName || 'User',
-            email: u.email || '',
-            phoneNumber: u.phoneNumber || '',
-            role: isAdminUser ? 'admin' : 'customer',
-            photoURL: u.photoURL || '',
-            referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-            walletBalance: 100, // ₹100 Welcome Bonus on registration!
-            notificationPreferences: {
-              bookingUpdates: true,
-              promotionalMessages: true
-            },
-            createdAt: Timestamp.now() as any,
-          };
-          if (isAdminUser) {
-            newProfile.adminSubRole = 'head';
-          }
-          await setDoc(doc(db, 'users', u.uid), newProfile);
-          setProfile(newProfile as UserProfile);
-          userRole = newProfile.role;
-        }
-
         // Native Push Registration trigger
         try {
           const { registerPushNotifications } = await import('./lib/push-notifications');
@@ -585,28 +573,76 @@ export default function App() {
           console.error("Push registration trigger failed:", e);
         }
 
-        // Forced redirection for admin
-        const currentHash = window.location.hash.replace('#', '');
-        if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
-          setActiveTab('admin');
-        } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
-          setActiveTab('partner');
-        }
+        const userDocRef = doc(db, 'users', u.uid);
+        unsubscribeProfile = onSnapshot(userDocRef, async (snap) => {
+          let currentProfile = snap.data() as UserProfile;
+          if (!snap.exists()) {
+            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+            const newProfile: any = {
+              uid: u.uid,
+              displayName: u.displayName || 'User',
+              email: u.email || '',
+              phoneNumber: u.phoneNumber || '',
+              role: isAdminUser ? 'admin' : 'customer',
+              photoURL: u.photoURL || '',
+              referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
+              walletBalance: 100, // ₹100 Welcome Bonus on registration!
+              notificationPreferences: {
+                bookingUpdates: true,
+                promotionalMessages: true
+              },
+              createdAt: Timestamp.now() as any,
+            };
+            if (isAdminUser) {
+              newProfile.adminSubRole = 'head';
+            }
+            await setDoc(userDocRef, newProfile);
+            currentProfile = newProfile;
+          }
 
-        // Global Active Booking Listener
-        const q = query(
-          collection(db, 'bookings'),
-          where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
-          where('status', 'in', ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
-        );
-        unsubscribeBookings = onSnapshot(q, (snap) => {
-          setHasActiveArrival(!snap.empty);
+          const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
+                              currentProfile?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+
+          let userRole: UserRole = currentProfile?.role || 'customer';
+
+          if (isAdminUser && (userRole !== 'admin' || currentProfile?.adminSubRole !== 'head')) {
+            userRole = 'admin';
+            updateDoc(userDocRef, { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
+          }
+
+          const profileUpdate: any = {
+            ...currentProfile,
+            uid: u.uid,
+            role: userRole
+          };
+          if (isAdminUser || currentProfile?.adminSubRole) {
+            profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
+          }
+          setProfile(profileUpdate as UserProfile);
+
+          // Forced redirection for admin / partner
+          const currentHash = window.location.hash.replace('#', '');
+          if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
+            setActiveTab('admin');
+          } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
+            setActiveTab('partner');
+          }
+
+          // Global Active Booking Listener
+          unsubscribeBookings();
+          const q = query(
+            collection(db, 'bookings'),
+            where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
+            where('status', 'in', ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
+          );
+          unsubscribeBookings = onSnapshot(q, (snapB) => {
+            setHasActiveArrival(!snapB.empty);
+          });
         });
 
       } else {
         setProfile(null);
         setHasActiveArrival(false);
-        unsubscribeBookings();
       }
       setLoading(false);
     });
@@ -614,6 +650,7 @@ export default function App() {
     return () => {
       unsubscribeAuth();
       unsubscribeBookings();
+      unsubscribeProfile();
     };
   }, []);
 
@@ -727,13 +764,13 @@ export default function App() {
       } else {
         setUpdateProgress(current);
         if (current < 25) {
-          setUpdateStep('Loading new updates...');
+          setUpdateStep('Downloading updates...');
         } else if (current < 55) {
           setUpdateStep('Checking connection...');
         } else if (current < 85) {
-          setUpdateStep('Syncing catalog info...');
+          setUpdateStep('Updating service list...');
         } else {
-          setUpdateStep('Completing update...');
+          setUpdateStep('Almost done...');
         }
       }
     }, 200);
@@ -851,6 +888,306 @@ export default function App() {
       setSelectedServiceId(id);
       setActiveTab('service-details');
     };
+
+    // Public SEO/Footer Pages accessible without authentication
+    if (['about', 'contact', 'help', 'terms', 'privacy', 'refund'].includes(activeTab)) {
+      if (activeTab === 'about') {
+        return (
+          <StaticPage
+            title="About us"
+            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as Zomindia Internet Technologies, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
+
+Our brand, Zomindia, is built upon a simple promise: providing absolute trust, high-quality work, and complete safety with instant, secure OTP-based logins. We recognize that your home or business is sacred, which is why we meticulously train, verify, and monitor every service partner. No compromises, no hidden charges, and absolute on-time execution every single day.
+
+Our Mission
+At Zomindia Internet Technologies, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
+
+Why Choose Us?
+• 100% Safe & Trusted: Every helper is background-checked and professionally trained. All logins and bookings are secured with instant mobile OTPs.
+• Gold Standard Quality: We use safe, eco-friendly cleaning detergents and professional equipment to make sure you get premium results for your laundry, cleaning, and repairs.
+• Always On Time: We respect your time. If our professional partner gets delayed, we'll track them live and make it up to you.
+• Proudly Indore-First: Being based in Indore, MP, INDIA, we understand Indori homes, garments care, and local needs perfectly!`}
+            onBack={() => setActiveTab('home')}
+          >
+            {/* Team Leadership Section */}
+            <div className="mt-16 border-t border-slate-100 pt-16">
+              <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">Meet Our Leadership</h2>
+              <p className="text-slate-500 mb-10 text-base max-w-xl">
+                Our core team in Indore drives operational excellence, tech coordination, and robust partner management to deliver flawless home services daily.
+              </p>
+
+              <div className="grid grid-cols-1 gap-8 md:gap-10">
+                {/* Member 1: Ranu */}
+                <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
+                  {/* Image Column */}
+                  <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
+                    <img
+                      src={teamMember1Img}
+                      alt="Ranu - Head in charge management"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400";
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
+                  </div>
+
+                  {/* Details Column */}
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <h3 className="text-2xl font-bold text-slate-900">Ranu</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 27</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
+                      </div>
+                      <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Head in charge management</p>
+                    </div>
+
+                    <p className="text-slate-600 text-base leading-relaxed">
+                      A dynamic leader with a strong track record in operations, Ranu oversees our service quality assurance, scheduling integrity, and partner coordination programs, ensuring seamless service delivery across Central India.
+                    </p>
+
+                    <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
+                      <span>Department: Operations &amp; Management</span>
+                      <span>•</span>
+                      <span>Indore HQ</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Member 2: Vikass Chopra */}
+                <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
+                  {/* Image Column */}
+                  <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
+                    <img
+                      src={teamMember2Img}
+                      alt="Vikass Chopra - Chief Incharge"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=400";
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
+                  </div>
+
+                  {/* Details Column */}
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <h3 className="text-2xl font-bold text-slate-900">Vikass Chopra</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 35</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
+                      </div>
+                      <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Chief Incharge</p>
+                    </div>
+
+                    <p className="text-slate-600 text-base leading-relaxed">
+                      With over a decade of hands-on expertise in field services and customer experience management, Vikass orchestrates our prime support lines, technical dispatch protocols, and system reliability, driving our team focus toward gold standards.
+                    </p>
+
+                    <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
+                      <span>Department: Executive Direction</span>
+                      <span>•</span>
+                      <span>Indore HQ</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </StaticPage>
+        );
+      }
+
+      if (activeTab === 'contact') {
+        return (
+          <StaticPage
+            title="Contact Us"
+            content={`Have questions, feedback, or need help with a booking? Zomindia is here for you! Whether you are a customer checking your booking status, or a local service provider wanting to join our team, we are happy to help anytime.`}
+            onBack={() => setActiveTab('home')}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 mb-16">
+              {/* Customer Support Card */}
+              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+                <div className="w-12 h-12 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Customer Support</h3>
+                <p className="text-slate-500 text-sm mb-6 leading-relaxed">Assistance for active bookings, schedule adjustments, laundry counts, and general customer feedback of home services.</p>
+                
+                <div className="space-y-5 w-full mt-auto">
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Customer Care No</span>
+                    <a href="tel:+919424456606" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9424456606</a>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Support Email</span>
+                    <a href="mailto:support@zomindia.com" className="text-slate-900 text-base font-extrabold hover:text-blue-700 transition-colors">support@zomindia.com</a>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Official WhatsApp</span>
+                    <a href="https://wa.me/919424456606" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-full text-sm font-bold transition-all duration-200 mt-1">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.022-.014-.507-.25-1.011-.5-.505-.25-.769-.373-.979-.373-.208 0-.323.014-.554.25-.23.238-.883.882-1.083 1.056-.195.176-.411.205-.71.07-.3-.13-1.264-.47-2.405-1.466-.883-.756-1.488-1.74-1.66-2.01-.19-.29-.02-.45.1-.56.1-.1.2-.23.3-.35.1-.09.136-.2.2-.3.06-.1.03-.207-.01-.3-.04-.09-.373-.89-.512-1.22-.136-.319-.277-.27-.373-.27-.08-.004-.2-.004-.32-.004-.12 0-.319.043-.487.217-.168.174-.658.643-.658 1.57s.676 1.83.77 1.96c.094.12 1.35 2.056 3.27 2.88.459.195.82.312 1.096.398.461.147.88.127 1.21.078.36-.054 1.107-.453 1.263-.89.156-.434.156-.807.11-1.056-.046-.248-.19-.372-.36-.453zm-5.452 7.618H12c-2.14 0-4.22-.57-6.04-1.66L1 22l1.69-4.94A11.93 11.93 0 0 1 1.05 12C1.05 5.4 6.4 0 13 0s11.95 5.4 11.95 12c0 6.6-5.4 12-11.93 12z"/>
+                      </svg>
+                      +91 9424456606
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Partner Relations Card */}
+              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+                <div className="w-12 h-12 bg-amber-50 text-amber-700 rounded-2xl flex items-center justify-center mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Partner Support</h3>
+                <p className="text-slate-500 text-sm mb-6 leading-relaxed">Accelerate your services startup. Grow your earning channels, verify profiles, and manage corporate vendor operations with us.</p>
+                
+                <div className="space-y-5 w-full mt-auto">
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Partner Helpline</span>
+                    <a href="tel:+919993655574" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9993655574</a>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">General Inquiries Email</span>
+                    <a href="mailto:info@zomindia.com" className="text-slate-900 text-base font-extrabold hover:text-blue-700 transition-colors">info@zomindia.com</a>
+                  </div>
+                  <div className="pt-2">
+                    <span className="text-[10px] font-bold text-slate-400 font-mono tracking-widest uppercase block">Partner Desk: 9 AM - 7 PM</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corporate Location Card */}
+              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+                <div className="w-12 h-12 bg-indigo-50 text-indigo-700 rounded-2xl flex items-center justify-center mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600">
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Registered Address</h3>
+                <p className="text-slate-500 text-sm mb-6 leading-relaxed">Official physical and legal headquarters. Drop by for business-level negotiations or authorized paperwork.</p>
+                
+                <div className="space-y-5 w-full mt-auto">
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Parent Entity</span>
+                    <span className="text-slate-900 text-base font-black">Zomindia Internet Technologies</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">HQ Location</span>
+                    <p className="text-slate-900 text-base font-extrabold leading-normal">Indore, MP, INDIA</p>
+                  </div>
+                  <div className="pt-2">
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-wider inline-block">Registered HQ</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </StaticPage>
+        );
+      }
+
+      if (activeTab === 'help') {
+        return (
+          <StaticPage
+            title="Help Center"
+            content={`Welcome to Zomindia Help! We have made this simple guide to answer all your questions about bookings, pricing, laundry, and our quality guarantee.
+
+How do I book a service?
+Just pick a service on our home page, select what you need, verify your phone number with a quick OTP, and choose a time. We'll match you with a certified nearby expert right away!
+
+How do you make sure the partner is safe to enter my home?
+Your safety is our top priority. Every single service partner on Zomindia Internet Technologies goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
+
+What if I am not happy with the service?
+We offer a 100% Satisfaction Guarantee! If the work isn't done correctly, let us know via the "My Support Tickets" chat or call +91 9424456606 within 24 hours. We will investigate and send a professional to redo the job completely free of charge.
+
+Can I cancel or change my booking?
+Yes, absolutely! You can cancel or reschedule any booking up to 4 hours before the service time for free. We will issue a full refund with no questions asked.`}
+            onBack={() => setActiveTab('home')}
+          />
+        );
+      }
+
+      if (activeTab === 'terms') {
+        return (
+          <StaticPage
+            title="Terms & Conditions"
+            content={`Welcome to Zomindia Internet Technologies! By using our website or app, you agree to these simple and transparent rules. Please read them below—it takes less than 2 minutes!
+
+1. Your Account & OTP Security
+We keep your login simple and secure using a quick mobile OTP. You are responsible for any bookings made using your phone number, so please keep your phone secure and active.
+
+2. Accurate Booking Info
+Please provide the correct home address and phone number when booking. If the address is wrong or we are given incorrect details, we might have to cancel your booking so our partners don't lose time traveling.
+
+3. Helping Our Partners Help You
+Please give our service partner a safe, respectful space, and clear access to water and electricity to complete the job. Also, please keep your money and valuables in a safe place before our cleaning experts start. If a partner is threatened or harassed, the booking will be stopped immediately with no refund.
+
+4. Simple & Fair Payments
+You agree to pay the prices shown on your booking screen, which include basic local taxes. You can pay securely online (UPI, Debit/Credit Card) or select Cash on Delivery (COD). If there are outstanding dues or payment issues, we may have to pause your account access.`}
+            onBack={() => setActiveTab('home')}
+          />
+        );
+      }
+
+      if (activeTab === 'privacy') {
+        return (
+          <StaticPage
+            title="Privacy Policy"
+            content={`At Zomindia Internet Technologies (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
+
+1. What Info We Collect & Why
+• Name, Email, and Phone: We use your phone number to log you in securely with a quick OTP. Your email is used for sending plain invoices and receipts.
+• Your Address: We collect your address to dispatch our service professionals straight to your doorstep.
+• Your Location: With your permission, we use your location to show available local services near you and help service partners find your home easily.
+
+2. No Selling of Data
+We will NEVER sell, rent, or trade your personal details to any outside marketing companies. Your data is only shared with the specific verified service provider assigned to complete your home booking.
+
+3. Safe & Secure Database
+All your data is stored in secure, top-tier cloud databases (Firestore) with strict locks. Only authorized people can see it.
+
+4. Your Data, Your Control
+You have full control over your details. You can view, update, or ask us to delete your account anytime by emailing us at support@zomindia.com.`}
+            onBack={() => setActiveTab('home')}
+          />
+        );
+      }
+
+      if (activeTab === 'refund') {
+        return (
+          <StaticPage
+            title="Cancellation & Refund"
+            content={`At Zomindia Internet Technologies, we believe in a simple and fair approach to booking changes. This policy explains our easy cancellation and refund rules in simple terms:
+
+1. Free Cancellations & Scheduling
+• Before 4 Hours: You can change or cancel any booking for free up to 4 hours before your scheduled time. No fees, no questions asked!
+• Within 4 Hours: If you cancel with less than 4 hours left, we charge a small cancellation fee of ₹99. This amount goes directly to the service partner to cover their travel expenses and time.
+• Laundry Pickups: You can change laundry timings for free as long as our delivery rider hasn't already reached your home.
+
+2. Super Simple Refunds
+• Online Payments: If you paid online via UPI, Card, or Netbanking, the money is sent back to your original payment account. We don't pay cash refunds for digital bookings to keep your transactions secure.
+• Refund Timing: We process refunds instantly. Your bank might take 3 to 5 business days to clear the amount and show it in your account.
+• Cash on Delivery (COD): If we owe you a refund for a COD order (for example, if you had fewer laundry clothes than expected), the difference is added instantly to your Zomindia wallet for your future bookings.
+
+3. Need Help?
+If you have any billing questions, or if your refund is delayed, please email us at support@zomindia.com or call Customer Care at +91 9424456606. We are always happy to help!`}
+            onBack={() => setActiveTab('home')}
+          />
+        );
+      }
+    }
 
     if (!profile) {
        if (activeTab === 'offers') {
@@ -973,176 +1310,7 @@ export default function App() {
       );
     }
 
-    if (activeTab === 'about') {
-      return (
-        <StaticPage
-          title="About zomindia"
-          content="zomindia is India's leading on-demand service marketplace, dedicated to bringing quality and reliability to every home. We connect skilled service professionals with individuals looking for expert help in cleaning, maintenance, repairs, and beauty services.
 
-Founded with the vision of formalizing the fragmented home services industry in India, zomindia ensures that every partner on our platform undergoes a rigorous background verification process and training to deliver exceptional service standards.
-
-Whether you're looking for a deep home cleaning, an expert electrician, or a relaxing salon experience at home, zomindia is your one-stop solution for a better living experience."
-          onBack={() => setActiveTab('home')}
-        >
-          {/* Team Leadership Section */}
-          <div className="mt-16 border-t border-slate-100 pt-16">
-            <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">Meet Our Leadership</h2>
-            <p className="text-slate-500 mb-10 text-base max-w-xl">
-              Our core team in Indore drives operational excellence, tech coordination, and robust partner management to deliver flawless home services daily.
-            </p>
-
-            <div className="grid grid-cols-1 gap-8 md:gap-10">
-              {/* Member 1: Ranu */}
-              <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
-                {/* Image Column */}
-                <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
-                  <img
-                    src={teamMember1Img}
-                    alt="Ranu - Head in charge management"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400";
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
-                </div>
-
-                {/* Details Column */}
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <h3 className="text-2xl font-bold text-slate-900">Ranu</h3>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 27</span>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
-                    </div>
-                    <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Head in charge management</p>
-                  </div>
-
-                  <p className="text-slate-600 text-base leading-relaxed">
-                    A dynamic leader with a strong track record in operational efficiency, Ranu oversees our service quality assurance, scheduling integrity, and partner coordination programs, ensuring seamless service delivery across Central India.
-                  </p>
-
-                  <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                    <span>Department: Operations &amp; Management</span>
-                    <span>•</span>
-                    <span>Indore HQ</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Member 2: Vikass Chopra */}
-              <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
-                {/* Image Column */}
-                <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
-                  <img
-                    src={teamMember2Img}
-                    alt="Vikass Chopra - Chief Incharge"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=400";
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
-                </div>
-
-                {/* Details Column */}
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <h3 className="text-2xl font-bold text-slate-900">Vikass Chopra</h3>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 35</span>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
-                    </div>
-                    <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Chief Incharge</p>
-                  </div>
-
-                  <p className="text-slate-600 text-base leading-relaxed">
-                    With over a decade of hands-on expertise in field services and customer experience management, Vikass orchestrates our prime support lines, technical dispatch protocols, and system reliability, driving our team focus toward gold standards.
-                  </p>
-
-                  <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                    <span>Department: Executive Direction</span>
-                    <span>•</span>
-                    <span>Indore HQ</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </StaticPage>
-      );
-    }
-
-    if (activeTab === 'contact') {
-      return (
-        <StaticPage
-          title="Contact Us"
-          content="Have questions or need assistance with a booking? Our dedicated support team is here to help you 24/7.
-
-Email: support@zomindia.com
-Phone: +91 1800-ZOM-INDIA
-HQ Address: 4th Floor, Tech Hub, Gurgaon, Haryana, India.
-
-For business inquiries or corporate partnerships, please reach out to business@zomindia.com."
-          onBack={() => setActiveTab('home')}
-        />
-      );
-    }
-
-    if (activeTab === 'help') {
-      return (
-        <StaticPage
-          title="Help Center"
-          content="Welcome to the zomindia Help Center. Find answers to common questions about bookings, payments, and our service quality guarantee.
-
-How do I book a service?
-Simply browse our categories, select a service, and choose a time slot that works for you. You can pay securely through the platform after the service is completed.
-
-What is the Quality Guarantee?
-If you're not satisfied with a service, please let us know within 24 hours. We will investigate and, if necessary, arrange for a re-service at no additional cost.
-
-What if my service partner is late?
-Our partners strive for punctuality. If a delay occurs, you will be notified and can contact support. We offer compensation for significant delays.
-
-Can I cancel my booking?
-Yes, you can cancel your booking through the 'My Bookings' tab up to 4 hours before the scheduled time for a full refund."
-          onBack={() => setActiveTab('home')}
-        />
-      );
-    }
-
-    if (activeTab === 'terms') {
-      return (
-        <StaticPage
-          title="Terms of Service"
-          content="By using the zomindia platform, you agree to the following terms and conditions:
-
-1. User Accounts: You are responsible for maintaining the confidentiality of your account and password.
-2. Booking & Payments: Payments for services must be made through our authorized payment gateways or as cash on delivery if specified.
-3. Cancellations: Certain cancellation fees may apply if bookings are cancelled within a short window of the scheduled time.
-4. Partner Conduct: While we verify our partners, zomindia acts as a marketplace and users should exercise normal precautions.
-5. Limitation of Liability: zomindia is not liable for indirect or consequential damages arising from the use of the platform."
-          onBack={() => setActiveTab('home')}
-        />
-      );
-    }
-
-    if (activeTab === 'privacy') {
-      return (
-        <StaticPage
-          title="Privacy Policy"
-          content="Your privacy is of paramount importance to zomindia. This policy outlines how we collect, use, and protect your personal information.
-
-Data Collection: We collect your name, contact details, and address to facilitate service delivery.
-Data Usage: Your information is shared with assigned service partners only for the purpose of completing your booking.
-Data Security: We implement industry-standard encryption and security protocols to safeguard your personal data.
-Marketing: We may send you promotional offers if you have opted in to receive them. You can opt-out at any time."
-          onBack={() => setActiveTab('home')}
-        />
-      );
-    }
 
     if (activeTab === 'notifications' && profile) {
       return <NotificationsView profile={profile} onNavigate={(tab, bId) => {
@@ -1406,7 +1574,6 @@ Marketing: We may send you promotional offers if you have opted in to receive th
         </div>
       </nav>
 
-      {/* Email Verification Required Banner */}
       {user && !user.emailVerified && user.email && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-3 sm:py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-bold shadow-sm transition-all">
           <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
@@ -1414,7 +1581,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               <Mail size={16} />
             </div>
             <div className="flex flex-col gap-1 min-w-0 text-left">
-              <span className="leading-relaxed">Verify your email to secure your account. Verification link sent to <span className="underline text-amber-950 font-black break-all">{user.email}</span>.</span>
+              <span className="leading-relaxed">Please verify your email address. We've sent a verification link to <span className="underline text-amber-950 font-black break-all">{user.email}</span>.</span>
               {(verificationFeedback || verificationFeedbackError) && (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[10.5px]">
                   {verificationFeedback && <span className="text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100/50">✓ {verificationFeedback}</span>}
@@ -1444,7 +1611,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                 } catch (err: any) {
                   let userFriendlyMsg = "Failed to resend verification link.";
                   if (err.code === 'auth/too-many-requests') {
-                    userFriendlyMsg = "Spam protection: Too many requests. Please wait a few minutes before resending.";
+                    userFriendlyMsg = "Please wait a few minutes before resending.";
                   } else if (err.code === 'auth/invalid-email') {
                     userFriendlyMsg = "The email address has an invalid format.";
                   } else if (err.code === 'auth/user-not-found') {
@@ -1477,11 +1644,11 @@ Marketing: We may send you promotional offers if you have opted in to receive th
                     setVerificationFeedback("Success! Your email address is verified.");
                     setTimeout(() => setVerificationFeedback(null), 5000);
                   } else {
-                    setVerificationFeedbackError("Email still not verified. Click the link we sent, or click resend.");
+                    setVerificationFeedbackError("We couldn't verify your email yet. Please check your inbox or try resending the link.");
                     setTimeout(() => setVerificationFeedbackError(null), 5000);
                   }
                 } catch (err: any) {
-                  setVerificationFeedbackError(err.message || "Failed to sync status.");
+                  setVerificationFeedbackError(err.message || "Failed to check status.");
                   setTimeout(() => setVerificationFeedbackError(null), 5000);
                 } finally {
                   setVerificationLoading(false);
@@ -1489,7 +1656,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
               }}
               className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-all uppercase tracking-wider text-[9px] font-black shadow-md shadow-amber-500/20"
             >
-              Verify Status
+              Check Again
             </button>
           </div>
         </div>
@@ -1665,13 +1832,13 @@ Marketing: We may send you promotional offers if you have opted in to receive th
             <div className="space-y-4">
               <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-widest font-mono">Support</h4>
               <ul className="space-y-2.5 text-sm font-semibold text-slate-500">
-                {['help', 'terms', 'privacy'].map((tabKey) => (
+                {['help', 'terms', 'privacy', 'refund'].map((tabKey) => (
                   <li key={tabKey}>
                     <button
                       onClick={() => setActiveTab(tabKey as any)}
                       className="hover:text-blue-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-bold"
                     >
-                      {tabKey === 'help' ? 'Help Center' : tabKey === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
+                      {tabKey === 'help' ? 'Help Center' : tabKey === 'terms' ? 'Terms & Conditions' : tabKey === 'privacy' ? 'Privacy Policy' : 'Cancellation & Refund'}
                     </button>
                   </li>
                 ))}
@@ -1680,7 +1847,7 @@ Marketing: We may send you promotional offers if you have opted in to receive th
           </div>
 
           <div className="border-t border-slate-100 pt-10 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-bold text-slate-400">© 2026 zomindia. All rights reserved.</p>
+            <p className="text-xs font-bold text-slate-400">© 2026 Zomindia Internet Technologies. All rights reserved.</p>
             <div className="flex gap-6">
               {/* Optional footer social link decoration */}
             </div>

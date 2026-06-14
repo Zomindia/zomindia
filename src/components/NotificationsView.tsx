@@ -69,7 +69,7 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
     // Logic for deletion if requested.
   };
 
-  if (loading) return <LoadingScreen message="Syncing your personalized notifications inbox..." />;
+  if (loading) return <LoadingScreen message="Loading your notifications..." />;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-16 relative">
