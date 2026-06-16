@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, Clock, Info, ShieldCheck, Trash2, X, MapPin, Smartphone } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { LoadingScreen } from './LoadingIndicator';
-import logoImg from '../assets/images/regenerated_image_1780775052361.webp';
+import LogoIcon from '../assets/logo-icon.png';
+const logoImg = LogoIcon;
 
 interface Notification {
   id: string;

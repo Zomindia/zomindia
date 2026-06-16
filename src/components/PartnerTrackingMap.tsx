@@ -774,6 +774,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
   const [zoom, setZoom] = useState<number>(13);
   const [showDetailCard, setShowDetailCard] = useState<boolean>(false);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite' | 'terrain'>('terrain');
+
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [pulseEnabled, setPulseEnabled] = useState<boolean>(true);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(true);
@@ -1185,7 +1186,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
               setZoom(ev.detail.zoom);
             }
           }}
-          mapId="TRACKING_MAP"
+          mapId="DEMO_MAP_ID"
           mapTypeId={mapType}
           gestureHandling="auto"
           disableDefaultUI

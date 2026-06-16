@@ -15,7 +15,7 @@ import AmcManagement from './AmcManagement';
 import ReferralLifecycleManager from './ReferralLifecycleManager';
 import ChatWindow from './ChatWindow';
 import PartnerTrackingMap from './PartnerTrackingMap';
-import ManageBrandView from './ManageBrandView';
+
 import { 
   Users, 
   BarChart3, 
@@ -61,7 +61,7 @@ import {
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
-type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile' | 'brand';
+type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
 
 const triggerEcosystemUpdate = async (reason: string) => {
   try {
@@ -230,7 +230,6 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   };
 
   const isAdminAuthorized = (tabId: AdminTab) => {
-    if (tabId === 'brand') return profile.email === 'sarthakwebtech@gmail.com';
     if (tabId === 'my-profile') return true;
     if (!profile.adminSubRole || profile.adminSubRole === 'head') return true;
     
@@ -267,7 +266,6 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     { id: 'partner-promotions', icon: Gift, label: 'Partner Offers' },
     { id: 'help-center', icon: FileText, label: 'Help' },
     { id: 'tickets', icon: MessageSquare, label: 'Tickets' },
-    { id: 'brand', icon: ImageIcon, label: 'Manage Brand' },
     { id: 'admin-management', icon: ShieldAlert, label: 'Admins' },
   ] as { id: AdminTab; icon: any; label: string }[]).filter(item => isAdminAuthorized(item.id));
 
@@ -679,9 +677,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                   onUpdateStatus={handleUpdateAmcStatus}
                 />
               )}
-              {activeAdminTab === 'brand' && isAdminAuthorized('brand') && (
-                <ManageBrandView onNotify={triggerToast} />
-              )}
+
             </motion.div>
           </AnimatePresence>
         </div>

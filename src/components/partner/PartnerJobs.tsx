@@ -58,7 +58,6 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    if (typeof google === 'undefined') return;
     if (lat && lng) {
       setCoords({ lat, lng });
       // If address looks like coordinates, try to reverse geocode it to get a real address
@@ -122,10 +121,9 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
   }, [address, lat, lng]);
 
   const handleMapClick = async (e: any) => {
-    if (typeof google === 'undefined') return;
     let newCoords;
     if (e.latLng) {
-      newCoords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      newCoords = { lat: typeof e.latLng.lat === 'function' ? e.latLng.lat() : e.latLng.lat, lng: typeof e.latLng.lng === 'function' ? e.latLng.lng() : e.latLng.lng };
     } else if (e.detail?.latLng) {
       newCoords = { lat: e.detail.latLng.lat, lng: e.detail.latLng.lng };
     } else {
@@ -193,11 +191,12 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
           defaultCenter={coords}
           center={coords}
           defaultZoom={15}
-          mapId="PARTNER_APP_JOB_MAP"
+          mapId="DEMO_MAP_ID"
           gestureHandling="auto"
           disableDefaultUI
           className="w-full h-full"
           internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+          onClick={handleMapClick}
         >
           <AdvancedMarker 
             position={coords} 
@@ -297,7 +296,7 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking }
                 center={mapCenter}
                 defaultZoom={11}
                 zoom={activeMarkerId ? 14 : 11}
-                mapId="PARTNER_APP_ASSIGNED_TASKS_MAP"
+                mapId="DEMO_MAP_ID"
                 gestureHandling="auto"
                 disableDefaultUI
                 className="w-full h-full"

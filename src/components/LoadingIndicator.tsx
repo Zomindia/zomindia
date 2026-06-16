@@ -1,6 +1,7 @@
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
-import LoaderGif from '../assets/loader.gif';
+import LogoIcon from '../assets/logo-icon.png';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 
@@ -11,6 +12,8 @@ export function LoadingScreen({
 }: { 
   message?: string 
 }) {
+  const [imgError, setImgError] = useState(false);
+
   return (
     <div className="fixed inset-0 min-h-screen bg-white flex flex-col items-center justify-center overflow-hidden z-50 select-none">
       <div className="relative flex flex-col items-center justify-center font-sans text-center">
@@ -36,12 +39,19 @@ export function LoadingScreen({
                 ease: "easeInOut" 
               }}
             >
-              <img 
-                src={LoaderGif} 
-                alt="zomindia loader" 
-                className="w-full h-full object-contain focus-image-align"
-                referrerPolicy="no-referrer"
-              />
+              {!imgError ? (
+                <img 
+                  src={LogoIcon} 
+                  alt="zomindia icon" 
+                  className="w-full h-full object-contain focus-image-align"
+                  referrerPolicy="no-referrer"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-[#0F1A80] text-white rounded-xl font-extrabold text-2xl shadow-inner select-none">
+                  Z
+                </div>
+              )}
             </motion.div>
           </div>
         </div>
@@ -106,7 +116,7 @@ export function BrandedButtonSpinner({
   return (
     <div className={`relative ${className} flex items-center justify-center shrink-0`}>
       <img
-        src="https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133"
+        src={LogoIcon}
         alt="loading..."
         className="w-full h-full object-contain select-none z-0 animate-pulse"
         referrerPolicy="no-referrer"

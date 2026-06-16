@@ -6,7 +6,8 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info, CheckCircle, Smartphone, MapPin, ShieldCheck, Clock } from 'lucide-react';
 import { playSuccessChime } from '../lib/audio';
-import logoImg from '../assets/images/regenerated_image_1780775052361.webp';
+import LogoIcon from '../assets/logo-icon.png';
+const logoImg = LogoIcon;
 
 interface Props {
   onNavigate?: (tab: any, arg?: string) => void;
@@ -70,7 +71,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
             try {
               new Notification(notif.title || 'New Notification', {
                 body: notif.message,
-                icon: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133'
+                icon: '/logo-icon.png'
               });
             } catch (e) {
               console.error('Error showing native notification', e);

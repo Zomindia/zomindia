@@ -61,7 +61,7 @@ import {
   CreditCard,
 } from "lucide-react";
 
-import heroImage from "../assets/images/regenerated_image_1780966635884.jpg";
+const heroImage = "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=1200";
 
 interface Props {
   setActiveTab: (tab: any, arg?: any) => void;
@@ -1442,6 +1442,18 @@ export default function CustomerHome({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center text-left">
               {/* Left Column: Welcome Message and Search Input */}
               <div className="lg:col-span-6 space-y-6">
+                {profile && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-black/30 backdrop-blur-md border border-amber-500/25 rounded-full text-xs font-semibold text-amber-300 shadow-xl"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
+                    <span className="font-display font-black tracking-widest text-[10px] sm:text-[11px] uppercase text-amber-450">
+                      नमस्ते, {profile.displayName || (profile as any).name || 'User'}
+                    </span>
+                  </motion.div>
+                )}
                 <motion.h1
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -1778,6 +1790,18 @@ export default function CustomerHome({
             </div>
           ) : (
             <div className="max-w-4xl mx-auto text-center">
+              {profile && (
+                <motion.div
+                  initial={{ opacity: 0, y: -12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-6 bg-black/30 backdrop-blur-md border border-amber-500/25 rounded-full text-xs font-semibold text-amber-300 shadow-lg"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
+                  <span className="font-display font-black tracking-widest text-[11px] sm:text-xs uppercase text-amber-450">
+                    नमस्ते, {profile.displayName || (profile as any).name || 'User'}
+                  </span>
+                </motion.div>
+              )}
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

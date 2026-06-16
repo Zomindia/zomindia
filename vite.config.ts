@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         devOptions: {
           // Disable PWA in dev to avoid [vite] middleware and service worker errors
           enabled: false
@@ -83,25 +83,25 @@ export default defineConfig(({ mode }) => {
           display: 'standalone',
           icons: [
             {
-              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              src: '/logo-icon.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              src: '/logo-icon.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              src: '/logo-icon.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'maskable'
             },
             {
-              src: 'https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133',
+              src: '/logo-icon.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable'
@@ -118,6 +118,10 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
     },
     server: {
       // Explicitly disable HMR to avoid websocket connection errors in this environment

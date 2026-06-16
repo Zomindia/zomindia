@@ -169,18 +169,8 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
 
       navigator.geolocation.getCurrentPosition(
         successPos,
-        (err) => {
-          if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-            navigator.geolocation.getCurrentPosition(
-              successPos,
-              errorPos,
-              { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-            );
-          } else {
-            errorPos(err);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        errorPos,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   }, [availablePros.length]); 
@@ -191,7 +181,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
         defaultCenter={center}
         center={center}
         defaultZoom={12}
-        mapId="NEARBY_PROS_MAP"
+        mapId="DEMO_MAP_ID"
         mapTypeId={mapType}
         className="w-full h-full"
         gestureHandling="greedy"
@@ -207,7 +197,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
           </AdvancedMarker>
         ))}
       </Map>
-      <div className="absolute top-6 left-6 flex flex-col gap-2">
+      <div className="absolute top-6 left-6 flex flex-col gap-2 z-10">
          <div className="bg-white/90 backdrop-blur shadow-xl border border-slate-100 p-4 rounded-3xl">
            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Live Professionals</p>
            <div className="flex items-center gap-2">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Download, X, Smartphone, Check, Sparkles, Share, Plus, Loader } from 'lucide-react';
+import LogoIcon from '../assets/logo-icon.png';
 
 export default function AppInstallPopup() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -166,7 +167,7 @@ export default function AppInstallPopup() {
                 {/* Logo Icon */}
                 <div className="w-11 h-11 bg-white border border-slate-50 rounded-xl flex items-center justify-center shadow-md shadow-slate-100/30 mb-2.5 select-none overflow-hidden">
                   <img 
-                    src="https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133" 
+                    src={LogoIcon} 
                     alt="zomindia" 
                     className="w-7 h-7 object-contain"
                     referrerPolicy="no-referrer"
@@ -228,7 +229,7 @@ export default function AppInstallPopup() {
                   transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
                 />
                 <img 
-                  src="https://ik.imagekit.io/zomindia/zomindia%20icon.png?updatedAt=1781064947133" 
+                  src={LogoIcon} 
                   alt="ZomIndia" 
                   className="w-10 h-10 object-contain relative z-10"
                 />

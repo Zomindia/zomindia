@@ -11,6 +11,7 @@ import { auth, db } from '../lib/firebase';
 import { doc, setDoc, Timestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
+import LogoIcon from '../assets/logo-icon.png';
 import { 
   X, 
   Smartphone, 
@@ -575,7 +576,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         {view !== 'success-transition' && (
           <div className="px-6 pt-6 pb-2 flex justify-between items-center bg-white border-b border-neutral-50/50">
             <div className="flex items-center gap-1.5 select-none">
-              <span className="w-6 h-6 rounded-lg bg-[#050CA6] flex items-center justify-center text-white font-black text-xs">Z</span>
+              <img 
+                src={LogoIcon} 
+                alt="zomindia" 
+                className="w-6 h-6 object-contain rounded-full border border-neutral-100"
+                referrerPolicy="no-referrer"
+              />
               <span className="text-sm font-black tracking-tight text-slate-800">zomindia</span>
             </div>
             
@@ -602,8 +608,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 className="space-y-6 py-2"
               >
                 <div className="text-center space-y-2">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#050CA6] to-indigo-600 flex items-center justify-center text-white font-black text-2xl mx-auto shadow-lg shadow-blue-700/20">
-                    Z
+                  <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto shadow-md border border-amber-100/50 p-0.5">
+                    <img 
+                      src={LogoIcon} 
+                      alt="zomindia" 
+                      className="w-full h-full object-contain rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <h2 className="text-xl font-black tracking-tight text-neutral-900 mt-2">
                     Welcome to zomindia

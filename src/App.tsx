@@ -47,6 +47,7 @@ import AuthModal from './components/AuthModal';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import AppInstallPopup from './components/AppInstallPopup';
+import PWAUpdateRegister from './components/PWAUpdateRegister';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
@@ -68,49 +69,14 @@ const ReferralsView = lazy(() => import('./components/ReferralsView'));
 import { useTranslation } from './lib/i18n';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
-import MainLogo from './assets/logo-main.png';
-import FooterLogo from './assets/logo-footer.png';
-import LoaderGif from './assets/loader.gif';
+import LogoHorizontal from './assets/logo-horizontal.png';
+import LogoIcon from './assets/logo-icon.png';
 
-const headerLogoImg = MainLogo;
-const footerLogoImg = FooterLogo;
-import teamMember1Img from './assets/images/regenerated_image_1780775603903.webp';
-import teamMember2Img from './assets/images/regenerated_image_1780775605334.webp';
+const teamMember1Img = "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400";
+const teamMember2Img = "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400";
 
-const Logo = ({ size = 20, light = false, className = "", src }: { size?: number, light?: boolean, className?: string, src?: string }) => {
+const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, className?: string, src?: string }) => {
   const heightStyle = size && !className ? { height: size * 1.6 } : undefined;
-  
-  // High-fidelity preparation logic for custom brand logo uploads.
-  // This allows the app to dynamically White-Label/re-brand when administrators apply a custom logo.
-  const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('custom_zomindia_brand_logo');
-    } catch {
-      return null;
-    }
-  });
-
-  // Keep state reactive if the logo gets configured or reset live
-  useEffect(() => {
-    const checkBrandLogo = () => {
-      try {
-        const stored = localStorage.getItem('custom_zomindia_brand_logo');
-        if (stored !== customLogoUrl) {
-          setCustomLogoUrl(stored);
-        }
-      } catch (e) {
-        // Safe context rescue
-      }
-    };
-    window.addEventListener('storage', checkBrandLogo);
-    const interval = setInterval(checkBrandLogo, 1000);
-    return () => {
-      window.removeEventListener('storage', checkBrandLogo);
-      clearInterval(interval);
-    };
-  }, [customLogoUrl]);
-
-  const resolvedSrc = customLogoUrl || src || "https://ik.imagekit.io/zomindia/zomindia%20logo%20H.png?updatedAt=1781064945841";
 
   return (
     <div
@@ -118,19 +84,10 @@ const Logo = ({ size = 20, light = false, className = "", src }: { size?: number
       style={heightStyle}
     >
       <img
-        src={resolvedSrc}
+        src={LogoHorizontal}
         alt="ZOMINDIA LOGO"
         className="h-full w-auto max-w-full object-contain transition-all duration-300"
         referrerPolicy="no-referrer"
-        onError={() => {
-          // Fallback rescue if custom brand asset fails or is removed
-          if (customLogoUrl) {
-            setCustomLogoUrl(null);
-            try {
-              localStorage.removeItem('custom_zomindia_brand_logo');
-            } catch {}
-          }
-        }}
       />
     </div>
   );
@@ -202,27 +159,6 @@ export const getTabFromUrl = (): ActiveTabType => {
 export default function App() {
   useKeyboardFriendlyInputs();
   const [user, setUser] = useState<User | null>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        try {
-          localStorage.setItem('custom_zomindia_brand_logo', reader.result);
-          window.dispatchEvent(new Event('storage'));
-          setToastMessage("Custom branding logo updated successfully! 🎨");
-        } catch (err) {
-          console.error("Local storage quota limit or failed write:", err);
-          setToastMessage("Image is too large. Please select a smaller standard image under 1MB.");
-        }
-      }
-    };
-    reader.readAsDataURL(file);
-  };
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -654,50 +590,13 @@ export default function App() {
     };
   }, []);
 
-  // Generic live pipeline listener for system-critical backend force-reloads
+  // Generic live pipeline listener for system-critical backend force-reloads (Permanently Deprecated)
   useEffect(() => {
     const updatesColRef = collection(db, 'system_updates');
 
     const unsubscribeSystemUpdates = onSnapshot(updatesColRef, (snapshot) => {
-      if (snapshot.empty) return;
-
-      let highestDoc: any = null;
-      let highestVer = '1.0.0';
-
-      snapshot.docs.forEach((d) => {
-        const docData = d.data();
-        let docVersion = docData.version || docData.app_version;
-        if (!docVersion) {
-          const ts = docData.createdAt 
-            ? (docData.createdAt.seconds || Math.floor(Date.now() / 1000)) 
-            : Math.floor(Date.now() / 1000);
-          docVersion = `1.0.${ts}`;
-        }
-
-        if (isVersionHigher(docVersion, highestVer)) {
-          highestDoc = docData;
-          highestVer = docVersion;
-        }
-      });
-
-      if (highestDoc) {
-        const cachedVersion = localStorage.getItem('app_version') || '1.0.0';
-        if (isVersionHigher(highestVer, cachedVersion)) {
-          // If we have already skipped this precise version in this session, skip triggering again
-          if (skippedUpdate && skippedUpdate.version === highestVer) {
-            console.log(`[VersionCheck] User already skipped this version: ${highestVer}`);
-            return;
-          }
-
-          const updateReasonText = highestDoc.reason || highestDoc.description || 'System administrator has initialized a critical synchronized ecosystem update.';
-          const cleanReason = `Ecosystem Hard-Sync: ${updateReasonText}`;
-          
-          setPendingVersion(highestVer);
-          setSystemUpdate({ reason: cleanReason });
-        } else {
-          console.log(`[VersionCheck] Bypassed update. Remote highest: ${highestVer}, Cached current: ${cachedVersion}`);
-        }
-      }
+      // Logic bypassed to permanently prevent blocking promotional update alerts
+      console.log("Ecosystem update system check bypassed.");
     }, (error) => {
       console.warn("Firestore 'system_updates' subscription bypassed:", error);
     });
@@ -705,32 +604,9 @@ export default function App() {
     return () => unsubscribeSystemUpdates();
   }, [skippedUpdate]);
 
-  // 90 second interval re-prompt if update dismissed but not yet updated
+  // 90 second interval re-prompt if update dismissed but not yet updated (Permanently Deprecated)
   useEffect(() => {
-    if (skippedUpdate) {
-      if (update90SecTimer.current) {
-        clearInterval(update90SecTimer.current);
-      }
-      update90SecTimer.current = setInterval(() => {
-        setSystemUpdate(prev => {
-          if (!prev) {
-            return skippedUpdate;
-          }
-          return prev;
-        });
-      }, 90000); // 90 seconds
-    } else {
-      if (update90SecTimer.current) {
-        clearInterval(update90SecTimer.current);
-        update90SecTimer.current = null;
-      }
-    }
-
-    return () => {
-      if (update90SecTimer.current) {
-        clearInterval(update90SecTimer.current);
-      }
-    };
+    // Reprompt logic bypassed to permanently prevent blocking promotional update alerts
   }, [skippedUpdate]);
 
   const handleSkipUpdate = () => {
@@ -1380,7 +1256,8 @@ If you have any billing questions, or if your refund is delayed, please email us
             {renderContent()}
           </Suspense>
           <OfflineSyncIndicator />
-       <AppInstallPopup />
+          <PWAUpdateRegister />
+          <AppInstallPopup />
         </div>
       </APIProvider>
     );
@@ -1408,50 +1285,19 @@ If you have any billing questions, or if your refund is delayed, please email us
               <Logo 
                 size={undefined} 
                 className="h-7 sm:h-9 md:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
-                src={headerLogoImg} 
               />
-
-              {/* Head Admin Upload Input & Edit Controls */}
-              {user?.email === 'sarthakwebtech@gmail.com' && (
-                <>
-                  <input
-                    type="file"
-                    ref={logoInputRef}
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                    accept="image/*"
-                  />
-                  <div className="absolute -top-1.5 -right-1.5 flex gap-1 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        logoInputRef.current?.click();
-                      }}
-                      className="p-1 bg-blue-600 text-white rounded-full hover:bg-blue-700 hover:scale-110 active:scale-95 shadow-md transition-all duration-200 cursor-pointer"
-                      title="Upload Custom Brand Logo"
-                    >
-                      <Pencil size={11} />
-                    </button>
-                    {localStorage.getItem('custom_zomindia_brand_logo') && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm("Reset logo back to default branding?")) {
-                            localStorage.removeItem('custom_zomindia_brand_logo');
-                            window.dispatchEvent(new Event('storage'));
-                            setToastMessage("Logo reset to default successfully! ✨");
-                          }
-                        }}
-                        className="p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 hover:scale-110 active:scale-95 shadow-md transition-all duration-200 cursor-pointer"
-                        title="Reset Logo to Default"
-                      >
-                        <X size={11} />
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
             </motion.div>
+
+            {profile && (
+              <div className="hidden sm:flex items-center gap-2 pl-4 border-l border-slate-200/60 select-none">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-950/5 border border-emerald-500/10 rounded-2xl text-[11px] font-black uppercase tracking-wider shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
+                  <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 bg-clip-text text-transparent font-display font-black">
+                    नमस्ते, {profile.displayName || (profile as any).name || 'User'}
+                  </span>
+                </span>
+              </div>
+            )}
 
             {renderNavigation()}
 
@@ -1759,7 +1605,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                 onClick={() => setActiveTab('home')}
                 id="footer-logo-container"
               >
-                <Logo size={25} src={footerLogoImg} />
+                <Logo size={25} />
               </motion.div>
               <p className="text-slate-500 text-sm max-w-sm leading-relaxed font-medium">
                 India's highly trusted home services ecosystem. We seamlessly connect verified, elite service professionals with households for a superior, convenient lifestyle experience.
@@ -1855,6 +1701,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       </motion.footer>
       <OfflineSyncIndicator />
+      <PWAUpdateRegister />
       <AppInstallPopup />
 
       {/* Dynamic Ecosystem Hot-Update Premium Modal Overlay across Platforms */}
