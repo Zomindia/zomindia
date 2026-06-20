@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { ChatMessage, UserProfile, Booking } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -20,6 +20,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isCustomerUser = auth.currentUser?.uid === booking.customerId;
 
   useEffect(() => {
     const messagesRef = collection(db, 'bookings', booking.id, 'messages');
@@ -74,6 +75,65 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
     }
   };
 
+  const getQuickReplies = () => {
+    const isCustomer = auth.currentUser?.uid === booking.customerId;
+    
+    if (isCustomer) {
+      return [
+        "Sure, I am at home. Please come in.",
+        "Please inform the society security guard that you are from 'Zomindia', they will let you pass."
+      ];
+    } else {
+      switch (booking.status) {
+        case 'on_the_way':
+          return [
+            "I am on my way to your location from Vijay Nagar/Palasia.",
+            "Due to traffic/distance, I will arrive in approximately 15 minutes."
+          ];
+        case 'arrived':
+          return [
+            "I have arrived outside your provided location/house.",
+            "I am at the main gate, please open the door or step outside."
+          ];
+        case 'in_progress':
+          return [
+            "I have started the service. It will take some time to complete.",
+            "The job is successfully completed. Please review the work carefully."
+          ];
+        default:
+          return [
+            "Hello, I am ready to start.",
+            "Let me know when you are available.",
+            "Thank you!"
+          ];
+      }
+    }
+  };
+
+  const sendQuickReply = async (text: string) => {
+    if (!auth.currentUser) return;
+    try {
+      const messagesRef = collection(db, 'bookings', booking.id, 'messages');
+      await addDoc(messagesRef, {
+        senderId: auth.currentUser?.uid,
+        text,
+        createdAt: serverTimestamp()
+      });
+
+      if (otherUser?.uid) {
+        await sendNotification(
+          otherUser.uid,
+          `New message from ${auth.currentUser.displayName || 'Support'}`,
+          text,
+          'booking_pending',
+          booking.id
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `bookings/${booking.id}/messages`);
+    }
+  };
+
   const content = (
     <div className={`flex flex-col h-full ${isEmbedded ? 'bg-transparent' : 'bg-white'}`}>
       {/* Header - Only for modal mode */}
@@ -119,9 +179,31 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
         className={`flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth ${isEmbedded ? 'min-h-[300px] max-h-[500px]' : 'bg-slate-50/30'}`}
       >
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
-            <LoadingSpinner size="md" />
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900/40">Secure Sync...</p>
+          <div className="space-y-6">
+            <div className="flex justify-start animate-pulse">
+              <div className="max-w-[70%] space-y-2">
+                <div className="h-10 w-48 bg-slate-200/60 rounded-[24px] rounded-bl-none" />
+                <div className="h-2.5 w-12 bg-slate-100 rounded ml-1" />
+              </div>
+            </div>
+            <div className="flex justify-end animate-pulse">
+              <div className="flex flex-col items-end max-w-[70%] space-y-2">
+                <div className="h-14 w-60 bg-slate-200/40 rounded-[24px] rounded-br-none" />
+                <div className="h-2.5 w-12 bg-slate-100 rounded mr-1" />
+              </div>
+            </div>
+            <div className="flex justify-start animate-pulse">
+              <div className="max-w-[70%] space-y-2">
+                <div className="h-12 w-52 bg-slate-200/60 rounded-[24px] rounded-bl-none" />
+                <div className="h-2.5 w-12 bg-slate-100 rounded ml-1" />
+              </div>
+            </div>
+            <div className="flex justify-end animate-pulse">
+              <div className="flex flex-col items-end max-w-[70%] space-y-2">
+                <div className="h-10 w-36 bg-slate-200/40 rounded-[24px] rounded-br-none" />
+                <div className="h-2.5 w-12 bg-slate-100 rounded mr-1" />
+              </div>
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-300 text-center px-12">
@@ -169,7 +251,45 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
       </div>
 
       {/* Input */}
-      <div className={`p-6 ${isEmbedded ? 'bg-slate-50 rounded-[32px] mt-4' : 'bg-white border-t border-slate-100'}`}>
+      <div className={`p-6 ${isEmbedded ? 'bg-slate-50 rounded-[32px] mt-4' : 'bg-white border-t border-slate-100'} flex flex-col gap-3`}>
+        {/* Quick Replies Row */}
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 select-none max-h-32">
+          {getQuickReplies().map((replyText, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => sendQuickReply(replyText)}
+              className="px-3 py-1.5 bg-slate-100/80 hover:bg-blue-50 text-blue-700 font-bold border border-slate-200/50 hover:border-blue-200 text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap active:scale-95"
+            >
+              💬 {replyText}
+            </button>
+          ))}
+          {isCustomerUser && (
+            <button
+              type="button"
+              onClick={async () => {
+                const num = prompt("Please enter secondary contact mobile number:");
+                if (num && num.trim()) {
+                  const cleanedNum = num.trim();
+                  try {
+                    await updateDoc(doc(db, 'bookings', booking.id), {
+                      secondaryContact: cleanedNum
+                    });
+                    await sendQuickReply(`📱 Secondary Contact configured at: +91 ${cleanedNum}`);
+                    alert(`Successfully updated secondary contact to: +91 ${cleanedNum}`);
+                  } catch (err) {
+                    console.error(err);
+                    alert("Failed to configure secondary contact.");
+                  }
+                }
+              }}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black border border-emerald-200/50 text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap active:scale-95 flex items-center gap-1 shadow-sm"
+            >
+              📱 Add Secondary Contact... {booking.secondaryContact ? `(+91 ${booking.secondaryContact})` : ''}
+            </button>
+          )}
+        </div>
+
         <form 
           onSubmit={handleSendMessage}
           className="flex gap-3 items-center"

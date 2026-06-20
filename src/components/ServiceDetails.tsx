@@ -806,7 +806,12 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                         </div>
                         {partner.phoneNumber && (
                           <button 
-                            onClick={() => window.location.href = `tel:${partner.phoneNumber}`}
+                            onClick={() => {
+                              if (typeof (window as any).__showToast === 'function') {
+                                (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                              }
+                              window.location.href = "tel:+918005865966";
+                            }}
                             className="w-full py-2 bg-white border border-slate-200 rounded-lg text-[8px] font-black text-slate-950 uppercase tracking-widest flex items-center justify-center gap-1 hover:bg-blue-700 hover:text-white transition-all shadow-sm cursor-pointer"
                           >
                             <Phone size={10} /> Contact Pro

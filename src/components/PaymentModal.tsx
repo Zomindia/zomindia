@@ -112,22 +112,38 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               updatedAt: Timestamp.now()
             });
 
-            // Credit the partner's earnings & rewards
+            // Credit the partner's earnings & rewards (including 20% surge rate to partner wallet)
             if (booking.partnerId) {
               const partnerRef = doc(db, 'partners', booking.partnerId);
               const partnerSnap = await getDoc(partnerRef);
               if (partnerSnap.exists()) {
                 const partnerData = partnerSnap.data();
                 const rewardPts = 10;
+                
+                // Determine if 20% surge rate applies (Removed)
+                const creditAmount = booking.totalPrice;
+
                 await updateDoc(partnerRef, {
-                  totalEarnings: (partnerData.totalEarnings || 0) + booking.totalPrice,
+                  totalEarnings: (partnerData.totalEarnings || 0) + creditAmount,
                   rewardCredits: (partnerData.rewardCredits || 0) + rewardPts,
                   updatedAt: Timestamp.now()
                 });
 
+                // Also update the partner's User profile walletBalance
+                if (partnerData.userId) {
+                  const partnerUserRef = doc(db, 'users', partnerData.userId);
+                  const partnerUserSnap = await getDoc(partnerUserRef);
+                  if (partnerUserSnap.exists()) {
+                    await updateDoc(partnerUserRef, {
+                      walletBalance: (partnerUserSnap.data()?.walletBalance || 0) + creditAmount,
+                      updatedAt: Timestamp.now()
+                    });
+                  }
+                }
+
                 await addDoc(collection(db, 'partners', booking.partnerId, 'earningsHistory'), {
                   type: 'booking_earning',
-                  amount: booking.totalPrice,
+                  amount: creditAmount,
                   credits: rewardPts,
                   bookingId: booking.id,
                   reason: `Completed service (Razorpay online)`,

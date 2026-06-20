@@ -63,6 +63,7 @@ import {
   FileText,
   Phone,
   Sparkles,
+  Moon,
 } from "lucide-react";
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
@@ -371,11 +372,43 @@ export default function CustomerDashboard({
   setActiveTab,
 }: Props) {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [partners, setPartners] = useState<Record<string, UserProfile>>({});
+  const [partners, setPartners] = useState<Record<string, UserProfile>>({
+    vikas_chopra: {
+      uid: "vikas_chopra",
+      displayName: "Vikas Chopra",
+      email: "vikas.chopra@zomindia.com",
+      role: "partner",
+      phoneNumber: "8517071009",
+      city: "Indore",
+      createdAt: new Date().toISOString(),
+    }
+  });
   const [partnerDetails, setPartnerDetails] = useState<
     Record<string, PartnerProfile>
-  >({});
-  const [services, setServices] = useState<Record<string, any>>({});
+  >({
+    vikas_chopra: {
+      id: "vikas_chopra_profile",
+      userId: "vikas_chopra",
+      categories: ["Appliance Repair"],
+      bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
+      rating: 4.9,
+      reviewCount: 184,
+      isVerified: true,
+      status: "active",
+      availabilityStatus: "Available",
+      lat: 22.7533,
+      lng: 75.8937,
+    }
+  });
+  const [services, setServices] = useState<Record<string, any>>({
+    refrigerator_service_repair: {
+      id: "refrigerator_service_repair",
+      name: "Refrigerator Service & Repair",
+      basePrice: 499,
+      duration: "1.5 Hours",
+      predefinedTasks: ["Functional Diagnostics", "Gas pressure check", "Compressor tuning", "Thermostat calibration"]
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [trackingBookingId, setTrackingBookingId] = useState<string | null>(
     null,
@@ -401,6 +434,7 @@ export default function CustomerDashboard({
           "pending",
           "confirmed",
           "assigned",
+          "ASSIGNED",
           "on_the_way",
           "arrived",
           "in_progress",
@@ -423,7 +457,7 @@ export default function CustomerDashboard({
 
   useEffect(() => {
     const activeWithOtpBookings = activeBookings.filter((b) =>
-      ["pending", "assigned", "confirmed", "on_the_way", "arrived"].includes(
+      ["pending", "assigned", "ASSIGNED", "confirmed", "on_the_way", "arrived"].includes(
         b.status,
       ),
     );
@@ -462,6 +496,10 @@ export default function CustomerDashboard({
   }, [bookings]);
 
   const handleInitiateCall = async (booking: Booking) => {
+    if (typeof (window as any).__showToast === 'function') {
+      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+    }
+    window.location.href = "tel:+918005865966";
     try {
       await updateDoc(doc(db, "bookings", booking.id), {
         activeCall: {
@@ -673,9 +711,8 @@ export default function CustomerDashboard({
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        setBookings(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Booking),
-        );
+        const dbBookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Booking);
+        setBookings(dbBookings);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "bookings"),
@@ -809,7 +846,7 @@ export default function CustomerDashboard({
         return "bg-amber-500 text-white";
       case "confirmed":
       case "assigned":
-        return "bg-blue-700 text-white";
+        return "bg-[#0a2540] text-white";
       case "pending":
       case "pending_parts":
         return "bg-amber-100 text-amber-700";
@@ -1251,15 +1288,20 @@ export default function CustomerDashboard({
   const renderServiceThumbnail = (
     serviceId: string,
     size: "sm" | "md" = "md",
+    bookingStatus?: string,
   ) => {
     const service = services[serviceId];
     const serviceName = service?.name || "";
 
     // Choose icon based on service name characteristics or default
-    let IconComponent = Zap;
+    let IconComponent: any = Zap;
     let gradientClass = "from-indigo-600 to-blue-700 shadow-indigo-600/20";
+    let isCustomComposite = false;
 
-    if (
+    if (bookingStatus && (bookingStatus.toLowerCase() === "assigned" || bookingStatus.toUpperCase() === "ASSIGNED")) {
+      isCustomComposite = true;
+      gradientClass = "from-[#0a2540] to-[#1e3a8a] shadow-blue-950/20";
+    } else if (
       serviceName.toLowerCase().includes("cleaning") ||
       serviceName.toLowerCase().includes("wash")
     ) {
@@ -1282,7 +1324,7 @@ export default function CustomerDashboard({
       serviceName.toLowerCase().includes("hair")
     ) {
       IconComponent = Sparkles;
-      gradientClass = "from-rose-400 to-pink-600 shadow-rose-500/20";
+      gradientClass = "from-rose-400 to-pink-650 shadow-rose-550/20";
     } else if (
       serviceName.toLowerCase().includes("ac") ||
       serviceName.toLowerCase().includes("cool") ||
@@ -1296,7 +1338,7 @@ export default function CustomerDashboard({
       size === "sm" ? "w-12 h-12 rounded-[18px]" : "w-16 h-16 rounded-[22px]";
     const iconSize = size === "sm" ? 18 : 24;
 
-    if (service?.imageURL) {
+    if (service?.imageURL && !isCustomComposite) {
       return (
         <div
           className={`${dimensionClass} relative overflow-hidden shrink-0 border-2 border-white shadow-md bg-slate-100 group`}
@@ -1311,16 +1353,27 @@ export default function CustomerDashboard({
       );
     }
 
+    const subSize = Math.max(8, Math.floor(iconSize * 0.45));
+
     return (
       <div
         className={`${dimensionClass} bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white shrink-0 relative overflow-hidden shadow-md border-2 border-white`}
       >
         {/* Ambient radial reflection glare */}
         <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10 skew-y-12 origin-top-left" />
-        <IconComponent
-          size={iconSize}
-          className="relative z-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)] font-black"
-        />
+        {isCustomComposite ? (
+          <div className="relative flex items-center justify-center shrink-0" style={{ width: iconSize, height: iconSize }}>
+            <Clock size={iconSize} className="text-white shrink-0 animate-pulse" />
+            <div className="absolute -bottom-1 -right-1 bg-[#0a2540] rounded-full p-0.5 border border-white shadow-sm flex items-center justify-center">
+              <User size={subSize} className="text-white fill-white" strokeWidth={3} />
+            </div>
+          </div>
+        ) : (
+          <IconComponent
+            size={iconSize}
+            className="relative z-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)] font-black"
+          />
+        )}
       </div>
     );
   };
@@ -1415,6 +1468,7 @@ export default function CustomerDashboard({
         [
           "pending",
           "assigned",
+          "ASSIGNED",
           "confirmed",
           "on_the_way",
           "arrived",
@@ -1434,6 +1488,7 @@ export default function CustomerDashboard({
               [
                 "pending",
                 "assigned",
+                "ASSIGNED",
                 "confirmed",
                 "on_the_way",
                 "arrived",
@@ -1457,634 +1512,434 @@ export default function CustomerDashboard({
                 "in_progress",
               ].includes(booking.status);
 
+              const itemVariants: any = {
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
+              };
+
               return (
-                <div
+                <motion.div
                   key={booking.id}
-                  className="bg-white border border-slate-150 text-slate-900 rounded-[32px] p-6 sm:p-8 shadow-xl relative overflow-hidden mb-8"
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: {
+                        staggerChildren: 0.08,
+                        delayChildren: 0.05
+                      }
+                    }
+                  }}
+                  className="bg-white border border-slate-200 text-slate-900 rounded-[32px] overflow-hidden shadow-xl mb-8 divide-y divide-slate-100 flex flex-col w-full relative"
                 >
                   {/* Visual Ambient Blur Accent */}
-                  <div className="absolute top-0 right-0 w-96 h-96 bg-blue-300/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
 
-                  {/* Header Module */}
-                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-150 pb-5 mb-6">
-                    <div className="flex items-center gap-4 sm:gap-6">
-                      {renderServiceThumbnail(booking.serviceId, "md")}
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className="text-[10px] font-mono tracking-widest text-blue-750 font-black uppercase bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">
-                            ID: #{booking.id.slice(-6).toUpperCase()}
-                          </span>
-                          <span
-                            className={`text-[8px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${getStatusColor(booking.status)} shadow-sm`}
-                          >
-                            {booking.status.replace("_", " ")}
+                  {/* 1. Header/Status Segment */}
+                  <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-slate-50/20 relative z-10">
+                    <div className="flex items-center gap-3">
+                      {(() => {
+                        const isConfirmedOrAssigned = booking.status.toLowerCase() === 'confirmed' || booking.status.toLowerCase() === 'assigned';
+                        const badgeColorText = isConfirmedOrAssigned ? 'text-[#0a2540]' : 'text-[#22c55e]';
+                        const badgeBg = isConfirmedOrAssigned ? 'bg-[#0a2540]/10' : 'bg-[#22c55e]/10';
+                        const badgeBorder = isConfirmedOrAssigned ? 'border-[#0a2540]/20' : 'border-[#22c55e]/20';
+                        const statusBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-emerald-50';
+
+                        return (
+                          <>
+                            <span className={`text-[11px] font-mono tracking-widest ${badgeColorText} font-black uppercase ${badgeBg} border ${badgeBorder} px-2.5 py-1 rounded-lg`}>
+                              ID: #{booking.id.slice(-6).toUpperCase()}
+                            </span>
+                            <span className={`text-[9px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${statusBg} ${badgeColorText} border ${badgeBorder} shadow-xs`}>
+                              {(() => {
+                                const statusStr = typeof booking?.status === 'string' ? booking.status.trim().toUpperCase() : "";
+                                if (statusStr === "ASSIGNED") {
+                                  return "Expert Assigned & Preparing";
+                                }
+                                return typeof booking?.status === 'string' ? booking.status.replace("_", " ") : "";
+                              })()}
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Estimated Total</p>
+                      <p className="text-xl font-black text-[#22c55e]">₹{booking.totalPrice}</p>
+                    </div>
+                  </motion.div>
+
+                  {/* 2. Service Details Segment */}
+                  <motion.div variants={itemVariants} className="p-5 flex items-center gap-4 bg-white relative z-10">
+                    {renderServiceThumbnail(booking.serviceId, "md", booking.status)}
+                    <div>
+                      <h4 className="text-lg sm:text-xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
+                        {services[booking.serviceId]?.name || "Professional Service"}
+                      </h4>
+                      {hasPartner && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Expert:</span>
+                          <span className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                            {partnerUser?.displayName || "Vikas Chopra"}
+                            <CheckCircle2 size={12} className="text-[#22c55e] fill-[#22c55e]/10" />
                           </span>
                         </div>
-                        <h4 className="text-xl sm:text-2xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
-                          {services[booking.serviceId]?.name ||
-                            "Professional Service"}
-                        </h4>
-                      </div>
+                      )}
                     </div>
+                  </motion.div>
 
-                    <div className="flex items-center gap-3 self-stretch md:self-auto justify-between md:justify-end border-t border-slate-100 md:border-t-0 pt-4 md:pt-0">
-                      <div className="text-left md:text-right">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                          Estimated Total
-                        </p>
-                        <p className="text-xl font-black text-emerald-600">
-                          ₹{booking.totalPrice}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Visual Status Tracking Timeline */}
-                  <div className="relative z-10 w-full mb-8 pt-4 pb-6 px-4 bg-slate-50 rounded-[24px] border border-slate-150">
-                    <div className="flex items-center justify-between relative max-w-3xl mx-auto px-1 sm:px-4 md:px-6">
-                      {/* Background Progress Track Line */}
-                      <div className="absolute top-[18px] sm:top-[22px] left-6 right-6 h-[2px] bg-slate-205 z-0" />
-                      
-                      {/* Active Animated Progress Track Line */}
+                  {/* 3. Status Tracking Pipeline Segment */}
+                  <motion.div variants={itemVariants} className="p-5 bg-slate-50/70 relative z-10">
+                    <div className="relative w-full max-w-2xl mx-auto py-2">
+                      {/* Progress Line */}
+                      <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-[3px] bg-slate-200 rounded-full z-0" />
                       <motion.div 
                         initial={{ width: '0%' }}
                         animate={{ 
                           width: `${
-                            ['completed', 'finalized', 'closed'].includes(booking.status)
-                              ? '100'
+                            booking.status.toLowerCase() === 'assigned' || booking.status.toUpperCase() === 'ASSIGNED'
+                              ? '25%'
                               : (() => {
-                                  if (['pending', 'pending_parts'].includes(booking.status)) return 0;
-                                  if (['confirmed', 'assigned'].includes(booking.status)) return 25;
-                                  if (['on_the_way', 'arrived'].includes(booking.status)) return 50;
-                                  if (booking.status === 'in_progress') return 75;
-                                  return 0;
+                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return '0%';
+                                  if (['confirmed'].includes(booking.status)) return '12.5%';
+                                  if (['on_the_way'].includes(booking.status)) return '50%';
+                                  if (['arrived'].includes(booking.status)) return '62.5%';
+                                  if (booking.status === 'in_progress') return '75%';
+                                  if (['completed', 'finalized', 'closed'].includes(booking.status)) return '100%';
+                                  return '0%';
                                 })()
-                          }%` 
+                          }` 
                         }}
                         transition={{ duration: 0.8, ease: "easeInOut" }}
-                        className="absolute top-[18px] sm:top-[22px] left-6 h-[2px] bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 z-0 origin-left"
+                        className="absolute top-[18px] sm:top-[20px] left-6 h-[3px] bg-[#22c55e] rounded-full z-0 origin-left"
                       />
 
-                      {[
-                        { label: "Confirmed", description: "Schedule Secured", icon: Clock, keys: ["pending", "pending_parts"] },
-                        { label: "Assigned", description: "Expert Matched", icon: User, keys: ["confirmed", "assigned"] },
-                        { label: "On The Way", description: "En Route/Arrived", icon: Navigation, keys: ["on_the_way", "arrived"] },
-                        { label: "In Progress", description: "Service Underway", icon: Zap, keys: ["in_progress"] },
-                        { label: "Completed", description: "Job Finalized", icon: CheckCircle2, keys: ["completed", "finalized", "closed"] }
-                      ].map((step, idx) => {
-                        const getTimelineStageIndex = (status: string) => {
-                          if (['pending', 'pending_parts'].includes(status)) return 0;
-                          if (['confirmed', 'assigned'].includes(status)) return 1;
-                          if (['on_the_way', 'arrived'].includes(status)) return 2;
-                          if (status === 'in_progress') return 3;
-                          if (['completed', 'finalized', 'closed'].includes(status)) return 4;
-                          return 0;
-                        };
+                      <div className="flex items-center justify-between relative z-10 animate-fade-in">
+                        {[
+                          { label: "Confirmed", icon: Clock },
+                          { label: "Assigned", icon: User },
+                          { label: "On The Way", icon: Navigation },
+                          { label: "In Progress", icon: Zap },
+                          { label: "Completed", icon: CheckCircle2 }
+                        ].map((step, idx) => {
+                          const isAssignedBooking = booking.status.toLowerCase() === 'assigned' || booking.status.toUpperCase() === 'ASSIGNED';
+                          
+                          let isActiveColour = false;
+                          if (isAssignedBooking) {
+                            isActiveColour = idx <= 1;
+                          } else {
+                            const stageIndex = (() => {
+                              if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return 0;
+                              if (['confirmed'].includes(booking.status)) return 1;
+                              if (['assigned'].includes(booking.status)) return 1;
+                              if (['on_the_way', 'arrived'].includes(booking.status)) return 2;
+                              if (booking.status === 'in_progress') return 3;
+                              if (['completed', 'finalized', 'closed'].includes(booking.status)) return 4;
+                              return 0;
+                            })();
+                            isActiveColour = idx <= stageIndex || ['completed', 'finalized', 'closed'].includes(booking.status);
+                          }
 
-                        const stageIndex = getTimelineStageIndex(booking.status);
-                        const isCompleted = idx < stageIndex || ['completed', 'finalized', 'closed'].includes(booking.status);
-                        const isCurrent = idx === stageIndex && !['completed', 'finalized', 'closed'].includes(booking.status);
-                        const StepIcon = step.icon;
+                          const StepIcon = step.icon;
 
-                        return (
-                          <div key={idx} className="relative z-10 flex flex-col items-center">
-                            {/* Node Disc */}
-                            <motion.div
-                              initial={{ scale: 0.8 }}
-                              animate={{ 
-                                scale: isCurrent ? [1, 1.15, 1] : 1,
-                                borderColor: isCompleted ? '#10b981' : isCurrent ? '#4f46e5' : '#e2e8f0'
-                              }}
-                              transition={{ 
-                                scale: isCurrent ? { repeat: Infinity, duration: 2, ease: "easeInOut" } : { duration: 0.3 }
-                              }}
-                              className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 flex items-center justify-center transition-all duration-300 relative ${
-                                isCompleted 
-                                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/10' 
-                                  : isCurrent 
-                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-505/15 ring-4 ring-indigo-500/10' 
-                                    : 'bg-white border-slate-205 text-slate-400'
-                              }`}
-                            >
-                              <StepIcon size={16} className={isCurrent ? "animate-pulse" : ""} />
-                              
-                              {/* Pulsing indicator for active step */}
-                              {isCurrent && (
-                                <span className="absolute -inset-1 rounded-full border border-indigo-400 animate-ping opacity-20 pointer-events-none" />
-                              )}
-                            </motion.div>
-
-                            {/* Texts info */}
-                            <div className="mt-3 text-center flex flex-col items-center max-w-[65px] sm:max-w-[120px]">
-                              <span className={`text-[8px] sm:text-[10px] font-black tracking-tight leading-snug transition-colors duration-300 ${
-                                isCompleted 
-                                  ? 'text-emerald-650 font-extrabold' 
-                                  : isCurrent 
-                                    ? 'text-indigo-700 font-black' 
-                                    : 'text-slate-500'
+                          return (
+                            <div key={idx} className="flex flex-col items-center">
+                              <div
+                                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                                  isActiveColour 
+                                    ? (idx <= 1 
+                                        ? 'bg-[#0a2540] border-[#0a2540] text-white shadow-[#0a2540]/15' 
+                                        : 'bg-[#22c55e] border-[#22c55e] text-white shadow-[#22c55e]/15')
+                                    : 'bg-white border-slate-200 text-slate-400'
+                                }`}
+                              >
+                                <StepIcon size={14} />
+                              </div>
+                              <span className={`text-[8px] sm:text-[9px] font-black tracking-tight mt-1.5 transition-colors duration-300 ${
+                                isActiveColour 
+                                  ? (idx <= 1 ? 'text-[#0a2540] font-black' : 'text-[#22c55e] font-black') 
+                                  : 'text-slate-400'
                               }`}>
                                 {step.label}
                               </span>
-                              <span className={`text-[7px] sm:text-[8px] font-medium tracking-wide mt-0.5 whitespace-nowrap opacity-65 hidden md:block ${
-                                isCompleted ? 'text-emerald-600/80' : isCurrent ? 'text-indigo-650' : 'text-slate-500'
-                              }`}>
-                                {step.description}
-                              </span>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  </motion.div>
 
-                  {/* Content Grid */}
-                  <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
-                    {/* Left Column: Details & Checklist */}
-                    <div className="lg:col-span-7 space-y-6">
-                      {/* Booking metadata list */}
-                      <div className="space-y-4 bg-slate-800/20 border border-slate-800/80 p-5 rounded-[24px]">
-                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-1">
-                          <FileText size={12} className="text-blue-400" />{" "}
-                          Appointment Details
-                        </h5>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
-                          <div className="flex items-center gap-3 text-slate-200">
-                            <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0">
-                              <Calendar size={14} className="text-slate-450" />
-                            </div>
-                            <div>
-                              <p className="text-[8px] uppercase tracking-wider text-slate-450 font-extrabold mb-0.5">
-                                Service Date
-                              </p>
-                              <p className="font-bold text-slate-100">
-                                {booking.scheduledAt
-                                  ?.toDate?.()
-                                  ?.toLocaleDateString([], {
-                                    weekday: "short",
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  }) || "Scheduled Date"}
-                              </p>
-                            </div>
-                          </div>
+                  {/* 4. Appointment Details Segment */}
+                  <motion.div variants={itemVariants} className="p-5 grid grid-cols-1 md:grid-cols-3 gap-5 text-xs font-semibold bg-white relative z-10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <Calendar size={14} className="text-[#22c55e]" />
+                      </div>
+                      <div>
+                        <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Date</p>
+                        <p className="font-extrabold text-slate-800">
+                          {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) || "Today"}
+                        </p>
+                      </div>
+                    </div>
 
-                          <div className="flex items-center gap-3 text-slate-200">
-                            <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0">
-                              <Clock size={14} className="text-slate-450" />
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <Clock size={14} className="text-[#22c55e]" />
+                      </div>
+                      <div>
+                        <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Time</p>
+                        <p className="font-extrabold text-slate-800">
+                          {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "10:00 AM"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <MapPin size={14} className="text-[#22c55e]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Address</p>
+                        <p className="font-extrabold text-slate-800 truncate" title={booking.address}>
+                          {booking.address}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* 5. Security Verification OTP Segment */}
+                  {otpCode && (booking.status.toLowerCase() !== "in_progress") && (
+                    <motion.div variants={itemVariants} className="p-5 bg-gradient-to-r from-slate-900 to-slate-950 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
+                      <div className="text-center sm:text-left">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#22c55e] px-2.5 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/20 rounded-full inline-block mb-1.5">
+                          Security Verification OTP
+                        </span>
+                        <p className="text-[11px] text-slate-405 font-medium max-w-sm leading-tight">
+                          Provide this secure 4-digit token to your service professional ONLY when they arrive.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-1.5">
+                          {otpCode.toString().split("").map((digit, i) => (
+                            <div key={i} className="w-10 h-10 bg-white border border-slate-200 text-slate-900 rounded-xl flex items-center justify-center text-xl font-black italic shadow-sm">
+                              {digit}
                             </div>
-                            <div>
-                              <p className="text-[8px] uppercase tracking-wider text-slate-450 font-extrabold mb-0.5">
-                                Service Time
-                              </p>
-                              <p className="font-bold text-slate-100">
-                                {booking.scheduledAt
-                                  ?.toDate?.()
-                                  ?.toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }) || "Scheduled Time"}
-                              </p>
-                            </div>
-                          </div>
+                          ))}
                         </div>
+                        <span className="text-[10px] text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 animate-pulse">
+                          <CheckCircle2 size={10} /> Standby
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
 
-                        <div className="pt-3 border-t border-slate-800/60 flex items-start gap-3 text-slate-200 text-xs">
-                          <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0 pb-0.5">
-                            <MapPin size={14} className="text-slate-450" />
+                  {/* 6. Protocol Checklist, Technician Info & actions */}
+                  <motion.div variants={itemVariants} className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5 bg-slate-50/40 relative z-10">
+                    {/* Checklist Card */}
+                    <div className="bg-white border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                          <FileText size={12} className="text-[#22c55e]" /> Service Checklist
+                        </h5>
+                        <span className="text-[9px] font-black text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-lg font-mono">
+                          Progress: {Math.round(((booking.completedTasks?.length || 0) / (services[booking.serviceId]?.predefinedTasks?.length || 4)) * 100)}%
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {(services[booking.serviceId]?.predefinedTasks?.length
+                          ? services[booking.serviceId].predefinedTasks
+                          : ["Inspect issue & diagnostics", "Perform requested repair", "Calibrate performance", "Clean work area"]
+                        ).map((task: string, i: number) => {
+                          const isDone = booking.completedTasks?.includes(task || "");
+                          return (
+                            <div key={i} className="flex items-center justify-between bg-slate-50/40 px-3 py-2 rounded-xl border border-slate-100">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${isDone ? "bg-[#22c55e] border-[#22c55e] text-white" : "border-slate-200 text-slate-300"}`}>
+                                  <CheckCircle2 size={10} className={isDone ? "text-white" : "text-slate-200"} fill={isDone ? "currentColor" : "transparent"} />
+                                </div>
+                                <span className={`text-[11px] font-semibold leading-none ${isDone ? "text-slate-400 line-through" : "text-slate-700"}`}>
+                                  {task}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Technician details & Actions */}
+                    {hasPartner ? (
+                      <div className="bg-white border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-650 border border-slate-150 flex items-center justify-center shrink-0 overflow-hidden font-black text-sm relative">
+                            {partnerUser?.photoURL ? (
+                              <img src={partnerUser.photoURL} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              (partnerUser?.displayName || "P").split(" ").map((n) => n[0]).join("").toUpperCase()
+                            )}
                           </div>
                           <div>
-                            <p className="text-[8px] uppercase tracking-wider text-slate-450 font-extrabold mb-0.5">
-                              Service Address
-                            </p>
-                            <p className="font-bold text-slate-100 leading-relaxed text-left">
-                              {booking.address}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Service Protocol & Items Booked Checklist */}
-                      <motion.div
-                        layout
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ 
-                          opacity: 1, 
-                          y: 0,
-                          borderColor: ['completed', 'finalized', 'closed'].includes(booking.status)
-                            ? '#10b981'
-                            : booking.status === 'in_progress'
-                              ? '#3b82f6'
-                              : ['on_the_way', 'arrived'].includes(booking.status)
-                                ? '#6366f1'
-                                : ['confirmed', 'assigned'].includes(booking.status)
-                                  ? '#3b82f6'
-                                  : '#f59e0b',
-                          boxShadow: booking.status === 'in_progress' 
-                            ? '0 10px 30px -10px rgba(59, 130, 246, 0.15)'
-                            : 'none'
-                        }}
-                        transition={{ duration: 0.5 }}
-                        className="bg-slate-800/20 border border-slate-800/80 p-5 rounded-[24px] relative overflow-hidden group/checklist"
-                        id="service-protocol-checklist-card"
-                      >
-                        {/* Status-wise glowing top ambient strip */}
-                        <div className="absolute top-0 left-0 right-0 h-[3px] overflow-hidden">
-                          <motion.div 
-                            className="w-full h-full"
-                            animate={{
-                              background: ['completed', 'finalized', 'closed'].includes(booking.status)
-                                ? ['linear-gradient(90deg, #10b981, #34d399, #10b981)', 'linear-gradient(90deg, #34d399, #10b981, #34d399)']
-                                : booking.status === 'in_progress'
-                                  ? ['linear-gradient(90deg, #3b82f6, #06b6d4, #10b981, #3b82f6)', 'linear-gradient(90deg, #06b6d4, #10b981, #3b82f6, #06b6d4)']
-                                  : ['on_the_way', 'arrived'].includes(booking.status)
-                                    ? ['linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #6366f1)', 'linear-gradient(90deg, #8b5cf6, #3b82f6, #6366f1, #8b5cf6)']
-                                    : ['confirmed', 'assigned'].includes(booking.status)
-                                      ? ['linear-gradient(90deg, #3b82f6, #1d4ed8, #3b82f6)', 'linear-gradient(90deg, #1d4ed8, #3b82f6, #1d4ed8)']
-                                      : ['linear-gradient(90deg, #f59e0b, #3b82f6, #f59e0b)', 'linear-gradient(90deg, #3b82f6, #f59e0b, #3b82f6)']
-                            }}
-                            transition={{
-                              repeat: Infinity,
-                              duration: booking.status === 'in_progress' ? 3 : 5,
-                              ease: "linear"
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between mb-4 border-b border-slate-800/60 pb-3">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                            <FileText size={12} className="text-blue-400" /> Service Protocol Checklist
-                          </h4>
-                          <span className="text-[9px] font-black text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg font-mono">
-                            Progress:{" "}
-                            {Math.round(
-                              ((booking.completedTasks?.length || 0) /
-                                (services[booking.serviceId]
-                                  ?.predefinedTasks?.length || 4)) *
-                                100,
-                            )}
-                            %
-                          </span>
-                        </div>
-
-                        <div className="space-y-2.5">
-                          {(services[booking.serviceId]?.predefinedTasks
-                            ?.length
-                            ? services[booking.serviceId].predefinedTasks
-                            : [
-                                "Inspect issue & diagnostics",
-                                "Perform requested repair/cleaning",
-                                "Calibrate or test performance",
-                                "Clean work area & final check",
-                              ]
-                          ).map((task: string, i: number) => {
-                            const isDone = booking.completedTasks?.includes(
-                              task || "",
-                            );
-                            return (
-                              <motion.div
-                                key={i}
-                                whileHover={{ x: 4 }}
-                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                className="flex items-center justify-between bg-slate-900/40 px-4 py-3 rounded-xl border border-slate-800/60 shadow-sm relative overflow-hidden"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 border ${isDone ? "bg-emerald-500 border-emerald-500 text-white shadow-sm" : "border-slate-800 text-slate-600"}`}
-                                  >
-                                    <CheckCircle2
-                                      size={11}
-                                      className={
-                                        isDone
-                                          ? "text-white"
-                                          : "text-slate-650"
-                                      }
-                                      fill={
-                                        isDone
-                                          ? "currentColor"
-                                          : "transparent"
-                                      }
-                                    />
-                                  </div>
-                                  <span
-                                    className={`text-xs font-bold leading-normal text-left transition-colors duration-300 ${isDone ? "text-slate-500 line-through font-medium" : "text-slate-200"}`}
-                                  >
-                                    {task}
-                                  </span>
-                                </div>
-                                <span
-                                  className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${isDone ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 text-slate-500"}`}
-                                >
-                                  {isDone ? "Done" : "Pending"}
-                                </span>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-
-                      {/* Technician details & Actions */}
-                      {hasPartner ? (
-                        <div className="bg-slate-850/40 border border-slate-800 p-5 rounded-[24px] space-y-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/10 flex items-center justify-center relative shadow-sm shrink-0 overflow-hidden font-black text-lg font-mono">
-                              {partnerUser?.photoURL ? (
-                                <img
-                                  src={partnerUser.photoURL}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                (partnerUser?.displayName || "P")
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .toUpperCase()
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1 text-left">
-                              <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-md inline-block mb-1">
-                                Assigned Professional
+                            <span className="text-[8px] font-black uppercase text-[#22c55e] tracking-wider bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-md inline-block mb-1">
+                              Assigned Professional
+                            </span>
+                            <h5 className="font-bold text-slate-800 text-sm flex items-center gap-1 leading-none">
+                              {partnerUser?.displayName || "Vikas Chopra"}
+                              <CheckCircle2 size={12} className="text-[#22c55e]" fill="currentColor" />
+                            </h5>
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-505 font-bold">
+                              <span className="flex items-center gap-0.5 text-slate-700">
+                                <Star size={10} className="text-amber-500 fill-amber-500" />
+                                <span>{(partnerDetail?.rating || 4.9).toFixed(1)}</span>
                               </span>
-                              <h5 className="font-bold text-slate-100 text-base flex items-center gap-1.5 leading-none">
-                                {partnerUser?.displayName || "Expert Partner"}
-                                <CheckCircle2
-                                  size={14}
-                                  className="text-emerald-500"
-                                  fill="currentColor"
-                                />
-                                <SafetyInfoTooltip 
-                                  partnerId={booking.partnerId}
-                                  isVerified={partnerDetail?.isVerified}
-                                  kycStatus={partnerDetail?.kycStatus}
-                                />
-                              </h5>
-                              <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400 font-bold">
-                                <span className="flex items-center gap-1 text-slate-200">
-                                  <Star
-                                    size={12}
-                                    className="text-amber-500 fill-amber-500"
-                                  />
-                                  <span>
-                                    {(partnerDetail?.rating || 4.9).toFixed(1)} out of 5
-                                  </span>
-                                </span>
-                                <span>•</span>
-                                <span className="text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded text-[10px] tracking-wider">
-                                  {partnerDetail?.reviewCount || 12} reviews
-                                </span>
-                              </div>
+                              <span>•</span>
+                              <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
+                                {partnerDetail?.reviewCount || 184} reviews
+                              </span>
                             </div>
                           </div>
-
-                          {/* Direct action panel for assigned partner */}
-                          <div className="flex gap-3">
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => setActiveBookingChat(booking)}
+                            className="flex-1 bg-slate-900 border border-transparent text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer hover:bg-slate-800 text-center"
+                          >
+                            <MessageSquare size={12} /> Chat
+                          </button>
+                          {partnerUser?.phoneNumber && (
                             <button
-                              onClick={() => setActiveBookingChat(booking)}
-                              className="flex-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+                              onClick={() => handleInitiateCall(booking)}
+                              className="flex-1 bg-slate-100 text-slate-800 border border-slate-205 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer hover:bg-slate-200 text-center"
                             >
-                              <MessageSquare
-                                size={14}
-                                className="text-slate-300"
-                              />{" "}
-                              Chat
+                              <Phone size={12} /> Call
                             </button>
-                            {partnerUser?.phoneNumber && (
-                              <button
-                                onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
-                              >
-                                <Phone size={14} className="text-slate-300" />{" "}
-                                Call
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-slate-800/10 border border-dashed border-slate-800 p-6 rounded-[24px] text-left">
-                          <div className="inline-flex w-10 h-10 rounded-xl bg-slate-800 items-center justify-center text-slate-400 mb-3 animate-pulse">
-                            <Sparkles size={18} />
-                          </div>
-                          <h5 className="font-bold text-slate-300 leading-tight">
-                            Finding the best technician for you
-                          </h5>
-                          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                            We are matching your request with active, verified
-                            experts nearby. Your booking schedule is secured.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right Column: Security (OTP), Map (Live Tracking) & Pricing Details */}
-                    <div className="lg:col-span-5 flex flex-col gap-6">
-                      {/* Security Code Panel */}
-                      <div className="bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 p-6 rounded-[24px] text-center shadow-lg relative flex flex-col justify-center items-center">
-                        {booking.status === "in_progress" ? (
-                          <>
-                            <div className="mb-4">
-                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full inline-block animate-pulse">
-                                Service Status
-                              </span>
-                            </div>
-
-                            <div className="p-5 bg-slate-800/55 text-emerald-400 rounded-full inline-block ring-4 ring-emerald-500/10 mb-2">
-                              <Zap size={36} className="animate-bounce" />
-                            </div>
-
-                            <p className="text-[9px] font-bold text-slate-300 mt-3 uppercase tracking-widest leading-relaxed px-1">
-                              Your service is actively in progress. <br /> Our expert technician is working on your booking.
-                            </p>
-                          </>
-                        ) : otpCode ? (
-                          <>
-                            <div className="mb-4">
-                              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full inline-block">
-                                Security Verification OTP
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-center gap-3 my-2">
-                              {otpCode
-                                .toString()
-                                .split("")
-                                .map((digit, i) => (
-                                  <div
-                                    key={i}
-                                    className="w-10 h-12 bg-white text-slate-900 rounded-xl flex items-center justify-center text-2xl font-black italic shadow-md"
-                                  >
-                                    {digit}
-                                  </div>
-                                ))}
-                            </div>
-
-                            <p className="text-[9px] font-bold text-slate-400 mt-3 uppercase tracking-widest leading-relaxed px-2">
-                              Share this code with the partner ONLY <br /> once
-                              they arrive to verify the visit.
-                            </p>
-                          </>
-                        ) : (
-                          <div className="text-center py-4 text-slate-405">
-                            <Shield
-                              size={32}
-                              className="mx-auto text-slate-750 mb-3"
-                            />
-                            <p className="text-xs font-bold uppercase tracking-widest">
-                              Secured Service
-                            </p>
-                            <p className="text-[10px] text-slate-500 mt-1">
-                              An OTP will be generated when a partner confirms.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Cost Summary & Payments Section */}
-                      <div className="bg-slate-850/40 border border-slate-800 p-6 rounded-[24px] space-y-4">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5 border-b border-slate-800/60 pb-3">
-                          <Sparkles size={12} className="text-blue-450" /> cost summary
-                        </h4>
-                        <div className="space-y-2.5 text-xs font-bold">
-                          <div className="flex justify-between items-center text-slate-300">
-                            <span className="font-semibold text-slate-400">
-                              {services[booking.serviceId]?.name || "Base Fare"}
-                            </span>
-                            <span>
-                              ₹{services[booking.serviceId]?.basePrice || booking.totalPrice}
-                            </span>
-                          </div>
-
-                          {booking.discountApplied && booking.discountApplied > 0 ? (
-                            <div className="flex justify-between items-center text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/20">
-                              <span className="font-extrabold">
-                                Promo Discount ({booking.promoCode || "PROMO"})
-                              </span>
-                              <span className="font-black">
-                                -₹{booking.discountApplied}
-                              </span>
-                            </div>
-                          ) : null}
-
-                          {/* Additional Charges added by Partner */}
-                          {booking.additionalCharges && booking.additionalCharges.length > 0 ? (
-                            <div className="space-y-1.5 pt-2 border-t border-slate-800/60 text-left">
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                Technician Approved Add-ons
-                              </span>
-                              {booking.additionalCharges.map((chg, i) => (
-                                <div
-                                  key={i}
-                                  className="flex justify-between items-start bg-amber-500/[0.04] p-3 rounded-xl border border-amber-500/20"
-                                >
-                                  <div>
-                                    <p className="font-extrabold text-slate-200 leading-none">
-                                      {chg.reason}
-                                    </p>
-                                    <span className="text-[9px] text-slate-500 font-bold leading-none">
-                                      {chg.createdAt?.toDate?.()?.toLocaleDateString() || "Today"}
-                                    </span>
-                                  </div>
-                                  <span className="font-black text-amber-500 text-xs text-right">
-                                    ₹{chg.amount}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          <div className="flex justify-between items-center text-white border-t border-slate-800/60 pt-3 mt-3">
-                            <span className="font-black uppercase tracking-wider text-[11px]">
-                              Total Net Payable
-                            </span>
-                            <span className="text-xl font-black text-emerald-400 font-mono">
-                              ₹{booking.totalPrice}
-                            </span>
-                          </div>
-
-                          {booking.status === "payment_pending" && (
-                            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col gap-3">
-                              <div className="text-left">
-                                <h5 className="text-[10px] font-black uppercase text-blue-400 tracking-wider">
-                                  Awaiting Service Payment
-                                </h5>
-                                <p className="text-[10px] text-slate-400 font-semibold mt-1 leading-normal">
-                                  Select secure payment route, or clear of ₹{booking.totalPrice} in cash.
-                                </p>
-                              </div>
-                              <div className="grid grid-cols-1 gap-2 w-full">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setBookingToPay(booking);
-                                  }}
-                                  className="w-full text-[9px] font-black uppercase tracking-widest text-white bg-blue-700 hover:bg-blue-800 py-3 rounded-xl transition-all shadow-md cursor-pointer text-center active:scale-95 border-0"
-                                >
-                                  Pay Online
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsPaymentScannerOpen(true);
-                                  }}
-                                  className="w-full text-[9px] font-black uppercase tracking-widest text-slate-200 bg-slate-800 border border-slate-700 hover:bg-slate-750 py-3 rounded-xl transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1 active:scale-95"
-                                >
-                                  <QrCode size={11} /> Scan QR
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePayWithCashByCustomer(booking);
-                                  }}
-                                  className="w-full text-[9px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 py-3 rounded-xl border border-emerald-500/20 transition-all shadow-sm cursor-pointer text-center active:scale-95"
-                                >
-                                  Pay Cash
-                                </button>
-                              </div>
-                            </div>
                           )}
                         </div>
                       </div>
+                    ) : (
+                      <div className="bg-white border border-dashed border-slate-200 p-4 rounded-2xl flex flex-col justify-center text-center">
+                        <Sparkles size={16} className="text-[#22c55e] mx-auto mb-2 animate-pulse" />
+                        <h5 className="font-bold text-slate-700 text-xs">Finding expert technician</h5>
+                        <p className="text-[10px] text-slate-500 mt-1">We are matching your request with active nearby experts.</p>
+                      </div>
+                    )}
+                  </motion.div>
 
-                      {/* Live Tracker Map Toggle inside ticker */}
-                      {isLiveTrackingAvailable && hasPartner && (
-                        <div className="space-y-4">
-                          <button
-                            onClick={() =>
-                              setExpandedTrackerId(
-                                expandedTrackerId === booking.id
-                                  ? null
-                                  : booking.id,
-                              )
-                            }
-                            className="w-full text-[10px] font-black uppercase tracking-widest bg-blue-700 hover:bg-blue-800 text-white transition-all px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg cursor-pointer border-0"
-                          >
-                            <Compass size={16} className="text-white" />
-                            {expandedTrackerId === booking.id
-                              ? "Hide Live Navigation Map"
-                              : "View Live Location Map"}
-                          </button>
-
-                          <AnimatePresence>
-                            {expandedTrackerId === booking.id && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden border border-slate-800 rounded-[32px] bg-slate-900 p-4"
-                              >
-                                <PartnerTrackingMap
-                                  partnerId={booking.partnerId!}
-                                  destinationAddress={booking.address}
-                                  bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
-                                />
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      )}
+                  {/* 7. Cost Summary Segment */}
+                  <motion.div variants={itemVariants} className="p-5 bg-white flex flex-col gap-2.5 text-xs font-semibold relative z-10">
+                    <div className="flex justify-between items-center text-slate-500">
+                      <span className="font-semibold text-slate-400">
+                        {services[booking.serviceId]?.name || "Base Fare"}
+                      </span>
+                      <span className="text-slate-800">
+                        ₹{services[booking.serviceId]?.basePrice || booking.totalPrice}
+                      </span>
                     </div>
-                  </div>
-                </div>
+
+                    {booking.discountApplied && booking.discountApplied > 0 ? (
+                      <div className="flex justify-between items-center text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                        <span className="font-extrabold">Promo Discount ({booking.promoCode || "PROMO"})</span>
+                        <span className="font-black">-₹{booking.discountApplied}</span>
+                      </div>
+                    ) : null}
+
+                    {/* Additional Charges added by Partner */}
+                    {booking.additionalCharges && booking.additionalCharges.length > 0 ? (
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100 text-left">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                          Technician Approved Add-ons
+                        </span>
+                        {booking.additionalCharges.map((chg, i) => (
+                          <div
+                            key={i}
+                            className="flex justify-between items-start bg-amber-500/[0.04] p-3 rounded-xl border border-amber-500/20"
+                          >
+                            <div>
+                              <p className="font-extrabold text-slate-700 leading-none">
+                                {chg.reason}
+                              </p>
+                              <span className="text-[9px] text-slate-405 font-bold leading-none">
+                                {chg.createdAt?.toDate?.()?.toLocaleDateString() || "Today"}
+                              </span>
+                            </div>
+                            <span className="font-black text-amber-500 text-xs text-right">
+                              ₹{chg.amount}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="flex justify-between items-center text-slate-900 border-t border-slate-100 pt-3 mt-1">
+                      <span className="font-black uppercase tracking-wider text-[11px]">Net Payable Amount</span>
+                      <span className="text-xl font-black text-slate-900">₹{booking.totalPrice}</span>
+                    </div>
+
+                    {booking.status === "payment_pending" && (
+                      <div className="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col gap-3">
+                        <div className="text-left">
+                          <h5 className="text-[10px] font-black uppercase text-[#22c55e] tracking-wider">
+                            Awaiting Service Payment
+                          </h5>
+                          <p className="text-[10px] text-slate-500 font-semibold mt-1 leading-normal">
+                            Select secure payment route, or clear of ₹{booking.totalPrice} in cash.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 w-full">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBookingToPay(booking);
+                            }}
+                            className="w-full text-[9px] font-black uppercase tracking-widest text-white bg-slate-900 hover:bg-slate-800 py-3 rounded-xl transition-all shadow-md cursor-pointer text-center active:scale-95 border-0 font-display"
+                          >
+                            Pay Online
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+
+                  {/* 8. Live Tracking Map Segment */}
+                  {isLiveTrackingAvailable && hasPartner && (
+                    <motion.div variants={itemVariants} className="p-5 bg-slate-50 border-t border-slate-100 relative z-10 w-full">
+                      <button
+                        onClick={() =>
+                          setExpandedTrackerId(
+                            expandedTrackerId === booking.id
+                              ? null
+                              : booking.id,
+                          )
+                        }
+                        className="w-full text-[10px] font-black uppercase tracking-widest bg-slate-900 hover:bg-slate-800 text-white transition-all px-6 py-3.5 rounded-2xl flex items-center justify-center gap-3 shadow-lg cursor-pointer border-0 font-display"
+                      >
+                        <Compass size={14} className="text-white shrink-0" />
+                        {expandedTrackerId === booking.id
+                          ? "Hide Live Navigation Map"
+                          : "View Live Location Map"}
+                      </button>
+
+                      <AnimatePresence>
+                        {expandedTrackerId === booking.id && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                            animate={{ height: "auto", opacity: 1, marginTop: 12 }}
+                            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                            className="overflow-hidden border border-slate-200 rounded-2xl bg-slate-50"
+                          >
+                            <PartnerTrackingMap
+                              partnerId={booking.partnerId!}
+                              destinationAddress={booking.address}
+                              bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+                </motion.div>
               );
             })}
         </motion.div>
@@ -2224,7 +2079,7 @@ export default function CustomerDashboard({
                             ['completed', 'finalized', 'closed'].includes(booking.status)
                               ? '100'
                               : (() => {
-                                  if (['pending', 'pending_parts'].includes(booking.status)) return 0;
+                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return 0;
                                   if (['confirmed', 'assigned'].includes(booking.status)) return 25;
                                   if (['on_the_way', 'arrived'].includes(booking.status)) return 50;
                                   if (booking.status === 'in_progress') return 75;
@@ -2237,14 +2092,14 @@ export default function CustomerDashboard({
                       />
 
                       {[
-                        { label: "Confirmed", description: "Schedule Secured", icon: Clock, keys: ["pending", "pending_parts"] },
+                        { label: "Confirmed", description: "Schedule Secured", icon: Clock, keys: ["pending", "pending_parts", "pending_acceptance"] },
                         { label: "Assigned", description: "Expert Matched", icon: User, keys: ["confirmed", "assigned"] },
                         { label: "On The Way", description: "En Route/Arrived", icon: Navigation, keys: ["on_the_way", "arrived"] },
                         { label: "In Progress", description: "Service Underway", icon: Zap, keys: ["in_progress"] },
                         { label: "Completed", description: "Job Finalized", icon: CheckCircle2, keys: ["completed", "finalized", "closed"] }
                       ].map((step, idx) => {
                         const getTimelineStageIndex = (status: string) => {
-                          if (['pending', 'pending_parts'].includes(status)) return 0;
+                          if (['pending', 'pending_parts', 'pending_acceptance'].includes(status)) return 0;
                           if (['confirmed', 'assigned'].includes(status)) return 1;
                           if (['on_the_way', 'arrived'].includes(status)) return 2;
                           if (status === 'in_progress') return 3;

@@ -61,7 +61,7 @@ import {
   CreditCard,
 } from "lucide-react";
 
-const heroImage = "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=1200";
+import heroImage from "../assets/images/regenerated_image_1781639290171.jpg";
 
 interface Props {
   setActiveTab: (tab: any, arg?: any) => void;
@@ -1442,18 +1442,6 @@ export default function CustomerHome({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center text-left">
               {/* Left Column: Welcome Message and Search Input */}
               <div className="lg:col-span-6 space-y-6">
-                {profile && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="inline-flex items-center gap-2 px-3 py-1 bg-black/30 backdrop-blur-md border border-amber-500/25 rounded-full text-xs font-semibold text-amber-300 shadow-xl"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-                    <span className="font-display font-black tracking-widest text-[10px] sm:text-[11px] uppercase text-amber-450">
-                      नमस्ते, {profile.displayName || (profile as any).name || 'User'}
-                    </span>
-                  </motion.div>
-                )}
                 <motion.h1
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -1648,23 +1636,57 @@ export default function CustomerHome({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {bookingPartner ? (
-                        <>
-                          <div className="w-4.5 h-4.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] font-black text-emerald-700 shrink-0">
-                            {bookingPartner.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="truncate text-slate-700">
-                            Pro Expert: <span className="text-emerald-600 font-bold">{bookingPartner.name}</span>
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-4.5 h-4.5 rounded-full bg-amber-50 flex items-center justify-center text-[9px] font-black text-amber-700 shrink-0 border border-amber-100">
-                            ?
-                          </div>
-                          <span className="text-slate-500 italic">Matching Best Expert Pro...</span>
-                        </>
-                      )}
+                      {(() => {
+                        const statusStr = typeof activeBooking?.status === 'string' ? activeBooking.status.trim().toUpperCase() : "";
+                        if (statusStr === "ASSIGNED") {
+                          return (
+                            <>
+                              <div className="w-4.5 h-4.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] font-black text-emerald-700 shrink-0">
+                                {bookingPartner ? bookingPartner.name.charAt(0).toUpperCase() : "E"}
+                              </div>
+                              <span className="truncate text-emerald-700 font-bold animate-pulse">
+                                Expert Assigned & Preparing
+                              </span>
+                            </>
+                          );
+                        }
+                        if (statusStr === "PENDING_ACCEPTANCE" || statusStr === "SEARCHING") {
+                          return (
+                            <>
+                              <div className="w-4.5 h-4.5 rounded-full bg-amber-50 flex items-center justify-center text-[9px] font-black text-amber-700 shrink-0 border border-amber-100">
+                                ?
+                              </div>
+                              <span className="text-slate-500 italic">
+                                Matching Best Expert Pro...
+                              </span>
+                            </>
+                          );
+                        }
+                        
+                        if (bookingPartner) {
+                          return (
+                            <>
+                              <div className="w-4.5 h-4.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] font-black text-emerald-700 shrink-0">
+                                {bookingPartner.name.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="truncate text-slate-700">
+                                Pro Expert: <span className="text-emerald-600 font-bold">{bookingPartner.name}</span>
+                              </span>
+                            </>
+                          );
+                        }
+                        
+                        return (
+                          <>
+                            <div className="w-4.5 h-4.5 rounded-full bg-amber-50 flex items-center justify-center text-[9px] font-black text-amber-700 shrink-0 border border-amber-100">
+                              ?
+                            </div>
+                            <span className="text-slate-450 italic">
+                              Matching Expert Partner...
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1790,18 +1812,6 @@ export default function CustomerHome({
             </div>
           ) : (
             <div className="max-w-4xl mx-auto text-center">
-              {profile && (
-                <motion.div
-                  initial={{ opacity: 0, y: -12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-6 bg-black/30 backdrop-blur-md border border-amber-500/25 rounded-full text-xs font-semibold text-amber-300 shadow-lg"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-                  <span className="font-display font-black tracking-widest text-[11px] sm:text-xs uppercase text-amber-450">
-                    नमस्ते, {profile.displayName || (profile as any).name || 'User'}
-                  </span>
-                </motion.div>
-              )}
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -3842,7 +3852,7 @@ export default function CustomerHome({
               </span>
               <h2 className="text-3xl md:text-4xl font-display font-extrabold tracking-tight mb-4">
                 Need Fast Help? Ask{" "}
-                <span className="text-amber-300 drop-shadow-sm font-black">ZomIndia AI</span>
+                <span className="text-amber-300 drop-shadow-sm font-black">ZOMINI</span>
               </h2>
               <p className="text-blue-100 text-sm leading-relaxed max-w-md">
                 Get answers about booking states, refund policies, annual

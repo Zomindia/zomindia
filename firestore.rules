@@ -4,8 +4,8 @@ service cloud.firestore {
     // 0. Global Safety Net
     match /{document=**} {
       allow read, write: if isSignedIn() && (
-        request.auth.token.get('email', '').lower() == 'system-worker@zomindia.com' ||
-        request.auth.token.get('email_address', '').lower() == 'system-worker@zomindia.com'
+        ('email' in request.auth.token && request.auth.token.email.lower() == 'system-worker@zomindia.com') ||
+        ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'system-worker@zomindia.com')
       );
     }
 
@@ -21,41 +21,50 @@ service cloud.firestore {
 
     function isAdmin() {
       // Check if user has the specific master admin email or is verified and in admins collection or has admin role in profile
-      let auth_token = request.auth.token;
-      let email = auth_token.get('email', auth_token.get('email_address', '')).lower();
-      let uid = request.auth.uid;
       return isSignedIn() && (
-               (email == 'sarthakwebtech@gmail.com') ||
-               (email == 'sarthak.webtech@gmail.com') ||
-               (uid == 'tAXPSenVwVgJRAJs2EcJN0UUzPI2') ||
-               (exists(/databases/$(database)/documents/admins/$(uid))) ||
-               (exists(/databases/$(database)/documents/users/$(uid)) && get(/databases/$(database)/documents/users/$(uid)).data.get('role', '') == 'admin') ||
-               (exists(/databases/$(database)/documents/users/$(uid)) && 
-                (get(/databases/$(database)/documents/users/$(uid)).data.get('email', '').lower() == 'sarthakwebtech@gmail.com' ||
-                 get(/databases/$(database)/documents/users/$(uid)).data.get('email', '').lower() == 'sarthak.webtech@gmail.com'))
+               ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
+               ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.lower() == 'sarthak.webtech@gmail.com') ||
+               ('email_address' in request.auth.token && request.auth.token.email_address != null && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||
+               ('email_address' in request.auth.token && request.auth.token.email_address != null && request.auth.token.email_address.lower() == 'sarthak.webtech@gmail.com') ||
+               request.auth.uid == 'tAXPSenVwVgJRAJs2EcJN0UUzPI2' ||
+               exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                'email' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email != null &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.lower() == 'sarthakwebtech@gmail.com') ||
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                'email' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email != null &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.lower() == 'sarthak.webtech@gmail.com')
              );
     }
 
     function isHeadAdmin() {
       return isAdmin() && (
         !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSubRole', 'head') == 'head'
+        !('adminSubRole' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.adminSubRole == 'head'
       );
     }
 
     function isAccountsAdmin() {
       return isAdmin() && (
         !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSubRole', 'head') == 'accounts' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSubRole', 'head') == 'head'
+        !('adminSubRole' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.adminSubRole == 'accounts' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.adminSubRole == 'head'
       );
     }
 
     function isHRAdmin() {
       return isAdmin() && (
         !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSubRole', 'head') == 'hr' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSubRole', 'head') == 'head'
+        !('adminSubRole' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.adminSubRole == 'hr' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.adminSubRole == 'head'
       );
     }
 
@@ -93,6 +102,7 @@ service cloud.firestore {
              (!('preferredTimeSlot' in data) || (data.preferredTimeSlot is string || data.preferredTimeSlot == null)) &&
              (!('secondaryPhone' in data) || (data.secondaryPhone is string || data.secondaryPhone == null)) &&
              (!('referralCode' in data) || (data.referralCode is string && data.referralCode.size() <= 50)) &&
+             (!('onboardingComplete' in data) || (data.onboardingComplete is bool)) &&
              (!('adminSubRole' in data) || (data.adminSubRole is string && data.adminSubRole in ['head', 'accounts', 'hr'])) &&
              (!('createdAt' in data) || (data.createdAt is timestamp)) &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp));
@@ -272,6 +282,15 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    function isValidPayoutRequest(data) {
+      return data.keys().hasAll(['partnerId', 'amount', 'status', 'createdAt']) &&
+             data.partnerId is string &&
+             data.amount is number &&
+             data.status in ['pending', 'processed', 'completed', 'failed'] &&
+             (!('processedAt' in data) || data.processedAt is timestamp) &&
+             data.createdAt is timestamp;
+    }
+
     function isValidAMC(data) {
       return data.keys().hasAll(['customerId', 'serviceId', 'planName', 'frequency', 'startDate', 'endDate', 'totalPrice', 'status', 'leadSource']) &&
              data.status in ['active', 'expired', 'pending_renewal', 'cancelled', 'pending_payment'] &&
@@ -289,10 +308,10 @@ service cloud.firestore {
     // --- RULES ---
 
     match /amcs/{amcId} {
-      allow read: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.partnerId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.partnerId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (incoming().customerId == request.auth.uid || isAdmin()) && isValidAMC(incoming());
-      allow update: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().partnerId) || isAccountsAdmin() || isHeadAdmin()) && (
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.customerId == request.auth.uid || (("partnerId" in resource.data) && resource.data.partnerId == request.auth.uid))));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || (("partnerId" in resource.data) && resource.data.partnerId == request.auth.uid));
+      allow create: if isSignedIn() && (isAdmin() || incoming().customerId == request.auth.uid) && isValidAMC(incoming());
+      allow update: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isOwner(existing().customerId) || isOwner(existing().partnerId)) && (
         isHeadAdmin() || isAccountsAdmin() || (
           // Allow customer or partner to update booking history or status
           incoming().diff(existing()).affectedKeys().hasAny(['serviceBookingIds', 'status', 'updatedAt']) &&
@@ -303,15 +322,23 @@ service cloud.firestore {
     }
 
     match /walletTransactions/{transactionId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin());
-      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAccountsAdmin() || isHeadAdmin()) && isValidWalletTransaction(incoming());
+      allow read: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow list: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || incoming().userId == request.auth.uid) && isValidWalletTransaction(incoming());
       allow update: if isSignedIn() && isAccountsAdmin() && (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']));
       allow delete: if isAdmin();
     }
 
+    match /payoutRequests/{requestId} {
+      allow read: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isHRAdmin() || (resource != null && resource.data.partnerId == request.auth.uid));
+      allow list: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isHRAdmin() || resource.data.partnerId == request.auth.uid);
+      allow create: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || incoming().partnerId == request.auth.uid) && isValidPayoutRequest(incoming());
+      allow update: if isSignedIn() && (isAccountsAdmin() || isHeadAdmin() || isHRAdmin()) && (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'processedAt', 'completedAt', 'failedAt']));
+      allow delete: if isAdmin();
+    }
+
     match /users/{userId} {
-      allow get: if isSignedIn() || (resource.data.role == 'partner');
+      allow get: if isSignedIn() || (resource != null && resource.data.get('role', '') == 'partner');
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_')) && isValidUser(incoming());
       allow update: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_') || isHRAdmin() || isHeadAdmin()) && (
@@ -326,14 +353,14 @@ service cloud.firestore {
               (incoming().diff(existing()).affectedKeys().hasOnly([
                 'displayName', 'email', 'phoneNumber', 'photoURL', 'address', 'bio', 
                 'notificationPreferences', 'updatedAt', 'gender', 'languagePreference', 
-                'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone'
+                'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete'
               ])) ||
               // Allow transition to partner role during onboarding
               (incoming().diff(existing()).affectedKeys().hasOnly(['role', 'bio', 'phoneNumber', 'updatedAt']) && incoming().role == 'partner' && (existing().role == 'customer' || existing().role == 'partner')) ||
-              request.auth.token.get('email', '') == 'sarthakwebtech@gmail.com' ||
-              request.auth.token.get('email_address', '') == 'sarthakwebtech@gmail.com' ||
-              existing().get('email', '').lower() == 'sarthakwebtech@gmail.com' ||
-              existing().get('email', '').lower() == 'sarthak.webtech@gmail.com' ||
+              ('email' in request.auth.token && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
+              ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||
+              ('email' in existing() && existing().email != null && existing().email.lower() == 'sarthakwebtech@gmail.com') ||
+              ('email' in existing() && existing().email != null && existing().email.lower() == 'sarthak.webtech@gmail.com') ||
               userId == 'tAXPSenVwVgJRAJs2EcJN0UUzPI2'
             )) ||
             // Partner onboarding (HR can verify, but user can opt-in)
@@ -388,8 +415,8 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       match /earningsHistory/{historyId} {
-        allow read: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId) || isAccountsAdmin() || isHeadAdmin());
-        allow create: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId) || isAccountsAdmin() || isHeadAdmin());
+        allow read: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId));
+        allow create: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId));
         allow update: if isAccountsAdmin() || isHeadAdmin();
         allow delete: if isHeadAdmin();
       }
@@ -407,19 +434,20 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
       allow create: if isSignedIn() && isValidNotification(incoming());
       allow update: if isSignedIn() && isOwner(resource.data.userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
     }
 
     match /bookings/{bookingId} {
-      allow get: if isSignedIn() && isValidId(bookingId) && (isOwner(existing().customerId) || isOwner(existing().partnerId) || isAdmin());
+      allow get: if isSignedIn() && isValidId(bookingId) && (isAdmin() || (resource != null && (isOwner(resource.data.customerId) || (("partnerId" in resource.data) && isOwner(resource.data.partnerId)))));
       allow list: if isSignedIn() && (
+        isAdmin() ||
         resource.data.customerId == request.auth.uid || 
-        resource.data.partnerId == request.auth.uid || 
-        (resource.data.get('status', '') != 'cancelled' && resource.data.get('status', '') != 'rejected') ||
-        isAdmin()
+        (("partnerId" in resource.data) && resource.data.partnerId == request.auth.uid) || 
+        resource.data.status == "pending" ||
+        (resource.data.status != "cancelled" && resource.data.status != "rejected")
       );
       allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming()) && incoming().customerId == request.auth.uid && (
         exists(/databases/$(database)/documents/services/$(incoming().serviceId)) || 
@@ -448,9 +476,9 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isSignedIn() && isValidId(bookingId) && (
+          isAdmin() ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid ||
-          isAdmin()
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid
         );
         allow create: if isSignedIn() && isValidId(bookingId) && (
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
@@ -460,8 +488,8 @@ service cloud.firestore {
 
       match /secrets/otp {
         allow read: if isSignedIn() && isValidId(bookingId) && (
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
-          isAdmin()
+          isAdmin() ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid
         );
         allow create: if isSignedIn() && isValidId(bookingId);
         allow update, delete: if isAdmin();
@@ -471,13 +499,13 @@ service cloud.firestore {
         // Partner can verify by trying to 'get' a specific code. 
         // They CANNOT 'list' (see 'allow list: if ... isAdmin()')
         allow get: if isSignedIn() && isValidId(bookingId) && (
+          isAdmin() ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid ||
-          isAdmin()
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.partnerId == request.auth.uid
         );
         allow list: if isSignedIn() && isValidId(bookingId) && (
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid ||
-          isAdmin()
+          isAdmin() ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.customerId == request.auth.uid
         );
         allow create: if isAdmin();
       }
@@ -501,9 +529,9 @@ service cloud.firestore {
     }
 
     match /tickets/{ticketId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
       allow create: if isSignedIn() && isValidTicket(incoming());
-      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
@@ -514,12 +542,29 @@ service cloud.firestore {
     }
 
     match /redemptions/{redemptionId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && isValidRedemption(incoming());
-      allow update: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin()) &&
-                    (isAdmin() || (incoming().status == 'used' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])));
+      allow update: if isSignedIn() && (isAdmin() || (isOwner(resource.data.userId) &&
+                     incoming().status == 'used' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])));
       allow delete: if isAdmin();
+    }
+
+    function isValidCityDemand(data) {
+      return data.keys().hasAll(['user_id', 'current_logged_in_name', 'target_city', 'target_state', 'clicked_timestamp']) &&
+             data.keys().size() == 5 &&
+             data.user_id is string &&
+             data.current_logged_in_name is string &&
+             data.target_city is string &&
+             data.target_state is string &&
+             data.clicked_timestamp != null;
+    }
+
+    match /cityDemandAnalytics/{analyticsId} {
+      allow read: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidCityDemand(incoming());
+      allow update, delete: if isAdmin();
     }
     
     // Explicitly allow admins collection for the bootstrap check

@@ -12,6 +12,7 @@ export interface UserProfile {
   emailVerified?: boolean;
   photoURL?: string;
   address?: string;
+  city?: string;
   bio?: string;
   walletBalance?: number;
   referralCode?: string;
@@ -93,6 +94,8 @@ export interface PartnerProfile {
   lng?: number;
   createdAt?: any;
   updatedAt?: any;
+  locationDisconnected?: boolean;
+  disconnectReason?: string;
 }
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -120,7 +123,7 @@ export interface EarningsHistory {
   createdAt: any;
 }
 
-export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending' | 'Pending - Customer Unresponsive';
+export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending' | 'pending_acceptance' | 'Pending - Customer Unresponsive';
 
 export interface AdditionalCharge {
   amount: number;
@@ -163,6 +166,7 @@ export interface Booking {
   amcId?: string | null;
   activeCall?: ActiveCallInfo | null;
   completionPhotos?: string[];
+  secondaryContact?: string;
 }
 
 export interface ActiveCallInfo {

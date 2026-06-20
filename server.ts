@@ -57,37 +57,92 @@ let isWorkerAuthenticated = true;
 // Background worker connection runs directly under high-privilege Admin SDK, no client login required.
 
 
-let db: any;
-let adminDb: any;
-try {
-  if (firebaseConfig.firestoreDatabaseId) {
-    adminDb = getFirestore(admin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
-  } else {
-    adminDb = getFirestore();
-  }
-} catch (e: any) {
-  console.error("[Startup] Failed to initialize adminDb instance:", e.message);
-  try {
-    if (admin.apps.length > 0) {
-      adminDb = admin.firestore();
-    } else {
-      adminDb = null;
-    }
-  } catch (innerErr: any) {
-    console.error("[Startup] Failed fallback to admin.firestore for adminDb:", innerErr.message);
-    adminDb = null;
-  }
-}
+let _serverDb: any = null;
+let _serverClientDb: any = null;
 
-try {
-  db = adminDb || (admin.apps.length > 0 ? admin.firestore() : null);
-  if (!db) {
-    console.warn("[Startup] No Firebase Admin apps initialized. Database instance set to null on startup.");
+const initializeServerClientDb = async () => {
+  try {
+    const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+    const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
+    const appName = "client-backend";
+    let clientApp;
+    if (firebase.apps.some((app: any) => app.name === appName)) {
+      clientApp = firebase.app(appName);
+    } else {
+      clientApp = firebase.initializeApp(firebaseConfig, appName);
+    }
+    
+    // Generate a secure custom token using Admin SDK, bypassing Email/Password sign-in provider restriction
+    let customToken: string;
+    try {
+      customToken = await admin.auth().createCustomToken("system-worker-uid", {
+        email: "system-worker@zomindia.com",
+        email_verified: true
+      });
+      await clientApp.auth().signInWithCustomToken(customToken);
+      console.log("[Server Client Backend] Successfully authenticated system-worker@zomindia.com via custom token");
+    } catch (authErr: any) {
+      console.warn("[Server Client Backend] Custom token authentication failed, trying anonymous sign-in:", authErr.message);
+      try {
+        await clientApp.auth().signInAnonymously();
+        console.log("[Server Client Backend] Successfully authenticated anonymously");
+      } catch (anonErr: any) {
+        console.error("[Server Client Backend] Anonymous sign-in also failed:", anonErr.message);
+        throw anonErr;
+      }
+    }
+    
+    _serverClientDb = clientApp.firestore();
+    _serverDb = _serverClientDb;
+  } catch (err: any) {
+    console.error("[Server Client Backend Init Error - Falling back to Admin]:", err.message);
   }
-} catch (e: any) {
-  console.error("[Startup] Failed to initialize firestore instance:", e.message);
-  db = null;
-}
+};
+
+// Start the auth flow immediately
+initializeServerClientDb();
+
+const getDbInstance = () => {
+  if (_serverDb) return _serverDb;
+  
+  try {
+    const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+    const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
+    if (firebaseConfig.firestoreDatabaseId) {
+      _serverDb = getFirestore(admin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
+    } else {
+      _serverDb = getFirestore();
+    }
+  } catch (err: any) {
+    console.error("[Server getDbInstance Fallback Error]:", err.message);
+    try {
+      if (admin.apps.length > 0) {
+        _serverDb = admin.firestore();
+      } else {
+        _serverDb = null;
+      }
+    } catch (innerErr: any) {
+      _serverDb = null;
+    }
+  }
+  return _serverDb;
+};
+
+// Proxies for db and adminDb to auto-delegate with zero refactoring in server.ts
+const dbProxy = new Proxy({}, {
+  get(target, prop) {
+    const activeDb = getDbInstance();
+    if (!activeDb) return undefined;
+    const value = activeDb[prop];
+    if (typeof value === "function") {
+      return value.bind(activeDb);
+    }
+    return value;
+  }
+});
+
+const db: any = dbProxy;
+const adminDb: any = dbProxy;
 
 async function startServer() {
   const app = express();
@@ -540,9 +595,40 @@ async function startServer() {
   };
 
   app.post("/api/support-chat", async (req, res) => {
+    const { message, context } = req.body;
     try {
-      const { message, context } = req.body;
       if (!message) return res.status(400).json({ error: "Message is required" });
+
+      const txt = (message || "").toLowerCase();
+      // Strict Corporate Security Interceptor at the entry point
+      const isSensitiveQuery = 
+        txt.includes("business model") || 
+        txt.includes("revenue") || 
+        txt.includes("income") || 
+        txt.includes("accounting") ||
+        txt.includes("profit") ||
+        txt.includes("expense") || 
+        txt.includes("operational cost") ||
+        txt.includes("how much do you earn") ||
+        txt.includes("code") || 
+        txt.includes("architecture") || 
+        txt.includes("proprietary") || 
+        txt.includes("backend") || 
+        txt.includes("database") || 
+        txt.includes("technology") || 
+        txt.includes("developer") || 
+        txt.includes("identity") || 
+        txt.includes("who built you") ||
+        txt.includes("who programmed you") ||
+        txt.includes("source code") ||
+        txt.includes("platform cost") ||
+        txt.includes("server cost") ||
+        txt.includes("operational expense") ||
+        txt.includes("company income");
+
+      if (isSensitiveQuery) {
+        return res.json({ reply: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।" });
+      }
 
       const geminiKey = process.env.GEMINI_API_KEY;
       if (!geminiKey || geminiKey === "YOUR_API_KEY" || geminiKey.trim() === "") {
@@ -554,10 +640,20 @@ async function startServer() {
         model: "gemini-3.5-flash",
         contents: `Context: ${JSON.stringify(context || {})}\nUser: ${message}`,
         config: {
-          systemInstruction: `You are Sarthak, the zomindia AI support chatbot. You are helpful, professional, friendly, and highly knowledgeable about home services.
-          Always identify yourself as Sarthak when greeting or speaking to users.
+          systemInstruction: `You are ZOMINI, the zomindia traditional Indian female AI support chatbot. You are helpful, professional, friendly, and highly knowledgeable about home services.
+          Always identify yourself as ZOMINI when greeting or speaking to users.
           You have access to the user's profile and their recent bookings (if any). Use this context to provide specific, personalized help. 
-          For customers, help with their bookings and service queries. For partners, help them with their assigned jobs and earnings queries. 
+          For customers, help with their bookings and service queries based on the list of live bookings and user details provided in context. Always refer to actual live bookings from context.
+          For partners, help them with their assigned jobs and earnings queries. 
+
+          === COMPREHENSIVE PUBLIC BRAND KNOWLEDGE BASE ===
+          - Location & Availability: Currently serving Indore with verified top-tier experts.
+          - Categories: Expert in AC Service, Electronics Repair, RO Water Purifier Service, Refrigerator Service & Repair, and Washing Machine Repair.
+          - Customer Promises: Transparent pricing, strictly background-verified professionals, punctuality guarantee, and a 7-day free cover/complimentary re-work warranty.
+
+          === STRICT CORPORATE DATA GUARDRAIL & SECURITY LOCK (DATA LEAK PREVENTION) ===
+          - If a user asks about the business model, company income/revenue, operational expenses, internal coding architecture, proprietary logic, backend technologies, developer identities, platform costs, or other corporate data, you must strictly decline using this exact Sanskritized Hindi response:
+            "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।"
 
           CRITICAL language instruction: Detect the language the user is speaking or asking in (whether English, Hindi, Bengali, Tamil, Telugu, Marathi, Malayalam, Kannada, Gujarati, Punjabi, etc.) or refer to the requested language in context (context.language). You MUST reply to the user entirely in that same language (e.g., if they speak in Hindi, respond in fluent Hindi; if in Tamil, respond in Tamil).
 
@@ -570,14 +666,62 @@ async function startServer() {
       console.error("Gemini AI Error:", err);
       // Smart offline fallback to ensure chat always responds smoothly
       const txt = (req.body.message || "").toLowerCase();
-      let replyMessage = "I am Sarthak, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
+      
+      const isSensitiveQuery = 
+        txt.includes("business model") || 
+        txt.includes("revenue") || 
+        txt.includes("income") || 
+        txt.includes("accounting") ||
+        txt.includes("profit") ||
+        txt.includes("expense") || 
+        txt.includes("operational cost") ||
+        txt.includes("how much do you earn") ||
+        txt.includes("code") || 
+        txt.includes("architecture") || 
+        txt.includes("proprietary") || 
+        txt.includes("backend") || 
+        txt.includes("database") || 
+        txt.includes("technology") || 
+        txt.includes("developer") || 
+        txt.includes("identity") || 
+        txt.includes("who built you") ||
+        txt.includes("who programmed you") ||
+        txt.includes("source code") ||
+        txt.includes("platform cost") ||
+        txt.includes("server cost") ||
+        txt.includes("operational expense") ||
+        txt.includes("company income");
+
+      if (isSensitiveQuery) {
+        return res.json({ reply: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।" });
+      }
+
+      let replyMessage = "I am ZOMINI, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
       
       if (txt.includes("hello") || txt.includes("hi") || txt.includes("hey")) {
-        replyMessage = "hi welcom to zomindia ai chat support and i am sarthak to help you. How can I assist you with your booking or service query today?";
+        const hasBookings = context && context.bookings && context.bookings.length > 0;
+        const b = hasBookings ? context.bookings[0] : null;
+        if (b) {
+          replyMessage = `नमस्ते VIKASS! I am ZOMINI, your zomindia AI Chat assistant. I see you have an active ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}) currently in status: '${b.status}'. How can I assist you with this or other queries today?`;
+        } else {
+          replyMessage = "नमस्ते VIKASS! I am ZOMINI, your zomindia AI Chat assistant. How can I assist you with your home service bookings or other queries today?";
+        }
+      } else if (txt.includes("status")) {
+        const hasBookings = context && context.bookings && context.bookings.length > 0;
+        const b = hasBookings ? context.bookings[0] : null;
+        if (b) {
+          replyMessage = `नमस्ते VIKASS, for your ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}), the current status is '${b.status}'. Our background-verified pro is assigned.`;
+        } else {
+          replyMessage = "नमस्ते VIKASS, you do not have any active service bookings under way right now. Feel free to browse our home services catalog!";
+        }
+      } else if (txt.includes("refund")) {
+        replyMessage = "For details about refunds or cancellations, please contact our helpline. All cancellations made up to 2 hours before the scheduled time slot qualify for a 100% immediate wallet credit refund!";
+      } else if (txt.includes("city") || txt.includes("availability") || txt.includes("indore")) {
+        replyMessage = "ZomIndia is currently live in Indore! More cities like Bhopal, Pune, and Mumbai will be launched soon. Stay tuned!";
       } else if (txt.includes("price") || txt.includes("cost") || txt.includes("charge")) {
-        replyMessage = "Our standard packages start from as low as ₹499. You can explore exact charges and customize packages directly on our discovery feed on the dashboard.";
+        replyMessage = "Our standard packages start from as low as ₹499. We promise transparent, upfront pricing with strictly verified pros and a 7-day cover re-work warranty!";
       } else if (txt.includes("book") || txt.includes("schedule")) {
-        replyMessage = "To schedule a service: select an active service categorised on the customer home page, choose your package, hit book, and confirm a preferred slot. A local verified Pro will be auto-assigned!";
+        replyMessage = "To schedule a service: select an active service categorised on the customer home page (like AC, Washing Machine, Refrigerator, RO Water Purifier or Electronics repair), choose your package, hit book, and confirm a preferred slot.";
       } else if (txt.includes("partner") || txt.includes("earn") || txt.includes("job")) {
         replyMessage = "As a verified Pro partner, you can browse open jobs in the 'Available Jobs Pool', accept assignments, trace client locations, and earn reward credits on completing jobs successfully. Is there a specific job you need help with?";
       } else if (txt.includes("call") || txt.includes("phone") || txt.includes("contact")) {

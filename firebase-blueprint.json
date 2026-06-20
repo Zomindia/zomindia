@@ -295,9 +295,39 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["customerId", "serviceId", "planName", "frequency", "startDate", "endDate", "totalPrice", "status", "leadSource"]
+    },
+    "CityDemandAnalytics": {
+      "title": "City Demand Analytics",
+      "description": "Information about interest logged in various cities.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "current_logged_in_name": { "type": "string" },
+        "target_city": { "type": "string" },
+        "target_state": { "type": "string" },
+        "clicked_timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "current_logged_in_name", "target_city", "target_state"]
+    },
+    "PayoutRequest": {
+      "title": "Payout Request",
+      "description": "Requests from partners to withdraw earnings.",
+      "type": "object",
+      "properties": {
+        "partnerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processed", "completed", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "processedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["partnerId", "amount", "status", "createdAt"]
     }
   },
   "firestore": {
+    "/payoutRequests/{requestId}": {
+      "schema": "PayoutRequest",
+      "description": "Requests from partners to withdraw their earnings to a bank account."
+    },
     "/amcs/{amcId}": {
       "schema": "AMC",
       "description": "Annual Maintenance Contracts."
@@ -368,6 +398,10 @@
     "/redemptions/{redemptionId}": {
       "schema": "Redemption",
       "description": "User promotion redemptions."
+    },
+    "/cityDemandAnalytics/{analyticsId}": {
+      "schema": "CityDemandAnalytics",
+      "description": "User interest and city launch demand logs."
     }
   }
 }

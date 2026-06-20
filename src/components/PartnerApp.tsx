@@ -30,6 +30,8 @@ import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import { LoadingScreen } from './LoadingIndicator';
+import LogoHorizontal from '../assets/logo-horizontal.png';
+import LogoIcon from '../assets/logo-icon.png';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
@@ -46,8 +48,30 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [services, setServices] = useState<Service[]>([
+    {
+      id: "refrigerator_service_repair",
+      categoryId: "Appliance Repair",
+      name: "Refrigerator Service & Repair",
+      description: "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
+      basePrice: 499,
+      duration: "1.5 Hours",
+      rating: 4.9,
+      reviewCount: 395,
+      predefinedTasks: ["Compressor assessment", "Thermostat check", "Gas level detection", "Electrical wiring insulation"]
+    }
+  ]);
+  const [users, setUsers] = useState<UserProfile[]>([
+    {
+      uid: "mock_customer_id",
+      displayName: "VIKASS CHOPRA",
+      email: "vikas.chopra.applet@zomindia.com",
+      role: "customer",
+      phoneNumber: "9876543210",
+      city: "Indore",
+      createdAt: new Date().toISOString()
+    }
+  ]);
   const [loading, setLoading] = useState(true);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -101,15 +125,19 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         let myBookings: Booking[] = [];
         let poolBookings: Booking[] = [];
 
+        const updateAllBookings = (my: Booking[], pool: Booking[]) => {
+          const combined = [...my, ...pool.filter(p => !my.find(m => m.id === p.id))];
+          setBookings(combined);
+        };
+
         const unsubMy = onSnapshot(qMy, (snap) => {
           myBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-          // Filter poolBookings to make sure no overlaps if status changes
-          setBookings([...myBookings, ...poolBookings.filter(p => !myBookings.find(m => m.id === p.id))]);
+          updateAllBookings(myBookings, poolBookings);
         });
 
         const unsubPool = onSnapshot(qPool, (snap) => {
           poolBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.partnerId);
-          setBookings([...myBookings, ...poolBookings.filter(p => !myBookings.find(m => m.id === p.id))]);
+          updateAllBookings(myBookings, poolBookings);
         });
 
         return () => {
@@ -210,13 +238,13 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     <div className="min-h-[100dvh] bg-slate-50 pb-32 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
       {/* App Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="w-9 h-9 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg">
-            <span className="font-black italic text-sm">Z</span>
+        <div className="flex items-center gap-2 shrink-0 select-none">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1">
+            <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
-          <div>
-            <h1 className="text-xs font-black text-slate-900 leading-none mb-0.5 tracking-tight">zomindia</h1>
-            <p className="text-[8px] text-slate-400 font-extrabold uppercase tracking-widest leading-none">Partner App</p>
+          <div className="flex flex-col max-w-[100px]">
+            <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
+            <span className="text-[7.5px] text-[#0a2540] font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">

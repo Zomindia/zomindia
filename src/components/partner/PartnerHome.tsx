@@ -23,7 +23,10 @@ interface Props {
 }
 
 export default function PartnerHome({ partner, bookings, services, users, profile, onNavigate }: Props) {
-  const activeJobs = bookings.filter(b => ['confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status));
+  const activeJobs = bookings.filter(b => {
+    const s = b.status?.toLowerCase();
+    return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
+  });
   const currentJob = activeJobs[0]; // Simplification for mobile: show one most urgent job
 
   const service = currentJob ? services.find(s => s.id === currentJob.serviceId) : null;

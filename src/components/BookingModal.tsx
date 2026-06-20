@@ -487,6 +487,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   ];
 
   const getSlotStatus = (slotValue: string, testDate?: string) => {
+    // Block any service scheduling slots post 19:00 (7 PM) for brand security!
+    const [h] = slotValue.split(':').map(Number);
+    if (h >= 19) return 'expired';
+
     const d = testDate || date;
     if (!d) return 'available';
     
@@ -746,6 +750,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
 
+      const [sh, sm] = time.split(':').map(Number);
+      if (sh >= 19) {
+        throw new Error("For brand safety, scheduling slots post 19:00 (7 PM) are strictly blocked.");
+      }
+
       const scheduledAt = new Date(`${date}T${time}`);
       const fullAddress = address;
       const finalPrice = calculateFinalPrice();
@@ -916,7 +925,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         customerId: "live_customer_indore",
         serviceId: service.id,
         partnerId: assignedPartnerId,
-        status: "confirmed", // Forced success confirmed status per architect specification
+        status: assignedPartnerId ? "pending_acceptance" : "pending", 
         paymentStatus: useAmc ? 'paid' : 'unpaid',
         scheduledAt: Timestamp.fromDate(scheduledAt),
         address: fullAddress,
@@ -957,7 +966,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             customerId: "live_customer_indore",
             serviceId: service.id,
             partnerId: assignedPartnerId,
-            status: "confirmed",
+            status: assignedPartnerId ? "pending_acceptance" : "pending",
             paymentStatus: useAmc ? 'paid' : 'unpaid',
             scheduledAtIso: scheduledAt.toISOString(),
             address: fullAddress,

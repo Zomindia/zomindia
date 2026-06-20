@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmailVerification } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category } from './types';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
@@ -46,8 +46,8 @@ import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
-import AppInstallPopup from './components/AppInstallPopup';
 import PWAUpdateRegister from './components/PWAUpdateRegister';
+import { CitySelector } from './components/CitySelector';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
@@ -160,6 +160,31 @@ export default function App() {
   useKeyboardFriendlyInputs();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false);
+  const [selectedCity, setSelectedCityState] = useState<string>(() => {
+    return localStorage.getItem('selectedCity') || 'Indore';
+  });
+
+  const handleSelectCity = async (city: string) => {
+    setSelectedCityState(city);
+    localStorage.setItem('selectedCity', city);
+    if (profile && profile.uid) {
+      try {
+        await updateDoc(doc(db, "users", profile.uid), { city });
+        setProfile({ ...profile, city });
+      } catch (err) {
+        console.error("[Profile City Update Error]:", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.city) {
+      setSelectedCityState(profile.city);
+      localStorage.setItem('selectedCity', profile.city);
+    }
+  }, [profile?.city]);
+
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -182,6 +207,21 @@ export default function App() {
     if (!localStorage.getItem('app_version')) {
       localStorage.setItem('app_version', '1.0.0');
     }
+  }, []);
+
+  // Dropdown reference and outside click handler
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   // Selection copying states
@@ -569,11 +609,15 @@ export default function App() {
           const q = query(
             collection(db, 'bookings'),
             where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
-            where('status', 'in', ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
+            where('status', 'in', ['confirmed', 'assigned', 'ASSIGNED', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
           );
           unsubscribeBookings = onSnapshot(q, (snapB) => {
             setHasActiveArrival(!snapB.empty);
+          }, (err) => {
+            console.error("Error subscribing to active bookings:", err);
           });
+        }, (err) => {
+          console.error("Error subscribing to user profile:", err);
         });
 
       } else {
@@ -725,18 +769,11 @@ export default function App() {
 
   const renderNavigation = () => {
     return (
-      <div className="hidden md:flex items-center gap-8">
-        {getNavLinks()
-          .filter(link => {
-            // Remove tabs relocated to the Profile settings area
-            const excludedIds = ['referrals', 'amcs', 'profile', 'partner-signup'];
-            if (excludedIds.includes(link.id)) return false;
-
-            // Only show logic:
-            // 1. Link role matches user role
-            return link.roles.includes((profile?.role as any) || 'anon');
-          })
-          .map(link => (
+      <div className="hidden md:flex items-center gap-8 justify-center flex-1">
+        {['home', 'offers', 'bookings'].map(id => {
+          const link = getNavLinks().find(l => l.id === id);
+          if (!link) return null;
+          return (
             <motion.button
               key={link.id}
               onClick={() => setActiveTab(link.id as any)}
@@ -754,7 +791,8 @@ export default function App() {
                 />
               )}
             </motion.button>
-          ))}
+          );
+        })}
       </div>
     );
   };
@@ -771,12 +809,12 @@ export default function App() {
         return (
           <StaticPage
             title="About us"
-            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as Zomindia Internet Technologies, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
+            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as Zomindia Internet Technoloy, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
 
 Our brand, Zomindia, is built upon a simple promise: providing absolute trust, high-quality work, and complete safety with instant, secure OTP-based logins. We recognize that your home or business is sacred, which is why we meticulously train, verify, and monitor every service partner. No compromises, no hidden charges, and absolute on-time execution every single day.
 
 Our Mission
-At Zomindia Internet Technologies, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
+At Zomindia Internet Technoloy, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
 
 Why Choose Us?
 • 100% Safe & Trusted: Every helper is background-checked and professionally trained. All logins and bookings are secured with instant mobile OTPs.
@@ -957,7 +995,7 @@ Why Choose Us?
                 <div className="space-y-5 w-full mt-auto">
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Parent Entity</span>
-                    <span className="text-slate-900 text-base font-black">Zomindia Internet Technologies</span>
+                    <span className="text-slate-900 text-base font-black">Zomindia Internet Technoloy</span>
                   </div>
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">HQ Location</span>
@@ -983,7 +1021,7 @@ How do I book a service?
 Just pick a service on our home page, select what you need, verify your phone number with a quick OTP, and choose a time. We'll match you with a certified nearby expert right away!
 
 How do you make sure the partner is safe to enter my home?
-Your safety is our top priority. Every single service partner on Zomindia Internet Technologies goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
+Your safety is our top priority. Every single service partner on Zomindia Internet Technoloy goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
 
 What if I am not happy with the service?
 We offer a 100% Satisfaction Guarantee! If the work isn't done correctly, let us know via the "My Support Tickets" chat or call +91 9424456606 within 24 hours. We will investigate and send a professional to redo the job completely free of charge.
@@ -999,7 +1037,7 @@ Yes, absolutely! You can cancel or reschedule any booking up to 4 hours before t
         return (
           <StaticPage
             title="Terms & Conditions"
-            content={`Welcome to Zomindia Internet Technologies! By using our website or app, you agree to these simple and transparent rules. Please read them below—it takes less than 2 minutes!
+            content={`Welcome to Zomindia Internet Technoloy! By using our website or app, you agree to these simple and transparent rules. Please read them below—it takes less than 2 minutes!
 
 1. Your Account & OTP Security
 We keep your login simple and secure using a quick mobile OTP. You are responsible for any bookings made using your phone number, so please keep your phone secure and active.
@@ -1021,7 +1059,7 @@ You agree to pay the prices shown on your booking screen, which include basic lo
         return (
           <StaticPage
             title="Privacy Policy"
-            content={`At Zomindia Internet Technologies (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
+            content={`At Zomindia Internet Technoloy (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
 
 1. What Info We Collect & Why
 • Name, Email, and Phone: We use your phone number to log you in securely with a quick OTP. Your email is used for sending plain invoices and receipts.
@@ -1045,7 +1083,7 @@ You have full control over your details. You can view, update, or ask us to dele
         return (
           <StaticPage
             title="Cancellation & Refund"
-            content={`At Zomindia Internet Technologies, we believe in a simple and fair approach to booking changes. This policy explains our easy cancellation and refund rules in simple terms:
+            content={`At Zomindia Internet Technoloy, we believe in a simple and fair approach to booking changes. This policy explains our easy cancellation and refund rules in simple terms:
 
 1. Free Cancellations & Scheduling
 • Before 4 Hours: You can change or cancel any booking for free up to 4 hours before your scheduled time. No fees, no questions asked!
@@ -1257,7 +1295,6 @@ If you have any billing questions, or if your refund is delayed, please email us
           </Suspense>
           <OfflineSyncIndicator />
           <PWAUpdateRegister />
-          <AppInstallPopup />
         </div>
       </APIProvider>
     );
@@ -1271,135 +1308,229 @@ If you have any billing questions, or if your refund is delayed, please email us
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <motion.div
-              className="flex items-center cursor-pointer group relative px-2.5 py-1.5 rounded-2xl transition-all duration-300"
-              onClick={() => setActiveTab('home')}
-              id="nav-logo"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            >
-              {/* Premium backlighting ambient blur glow */}
-              <div className="absolute inset-0 bg-blue-600/[0.04] rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-              
-              <Logo 
-                size={undefined} 
-                className="h-7 sm:h-9 md:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
-              />
-            </motion.div>
-
-            {profile && (
-              <div className="hidden sm:flex items-center gap-2 pl-4 border-l border-slate-200/60 select-none">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-950/5 border border-emerald-500/10 rounded-2xl text-[11px] font-black uppercase tracking-wider shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-                  <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 bg-clip-text text-transparent font-display font-black">
-                    नमस्ते, {profile.displayName || (profile as any).name || 'User'}
-                  </span>
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <motion.div
+                className="flex items-center cursor-pointer group relative px-2.5 py-1.5 rounded-2xl transition-all duration-300"
+                onClick={() => setActiveTab('home')}
+                id="nav-logo"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              >
+                {/* Premium backlighting ambient blur glow */}
+                <div className="absolute inset-0 bg-blue-600/[0.04] rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                
+                <Logo 
+                  size={undefined} 
+                  className="h-9 sm:h-9 md:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
+                />
+              </motion.div>
+            </div>
 
             {renderNavigation()}
 
-             <div className="flex items-center gap-2 sm:gap-4">
-              {profile && (
-                <button
-                  onClick={() => setActiveTab('notifications')}
-                  className={`relative p-2.5 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                >
-                  <Bell size={20} />
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-                </button>
-              )}
+            <div className="flex items-center gap-2 sm:gap-4">
               {profile ? (
-                <div className="flex items-center gap-3 sm:gap-6 relative">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">{profile.displayName}</p>
-                    <span className={`text-[9px] font-black uppercase tracking-[0.1em] leading-none px-2 py-0.5 rounded-md ${
-                      profile.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                      profile.role === 'partner' ? 'bg-blue-700 text-white' :
-                      'bg-slate-100 text-slate-500'
-                    }`}>
-                      {profile.role}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-blue-700 hover:text-white transition-all shadow-sm overflow-hidden"
+                <>
+                  {/* Desktop Only: Standalone Bell Icon */}
+                  <motion.button
+                    onClick={() => setActiveTab('notifications')}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="hidden md:flex relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-50 rounded-full transition-all cursor-pointer"
+                    id="desktop-notifications-bell"
                   >
-                    {profile.photoURL ? (
-                       <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                       <UserIcon size={18} />
-                    )}
-                  </button>
+                    <Bell size={22} className="stroke-[2]" />
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white animate-pulse" />
+                  </motion.button>
 
-                  <AnimatePresence>
-                    {isUserMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute top-full right-0 mt-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60]"
-                      >
-                        <button
-                          onClick={() => { setActiveTab('profile'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                        >
-                          <UserIcon size={16} />
-                          Profile
-                        </button>
-                        <button
-                          onClick={() => { setActiveTab('amcs'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                        >
-                          <Calendar size={16} />
-                          Annual Contracts (AMC)
-                        </button>
-                        <button
-                          onClick={() => { setActiveTab('wallet'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-                          Wallet
-                        </button>
-                        <button
-                          onClick={() => { setActiveTab('tickets'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                        >
-                          <MessageSquare size={16} />
-                          Support Tickets
-                        </button>
-                        <button
-                          onClick={() => { setActiveTab('referrals'); setIsUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-                          Refer & Earn
-                        </button>
-                        {profile.role !== 'partner' && (
-                          <button
-                            onClick={() => { setActiveTab('partner-signup'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                          >
-                            <svg xmlns="http://www.w3.org/2005/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-                            Become Partner
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setIsUserMenuOpen(false);
-                            window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+                  {/* Desktop Only Trigger & Dropdown Menu */}
+                  <div 
+                    ref={dropdownRef}
+                    className="hidden md:flex items-center gap-3 relative"
+                    onMouseEnter={() => setIsUserMenuOpen(true)}
+                    onMouseLeave={() => setIsUserMenuOpen(false)}
+                  >
+                    <button
+                      onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                      className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
+                      id="nav-green-greeting"
+                    >
+                      <div className="flex flex-col text-right items-end">
+                        {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
+                        <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end">
+                          <span className="text-cyan-400 font-extrabold text-sm">•</span>
+                          <span className="text-slate-800">नमस्ते,</span>
+                          <span className="text-[#0a2540] uppercase whitespace-nowrap">VIKASS</span>
+                        </span>
+                        {/* IMMUTABLE GREETER BLOCK END */}
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsCitySelectorOpen(true);
                           }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all border-t border-slate-100"
+                          className="text-slate-400 hover:text-emerald-600 active:scale-95 text-[10px] font-black tracking-widest leading-none mt-1.5 uppercase pr-1 flex items-center gap-0.5 justify-end cursor-pointer transition-all duration-200"
+                          title="Click to change city"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 animate-pulse"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                          <span className="font-semibold text-slate-800">🤖 AI Support Chat</span>
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                          📍 INDORE
+                        </span>
+                      </div>
+
+                      <div className="w-10 h-10 rounded-full border-2 border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 hover:scale-105 active:scale-95 transition-all">
+                        {profile.photoURL ? (
+                          <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
+                            {profile.displayName?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+
+                    <AnimatePresence>
+                      {isUserMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute top-full right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60]"
+                        >
+                          <div className="px-3 py-2 border-b border-slate-50 mb-1.5">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Signed in as</p>
+                            <p className="text-xs font-black text-slate-800 truncate">{(profile.displayName || profile.email || 'User').toUpperCase()}</p>
+                          </div>
+
+                          <button
+                            onClick={() => { setActiveTab('profile'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                            id="dropdown-profile-button"
+                          >
+                            <UserIcon size={14} />
+                            Profile Settings
+                          </button>
+
+                          {/* Desktop Hook: Partner Dashboard for Partner & Admin roles */}
+                          {(profile.role === 'partner' || profile.role === 'admin') && (
+                            <button
+                              onClick={() => { setActiveTab('partner'); setIsUserMenuOpen(false); }}
+                              className={`w-full flex items-center gap-3 px-4 py-2 text-xs font-bold rounded-xl transition-all ${(activeTab as string) === 'partner' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'}`}
+                              id="dropdown-partner-button"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                              Partner Dashboard
+                            </button>
+                          )}
+
+                          {/* Desktop Hook: Admin Panel for Admin role only */}
+                          {profile.role === 'admin' && (
+                            <button
+                              onClick={() => { setActiveTab('admin'); setIsUserMenuOpen(false); }}
+                              className={`w-full flex items-center gap-3 px-4 py-2 text-xs font-bold rounded-xl transition-all ${(activeTab as string) === 'admin' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50 hover:text-red-700'}`}
+                              id="dropdown-admin-button"
+                            >
+                              <ShieldCheck size={14} className="text-red-600" />
+                              Admin Panel
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => { setActiveTab('amcs'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                          >
+                            <Calendar size={14} />
+                            Annual Contracts
+                          </button>
+                          
+                          <button
+                            onClick={() => { setActiveTab('wallet'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+                            Wallet (₹{profile.walletBalance || 0})
+                          </button>
+
+                          <button
+                            onClick={() => { setActiveTab('tickets'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                          >
+                            <MessageSquare size={14} />
+                            Support Tickets
+                          </button>
+
+                          <button
+                            onClick={() => { setActiveTab('referrals'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                            Refer & Earn
+                          </button>
+
+                          {profile.role !== 'partner' && (
+                            <button
+                              onClick={() => { setActiveTab('partner-signup'); setIsUserMenuOpen(false); }}
+                              className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 rounded-xl transition-all"
+                            >
+                              <svg xmlns="http://www.w3.org/2005/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                              Become Partner
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setIsUserMenuOpen(false);
+                              window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all border-t border-slate-50 mt-1"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            AI Support Chat
+                          </button>
+
+                          <button
+                            onClick={async () => {
+                              setIsUserMenuOpen(false);
+                              await auth.signOut();
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all border-t border-slate-55 mt-1"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Log Out
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
+                  <div className="flex md:hidden items-center gap-2 select-none">
+                    {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
+                    <span className="text-[10px] font-black text-slate-700 bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
+                      <span className="text-cyan-400 font-extrabold text-xs">•</span>
+                      <span>नमस्ते,</span>
+                      <span className="text-[#0a2540]">VIKASS</span>
+                    </span>
+                    {/* IMMUTABLE GREETER BLOCK END */}
+                    <button
+                      onClick={() => setIsCitySelectorOpen(true)}
+                      className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-2 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all"
+                    >
+                      📍 INDORE
+                    </button>
+                    <button 
+                      onClick={() => setIsMenuOpen(true)}
+                      className="w-10 h-10 rounded-full border border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 active:scale-90 transition-all cursor-pointer"
+                      id="mobile-avatar-drawer-trigger"
+                    >
+                      {profile.photoURL ? (
+                        <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
+                          {profile.displayName?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </>
               ) : (
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
@@ -1408,13 +1539,6 @@ If you have any billing questions, or if your refund is delayed, please email us
                   Login
                 </button>
               )}
-              <button
-                className="md:hidden p-2 text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                id="mobile-menu-toggle"
-              >
-                {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
             </div>
           </div>
         </div>
@@ -1517,7 +1641,40 @@ If you have any billing questions, or if your refund is delayed, please email us
             exit={{ opacity: 0, height: 0 }}
             className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
           >
-            <div className="px-4 py-8 flex flex-col gap-1">
+            <div className="px-4 py-8 flex flex-col gap-2">
+              {profile && (
+                <div className="mb-4 pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-3 px-2">
+                    {profile.photoURL ? (
+                      <img src={profile.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                        {profile.displayName?.charAt(0) || 'U'}
+                      </div>
+                    )}
+                    <div>
+                      {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
+                      <p className="text-sm font-black text-slate-800 font-display uppercase leading-tight flex items-center gap-1">
+                        <span className="text-cyan-400 font-extrabold text-sm">•</span>
+                        <span>नमस्ते,</span>
+                        <span className="text-[#0a2540]">VIKASS</span>
+                      </p>
+                      {/* IMMUTABLE GREETER BLOCK END */}
+                      <p 
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsCitySelectorOpen(true);
+                        }}
+                        className="text-[10px] text-slate-400 hover:text-emerald-600 active:scale-95 font-black tracking-widest uppercase mt-0.5 pl-2.5 cursor-pointer transition-all duration-200 inline-block"
+                        title="Click to change city"
+                      >
+                        📍 INDORE
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {getNavLinks()
                 .filter(link => {
                   const excludedIds = ['referrals', 'amcs', 'profile', 'partner-signup'];
@@ -1534,6 +1691,108 @@ If you have any billing questions, or if your refund is delayed, please email us
                   />
                 ))
               }
+
+              {/* Native Sub-Options & Notifications Drawer Trigger for Profile on Mobile */}
+              {profile && (
+                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-left">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 px-3 py-1">Profile & Adjustments</span>
+                  
+                  {/* Notifications with Unread Badge */}
+                  <button
+                    onClick={() => { setActiveTab('notifications'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'notifications' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Bell size={16} className="text-blue-700" />
+                      <span>Notifications</span>
+                    </span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white shadow-sm animate-pulse" />
+                  </button>
+
+                  {/* Mobile Hook: Partner Dashboard for Partner & Admin roles */}
+                  {(profile.role === 'partner' || profile.role === 'admin') && (
+                    <button
+                      onClick={() => { setActiveTab('partner'); setIsMenuOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${(activeTab as string) === 'partner' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      <span>Partner Dashboard</span>
+                    </button>
+                  )}
+
+                  {/* Mobile Hook: Admin Panel for Admin role only */}
+                  {profile.role === 'admin' && (
+                    <button
+                      onClick={() => { setActiveTab('admin'); setIsMenuOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${(activeTab as string) === 'admin' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <ShieldCheck size={16} className="text-red-600" />
+                      <span>Admin Panel</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => { setActiveTab('profile'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <UserIcon size={16} className="text-slate-500" />
+                    <span>My Profile & Settings</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('amcs'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'amcs' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <Calendar size={16} className="text-slate-500" />
+                    <span>Annual Services (AMCs)</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('wallet'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+                    <span>My Wallet (Bal: ₹{profile.walletBalance || 0})</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('tickets'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'tickets' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <MessageSquare size={16} className="text-slate-500" />
+                    <span>Service Tickets</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('referrals'); setIsMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'referrals' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                    <span>Referrals & Rewards</span>
+                  </button>
+
+                  {profile.role !== 'partner' && (
+                    <button
+                      onClick={() => { setActiveTab('partner-signup'); setIsMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                    >
+                      <svg xmlns="http://www.w3.org/2005/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                      <span>Become Elite Partner</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={async () => {
+                      setIsMenuOpen(false);
+                      await auth.signOut();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 mt-2 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 transition-all border border-rose-100"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>LOG OUT</span>
+                  </button>
+                </div>
+              )}
               {!profile && (
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <button
@@ -1558,6 +1817,13 @@ If you have any billing questions, or if your refund is delayed, please email us
           }
           setIsAuthModalOpen(false);
         }}
+      />
+
+      <CitySelector
+        isOpen={isCitySelectorOpen}
+        onClose={() => setIsCitySelectorOpen(false)}
+        currentUser={profile}
+        onSelectCity={handleSelectCity}
       />
 
       {/* Main Content */}
@@ -1693,7 +1959,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           </div>
 
           <div className="border-t border-slate-100 pt-10 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-bold text-slate-400">© 2026 Zomindia Internet Technologies. All rights reserved.</p>
+            <p className="text-xs font-bold text-slate-400">© 2026 Zomindia Internet Technoloy. All rights reserved.</p>
             <div className="flex gap-6">
               {/* Optional footer social link decoration */}
             </div>
@@ -1702,7 +1968,10 @@ If you have any billing questions, or if your refund is delayed, please email us
       </motion.footer>
       <OfflineSyncIndicator />
       <PWAUpdateRegister />
-      <AppInstallPopup />
+
+
+
+
 
       {/* Dynamic Ecosystem Hot-Update Premium Modal Overlay across Platforms */}
       <AnimatePresence>

@@ -507,7 +507,12 @@ function MapLogic({
                 </div>
 
                 <a 
-                  href={`tel:${partnerPhone}`}
+                  href="tel:+918005865966"
+                  onClick={(e) => {
+                    if (typeof (window as any).__showToast === 'function') {
+                      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                    }
+                  }}
                   className="mt-1 w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white py-1.5 px-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md border border-blue-500 hover:scale-102 active:scale-98"
                 >
                   <Phone size={10} className="fill-white" />
@@ -1452,7 +1457,12 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
                 </div>
 
                 <a 
-                  href={`tel:${selectedSimPro ? '555-0144' : partnerPhone}`}
+                  href="tel:+918005865966"
+                  onClick={(e) => {
+                    if (typeof (window as any).__showToast === 'function') {
+                      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                    }
+                  }}
                   className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black py-2.5 px-4 rounded-2xl text-[10px] uppercase tracking-wider transition-all shadow-md border border-blue-500"
                 >
                   <Phone size={11} className="fill-white" />

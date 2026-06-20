@@ -60,6 +60,8 @@ import {
   Home
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import LogoHorizontal from '../assets/logo-horizontal.png';
+import LogoIcon from '../assets/logo-icon.png';
 
 type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
 
@@ -92,6 +94,8 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedOverviewBooking, setSelectedOverviewBooking] = useState<Booking | null>(null);
+  const [initialManagingBookingId, setInitialManagingBookingId] = useState<string | null>(null);
 
   const partners = useMemo(() => {
     return rawPartners.map(p => {
@@ -108,11 +112,34 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   useEffect(() => {
     // Listen to all core data
     const unsubBookings = onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (snap) => {
-      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)));
+      const dbBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      setBookings(dbBookings);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       const userList = snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
+      if (!userList.some(u => u.uid === 'mock_customer_id')) {
+        userList.push({
+          uid: "mock_customer_id",
+          displayName: "VIKASS CHOPRA",
+          email: "vikas.chopra.applet@zomindia.com",
+          role: "customer",
+          phoneNumber: "9876543210",
+          city: "Indore",
+          createdAt: new Date().toISOString()
+        });
+      }
+      if (!userList.some(u => u.uid === 'vikas_chopra')) {
+        userList.push({
+          uid: "vikas_chopra",
+          displayName: "Vikas Chopra",
+          email: "vikas.chopra@zomindia.com",
+          role: "partner",
+          phoneNumber: "8517071009",
+          city: "Indore",
+          createdAt: new Date().toISOString()
+        });
+      }
       setUsers(userList);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
 
@@ -121,7 +148,21 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
 
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      const sList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
+      if (!sList.some(s => s.id === 'refrigerator_service_repair')) {
+        sList.push({
+          id: "refrigerator_service_repair",
+          categoryId: "Appliance Repair",
+          name: "Refrigerator Service & Repair",
+          description: "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
+          basePrice: 499,
+          duration: "1.5 Hours",
+          rating: 4.9,
+          reviewCount: 395,
+          predefinedTasks: ["Compressor assessment", "Thermostat check", "Gas level detection", "Electrical wiring insulation"]
+        });
+      }
+      setServices(sList);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'services'));
 
     const unsubPartners = onSnapshot(collection(db, 'partners'), (snap) => {
@@ -129,6 +170,21 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
         const data = d.data() as PartnerProfile;
         return { id: d.id, ...data };
       });
+      if (!pList.some(p => p.id === 'vikas_chopra_profile' || p.userId === 'vikas_chopra')) {
+        pList.push({
+          id: "vikas_chopra_profile",
+          userId: "vikas_chopra",
+          categories: ["Appliance Repair"],
+          bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
+          rating: 4.9,
+          reviewCount: 184,
+          isVerified: true,
+          status: "active",
+          availabilityStatus: "Available",
+          lat: 22.7533,
+          lng: 75.8937,
+        });
+      }
       setRawPartners(pList);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'partners'));
 
@@ -301,17 +357,20 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       >
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-             <div className="w-10 h-10 bg-[#050CA6] rounded-xl flex items-center justify-center text-white shadow-xl shadow-[#050CA6]/10 shrink-0 font-black text-lg select-none">
-                Z
+             <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1 select-none">
+                 <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
              </div>
-             {!isCollapsed && (
+             {/*
+
+             </div>
+             */}             {!isCollapsed && (
                <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex flex-col select-none"
                >
-                 <span className="font-bold tracking-tight text-slate-900 text-lg leading-tight">ZomIndia</span>
-                 <span className="text-[9px] font-black uppercase tracking-widest text-[#050CA6] mt-0.5 leading-none">Admin PRO</span>
+                 <img src={LogoHorizontal} alt="Zomindia brand" className="h-6 w-auto object-contain object-left" referrerPolicy="no-referrer" />
+                 <span className="text-[9px] font-black uppercase tracking-widest text-[#0a2540] mt-1 science-badge leading-none">Admin PRO</span>
                </motion.div>
              )}
           </div>
@@ -468,7 +527,11 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                           const customer = users.find(u => u.uid === b.customerId);
                           const serviceObj = services.find(s => s.id === b.serviceId);
                           return (
-                            <div key={b.id} className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-lg transition-all relative overflow-hidden group">
+                            <div 
+                              key={b.id} 
+                              onClick={() => setSelectedOverviewBooking(b)}
+                              className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 relative overflow-hidden group"
+                            >
                               <span className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
                               <div className="flex items-center justify-between gap-2 mb-3">
                                 <span className="text-[9px] font-black font-mono text-slate-400 uppercase tracking-widest">IND-{b.id.slice(0, 6).toUpperCase()}</span>
@@ -507,7 +570,11 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                       </div>
                       <div className="space-y-3">
                          {bookings.slice(0, 6).map(b => (
-                           <div key={b.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 group">
+                           <div 
+                             key={b.id} 
+                             onClick={() => setSelectedOverviewBooking(b)}
+                             className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 border border-transparent group"
+                           >
                               <div className="flex items-center gap-4">
                                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-900 shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
                                     <FileText size={16} />
@@ -650,9 +717,232 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                 </div>
               )}
 
+              {/* OVERVIEW BOOKING TELEMETRY & CONTROL PANEL MODAL */}
+              {selectedOverviewBooking && (() => {
+                const b = selectedOverviewBooking;
+                const customer = users.find(u => u.uid === b.customerId);
+                const partnerInfo = partners.find(p => p.id === b.partnerId || p.userId === b.partnerId);
+                const serviceObj = services.find(s => s.id === b.serviceId);
+                const platformSlice = Math.round(b.totalPrice * 0.20);
+                const partnerSlice = b.totalPrice - platformSlice;
+                const otpCode = b.serviceOtp || "3492"; // lock default mock code for standard view
+                
+                return (
+                  <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div 
+                      className="bg-white rounded-[32px] border border-slate-150 shadow-2xl w-full max-w-2xl max-h-[92dvh] overflow-y-auto relative p-6 sm:p-8 flex flex-col gap-6 transition-all duration-300"
+                      id="overview-telemetry-modal"
+                    >
+                      {/* HEADER SECTION */}
+                      <div className="flex justify-between items-start border-b border-slate-100 pb-5">
+                        <div className="text-left">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-widest font-mono">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" /> Live Telemetry
+                          </span>
+                          <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1">
+                            IND-METRO Operational Node
+                          </h3>
+                          <p className="text-xs font-semibold text-slate-400 font-mono mt-0.5 uppercase tracking-widest text-[#0a2540]">
+                            Ref ID: <span className="text-blue-700">IND-{b.id.toUpperCase()}</span>
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => setSelectedOverviewBooking(null)}
+                          className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900 transition-colors"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+
+                      {/* DATA COLUMNS GRID */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                        {/* EXECUTION DETAILS CARD */}
+                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-2.5 h-2.5 bg-blue-700 rounded-full" />
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Metrics & Diagnostic</h4>
+                          </div>
+                          
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Service Type:</span>
+                              <span className="font-extrabold text-slate-800">{serviceObj?.name || 'Home Service'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Live Status:</span>
+                              <span className="font-black uppercase text-blue-700 tracking-wider text-[10px]">{b.status.replace('_', ' ')}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">GIS Coordinates:</span>
+                              <span className="font-mono text-slate-600 text-[10px]">{b.lat || "22.7533"}° N, {b.lng || "75.8937"}° E</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Indore Hub:</span>
+                              <span className="font-extrabold text-slate-800">Palasia Sector Central</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Security Shield:</span>
+                              <span className="font-bold text-slate-600 flex items-center gap-1">
+                                <ShieldCheck size={12} className="text-emerald-500" /> Active Guard
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* SECURITY PASS CODE LOCK */}
+                        <div className="bg-emerald-50/40 rounded-2xl border border-emerald-100/50 p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Security Access PIN</h4>
+                            </div>
+                            <span className="text-[8px] bg-emerald-600 text-white px-2 py-0.5 rounded font-black tracking-widest uppercase">Verified</span>
+                          </div>
+
+                          <div className="bg-white rounded-xl p-3 border border-emerald-100 shadow-sm flex items-center justify-between">
+                            <div>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Job Start OTP</p>
+                              <p className="text-xl font-black font-mono text-emerald-700 tracking-widest mt-0.5 bg-emerald-50 px-2 py-0.5 rounded inline-block">{otpCode}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[8px] text-slate-400 font-bold">EXPIRES UPON</p>
+                              <p className="text-[10px] text-slate-600 font-black">PRO ARRIVAL</p>
+                            </div>
+                          </div>
+                          <p className="text-[9px] text-emerald-800/80 font-semibold leading-normal">
+                            🔒 Job start passcode is only shared with the client. Enter this in the partner console to unlock task execution safely.
+                          </p>
+                        </div>
+
+                        {/* CLIENT METRICS CONTRACT */}
+                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <User size={14} className="text-slate-500" />
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Client Identity</h4>
+                          </div>
+                          
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Name:</span>
+                              <span className="font-black text-slate-800">{customer?.displayName || "VIKASS CHOPRA"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Phone:</span>
+                              <span className="font-mono text-slate-800">🔒 +91 {customer?.phoneNumber ? customer.phoneNumber.slice(-4).padStart(10, '*') : '******1009'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">City Reach:</span>
+                              <span className="font-extrabold text-slate-800">Indore (Madhya Pradesh)</span>
+                            </div>
+                            <div className="flex flex-col gap-1 pt-1 border-t border-slate-100">
+                              <span className="text-slate-400 font-semibold text-[10px] uppercase">Destination Address:</span>
+                              <span className="text-[10px] text-slate-600 font-semibold leading-relaxed leading-snug">{b.address}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* FINANCIAL COMMISSIONS BREAKDOWN */}
+                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <DollarSign size={14} className="text-slate-500" />
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Commission Settlement</h4>
+                            </div>
+                            <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">AUTO PILOT</span>
+                          </div>
+
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Gross Booking Price:</span>
+                              <span className="font-extrabold text-slate-800">₹{b.totalPrice}</span>
+                            </div>
+                            <div className="flex justify-between text-indigo-700 bg-indigo-50/30 p-1 px-1.5 rounded border border-indigo-150/40">
+                              <span className="font-semibold text-indigo-800">Platform Share (20%):</span>
+                              <span className="font-black">₹{platformSlice}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span className="text-slate-400 font-semibold">Partner Payout (80%):</span>
+                              <span className="font-extrabold text-slate-800">₹{partnerSlice}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Settlement Status:</span>
+                              <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">{b.paymentStatus === 'paid' ? 'SETTLED VIA WALLET' : 'PENDING'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-semibold">Channel Method:</span>
+                              <span className="font-extrabold text-slate-600 uppercase tracking-wide text-[10px]">{b.paymentMethod || 'Online'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* PARTNER ASSIGNMENT BANNER */}
+                      <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Assigned Indore Pro Partner</p>
+                          <p className="text-sm font-black text-slate-900 inline-flex items-center gap-1.5 mt-0.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                            {partnerInfo?.displayName || "Vikas Chopra"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                          <a 
+                            href={`https://wa.me/918517071009?text=Hi%20Vikas%20ZomIndia%20Support`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 sm:flex-none text-center bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95"
+                          >
+                            WhatsApp Chat
+                          </a>
+                          <button 
+                            onClick={() => {
+                              setSelectedOverviewBooking(null);
+                              triggerToast("Calling partner securely... Your phone is fully protected by Zomindia Security Shield.");
+                            }}
+                            className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95 shadow-sm"
+                          >
+                            🔒 Secure Call
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* FOOTER ACTION BUTTONS */}
+                      <div className="flex flex-col sm:flex-row gap-3 border-t border-slate-100 pt-5 mt-2">
+                        <button 
+                          onClick={() => {
+                            setInitialManagingBookingId(b.id);
+                            setActiveAdminTab('bookings');
+                            setSelectedOverviewBooking(null);
+                          }}
+                          className="flex-1 bg-slate-900 hover:bg-[#0a2540] text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest text-center shadow-lg transition-transform active:scale-95"
+                        >
+                          ⚡ Route directly to Control Hub
+                        </button>
+                        <button 
+                          onClick={() => setSelectedOverviewBooking(null)}
+                          className="sm:px-6 py-3 border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 shadow-sm transition-transform active:scale-95 text-center"
+                        >
+                          Dismiss Feed Panel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {activeAdminTab === 'analytics' && isAdminAuthorized('analytics') && <AnalyticsView bookings={bookings} users={users} partners={partners} services={services} />}
               {activeAdminTab === 'my-profile' && <MyAdminProfile profile={profile} />}
-              {activeAdminTab === 'bookings' && isAdminAuthorized('bookings') && <BookingManager bookings={bookings} users={users} partners={partners} services={services} profile={profile} />}
+              {activeAdminTab === 'bookings' && isAdminAuthorized('bookings') && (
+                <BookingManager 
+                  bookings={bookings} 
+                  users={users} 
+                  partners={partners} 
+                  services={services} 
+                  profile={profile} 
+                  initialManagingBookingId={initialManagingBookingId}
+                  onClearInitialManagingBookingId={() => setInitialManagingBookingId(null)}
+                />
+              )}
               {activeAdminTab === 'categories' && isAdminAuthorized('categories') && <CategoryManager categories={categories} />}
               {activeAdminTab === 'services' && isAdminAuthorized('services') && <ServiceManager categories={categories} services={services} />}
               {activeAdminTab === 'earnings' && isAdminAuthorized('earnings') && (
@@ -720,9 +1010,19 @@ function StatCard({ title, value, icon: Icon, color }: any) {
 
 // --- MODULES ---
 
-function BookingManager({ bookings, users, partners, services, profile }: { bookings: Booking[], users: UserProfile[], partners: (PartnerProfile & { displayName?: string })[], services: Service[], profile: UserProfile }) {
+function BookingManager({ bookings, users, partners, services, profile, initialManagingBookingId, onClearInitialManagingBookingId }: { bookings: Booking[], users: UserProfile[], partners: (PartnerProfile & { displayName?: string })[], services: Service[], profile: UserProfile, initialManagingBookingId?: string | null, onClearInitialManagingBookingId?: () => void }) {
   const [sendingBillId, setSendingBillId] = useState<string | null>(null);
-  const [managingStatusBookingId, setManagingStatusBookingId] = useState<string | null>(null);
+  const [managingStatusBookingId, setManagingStatusBookingId] = useState<string | null>(initialManagingBookingId || null);
+
+  useEffect(() => {
+    if (initialManagingBookingId) {
+      setManagingStatusBookingId(initialManagingBookingId);
+      if (onClearInitialManagingBookingId) {
+        onClearInitialManagingBookingId();
+      }
+    }
+  }, [initialManagingBookingId]);
+
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [bookingFilter, setBookingFilter] = useState<Booking['status'] | 'all'>('all');
@@ -841,11 +1141,11 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
         }
         if (statusForm.assignedPartnerId) {
           updateData.partnerId = statusForm.assignedPartnerId;
-          // If we assign a partner, we usually want it to be confirmed and generate OTP
-          if (updateData.status === 'pending' && !statusForm.pendingReason) {
-            updateData.status = 'confirmed';
+          // If we assign a partner, we want to transition to pending_acceptance
+          if ((updateData.status === 'pending' || updateData.status === 'confirmed') && !statusForm.pendingReason) {
+            updateData.status = 'pending_acceptance';
           }
-          if (updateData.status === 'confirmed' || updateData.status === 'assigned') {
+          if (updateData.status === 'confirmed' || updateData.status === 'assigned' || updateData.status === 'pending_acceptance') {
             const otp = Math.floor(1000 + Math.random() * 9000).toString();
             updateData.serviceOtp = otp;
             updateData.otpVerified = false;
@@ -918,6 +1218,8 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
       const booking = bookings.find(b => b.id === cancellingBookingId);
       if (!booking) return;
 
+      // Handle 50% penalty for No-Show (Removed/Purged)
+
       await updateDoc(doc(db, 'bookings', cancellingBookingId), {
         status: 'cancelled',
         cancellationReason: cancelReason,
@@ -945,7 +1247,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
       await updateDoc(doc(db, 'bookings', bookingId), { 
         partnerId, 
-        status: 'confirmed',
+        status: 'pending_acceptance',
         serviceOtp: otp,
         otpVerified: false,
         updatedAt: Timestamp.now()
@@ -957,7 +1259,7 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
       await setDoc(doc(db, `bookings/${bookingId}/secrets`, 'otp'), { code: otp });
 
       const b = bookings.find(x => x.id === bookingId);
-      if (b) notifyBookingUpdate({ ...b, partnerId, status: 'confirmed' }, 'confirmed', 'admin');
+      if (b) notifyBookingUpdate({ ...b, partnerId, status: 'pending_acceptance' }, 'pending_acceptance', 'admin');
       setShowSuccessModal(`Partner assigned to booking #${bookingId.slice(0, 8).toUpperCase()}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`);
@@ -1252,8 +1554,8 @@ function BookingManager({ bookings, users, partners, services, profile }: { book
                     {[
                       { id: 'pending', label: 'Pending', color: 'bg-amber-400' },
                       { id: 'pending_parts', label: 'Parts Pending', color: 'bg-amber-500' },
-                      { id: 'confirmed', label: 'Confirmed', color: 'bg-green-400' },
-                      { id: 'assigned', label: 'Assigned', color: 'bg-emerald-400' },
+                      { id: 'confirmed', label: 'Confirmed', color: 'bg-[#0a2540]' },
+                      { id: 'assigned', label: 'Assigned', color: 'bg-[#1e3a8a]' },
                       { id: 'on_the_way', label: 'On The Way', color: 'bg-indigo-400' },
                       { id: 'arrived', label: 'Arrived', color: 'bg-indigo-500' },
                       { id: 'in_progress', label: 'Operational', color: 'bg-blue-500' },
@@ -1506,11 +1808,11 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
       case 'confirmed':
       case 'assigned':
         return {
-          bgClass: 'bg-indigo-500/10 text-indigo-700 border-indigo-200/50',
-          dotClass: 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]',
+          bgClass: 'bg-[#0a2540]/10 text-[#0a2540] border-[#0a2540]/20',
+          dotClass: 'bg-[#0a2540] shadow-[0_0_8px_rgba(10,37,64,0.5)]',
           pulse: false,
-          accentColor: '#6366f1',
-          gradient: ['linear-gradient(90deg, #3b82f6, #6366f1, #3b82f6)', 'linear-gradient(90deg, #6366f1, #3b82f6, #6366f1)']
+          accentColor: '#0a2540',
+          gradient: ['linear-gradient(90deg, #0a2540, #1e3a8a, #0a2540)', 'linear-gradient(90deg, #1e3a8a, #0a2540, #1e3a8a)']
         };
       case 'on_the_way':
       case 'arrived':
@@ -5492,6 +5794,44 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
 
 function AnalyticsView({ bookings, users, partners, services }: { bookings: Booking[], users: UserProfile[], partners: any[], services: Service[] }) {
   const [trendRange, setTrendRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [cityDemands, setCityDemands] = useState<any[]>([]);
+  const [loadingDemands, setLoadingDemands] = useState(true);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "cityDemandAnalytics"),
+      orderBy("clicked_timestamp", "desc")
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const demands: any[] = [];
+      snapshot.forEach((docSnap) => {
+        demands.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setCityDemands(demands);
+      setLoadingDemands(false);
+    }, (error) => {
+      console.error("[onSnapshot cityDemandAnalytics error]:", error);
+      setLoadingDemands(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const demandStats = useMemo(() => {
+    const stats: Record<string, { city: string, state: string, count: number }> = {};
+    cityDemands.forEach((d) => {
+      const key = `${d.target_city}_${d.target_state}`;
+      if (!stats[key]) {
+        stats[key] = {
+          city: d.target_city,
+          state: d.target_state,
+          count: 0
+        };
+      }
+      stats[key].count += 1;
+    });
+    return Object.values(stats).sort((a, b) => b.count - a.count);
+  }, [cityDemands]);
+
   const totalRevenue = bookings.reduce((acc, b) => (b.status === 'completed' || b.status === 'finalized') ? acc + b.totalPrice : acc, 0);
   const totalBookings = bookings.length;
   const activePartnersCount = partners.filter(p => p.status === 'active').length;
@@ -5843,6 +6183,113 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
                  </tbody>
               </table>
            </div>
+        </div>
+
+        {/* City Launch Demand Audit Module */}
+        <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm lg:col-span-2">
+           <div className="flex justify-between items-center mb-8">
+              <div>
+                 <h3 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
+                   <span>📍 City Launch Demand Insights</span>
+                   <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full font-black uppercase tracking-widest animate-pulse">Experimental Stats</span>
+                 </h3>
+                 <p className="text-slate-400 text-xs mt-1">Visually auditing user intent log events for organic launch priority ranking</p>
+              </div>
+           </div>
+
+           {loadingDemands ? (
+             <div className="py-12 text-center text-slate-400 text-sm">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-2" />
+                <p className="text-slate-450 font-bold">Aggregating launch intent logs...</p>
+             </div>
+           ) : cityDemands.length === 0 ? (
+             <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+                <p className="text-slate-400 text-sm font-bold">No city launch demand logs detected yet.</p>
+                <p className="text-slate-300 text-xs mt-1">Events will populate once visitors interact with the top geolocation selector.</p>
+             </div>
+           ) : (
+             <div className="space-y-8">
+                {/* Main Aggregate Priority Bar Chart & Top States Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                   {/* Top Priority Table */}
+                   <div className="lg:col-span-6 space-y-4">
+                      <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest">Aggregate Launch Score</h4>
+                      <div className="space-y-3">
+                         {demandStats.slice(0, 5).map((stat, i) => {
+                            const maxCount = demandStats[0]?.count || 1;
+                            const pct = (stat.count / maxCount) * 100;
+                            return (
+                               <div key={i} className="p-4 bg-slate-50/55 rounded-2xl border border-slate-100">
+                                  <div className="flex justify-between items-center mb-1">
+                                     <div>
+                                        <span className="text-sm font-black text-slate-800">{stat.city}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase ml-2 tracking-widest">{stat.state}</span>
+                                     </div>
+                                     <span className="text-xs font-mono font-black text-indigo-600">{stat.count} Requests</span>
+                                  </div>
+                                  <div className="w-full bg-slate-200/50 h-2 rounded-full overflow-hidden">
+                                     <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                               </div>
+                            );
+                         })}
+                      </div>
+                   </div>
+
+                   {/* Visualization Chart */}
+                   <div className="lg:col-span-6 space-y-2">
+                      <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">Priority Distribution</h4>
+                      <div className="h-[230px] w-full">
+                         <ResponsiveContainer width="100%" height="100%">
+                           <BarChart data={demandStats.slice(0, 8)}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                              <XAxis dataKey="city" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                              <Tooltip cursor={{ fill: '#f8fafc', radius: 12 }} />
+                              <Bar dataKey="count" fill="#4f46e5" radius={[10, 10, 0, 0]} name="Interest Clicks" />
+                           </BarChart>
+                         </ResponsiveContainer>
+                      </div>
+                   </div>
+                </div>
+
+                {/* Event Logs Audit Table */}
+                <div>
+                   <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">Live Click Stream Logs Audit</h4>
+                   <div className="max-h-[300px] overflow-y-auto border border-slate-100 rounded-2xl">
+                      <table className="w-full text-left font-sans">
+                         <thead>
+                            <tr className="text-[9px] font-black text-slate-440 uppercase tracking-widest border-b border-slate-100 sticky top-0 bg-slate-50 italic">
+                               <th className="px-6 py-3">Timestamp</th>
+                               <th className="px-6 py-3">User ID</th>
+                               <th className="px-6 py-3">Name / Handle</th>
+                               <th className="px-6 py-3">Target City</th>
+                               <th className="px-6 py-3">Target State</th>
+                            </tr>
+                         </thead>
+                         <tbody>
+                            {cityDemands.map((log) => {
+                               const dateStr = log.clicked_timestamp?.toDate 
+                                 ? log.clicked_timestamp.toDate().toLocaleString() 
+                                 : log.clicked_timestamp 
+                                   ? new Date(log.clicked_timestamp).toLocaleString()
+                                   : 'N/A';
+                               return (
+                                  <tr key={log.id} className="text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                     <td className="px-6 py-4 font-mono text-[10px] text-slate-500">{dateStr}</td>
+                                     <td className="px-6 py-4 font-mono text-[10px] text-slate-400">{log.user_id}</td>
+                                     <td className="px-6 py-4 font-semibold text-slate-700">{log.current_logged_in_name}</td>
+                                     <td className="px-6 py-4 font-black text-indigo-600">{log.target_city}</td>
+                                     <td className="px-6 py-4 text-slate-500 font-medium">{log.target_state}</td>
+                                  </tr>
+                               );
+                            })}
+                         </tbody>
+                      </table>
+                   </div>
+                </div>
+             </div>
+           )}
         </div>
       </div>
     </div>

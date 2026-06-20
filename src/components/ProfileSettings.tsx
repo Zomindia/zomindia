@@ -640,7 +640,11 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                 {profile.phoneNumber && (
                   <>
                     <span className="text-neutral-300 hidden sm:inline">•</span>
-                    <span className="shrink-0">{profile.phoneNumber}</span>
+                    <span className="shrink-0">
+                      {profile.phoneNumber.startsWith('+91')
+                        ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}`
+                        : `+91 •••••• ${profile.phoneNumber.slice(-4)}`}
+                    </span>
                   </>
                 )}
               </p>
@@ -1083,7 +1087,9 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                     </div>
 
                     <p className="text-xs font-semibold text-neutral-700 mt-2">
-                      {profile.phoneNumber ? `+91 ${profile.phoneNumber.replace('+91', '')}` : 'Click to register mobile'}
+                      {profile.phoneNumber
+                        ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}`
+                        : 'Click to register mobile'}
                     </p>
 
                     <div className="flex items-center justify-between text-[8px] font-black uppercase text-[#050CA6] tracking-wider mt-3">
@@ -1865,7 +1871,12 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
                               </div>
                               {booking.partnerPhone && (
                                 <a 
-                                  href={`tel:${booking.partnerPhone}`}
+                                  href="tel:+918005865966"
+                                  onClick={(e) => {
+                                    if (typeof (window as any).__showToast === 'function') {
+                                      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                                    }
+                                  }}
                                   className="w-full sm:w-auto text-center bg-white border border-neutral-200 text-neutral-800 hover:border-neutral-300 font-extrabold tracking-wider text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-xs"
                                 >
                                   Call Expert

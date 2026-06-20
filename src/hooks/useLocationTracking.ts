@@ -35,6 +35,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
           }
 
           const { latitude, longitude } = position.coords;
+          console.log(`Transmitted coordinates: lat=${latitude}, lng=${longitude}`);
           try {
             await updateDoc(doc(db, 'partners', partnerProfileId), {
               lat: latitude,
@@ -55,21 +56,6 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
             isRevertedToLowAccuracy = true;
             if (watchId) navigator.geolocation.clearWatch(watchId);
             watchId = startWatching(false);
-          } else {
-            switch(error.code) {
-              case error.PERMISSION_DENIED:
-                console.error("User denied the request for Geolocation.");
-                break;
-              case error.POSITION_UNAVAILABLE:
-                console.error("Location information is unavailable.");
-                break;
-              case error.TIMEOUT:
-                console.error("The request to get user location timed out.");
-                break;
-              default:
-                console.error("An unknown error occurred.");
-                break;
-            }
           }
         },
         {
@@ -80,7 +66,6 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       );
     };
 
-    // Begin with Dual approach permissions check
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((status) => {
         if (status.state === 'denied') {
@@ -89,7 +74,6 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
         }
         watchId = startWatching(true);
       }).catch(() => {
-        // Fallback directly
         watchId = startWatching(true);
       });
     } else {
@@ -102,7 +86,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
         navigator.geolocation.clearWatch(watchId);
       }
     };
-  }, [partnerProfileId, bookings, availabilityStatus]);
+  }, [partnerProfileId, bookings, availabilityStatus, hasActiveJob, isAvailable]);
 
   return { lastSyncedAt, isTrackingActive };
 }

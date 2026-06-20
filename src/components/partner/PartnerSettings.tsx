@@ -248,7 +248,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
                       })()}
                    </div>
                    <p className="text-xs font-semibold text-slate-700 mt-2">
-                      {profile?.phoneNumber ? `+91 ${profile.phoneNumber.replace('+91', '')}` : 'N/A'}
+                      {profile?.phoneNumber ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}` : 'N/A'}
                    </p>
                 </div>
              </div>
@@ -327,7 +327,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150 flex flex-col justify-between">
                 <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Registered Mobile</span>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs font-semibold text-slate-800">{profile?.phoneNumber ? `+91 ${profile.phoneNumber.replace('+91', '')}` : 'N/A'}</span>
+                  <span className="text-xs font-semibold text-slate-800">{profile?.phoneNumber ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}` : 'N/A'}</span>
                   <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0"><ShieldCheck size={10} /> Verified ✓</span>
                 </div>
               </div>
