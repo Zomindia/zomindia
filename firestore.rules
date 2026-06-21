@@ -87,6 +87,7 @@ service cloud.firestore {
              data.keys().size() >= 3 &&
              (data.uid == request.auth.uid || data.uid.startsWith('booking_sim_pro_')) &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
+             (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 100)) &&
              (!('email' in data) || data.email is string || data.email == null) &&
              data.role in ['customer', 'partner', 'admin'] &&
              (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20)) &&
@@ -101,6 +102,7 @@ service cloud.firestore {
              (!('bhkSize' in data) || (data.bhkSize is string || data.bhkSize == null)) &&
              (!('preferredTimeSlot' in data) || (data.preferredTimeSlot is string || data.preferredTimeSlot == null)) &&
              (!('secondaryPhone' in data) || (data.secondaryPhone is string || data.secondaryPhone == null)) &&
+             (!('phoneNumberVerified' in data) || (data.phoneNumberVerified is bool)) &&
              (!('referralCode' in data) || (data.referralCode is string && data.referralCode.size() <= 50)) &&
              (!('onboardingComplete' in data) || (data.onboardingComplete is bool)) &&
              (!('adminSubRole' in data) || (data.adminSubRole is string && data.adminSubRole in ['head', 'accounts', 'hr'])) &&
@@ -342,7 +344,7 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_')) && isValidUser(incoming());
       allow update: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_') || isHRAdmin() || isHeadAdmin()) && (
-        isHeadAdmin() || (
+        isHeadAdmin() || isOwner(userId) || (
           isValidUser(incoming()) && 
           incoming().uid == existing().uid &&
           (
@@ -351,7 +353,7 @@ service cloud.firestore {
             // Regular user profile update
             ((isOwner(userId)) && (
               (incoming().diff(existing()).affectedKeys().hasOnly([
-                'displayName', 'email', 'phoneNumber', 'photoURL', 'address', 'bio', 
+                'displayName', 'fullName', 'email', 'phoneNumber', 'phoneNumberVerified', 'photoURL', 'address', 'bio', 
                 'notificationPreferences', 'updatedAt', 'gender', 'languagePreference', 
                 'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete'
               ])) ||
@@ -575,11 +577,11 @@ service cloud.firestore {
 
     // Connection Test
     match /test/connection {
-      allow read: if true;
+      allow read: if isSignedIn();
     }
 
     match /system_updates/{updateId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
   }

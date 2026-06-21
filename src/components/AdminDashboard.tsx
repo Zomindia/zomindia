@@ -5403,6 +5403,7 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
     try {
       const updateData: any = {
         displayName: editingAdmin.displayName,
+        fullName: editingAdmin.displayName,
         updatedAt: Timestamp.now()
       };
       
@@ -5641,7 +5642,7 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
 
   const handleSave = async () => {
     try {
-      await updateDoc(doc(db, 'users', profile.uid), { displayName });
+      await updateDoc(doc(db, 'users', profile.uid), { displayName, fullName: displayName });
       setIsEditing(false);
       window.location.reload();
     } catch (error) {

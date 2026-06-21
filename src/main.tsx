@@ -30,6 +30,20 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   registerSW({ immediate: true });
 }
 
+// Global listener to capture `beforeinstallprompt` and trigger `.prompt()` immediately
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e: any) => {
+    console.log('[PWA] beforeinstallprompt event captured. Auto-triggering installation dialog.');
+    // Smoothly prompt the browser install dialog
+    e.prompt();
+    e.userChoice.then((choiceResult: { outcome: string }) => {
+      console.log(`[PWA] PWA installation prompt completed with choice: ${choiceResult.outcome}`);
+    }).catch((err: any) => {
+      console.warn('[PWA] Error in registration choice promise execution:', err);
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

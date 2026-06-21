@@ -4,6 +4,7 @@ export type AdminSubRole = 'head' | 'accounts' | 'hr' | 'manager' | 'support' | 
 export interface UserProfile {
   uid: string;
   displayName: string;
+  fullName?: string;
   email: string;
   role: 'customer' | 'partner' | 'admin'; // Keep strictly roles for profile
   adminSubRole?: AdminSubRole;

@@ -557,6 +557,7 @@ export default function App() {
             const newProfile: any = {
               uid: u.uid,
               displayName: u.displayName || 'User',
+              fullName: u.displayName || 'User',
               email: u.email || '',
               phoneNumber: u.phoneNumber || '',
               role: isAdminUser ? 'admin' : 'customer',

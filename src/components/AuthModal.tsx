@@ -403,6 +403,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         // Safe partial update of only user-controllable fields
         const updatePayload: any = {
           displayName: displayName.trim(),
+          fullName: displayName.trim(),
           email: email.trim(),
           phoneNumber: formattedPhone || existingData?.phoneNumber || '',
           onboardingComplete: true,
@@ -422,6 +423,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         const initialProfile: any = {
           uid: activeUid,
           displayName: displayName.trim(),
+          fullName: displayName.trim(),
           email: email.trim(),
           phoneNumber: formattedPhone,
           role: isSarthakEmail ? 'admin' : 'customer',
@@ -520,6 +522,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const profilePayload: any = {
         uid: activeUid,
         displayName: displayName.trim() || 'User',
+        fullName: displayName.trim() || 'User',
         email: email.trim(),
         phoneNumber: formattedPhone,
         onboardingComplete: true,

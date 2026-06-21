@@ -83,6 +83,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
     try {
       await updateDoc(doc(db, 'users', profile.uid), {
         displayName: editForm.displayName,
+        fullName: editForm.displayName,
         photoURL: editForm.photoURL
       });
       await updateDoc(doc(db, 'partners', partner.id), {
