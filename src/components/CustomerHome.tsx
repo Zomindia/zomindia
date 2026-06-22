@@ -354,6 +354,37 @@ export default function CustomerHome({
   onServiceSelect,
   initialCategoryId,
 }: Props) {
+  const [showPwaInstall, setShowPwaInstall] = useState(false);
+
+  useEffect(() => {
+    const checkPrompt = () => {
+      setShowPwaInstall(!!(window as any).deferredPrompt);
+    };
+    checkPrompt();
+    window.addEventListener('pwa-prompt-available', checkPrompt);
+    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+    return () => {
+      window.removeEventListener('pwa-prompt-available', checkPrompt);
+      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (!promptEvent) return;
+    try {
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
+      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
+      if (choiceResult.outcome === 'accepted') {
+        (window as any).deferredPrompt = null;
+        setShowPwaInstall(false);
+      }
+    } catch (err) {
+      console.warn('[PWA] Error prompt:', err);
+    }
+  };
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
@@ -977,6 +1008,7 @@ export default function CustomerHome({
                   className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105 animate-in fade-in"
                   alt={selectedCategory.name}
                   referrerPolicy="no-referrer"
+                  loading="lazy"
                 />
               </motion.div>
               {!isInfoOpen ? (
@@ -1121,6 +1153,7 @@ export default function CustomerHome({
                       alt={service.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
                     />
                   </div>
                 )}
@@ -1183,6 +1216,7 @@ export default function CustomerHome({
                       alt={partner.displayName}
                       className="w-24 h-24 rounded-3xl object-cover bg-white"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
                     />
                     <div className="absolute -bottom-2 -right-2 flex flex-col items-end gap-1">
                       <div
@@ -1336,6 +1370,7 @@ export default function CustomerHome({
                             alt={srv.name}
                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                             referrerPolicy="no-referrer"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-indigo-150 to-blue-50 flex items-center justify-center">
@@ -1411,6 +1446,48 @@ export default function CustomerHome({
 
   return (
     <div className="space-y-10 sm:space-y-20">
+      {/* 1. Global PWA Install Banner */}
+      {showPwaInstall && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="bg-[#0a2540] text-white py-4 px-6 md:px-8 shadow-xl relative overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
+                <Sparkles className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display">
+                  INSTALL ZOMINDIA WEB-APP
+                </h4>
+                <p className="text-xs text-slate-300 mt-1 font-medium leading-normal max-w-xl">
+                  🚀 Experience lightning-fast bookings, automated offline syncing, and ZOMINI AI secure masked gateway features directly from your home screen.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={handleInstallPwa}
+                className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2.5 px-6 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Install Now
+              </button>
+              <button
+                onClick={() => setShowPwaInstall(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold py-2.5 px-4 rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {profile?.role === "partner" && (
         <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 sticky top-20 z-[40]">
           <div className="p-1.5 bg-amber-500 rounded-lg text-white">
@@ -1507,6 +1584,7 @@ export default function CustomerHome({
                                     src={service.imageURL}
                                     className="w-full h-full object-cover"
                                     referrerPolicy="no-referrer"
+                                    loading="lazy"
                                   />
                                 </div>
                                 <div>
@@ -1613,6 +1691,7 @@ export default function CustomerHome({
                           alt={bookingService.name}
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                         />
                       ) : (
                         <Zap size={16} className="text-blue-600 animate-pulse" />
@@ -1877,6 +1956,7 @@ export default function CustomerHome({
                                   src={service.imageURL}
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
+                                  loading="lazy"
                                 />
                               </div>
                               <div>
@@ -1967,6 +2047,7 @@ export default function CustomerHome({
                                 alt={mostRecentService.name}
                                 className="w-full h-full object-cover opacity-100 group-hover:scale-105 transition-transform duration-500"
                                 referrerPolicy="no-referrer"
+                                loading="lazy"
                               />
                             </div>
                           ) : (
@@ -2587,6 +2668,7 @@ export default function CustomerHome({
                         className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-30"
                         alt=""
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     )}
 
@@ -2817,6 +2899,7 @@ export default function CustomerHome({
                         alt={service.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
 
@@ -3119,6 +3202,7 @@ export default function CustomerHome({
                         alt={category.name}
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-20 mix-blend-multiply"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                       {/* Secure an premium gradient overlay for flawless contrast and readability */}
                       <div className={`absolute inset-0 bg-gradient-to-t pointer-events-none ${
@@ -3257,6 +3341,7 @@ export default function CustomerHome({
                               alt={service.name}
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                               referrerPolicy="no-referrer"
+                              loading="lazy"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
                             <div className="absolute bottom-1 right-1 bg-emerald-500 text-white font-black text-[7px] sm:text-[8px] uppercase tracking-wider px-1 px-[3px] py-0.5 rounded-md shadow-xs">
@@ -3423,6 +3508,7 @@ export default function CustomerHome({
                         alt={service.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent pointer-events-none" />
 

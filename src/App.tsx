@@ -554,27 +554,53 @@ export default function App() {
           let currentProfile = snap.data() as UserProfile;
           if (!snap.exists()) {
             const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-            const newProfile: any = {
-              uid: u.uid,
-              displayName: u.displayName || 'User',
-              fullName: u.displayName || 'User',
-              email: u.email || '',
-              phoneNumber: u.phoneNumber || '',
-              role: isAdminUser ? 'admin' : 'customer',
-              photoURL: u.photoURL || '',
-              referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-              walletBalance: 100, // ₹100 Welcome Bonus on registration!
-              notificationPreferences: {
-                bookingUpdates: true,
-                promotionalMessages: true
-              },
-              createdAt: Timestamp.now() as any,
-            };
-            if (isAdminUser) {
-              newProfile.adminSubRole = 'head';
+            const targetPhone = u.phoneNumber || '';
+            let existingUserDoc: any = null;
+
+            if (targetPhone) {
+              const q1 = query(collection(db, 'users'), where('phoneNumber', '==', targetPhone));
+              const q2 = query(collection(db, 'users'), where('mobile', '==', targetPhone));
+              const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+              if (!snap1.empty) existingUserDoc = snap1.docs[0];
+              else if (!snap2.empty) existingUserDoc = snap2.docs[0];
             }
-            await setDoc(userDocRef, newProfile);
-            currentProfile = newProfile;
+
+            if (existingUserDoc) {
+              const existingData = existingUserDoc.data();
+              const mergedProfile: any = {
+                ...existingData,
+                uid: u.uid, // Core session link
+                email: u.email || existingData.email || '',
+                displayName: u.displayName || existingData.displayName || 'User',
+                fullName: u.displayName || existingData.fullName || 'User',
+                onboardingComplete: true,
+                updatedAt: Timestamp.now()
+              };
+              await setDoc(userDocRef, mergedProfile);
+              currentProfile = mergedProfile;
+            } else {
+              const newProfile: any = {
+                uid: u.uid,
+                displayName: u.displayName || 'User',
+                fullName: u.displayName || 'User',
+                email: u.email || '',
+                phoneNumber: u.phoneNumber || '',
+                role: isAdminUser ? 'admin' : 'customer',
+                photoURL: u.photoURL || '',
+                referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
+                walletBalance: 100, // ₹100 Welcome Bonus on registration!
+                notificationPreferences: {
+                  bookingUpdates: true,
+                  promotionalMessages: true
+                },
+                createdAt: Timestamp.now() as any,
+              };
+              if (isAdminUser) {
+                newProfile.adminSubRole = 'head';
+              }
+              await setDoc(userDocRef, newProfile);
+              currentProfile = newProfile;
+            }
           }
 
           const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||

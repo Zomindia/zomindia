@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   TrendingUp, 
@@ -8,7 +9,9 @@ import {
   Clock,
   MapPin,
   Smartphone,
-  Navigation
+  Navigation,
+  Sparkles,
+  Zap
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
@@ -23,6 +26,37 @@ interface Props {
 }
 
 export default function PartnerHome({ partner, bookings, services, users, profile, onNavigate }: Props) {
+  const [showPwaInstall, setShowPwaInstall] = useState(false);
+
+  useEffect(() => {
+    const checkPrompt = () => {
+      setShowPwaInstall(!!(window as any).deferredPrompt);
+    };
+    checkPrompt();
+    window.addEventListener('pwa-prompt-available', checkPrompt);
+    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+    return () => {
+      window.removeEventListener('pwa-prompt-available', checkPrompt);
+      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (!promptEvent) return;
+    try {
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
+      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
+      if (choiceResult.outcome === 'accepted') {
+        (window as any).deferredPrompt = null;
+        setShowPwaInstall(false);
+      }
+    } catch (err) {
+      console.warn('[PWA] Error prompt:', err);
+    }
+  };
+
   const activeJobs = bookings.filter(b => {
     const s = b.status?.toLowerCase();
     return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
@@ -75,6 +109,48 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
   return (
     <div className="p-6 space-y-8">
+      {/* 1. Global PWA Install Banner */}
+      {showPwaInstall && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-[#0a2540] text-white p-6 rounded-[32px] shadow-xl relative overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
+                <Sparkles className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display">
+                  INSTALL PARTNER APP
+                </h4>
+                <p className="text-xs text-slate-300 mt-1 font-medium leading-normal">
+                  🚀 Get real-time lead updates, persistent push sync, maps navigation and 🔒 ZOMINI AI secure masked dialing.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+              <button
+                onClick={handleInstallPwa}
+                className="flex-1 sm:flex-none justify-center bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2.5 px-4 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Install
+              </button>
+              <button
+                onClick={() => setShowPwaInstall(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold py-2.5 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Greetings */}
       <section>
         <h2 className="text-2xl font-black text-slate-900 leading-tight">Welcome, {profile.displayName.split(' ')[0]}</h2>

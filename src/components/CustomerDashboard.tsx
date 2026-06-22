@@ -371,6 +371,37 @@ export default function CustomerDashboard({
   initialExpandedBookingId,
   setActiveTab,
 }: Props) {
+  const [showPwaInstall, setShowPwaInstall] = useState(false);
+
+  useEffect(() => {
+    const checkPrompt = () => {
+      setShowPwaInstall(!!(window as any).deferredPrompt);
+    };
+    checkPrompt();
+    window.addEventListener('pwa-prompt-available', checkPrompt);
+    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+    return () => {
+      window.removeEventListener('pwa-prompt-available', checkPrompt);
+      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (!promptEvent) return;
+    try {
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
+      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
+      if (choiceResult.outcome === 'accepted') {
+        (window as any).deferredPrompt = null;
+        setShowPwaInstall(false);
+      }
+    } catch (err) {
+      console.warn('[PWA] Error prompt:', err);
+    }
+  };
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [partners, setPartners] = useState<Record<string, UserProfile>>({
     vikas_chopra: {
@@ -432,6 +463,7 @@ export default function CustomerDashboard({
       bookings.filter((b) =>
         [
           "pending",
+          "pending_acceptance",
           "confirmed",
           "assigned",
           "ASSIGNED",
@@ -1348,6 +1380,7 @@ export default function CustomerDashboard({
             alt={serviceName}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
             referrerPolicy="no-referrer"
+            loading="lazy"
           />
         </div>
       );
@@ -1380,6 +1413,48 @@ export default function CustomerDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
+      {/* 1. Global PWA Install Banner */}
+      {showPwaInstall && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-[#0a2540] text-white py-4 px-6 md:px-8 rounded-[28px] shadow-xl relative overflow-hidden mb-6"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
+                <Sparkles className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display text-left">
+                  INSTALL ZOMINDIA WEB-APP
+                </h4>
+                <p className="text-xs text-slate-300 mt-1 font-medium leading-normal text-left">
+                  🚀 Experience quick booking reviews, live partner tracking, offline syncing, and secure masked calling.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={handleInstallPwa}
+                className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Install Now
+              </button>
+              <button
+                onClick={() => setShowPwaInstall(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* INCOMING SECURE CALL MODAL */}
       <AnimatePresence>
         {activeCoordinatedCallBooking && (
@@ -2240,6 +2315,7 @@ export default function CustomerDashboard({
                                   src={partnerUser.photoURL}
                                   alt=""
                                   className="w-full h-full object-cover"
+                                  loading="lazy"
                                 />
                               ) : (
                                 (partnerUser?.displayName || "P")
@@ -2434,7 +2510,7 @@ export default function CustomerDashboard({
       {/* Ongoing Jobs & Service Discovery Logic */}
       {!searchQuery && (
         <div className="space-y-12 sm:space-y-16">
-          {false && activeBookings.length > 0 ? (
+          {activeBookings.length > 0 && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
@@ -2738,6 +2814,7 @@ export default function CustomerDashboard({
                                   }
                                   alt=""
                                   className="w-full h-full object-cover"
+                                  loading="lazy"
                                 />
                               </div>
                               <div className="flex-1 min-w-0 text-left">
@@ -2832,9 +2909,10 @@ export default function CustomerDashboard({
                 ))}
               </div>
             </div>
-          ) : (
-            /* Discovery Grid when no active bookings */
-            <div className="mb-16">
+          )}
+
+          {/* Discovery Grid */}
+          <div className="mb-16">
               <div className="flex items-center justify-between mb-12">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-blue-700 rounded-[16px] text-white shadow-2xl flex items-center justify-center">
@@ -2865,6 +2943,7 @@ export default function CustomerDashboard({
                           src={cat.iconURL}
                           alt=""
                           className="w-8 h-8 object-contain"
+                          loading="lazy"
                         />
                       ) : (
                         <Zap
@@ -2880,9 +2959,8 @@ export default function CustomerDashboard({
                 ))}
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
       {/* Promotions & Offers - Discovery */}
       {promotions.length > 0 && !searchQuery && (
@@ -2928,6 +3006,7 @@ export default function CustomerDashboard({
                         alt=""
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     </div>
                   )}
@@ -3054,6 +3133,7 @@ export default function CustomerDashboard({
                       alt=""
                       className="w-full h-full object-cover grayscale transition-all duration-1000 group-hover:grayscale-0 group-hover:scale-110"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
                     />
                   </div>
                 )}
@@ -3210,6 +3290,7 @@ export default function CustomerDashboard({
                           src={booking.completionPhotos[0]}
                           alt="Job Completion Proof"
                           className="w-full h-full object-cover"
+                          loading="lazy"
                         />
                       </div>
                     </div>

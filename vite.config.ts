@@ -78,32 +78,80 @@ export default defineConfig(({ mode }) => {
           name: 'Zomindia',
           short_name: 'Zomindia',
           description: 'India\'s premium service marketplace',
-          theme_color: '#050ca6',
+          theme_color: '#0a2540',
           background_color: '#ffffff',
           display: 'standalone',
           start_url: '/',
           scope: '/',
           icons: [
             {
-              src: '/logo-icon.png',
+              src: '/src/assets/logo-icon.png',
+              sizes: '48x48',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '48x48',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '72x72',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '72x72',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '96x96',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '96x96',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '128x128',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
+              sizes: '128x128',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/logo-icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/logo-icon.png',
+              src: '/src/assets/logo-icon.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'maskable'
             },
             {
-              src: '/logo-icon.png',
+              src: '/src/assets/logo-icon.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/src/assets/logo-icon.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable'

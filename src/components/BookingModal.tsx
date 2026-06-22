@@ -75,6 +75,19 @@ if (typeof window !== 'undefined') {
 
 const MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || '';
 
+const INDORE_MOCK_LOCATIONS = [
+  { name: "Singapore Annexe", area: "Vijay Nagar, Indore, MP", lat: 22.7612, lng: 75.8984 },
+  { name: "Palasia Colony", area: "Old Palasia, Indore, MP", lat: 22.7244, lng: 75.8839 },
+  { name: "Vijay Nagar", area: "Sector C, Vijay Nagar, Indore, MP", lat: 22.7533, lng: 75.8937 },
+  { name: "Rajwada Palace Area", area: "Mahatma Gandhi Road, Indore, MP", lat: 22.7186, lng: 75.8576 },
+  { name: "Bhawarkua Square", area: "A.B. Road, Bhawarkua, Indore, MP", lat: 22.6983, lng: 75.8679 },
+  { name: "LIG Colony", area: "Indore, MP", lat: 22.7423, lng: 75.8856 },
+  { name: "Khajrana Temple Area", area: "Khajrana, Indore, MP", lat: 22.7302, lng: 75.8971 },
+  { name: "Annapurna Mandir Area", area: "Annapurna Road, Indore, MP", lat: 22.6993, lng: 75.8354 },
+  { name: "Sudama Nagar", area: "Sector D, Sudama Nagar, Indore, MP", lat: 22.7051, lng: 75.8236 },
+  { name: "Mahalaxmi Nagar", area: "Opposite Bombay Hospital, Indore, MP", lat: 22.7661, lng: 75.9082 }
+];
+
 interface Props {
   service: Service;
   profile: UserProfile | null;
@@ -114,6 +127,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [availablePromos, setAvailablePromos] = useState<Promotion[]>([]);
   const [showPromos, setShowPromos] = useState(false);
   const [slotNotAvailablePopup, setSlotNotAvailablePopup] = useState(false);
+  const [emailErrorFlashing, setEmailErrorFlashing] = useState(false);
+
+  const scrollToContact = () => {
+    setTimeout(() => {
+      const el = document.getElementById('contact-info-container');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        const summary = document.getElementById('price-summary-container');
+        if (summary) {
+          summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    }, 150);
+  };
+  
+  // Autocomplete and wallet options states
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+  const [selectedFromDropdown, setSelectedFromDropdown] = useState(false);
+  const [useWalletBalance, setUseWalletBalance] = useState(false);
+  const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>(null);
   
   // AMC State
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
@@ -683,6 +717,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
         setAppliedPromo(promoData);
         setPromoInput(''); // Clear input on success
+        scrollToContact(); // Smooth scroll down to contact info container
       }
     } catch (err) {
       console.error('Promo error:', err);
@@ -705,12 +740,29 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       const emailTrimmed = contactEmail.trim();
       if (!emailTrimmed) {
         setError("Please enter your email address to continue.");
+        setEmailErrorFlashing(true);
+        setTimeout(() => setEmailErrorFlashing(false), 2500);
+        setTimeout(() => {
+          const emailInput = document.getElementById('contact-email-input');
+          if (emailInput) {
+            emailInput.focus();
+            emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
         return;
       }
       // Simple email pattern check
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(emailTrimmed)) {
         setError("Please enter a valid email address.");
+        setEmailErrorFlashing(true);
+        setTimeout(() => setEmailErrorFlashing(false), 2500);
+        setTimeout(() => {
+          const emailInput = document.getElementById('contact-email-input');
+          if (emailInput) {
+            emailInput.focus();
+          }
+        }, 100);
         return;
       }
     }
@@ -724,6 +776,18 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
       if (phoneDigits.length !== 10) {
         setError("Please enter a valid 10-digit mobile number.");
+        return;
+      }
+    }
+
+    // Validate remaining due split balance payment method
+    const totalBill = calculateFinalPrice();
+    const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
+    const remainingDue = totalBill - walletDeduction;
+
+    if (remainingDue > 0) {
+      if (paymentMethod === 'online' && !onlineSubMethod) {
+        setError("Please select either UPI or Card / Net Banking to pay the outstanding balance of ₹" + remainingDue + ".");
         return;
       }
     }
@@ -920,21 +984,51 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
 
-      // Structure secure booking payload with fallback "live_customer_indore" user profile
+       // Compute wallet split balance deduction values before payload creation
+      const totalBill = finalPrice;
+      const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
+      const remainingDue = totalBill - walletDeduction;
+
+      let computedPaymentMethod = useAmc ? 'wallet' : paymentMethod;
+      if (useWalletBalance) {
+        if (remainingDue > 0) {
+          computedPaymentMethod = `wallet+${paymentMethod}` as any;
+        } else {
+          computedPaymentMethod = 'wallet' as any;
+        }
+      }
+
+      // Decrement/deduct wallet balance from user profile in Firestore if wallet is active
+      if (walletDeduction > 0 && profile?.uid) {
+        try {
+          const uRef = doc(db, 'users', profile.uid);
+          await updateDoc(uRef, {
+            walletBalance: Math.max(0, (profile.walletBalance || 0) - walletDeduction)
+          });
+          console.log("Deducted ₹" + walletDeduction + " from user wallet balance in Firestore.");
+        } catch (walletDeductErr) {
+          console.error("Wallet balance deduction write failed:", walletDeductErr);
+        }
+      }
+
+      const activeUid = profile?.uid || auth.currentUser?.uid || "live_customer_indore";
+
+      // Structure secure booking payload with relational userId matching active customer uid
       const bookingPayload = {
-        customerId: "live_customer_indore",
+        customerId: activeUid,
+        userId: activeUid, // Relational userId matching active customer uid
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: assignedPartnerId ? "pending_acceptance" : "pending", 
-        paymentStatus: useAmc ? 'paid' : 'unpaid',
+        paymentStatus: useAmc ? 'paid' : (remainingDue === 0 ? 'paid' : 'unpaid'),
         scheduledAt: Timestamp.fromDate(scheduledAt),
         address: fullAddress,
         lat: location?.lat || null,
         lng: location?.lng || null,
-        totalPrice: finalPrice,
+        totalPrice: remainingDue,
         promoCode: appliedPromo?.code || null,
         discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
-        paymentMethod: useAmc ? 'wallet' : paymentMethod,
+        paymentMethod: useAmc ? 'wallet' : computedPaymentMethod,
         isAmcBooking: useAmc,
         amcId: useAmc ? activeAmc?.id : null,
         serviceOtp,
@@ -942,7 +1036,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         updatedAt: Timestamp.now(),
         customerBookedEmail: contactEmail.trim(),
         customerBookedPhone: contactPhone.trim(),
-        otpVerified: false
+        customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
+        otpVerified: false,
+        walletDeductAmount: walletDeduction,
+        originalBillValue: totalBill
       };
 
       // Direct Firestore Write to write cleanly directly to database bypassing server token layers
@@ -963,25 +1060,29 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           },
           body: JSON.stringify({
             bookingId,
-            customerId: "live_customer_indore",
+            customerId: activeUid,
+            userId: activeUid, // Relational userId matching active customer uid
             serviceId: service.id,
             partnerId: assignedPartnerId,
             status: assignedPartnerId ? "pending_acceptance" : "pending",
-            paymentStatus: useAmc ? 'paid' : 'unpaid',
+            paymentStatus: useAmc ? 'paid' : (remainingDue === 0 ? 'paid' : 'unpaid'),
             scheduledAtIso: scheduledAt.toISOString(),
             address: fullAddress,
             lat: location?.lat || null,
             lng: location?.lng || null,
-            totalPrice: finalPrice,
+            totalPrice: remainingDue,
             promoCode: appliedPromo?.code || null,
             discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
-            paymentMethod: useAmc ? 'wallet' : paymentMethod,
+            paymentMethod: useAmc ? 'wallet' : computedPaymentMethod,
             isAmcBooking: useAmc,
             amcId: useAmc ? activeAmc?.id : null,
             serviceOtp,
             customerBookedEmail: contactEmail.trim(),
             customerBookedPhone: contactPhone.trim(),
-            simulatedPartner
+            customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
+            simulatedPartner,
+            walletDeductAmount: walletDeduction,
+            originalBillValue: totalBill
           })
         });
       } catch (restErr: any) {
@@ -1305,8 +1406,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute inset-0 z-[80] bg-white backdrop-blur-xl flex flex-col items-center justify-center p-6 md:p-10 text-center overflow-y-auto no-scrollbar"
                 >
-                  <div className="w-16 h-16 md:w-20 md:h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shrink-0">
-                    <CheckCircle2 size={32} />
+                  <div className="w-16 h-16 md:w-20 md:h-20 bg-[#0a2540] text-emerald-450 rounded-full flex items-center justify-center mb-6 shadow-xl shrink-0">
+                    <CheckCircle2 size={32} className="stroke-[2.5]" />
                   </div>
                   <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display italic">Booking Finalized!</h3>
                   <p className="text-slate-400 text-xs font-medium mb-8">Your service request has been successfully queued.</p>
@@ -1357,9 +1458,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         setShowSuccessModal(false);
                         onSuccess();
                       }} 
-                      className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic"
+                      className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic text-center"
                     >
-                      Go to Dashboard
+                      TRACK MY ORDER
                     </button>
                   </div>
                 </motion.div>
@@ -1517,17 +1618,74 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 >
                   {/* Content Stack */}
                   <div className="space-y-4 text-left">
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 relative">
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                         Search for your area / colony in Indore
                       </label>
                       <input
                         type="text"
                         value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder="Search for your area / colony in Indore"
-                        className="w-full p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAddress(val);
+                          setSelectedFromDropdown(false);
+                          setShowSearchSuggestions(val.trim().length >= 2);
+                        }}
+                        placeholder="Search for your area / colony in Indore (e.g., singapore annaxe)"
+                        className="w-full p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
                       />
+
+                      {/* Autocomplete suggestion dropdown menu */}
+                      {showSearchSuggestions && !selectedFromDropdown && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-[90] max-h-56 overflow-y-auto divide-y divide-slate-100 no-scrollbar">
+                          {(() => {
+                            const searchWords = address.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length >= 2);
+                            const matches = INDORE_MOCK_LOCATIONS.filter(loc => {
+                              const nameLower = loc.name.toLowerCase();
+                              const areaLower = loc.area.toLowerCase();
+                              const addressLower = address.toLowerCase();
+                              
+                              if (searchWords.length > 0) {
+                                return searchWords.some(w => {
+                                  if (nameLower.includes(w) || areaLower.includes(w)) return true;
+                                  if ((w === 'annaxe' || w === 'annax' || w === 'singapor') && (nameLower.includes('annexe') || nameLower.includes('singapore'))) return true;
+                                  return false;
+                                });
+                              }
+                              return nameLower.includes(addressLower) || areaLower.includes(addressLower);
+                            });
+
+                            if (matches.length === 0) {
+                              return (
+                                <div className="p-4 text-left">
+                                  <p className="text-xs text-slate-400 italic">No matching areas found in Indore. Try "Palasia" or "Singapore Annexe".</p>
+                                </div>
+                              );
+                            }
+
+                            return matches.map((loc, idx) => (
+                              <button
+                                type="button"
+                                key={idx}
+                                onClick={() => {
+                                  setAddress(loc.name + ", " + loc.area);
+                                  setLocation({ lat: loc.lat, lng: loc.lng });
+                                  setMapCenter({ lat: loc.lat, lng: loc.lng });
+                                  setSelectedFromDropdown(true);
+                                  setShowSearchSuggestions(false);
+                                }}
+                                className="w-full py-2.5 px-4 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150 flex items-center gap-3.5 focus:outline-none cursor-pointer"
+                              >
+                                <span className="text-sm shrink-0">📍</span>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900 leading-normal">{loc.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">{loc.area}</p>
+                                </div>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      )}
                     </div>
 
                     {/* Use Current Location (GPS) prominent button */}
@@ -1582,7 +1740,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         defaultCenter={location || { lat: 22.7196, lng: 75.8577 }}
                         center={mapCenter || { lat: 22.7196, lng: 75.8577 }}
                         zoom={mapZoom}
-                        onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
+                        onCameraChanged={(e) => {
+                          setMapCenter(e.detail.center);
+                          setMapZoom(e.detail.zoom);
+                        }}
                         defaultZoom={15}
                         mapId="DEMO_MAP_ID"
                         gestureHandling="greedy"
@@ -1838,6 +1999,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                       } else {
                                         setAppliedPromo(p);
                                         setPromoInput(p.code);
+                                        scrollToContact();
                                       }
                                     }}
                                     className={`flex-none snap-start p-2 rounded-lg border transition-all duration-200 text-left w-[125px] cursor-pointer ${
@@ -1872,7 +2034,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
                   {/* Contact Accuracy, Accessibility, & Security */}
                   {(!profile?.email || !profile?.phoneNumber) && (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div id="contact-info-container" className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="w-1 h-2 bg-blue-700 rounded-full" />
                         <p className="text-[9px] text-slate-900 font-black uppercase tracking-widest">Contact Info Required</p>
@@ -1882,11 +2044,16 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         <div className="space-y-1 text-left">
                           <label className="text-[9px] text-slate-450 uppercase font-bold tracking-widest block">Your Email Address</label>
                           <input 
+                            id="contact-email-input"
                             type="email"
                             value={contactEmail}
                             onChange={(e) => setContactEmail(e.target.value)}
                             placeholder="name@domain.com"
-                            className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-700 transition-all placeholder:text-slate-300"
+                            className={`w-full text-xs font-semibold px-3 py-2 rounded-lg focus:outline-none transition-all placeholder:text-slate-300 ${
+                              emailErrorFlashing
+                                ? 'bg-red-50 border-2 border-red-500 text-red-900 ring-2 ring-red-200 animate-pulse'
+                                : 'bg-slate-50 border border-slate-200 text-slate-900 focus:ring-1 focus:ring-blue-700'
+                            }`}
                           />
                         </div>
                       )}
@@ -1913,17 +2080,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   )}
 
                   <div className="bg-white rounded-2xl border border-slate-150 p-3.5 space-y-3">
-                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest text-left">Preferred Settlement Mode</p>
+                    <p className="text-[9px] text-[#0a2540] uppercase font-black tracking-widest text-left">Payment Method</p>
                     <div className="grid grid-cols-2 gap-2">
                       <button 
-                        onClick={() => setPaymentMethod('cash')}
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('cash');
+                          setOnlineSubMethod(null);
+                          setError(null);
+                        }}
                         className={`flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border-2 transition-all cursor-pointer ${paymentMethod === 'cash' ? 'border-blue-700 bg-blue-700 text-white shadow' : 'border-slate-100 bg-slate-50/50 text-slate-400 hover:border-slate-200'}`}
                       >
                          <CheckCircle2 size={12} className={paymentMethod === 'cash' ? 'opacity-100' : 'opacity-0'} />
                          <span className="text-[10px] font-bold uppercase tracking-wider">Pay on Arrival</span>
                       </button>
                       <button 
-                        onClick={() => setPaymentMethod('online')}
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('online');
+                          if (!onlineSubMethod) setOnlineSubMethod('upi');
+                          setError(null);
+                        }}
                         className={`flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border-2 transition-all cursor-pointer ${paymentMethod === 'online' ? 'border-blue-700 bg-blue-700 text-white shadow' : 'border-slate-100 bg-slate-50/50 text-slate-400 hover:border-slate-200'}`}
                       >
                         <CheckCircle2 size={12} className={paymentMethod === 'online' ? 'opacity-100' : 'opacity-0'} />
@@ -1933,20 +2110,114 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     {profile?.walletBalance !== undefined && profile.walletBalance > 0 && (
                       <div className="mt-1">
                         <button 
-                          onClick={() => setPaymentMethod('wallet' as any)}
-                          className={`w-full flex items-center justify-between py-2 px-3 rounded-xl border-2 transition-all cursor-pointer ${paymentMethod === ('wallet' as any) ? 'border-blue-700 bg-blue-700 text-white shadow' : 'border-slate-100 bg-emerald-50/50 text-slate-600 hover:border-slate-200'}`}
+                          type="button"
+                          onClick={() => {
+                            const nextVal = !useWalletBalance;
+                            setUseWalletBalance(nextVal);
+                            setError(null);
+                          }}
+                          className={`w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl border-2 transition-all cursor-pointer ${useWalletBalance ? 'border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm' : 'border-slate-100 bg-emerald-50/40 text-slate-600 hover:border-slate-200'}`}
                         >
-                          <div className="flex items-center gap-1">
-                            <CheckCircle2 size={12} className={paymentMethod === ('wallet' as any) ? 'opacity-100' : 'opacity-0'} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Use Wallet</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[8px] ${useWalletBalance ? 'border-emerald-650 bg-emerald-600 text-white' : 'border-slate-300'}`}>
+                              {useWalletBalance ? '✓' : ''}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-wider font-mono">Use Wallet Balance</span>
                           </div>
-                          <span className="text-[10px] font-bold tracking-tight">Bal: ₹{profile.walletBalance}</span>
+                          <span className="text-[10px] font-bold tracking-tight bg-white/80 shrink-0 px-2 py-0.5 rounded-md border border-emerald-100">Bal: ₹{profile.walletBalance}</span>
                         </button>
                       </div>
                     )}
+                    {(() => {
+                      const totalBill = calculateFinalPrice();
+                      const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
+                      const remainingDue = totalBill - walletDeduction;
+
+                      if (useWalletBalance && remainingDue > 0) {
+                        return (
+                          <div className="p-3 bg-blue-50/45 rounded-xl border border-blue-150 space-y-2.5 mt-2">
+                            <span className="block text-[9px] uppercase font-black tracking-widest text-[#0a2540] text-left">
+                              Remaining Balance of ₹{remainingDue} Due via:
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPaymentMethod('online');
+                                  setOnlineSubMethod('upi');
+                                  setError(null);
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'upi' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                              >
+                                📱 UPI (GPay/PhonePe)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPaymentMethod('online');
+                                  setOnlineSubMethod('card');
+                                  setError(null);
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'card' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                              >
+                                💳 Card / Net Banking
+                              </button>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2">
+                              <div className="h-[1px] bg-slate-200 flex-1"></div>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase">OR</span>
+                              <div className="h-[1px] bg-slate-200 flex-1"></div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPaymentMethod('cash');
+                                setOnlineSubMethod(null);
+                                setError(null);
+                              }}
+                              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'}`}
+                            >
+                              💵 Pay Outstanding on Arrival (Cash)
+                            </button>
+                          </div>
+                        );
+                      } else if (paymentMethod === 'online') {
+                        // Prompt online submethod selection if paying online general
+                        return (
+                          <div className="p-3 bg-blue-50/45 rounded-xl border border-blue-150 space-y-2 mt-2">
+                            <span className="block text-[9px] uppercase font-black tracking-widest text-[#0a2540] text-left">
+                              Select Online Mode:
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOnlineSubMethod('upi');
+                                  setError(null);
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${onlineSubMethod === 'upi' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                              >
+                                📱 UPI (GPay/PhonePe)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOnlineSubMethod('card');
+                                  setError(null);
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${onlineSubMethod === 'card' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                              >
+                                💳 Card / Net Banking
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
-                  <div className="pt-2 pb-1 text-left space-y-1">
+                  <div id="price-summary-container" className="pt-2 pb-1 text-left space-y-1">
                     <div className="flex justify-between items-center">
                       <p className="text-xs font-medium text-slate-500">Service Base Price</p>
                       <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
@@ -1985,13 +2256,29 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <p className="text-xs font-bold text-slate-450 italic">On Arrival</p>
                     </div>
 
+                    {useWalletBalance && (
+                      <>
+                        <div className="flex justify-between items-center bg-emerald-50/70 px-2.5 py-1 rounded-lg border border-emerald-100">
+                          <div className="flex items-center gap-1">
+                            <span className="text-emerald-600">💼</span>
+                            <p className="text-[11px] font-bold text-emerald-700 uppercase">Wallet Applied</p>
+                          </div>
+                          <p className="text-[11px] font-black text-emerald-700">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</p>
+                        </div>
+                      </>
+                    )}
+
                     <div className="flex justify-between items-center pt-2.5 mt-2.5 border-t border-slate-100">
                       <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Final Payable</p>
-                        <p className="text-xl font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">
+                          {useWalletBalance ? "Remaining Due" : "Final Payable"}
+                        </p>
+                        <p className="text-xl font-black text-slate-900 tracking-tight">
+                          ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
+                        </p>
                       </div>
                       <div className="text-slate-350 shrink-0">
-                         <CheckCircle2 size={24} />
+                         <CheckCircle2 size={24} className={useWalletBalance ? "text-emerald-500" : ""} />
                       </div>
                     </div>
                   </div>
@@ -2070,9 +2357,23 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timeline</span>
                         <span className="text-xs font-bold text-slate-900 text-right">{date} at {time}</span>
                      </div>
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Bill</span>
+                        <span className="text-xs font-bold text-slate-900 text-right">₹{calculateFinalPrice()}</span>
+                     </div>
+                     {useWalletBalance && (
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                           <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-widest font-mono">Wallet Applied</span>
+                           <span className="text-xs font-bold text-emerald-600 text-right">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</span>
+                        </div>
+                     )}
                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</span>
-                        <span className="text-lg font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {useWalletBalance ? "Remaining Due" : "Total Amount"}
+                        </span>
+                        <span className="text-lg font-black text-slate-900 tracking-tight font-display">
+                          ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
+                        </span>
                      </div>
                   </div>
 

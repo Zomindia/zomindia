@@ -180,6 +180,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
       <Map
         defaultCenter={center}
         center={center}
+        onCameraChanged={(e) => setCenter(e.detail.center)}
         defaultZoom={12}
         mapId="DEMO_MAP_ID"
         mapTypeId={mapType}
@@ -527,6 +528,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                           alt={service.name} 
                           className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105" 
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                         />
                       </div>
                     )}
@@ -772,6 +774,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                                   alt={partner.displayName}
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
+                                  loading="lazy"
                                 />
                               </div>
                               <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border border-white ${
@@ -1109,6 +1112,7 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                             alt={srv.name}
                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                             referrerPolicy="no-referrer"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-full h-full bg-slate-900 flex items-center justify-center">

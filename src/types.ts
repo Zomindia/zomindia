@@ -9,6 +9,7 @@ export interface UserProfile {
   role: 'customer' | 'partner' | 'admin'; // Keep strictly roles for profile
   adminSubRole?: AdminSubRole;
   phoneNumber?: string;
+  mobile?: string; // unmasked registered mobile
   phoneNumberVerified?: boolean;
   emailVerified?: boolean;
   photoURL?: string;
@@ -135,6 +136,7 @@ export interface AdditionalCharge {
 export interface Booking {
   id: string;
   customerId: string;
+  userId?: string; // relational matching customer uid
   partnerId?: string;
   serviceId: string;
   status: BookingStatus;
@@ -168,6 +170,10 @@ export interface Booking {
   activeCall?: ActiveCallInfo | null;
   completionPhotos?: string[];
   secondaryContact?: string;
+  customerBookedName?: string;
+  customerBookedPhone?: string;
+  customerPhone?: string;
+  customerName?: string;
 }
 
 export interface ActiveCallInfo {

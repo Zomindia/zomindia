@@ -30,17 +30,22 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   registerSW({ immediate: true });
 }
 
-// Global listener to capture `beforeinstallprompt` and trigger `.prompt()` immediately
+// Global listener to capture `beforeinstallprompt` and persist globally
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e: any) => {
-    console.log('[PWA] beforeinstallprompt event captured. Auto-triggering installation dialog.');
-    // Smoothly prompt the browser install dialog
-    e.prompt();
-    e.userChoice.then((choiceResult: { outcome: string }) => {
-      console.log(`[PWA] PWA installation prompt completed with choice: ${choiceResult.outcome}`);
-    }).catch((err: any) => {
-      console.warn('[PWA] Error in registration choice promise execution:', err);
-    });
+    // Prevent default browser prompt bar from showing
+    e.preventDefault();
+    console.log('[PWA] beforeinstallprompt event captured and persisted globally.');
+    (window as any).deferredPrompt = e;
+    
+    // Dispatch a custom event so React components are notified instantly across pages/views
+    window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+  });
+
+  window.addEventListener('appinstalled', () => {
+    console.log('[PWA] App has been installed successfully.');
+    (window as any).deferredPrompt = null;
+    window.dispatchEvent(new CustomEvent('pwa-prompt-dismissed'));
   });
 }
 

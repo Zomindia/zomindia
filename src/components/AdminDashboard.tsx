@@ -57,7 +57,9 @@ import {
   Trash2,
   RotateCw,
   LogOut,
-  Home
+  Home,
+  Sparkles,
+  Zap
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import LogoHorizontal from '../assets/logo-horizontal.png';
@@ -80,6 +82,37 @@ const triggerEcosystemUpdate = async (reason: string) => {
 };
 
 export default function AdminDashboard({ profile, setActiveTab, initialAdminTab = 'overview' }: { profile: UserProfile, setActiveTab: (tab: any) => void, initialAdminTab?: AdminTab }) {
+  const [showPwaInstall, setShowPwaInstall] = useState(false);
+
+  useEffect(() => {
+    const checkPrompt = () => {
+      setShowPwaInstall(!!(window as any).deferredPrompt);
+    };
+    checkPrompt();
+    window.addEventListener('pwa-prompt-available', checkPrompt);
+    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+    return () => {
+      window.removeEventListener('pwa-prompt-available', checkPrompt);
+      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (!promptEvent) return;
+    try {
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
+      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
+      if (choiceResult.outcome === 'accepted') {
+        (window as any).deferredPrompt = null;
+        setShowPwaInstall(false);
+      }
+    } catch (err) {
+      console.warn('[PWA] Error prompt:', err);
+    }
+  };
+
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(initialAdminTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -95,6 +128,42 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   const [searchTerm, setSearchTerm] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedOverviewBooking, setSelectedOverviewBooking] = useState<Booking | null>(null);
+  const [modalCustomer, setModalCustomer] = useState<any>(null);
+
+  useEffect(() => {
+    if (selectedOverviewBooking) {
+      const b = selectedOverviewBooking;
+      const targetId = b.customerId || b.userId;
+      if (targetId) {
+        const custRef = doc(db, 'users', targetId);
+        getDoc(custRef).then(snap => {
+          if (snap.exists()) {
+            setModalCustomer(snap.data());
+          } else {
+            const matched = users.find(u => u.uid === targetId);
+            if (matched) {
+              setModalCustomer(matched);
+            } else {
+              setModalCustomer(null);
+            }
+          }
+        }).catch(err => {
+          console.error("Error fetching customer in Admin popup:", err);
+          const matched = users.find(u => u.uid === targetId);
+          if (matched) {
+            setModalCustomer(matched);
+          } else {
+            setModalCustomer(null);
+          }
+        });
+      } else {
+        setModalCustomer(null);
+      }
+    } else {
+      setModalCustomer(null);
+    }
+  }, [selectedOverviewBooking, users]);
+
   const [initialManagingBookingId, setInitialManagingBookingId] = useState<string | null>(null);
 
   const partners = useMemo(() => {
@@ -485,6 +554,48 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
         </header>
 
         <div className="p-6 md:p-8 lg:p-12 flex-1 overflow-y-auto">
+          {/* 1. Global PWA Install Banner */}
+          {showPwaInstall && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#0a2540] text-white p-6 rounded-[32px] shadow-xl relative overflow-hidden mb-8 text-left"
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
+                    <Sparkles className="w-5 h-5 text-cyan-300" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display text-left animate-pulse">
+                      INSTALL ADMIN CONSOLE
+                    </h4>
+                    <p className="text-xs text-slate-300 mt-1 font-medium leading-normal text-left">
+                      🚀 Launch real-time analytics, instant KYC verifications, service pricing models and 🔒 ZOMINI AI secure console masking with immediate desktop access.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+                  <button
+                    onClick={handleInstallPwa}
+                    className="flex-1 sm:flex-none justify-center bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2.5 px-4 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Install
+                  </button>
+                  <button
+                    onClick={() => setShowPwaInstall(false)}
+                    className="text-slate-400 hover:text-white text-xs font-bold py-2.5 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           <AnimatePresence mode="wait">
             <motion.div
               key={activeAdminTab}
@@ -535,11 +646,16 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                               <span className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
                               <div className="flex items-center justify-between gap-2 mb-3">
                                 <span className="text-[9px] font-black font-mono text-slate-400 uppercase tracking-widest">IND-{b.id.slice(0, 6).toUpperCase()}</span>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-sm ${
-                                  b.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
-                                  b.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/10' :
-                                  ['on_the_way', 'arrived'].includes(b.status) ? 'bg-emerald-600 text-white shadow-emerald-600/10' :
-                                  'bg-slate-200 text-slate-600 font-bold'
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8.5px] font-black uppercase tracking-widest shadow-sm ${
+                                  ['in_progress', 'accepted'].includes(b.status)
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-605 text-white border border-emerald-400/30 animate-pulse'
+                                    : b.status === 'payment_pending'
+                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 border border-amber-300/30 font-black'
+                                    : ['on_the_way', 'arrived'].includes(b.status)
+                                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white border border-emerald-400/30'
+                                    : ['completed', 'finalized'].includes(b.status)
+                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-705 text-white border border-blue-500/30'
+                                    : 'bg-gradient-to-r from-rose-500 to-red-600 text-white border border-rose-400/30'
                                 }`}>
                                   {b.status.replace('_', ' ')}
                                 </span>
@@ -562,10 +678,9 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm">
-                      <div className="flex justify-between items-center mb-8">
-                         <h3 className="font-bold text-xl text-slate-900">Recent Stream</h3>
+                  <div className="hidden">
+                    <div>
+                      <div>
                          <button onClick={() => setActiveAdminTab('bookings')} className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase tracking-widest transition-colors">See All Bookings</button>
                       </div>
                       <div className="space-y-3">
@@ -598,11 +713,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                       </div>
                     </div>
 
-                    <div className="bg-blue-700 rounded-[32px] p-8 text-white relative overflow-hidden flex flex-col justify-between">
-                       <div>
-                         <h3 className="font-bold text-xl mb-2">Platform Velocity</h3>
-                         <p className="text-white/40 text-xs font-bold uppercase tracking-widest mb-12">Performance Metrics</p>
-                       </div>
+                    <div className="hidden">
                        
                        <div className="space-y-6 relative z-10">
                           <div>
@@ -629,7 +740,35 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                     </div>
                   </div>
 
-                  {/* Analytics Charts */}
+                  <div className="bg-gradient-to-r from-[#0a2540] to-[#123e6b] rounded-[24px] p-6 text-white relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6 border border-slate-705/10 shadow-sm mt-8 shadow-[#0a2540]/10">
+                    <div className="shrink-0 text-center md:text-left">
+                      <h3 className="font-bold text-lg mb-1">Platform Velocity</h3>
+                      <p className="text-white/40 text-[9px] font-bold uppercase tracking-widest">Real-time Performance metrics</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full md:w-auto md:min-w-[480px] relative z-10">
+                       <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
+                         <div className="flex justify-between items-center mb-1.5">
+                           <span className="text-[9px] uppercase font-black tracking-widest text-white/50">Service Satisfaction</span>
+                           <span className="text-xs font-bold uppercase tracking-widest text-white">94%</span>
+                         </div>
+                         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                           <div className="w-[94%] h-full bg-emerald-400" />
+                         </div>
+                       </div>
+                       <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
+                         <div className="flex justify-between items-center mb-1.5">
+                           <span className="text-[9px] uppercase font-black tracking-widest text-white/50">Partner Utilization</span>
+                           <span className="text-xs font-bold uppercase tracking-widest text-white">78%</span>
+                         </div>
+                         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                           <div className="w-[78%] h-full bg-indigo-400" />
+                         </div>
+                       </div>
+                    </div>
+                    
+                    <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+                  </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Booking Trend Chart */}
                     {bookingTrendData.length > 0 && (
@@ -720,7 +859,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
               {/* OVERVIEW BOOKING TELEMETRY & CONTROL PANEL MODAL */}
               {selectedOverviewBooking && (() => {
                 const b = selectedOverviewBooking;
-                const customer = users.find(u => u.uid === b.customerId);
+                const customer = users.find(u => u.uid === b.customerId || u.uid === b.userId);
                 const partnerInfo = partners.find(p => p.id === b.partnerId || p.userId === b.partnerId);
                 const serviceObj = services.find(s => s.id === b.serviceId);
                 const platformSlice = Math.round(b.totalPrice * 0.20);
@@ -737,10 +876,10 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                       <div className="flex justify-between items-start border-b border-slate-100 pb-5">
                         <div className="text-left">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-widest font-mono">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" /> Live Telemetry
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" /> Live Tracking
                           </span>
                           <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1">
-                            IND-METRO Operational Node
+                            Operations Hub
                           </h3>
                           <p className="text-xs font-semibold text-slate-400 font-mono mt-0.5 uppercase tracking-widest text-[#0a2540]">
                             Ref ID: <span className="text-blue-700">IND-{b.id.toUpperCase()}</span>
@@ -760,7 +899,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                         <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
                           <div className="flex items-center gap-2 mb-1">
                             <div className="w-2.5 h-2.5 bg-blue-700 rounded-full" />
-                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Metrics & Diagnostic</h4>
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Booking Details</h4>
                           </div>
                           
                           <div className="space-y-2 text-xs">
@@ -773,8 +912,8 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                               <span className="font-black uppercase text-blue-700 tracking-wider text-[10px]">{b.status.replace('_', ' ')}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">GIS Coordinates:</span>
-                              <span className="font-mono text-slate-600 text-[10px]">{b.lat || "22.7533"}° N, {b.lng || "75.8937"}° E</span>
+                              <span className="text-slate-400 font-semibold">Coordinates:</span>
+                              <span className="font-mono text-slate-600 text-[10px]">{Number(b.lat || 22.7434).toFixed(4)}, {Number(b.lng || 75.8996).toFixed(4)} (Vijay Nagar Area)</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400 font-semibold">Indore Hub:</span>
@@ -818,17 +957,17 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                         <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
                           <div className="flex items-center gap-2">
                             <User size={14} className="text-slate-500" />
-                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Client Identity</h4>
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Customer Contact</h4>
                           </div>
                           
                           <div className="space-y-2 text-xs">
                             <div className="flex justify-between">
                               <span className="text-slate-400 font-semibold">Name:</span>
-                              <span className="font-black text-slate-800">{customer?.displayName || "VIKASS CHOPRA"}</span>
+                              <span className="font-black text-slate-800">{modalCustomer?.fullName || modalCustomer?.displayName || customer?.fullName || customer?.displayName || b.customerBookedName || b.customerName || "VIKASS CHOPRA"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400 font-semibold">Phone:</span>
-                              <span className="font-mono text-slate-800">🔒 +91 {customer?.phoneNumber ? customer.phoneNumber.slice(-4).padStart(10, '*') : '******1009'}</span>
+                              <span className="font-mono text-slate-800">{modalCustomer?.phoneNumber || modalCustomer?.mobile || customer?.phoneNumber || customer?.mobile || b.customerBookedPhone || b.customerPhone || "+91 9424456606"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400 font-semibold">City Reach:</span>
@@ -846,9 +985,9 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <DollarSign size={14} className="text-slate-500" />
-                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Commission Settlement</h4>
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Payment & Earnings</h4>
                             </div>
-                            <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">AUTO PILOT</span>
+                            <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">AUTOMATIC</span>
                           </div>
 
                           <div className="space-y-2 text-xs">
@@ -1275,8 +1414,8 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'history'>('pending');
 
-  const pendingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'pending_parts');
-  const activeBookings = bookings.filter(b => ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending'].includes(b.status));
+  const pendingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'pending_parts' || b.status === 'pending_acceptance');
+  const activeBookings = bookings.filter(b => ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_acceptance'].includes(b.status));
   const historyBookings = bookings.filter(b => ['completed', 'finalized', 'closed', 'cancelled'].includes(b.status));
 
   const deleteAllBookings = async () => {
@@ -1469,6 +1608,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 <>
                   <option value="pending">Just Pending</option>
                   <option value="pending_parts">Waiting for Parts</option>
+                  <option value="pending_acceptance">Pending Acceptance</option>
                 </>
               )}
               {activeTab === 'active' && (
@@ -1479,6 +1619,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                   <option value="arrived">Arrived</option>
                   <option value="in_progress">In Progress</option>
                   <option value="payment_pending">Payment Pending</option>
+                  <option value="pending_acceptance">Pending Acceptance</option>
                 </>
               )}
               {activeTab === 'history' && (
@@ -1790,7 +1931,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 }
 
 function BookingRow({ booking, users, partners, services, otp, onManage, onCancel, onSendBill, sendingBill }: { booking: Booking, users: UserProfile[], partners: any[], services: Service[], otp?: string, onManage: () => void, onCancel?: () => void, onSendBill?: () => void, sendingBill?: boolean, key?: any }) {
-  const user = users.find(u => u.uid === booking.customerId);
+  const user = users.find(u => u.uid === booking.customerId || u.uid === booking.userId);
   const partner = partners.find(p => p.userId === booking.partnerId);
   const service = services.find(s => s.id === booking.serviceId);
 
@@ -1941,8 +2082,8 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
                       {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={14} />}
                    </div>
                    <div>
-                      <p className="text-xs font-black text-slate-900 italic leading-none mb-1">{user?.displayName || 'Anonymous'}</p>
-                      <p className="text-[10px] text-slate-400 font-bold">{(booking as any).customerPhone || user?.phoneNumber || 'No Phone'}</p>
+                      <p className="text-xs font-black text-slate-900 italic leading-none mb-1">{user?.fullName || user?.displayName || booking.customerBookedName || 'Anonymous'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{booking.customerBookedPhone || (booking as any).customerPhone || user?.phoneNumber || 'No Phone'}</p>
                    </div>
                 </div>
              </div>

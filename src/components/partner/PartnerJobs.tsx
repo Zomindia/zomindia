@@ -190,6 +190,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
         <Map
           defaultCenter={coords}
           center={coords}
+          onCameraChanged={(e) => setCoords(e.detail.center)}
           defaultZoom={15}
           mapId="DEMO_MAP_ID"
           gestureHandling="auto"
@@ -274,6 +275,14 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
     return activeTasks.find(t => t.id === activeMarkerId) || activeTasks[0];
   }, [activeTasks, activeMarkerId]);
 
+  const [currentMapCenter, setCurrentMapCenter] = useState<{lat: number, lng: number} | null>(null);
+
+  useEffect(() => {
+    if (mapCenter) {
+      setCurrentMapCenter(mapCenter);
+    }
+  }, [mapCenter]);
+
   if (activeTasks.length === 0) return null;
 
   return (
@@ -307,7 +316,8 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
             <div className="w-full h-52 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner">
               <Map
                 defaultCenter={mapCenter}
-                center={mapCenter}
+                center={currentMapCenter || mapCenter}
+                onCameraChanged={(e) => setCurrentMapCenter(e.detail.center)}
                 defaultZoom={11}
                 zoom={activeMarkerId ? 14 : 11}
                 mapId="DEMO_MAP_ID"
@@ -1099,10 +1109,18 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       const serviceIds = Array.from(new Set(bookings.map(b => b.serviceId))).filter(id => !services[id]);
 
       if (customerIds.length > 0) {
-        const uq = query(collection(db, 'users'), where('uid', 'in', customerIds.slice(0, 10)));
-        const snap = await getDocs(uq);
         const fetched: Record<string, UserProfile> = {};
-        snap.forEach(d => fetched[d.id] = d.data() as UserProfile);
+        for (const cid of customerIds) {
+          if (!cid) continue;
+          try {
+            const uSnap = await getDoc(doc(db, 'users', cid));
+            if (uSnap.exists()) {
+              fetched[cid] = { uid: uSnap.id, ...uSnap.data() } as UserProfile;
+            }
+          } catch(e) {
+            console.error("Error fetching customer in PartnerJobs:", e);
+          }
+        }
         setCustomers(prev => ({ ...prev, ...fetched }));
       }
 

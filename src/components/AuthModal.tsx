@@ -8,7 +8,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, setDoc, Timestamp, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import LogoIcon from '../assets/logo-icon.png';
@@ -398,7 +398,44 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const userRef = doc(db, 'users', activeUid);
       const userSnap = await getDoc(userRef);
 
-      if (userSnap.exists()) {
+      const targetPhone = formattedPhone.trim();
+      let existingUserDoc: any = null;
+
+      if (targetPhone) {
+        const q1 = query(collection(db, 'users'), where('phoneNumber', '==', targetPhone));
+        const q2 = query(collection(db, 'users'), where('mobile', '==', targetPhone));
+        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        if (!snap1.empty) existingUserDoc = snap1.docs[0];
+        else if (!snap2.empty) existingUserDoc = snap2.docs[0];
+      }
+
+      if (existingUserDoc) {
+        // Enforce strict merge session cleanly into the existing account record to prevent database pollution
+        const existingData = existingUserDoc.data();
+        const mergedPayload: any = {
+          ...existingData,
+          uid: activeUid, // Core session link
+          displayName: displayName.trim(),
+          fullName: displayName.trim(),
+          email: email.trim(),
+          phoneNumber: targetPhone,
+          onboardingComplete: true,
+          updatedAt: Timestamp.now()
+        };
+        // Update both the old profile location and the activeUid doc destination
+        await Promise.all([
+          setDoc(userRef, mergedPayload),
+          updateDoc(doc(db, 'users', existingUserDoc.id), {
+            uid: activeUid,
+            displayName: displayName.trim(),
+            fullName: displayName.trim(),
+            email: email.trim(),
+            phoneNumber: targetPhone,
+            onboardingComplete: true,
+            updatedAt: Timestamp.now()
+          })
+        ]);
+      } else if (userSnap.exists()) {
         const existingData = userSnap.data();
         // Safe partial update of only user-controllable fields
         const updatePayload: any = {
