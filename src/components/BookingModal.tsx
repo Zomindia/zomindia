@@ -113,7 +113,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   }, [service.id]);
 
   const [step, setStep] = useState(savedState?.step || 1);
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState(savedState?.address || '');
   const [isEditingAddressOnConfirm, setIsEditingAddressOnConfirm] = useState(savedState?.isEditingAddressOnConfirm || false);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
   const [date, setDate] = useState(savedState?.date || new Date().toISOString().split('T')[0]);
@@ -148,6 +148,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [selectedFromDropdown, setSelectedFromDropdown] = useState(false);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>(null);
+
+  // Contact popup and dynamic search states
+  const [showContactPopup, setShowContactPopup] = useState(false);
+  const [popupEmail, setPopupEmail] = useState('');
+  const [popupPhone, setPopupPhone] = useState('');
+  const [popupError, setPopupError] = useState<string | null>(null);
+  const [liveSuggestions, setLiveSuggestions] = useState<{ name: string, area: string, lat: number, lng: number }[]>([]);
+  const [isSearchingLive, setIsSearchingLive] = useState(false);
   
   // AMC State
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
@@ -376,6 +384,75 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   }, [profile]);
 
+  // Dynamic Maps Address Search lookup effect
+  useEffect(() => {
+    if (address.trim().length < 3 || selectedFromDropdown) {
+      setLiveSuggestions([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      const GeocoderClass = (window as any).google?.maps?.Geocoder;
+      if (!GeocoderClass) {
+        // Fallback: if Google Maps is not loaded or async, generate dynamic auto-suggestions based on user input so they are never blocked
+        const trimmed = address.trim();
+        const fallbackList = [
+          {
+            name: trimmed,
+            area: "Indore, Madhya Pradesh, India",
+            lat: 22.7196,
+            lng: 75.8577
+          },
+          ...INDORE_MOCK_LOCATIONS.filter(l => l.name.toLowerCase().includes(trimmed.toLowerCase()))
+        ];
+        setLiveSuggestions(fallbackList);
+        if (fallbackList.length > 0) {
+          setLocation({ lat: fallbackList[0].lat, lng: fallbackList[0].lng });
+          setMapCenter({ lat: fallbackList[0].lat, lng: fallbackList[0].lng });
+        }
+        return;
+      }
+
+      setIsSearchingLive(true);
+      const geocoder = new GeocoderClass();
+      const queryText = address.toLowerCase().includes("indore") ? address : `${address}, Indore`;
+
+      geocoder.geocode({ address: queryText }, (results: any, status: any) => {
+        setIsSearchingLive(false);
+        if (status === 'OK' && results && results.length > 0) {
+          const formatted = results.map((r: any) => {
+            const parts = r.formatted_address.split(',');
+            const name = parts[0] || address;
+            const area = parts.slice(1).join(',').trim() || "Indore, MP, India";
+            return {
+              name: name,
+              area: area,
+              lat: r.geometry.location.lat(),
+              lng: r.geometry.location.lng()
+            };
+          });
+          setLiveSuggestions(formatted);
+          if (formatted.length > 0) {
+            setLocation({ lat: formatted[0].lat, lng: formatted[0].lng });
+            setMapCenter({ lat: formatted[0].lat, lng: formatted[0].lng });
+          }
+        } else {
+          const trimmed = address.trim();
+          setLiveSuggestions([
+            {
+              name: trimmed,
+              area: "Custom Location, Indore, MP",
+              lat: 22.7196,
+              lng: 75.8577
+            }
+          ]);
+        }
+      });
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [address, selectedFromDropdown]);
+
   // Fetch busy/unavailable slots in real-time
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -523,7 +600,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const getSlotStatus = (slotValue: string, testDate?: string) => {
     // Block any service scheduling slots post 19:00 (7 PM) for brand security!
     const [h] = slotValue.split(':').map(Number);
-    if (h >= 19) return 'expired';
+    if (h > 19) return 'expired';
 
     const d = testDate || date;
     if (!d) return 'available';
@@ -620,7 +697,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const isSurgePricingActive = () => {
     if (profile?.isPremium) return false; // Zero surge for Prime
-    if (!time || !date) return false;
+    if (!time) return false;
+
+    // Surge for 7:00 PM slot (value '19:00') across all dates
+    if (time === '19:00') {
+      return true;
+    }
+
+    if (!date) return false;
 
     const now = new Date();
     // Use local YYYY-MM-DD for comparison
@@ -734,51 +818,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const handleConfirmServiceClick = () => {
     setError(null);
-    
-    // Check if email is missing and needs validation
-    if (!profile?.email) {
-      const emailTrimmed = contactEmail.trim();
-      if (!emailTrimmed) {
-        setError("Please enter your email address to continue.");
-        setEmailErrorFlashing(true);
-        setTimeout(() => setEmailErrorFlashing(false), 2500);
-        setTimeout(() => {
-          const emailInput = document.getElementById('contact-email-input');
-          if (emailInput) {
-            emailInput.focus();
-            emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 100);
-        return;
-      }
-      // Simple email pattern check
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(emailTrimmed)) {
-        setError("Please enter a valid email address.");
-        setEmailErrorFlashing(true);
-        setTimeout(() => setEmailErrorFlashing(false), 2500);
-        setTimeout(() => {
-          const emailInput = document.getElementById('contact-email-input');
-          if (emailInput) {
-            emailInput.focus();
-          }
-        }, 100);
-        return;
-      }
-    }
-    
-    // Check if phone is missing and needs validation
-    if (!profile?.phoneNumber) {
-      const phoneDigits = contactPhone.replace('+91', '').trim();
-      if (!phoneDigits) {
-        setError("Please enter your 10-digit mobile number to continue.");
-        return;
-      }
-      if (phoneDigits.length !== 10) {
-        setError("Please enter a valid 10-digit mobile number.");
-        return;
-      }
-    }
+    setPopupError(null);
 
     // Validate remaining due split balance payment method
     const totalBill = calculateFinalPrice();
@@ -792,12 +832,18 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
     }
 
-    setShowFinalConfirmation(true);
+    // Prefill popup fields with existing email and phone
+    setPopupEmail(contactEmail || profile?.email || '');
+    setPopupPhone(contactPhone.replace('+91', '') || profile?.phoneNumber?.replace('+91', '') || '');
+    setShowContactPopup(true);
   };
 
-  const handleBooking = async () => {
+  const handleBooking = async (overrideEmail?: string, overridePhone?: string) => {
     setLoading(true);
     setError(null);
+
+    const emailToUse = (overrideEmail || contactEmail).trim();
+    const phoneToUse = (overridePhone || contactPhone).trim();
 
     // Bypassing Broken Platform Auth & Verification Checks as Senior Architect
     const bookingPath = 'bookings';
@@ -815,7 +861,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
 
       const [sh, sm] = time.split(':').map(Number);
-      if (sh >= 19) {
+      if (sh > 19) {
         throw new Error("For brand safety, scheduling slots post 19:00 (7 PM) are strictly blocked.");
       }
 
@@ -1034,8 +1080,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         serviceOtp,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        customerBookedEmail: contactEmail.trim(),
-        customerBookedPhone: contactPhone.trim(),
+        customerBookedEmail: emailToUse,
+        customerBookedPhone: phoneToUse,
         customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
         otpVerified: false,
         walletDeductAmount: walletDeduction,
@@ -1077,8 +1123,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             isAmcBooking: useAmc,
             amcId: useAmc ? activeAmc?.id : null,
             serviceOtp,
-            customerBookedEmail: contactEmail.trim(),
-            customerBookedPhone: contactPhone.trim(),
+            customerBookedEmail: emailToUse,
+            customerBookedPhone: phoneToUse,
             customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
             simulatedPartner,
             walletDeductAmount: walletDeduction,
@@ -1125,7 +1171,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           body: JSON.stringify({
             templateName: 'booking_confirmation',
             payload: {
-              to: contactPhone.trim(),
+              to: phoneToUse,
               recipientName: profile?.displayName || 'Customer',
               bookingId: bookingRef.id,
               serviceName: service.name,
@@ -1192,7 +1238,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   };
 
-  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
+  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const map = useMap('DEMO_MAP_ID');
   const geocodingLib = useMapsLibrary('geocoding');
@@ -1326,26 +1372,28 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               <button onClick={() => setError(null)}><X size={14} /></button>
             </div>
           )}
-          <div className="p-3 sm:p-5 flex justify-between items-center border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
-            <div className="flex items-center gap-3">
-               { (step === 2 || step === 3) && (
-                 <button onClick={() => setStep(step - 1)} className="p-1.5 hover:bg-white rounded-full transition-all text-slate-900 shadow-sm border border-slate-100 cursor-pointer">
-                   <ArrowLeft size={14} />
-                 </button>
-               )}
-               <div>
-                 <h3 className="font-bold text-sm sm:text-base text-slate-900 tracking-tight font-display leading-tight">
-                   {getHeaderTitle()}
-                 </h3>
-                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Step {step > 3 ? 3 : step} of 3</p>
-               </div>
+          {!showSuccessModal && (
+            <div className="p-3 sm:p-5 flex justify-between items-center border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
+              <div className="flex items-center gap-3">
+                 { (step === 2 || step === 3) && (
+                   <button onClick={() => setStep(step - 1)} className="p-1.5 hover:bg-white rounded-full transition-all text-slate-900 shadow-sm border border-slate-100 cursor-pointer">
+                     <ArrowLeft size={14} />
+                   </button>
+                 )}
+                 <div>
+                   <h3 className="font-bold text-sm sm:text-base text-slate-900 tracking-tight font-display leading-tight">
+                     {getHeaderTitle()}
+                   </h3>
+                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Step {step > 3 ? 3 : step} of 3</p>
+                 </div>
+              </div>
+              <button onClick={onClose} className="p-1.5 hover:bg-slate-50 rounded-full transition-colors cursor-pointer">
+                <X size={18} />
+              </button>
             </div>
-            <button onClick={onClose} className="p-1.5 hover:bg-slate-50 rounded-full transition-colors cursor-pointer">
-              <X size={18} />
-            </button>
-          </div>
+          )}
 
-          {step <= 3 && (
+          {!showSuccessModal && step <= 3 && (
             <div className="bg-slate-50/50 border-b border-slate-100 px-6 sm:px-10 py-3 shrink-0">
               <div className="flex items-center justify-between relative max-w-sm mx-auto">
                 <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-250/70 -translate-y-1/2 z-0" />
@@ -1404,52 +1452,71 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute inset-0 z-[80] bg-white backdrop-blur-xl flex flex-col items-center justify-center p-6 md:p-10 text-center overflow-y-auto no-scrollbar"
+                  className="absolute inset-0 z-[80] bg-white flex flex-col items-center justify-center p-6 sm:p-10 text-center overflow-y-auto no-scrollbar"
                 >
-                  <div className="w-16 h-16 md:w-20 md:h-20 bg-[#0a2540] text-emerald-450 rounded-full flex items-center justify-center mb-6 shadow-xl shrink-0">
-                    <CheckCircle2 size={32} className="stroke-[2.5]" />
+                  <button 
+                    onClick={() => {
+                      setShowSuccessModal(false);
+                      onSuccess();
+                    }}
+                    className="absolute top-4 right-4 p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-full transition-colors cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-5 shadow-lg shadow-emerald-100/40 shrink-0 animate-bounce">
+                    <CheckCircle2 size={36} className="stroke-[2.5]" />
                   </div>
-                  <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display italic">Booking Finalized!</h3>
-                  <p className="text-slate-400 text-xs font-medium mb-8">Your service request has been successfully queued.</p>
                   
-                  <div className="w-full bg-slate-50 p-6 md:p-8 rounded-[32px] border border-slate-100 mb-8 text-left space-y-4">
-                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-2 border-b border-slate-100 pb-2">Record Summary</p>
-                     <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Service</span>
-                        <span className="text-xs font-bold text-slate-900 text-right ml-4">{service.name}</span>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 tracking-tight font-display">
+                    Booking Confirmed!
+                  </h3>
+                  <p className="text-slate-400 text-xs font-semibold mb-6 max-w-xs mx-auto">
+                    Your order has been placed successfully. A service professional will reach your location on schedule.
+                  </p>
+                  
+                  <div className="w-full bg-slate-50/85 p-5 sm:p-6 rounded-[24px] border border-slate-150/70 mb-6 text-center space-y-4">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1.5 border-b border-slate-200/50 max-w-[120px] mx-auto">
+                       Order Summary
+                     </p>
+                     
+                     <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
+                        <p className="text-sm font-black text-slate-900 leading-snug">{service.name}</p>
                      </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Window</span>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-slate-900">{date} at {time}</p>
-                          <p className="text-[9px] text-slate-400 font-medium italic">Est. finish by {(() => {
-                            const d = new Date(`${date}T${time}`);
-                            const durationMinutes = parseInt(service.duration) * (service.duration.includes('hr') ? 60 : 1);
-                            d.setMinutes(d.getMinutes() + (isNaN(durationMinutes) ? 60 : durationMinutes));
-                            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          })()}</p>
-                        </div>
+
+                     <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-3">
+                       <div className="space-y-0.5 border-r border-slate-100">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
+                          <p className="text-xs font-bold text-slate-900">{date}</p>
+                       </div>
+                       <div className="space-y-0.5">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
+                          <p className="text-xs font-bold text-slate-900">{time}</p>
+                       </div>
                      </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</span>
-                        <span className="text-xs font-bold text-slate-900 truncate ml-4 max-w-[150px]">{address}</span>
+
+                     <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
+                        <p className="text-xs font-bold text-slate-800 max-w-[280px] mx-auto leading-relaxed truncate">{address}</p>
                      </div>
-                     <div className="pt-4 border-t border-slate-200 mt-4 flex justify-between items-center">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Final Amount</span>
-                        <span className="text-xl font-bold text-slate-900 tracking-tight">₹{calculateFinalPrice()}</span>
+
+                     <div className="pt-3.5 border-t border-slate-200/50 space-y-0.5">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
+                        <p className="text-xl font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
                      </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 w-full">
+                  <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
                     {lastBookingId && (
                       <button 
                         onClick={() => {
                           const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
                           if (link) window.open(link, '_blank');
                         }}
-                        className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 active:scale-95 italic flex items-center justify-center gap-2"
+                        className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <MessageCircle size={16} /> Confirm via WhatsApp
+                        <MessageCircle size={15} className="shrink-0" /> Confirm via WhatsApp
                       </button>
                     )}
                     
@@ -1458,7 +1525,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         setShowSuccessModal(false);
                         onSuccess();
                       }} 
-                      className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] bg-blue-700 text-white hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 active:scale-95 italic text-center"
+                      className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
                     >
                       TRACK MY ORDER
                     </button>
@@ -1638,52 +1705,64 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       {/* Autocomplete suggestion dropdown menu */}
                       {showSearchSuggestions && !selectedFromDropdown && (
                         <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-[90] max-h-56 overflow-y-auto divide-y divide-slate-100 no-scrollbar">
-                          {(() => {
-                            const searchWords = address.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length >= 2);
-                            const matches = INDORE_MOCK_LOCATIONS.filter(loc => {
-                              const nameLower = loc.name.toLowerCase();
-                              const areaLower = loc.area.toLowerCase();
-                              const addressLower = address.toLowerCase();
-                              
-                              if (searchWords.length > 0) {
-                                return searchWords.some(w => {
-                                  if (nameLower.includes(w) || areaLower.includes(w)) return true;
-                                  if ((w === 'annaxe' || w === 'annax' || w === 'singapor') && (nameLower.includes('annexe') || nameLower.includes('singapore'))) return true;
-                                  return false;
-                                });
+                          {isSearchingLive ? (
+                            <div className="p-4 text-left flex items-center gap-2">
+                              <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                              <p className="text-xs text-slate-500 font-medium">Searching live areas in Indore...</p>
+                            </div>
+                          ) : (
+                            (() => {
+                              const suggestionsToRender = liveSuggestions.length > 0 
+                                ? liveSuggestions 
+                                : (() => {
+                                    // Fallback to INDORE_MOCK_LOCATIONS or custom typed suggestion
+                                    const trimmed = address.trim();
+                                    if (!trimmed) return [];
+                                    const matches = INDORE_MOCK_LOCATIONS.filter(loc => 
+                                      loc.name.toLowerCase().includes(trimmed.toLowerCase()) || 
+                                      loc.area.toLowerCase().includes(trimmed.toLowerCase())
+                                    );
+                                    if (matches.length > 0) return matches;
+                                    return [
+                                      {
+                                        name: trimmed,
+                                        area: "Indore, Madhya Pradesh, India",
+                                        lat: 22.7196,
+                                        lng: 75.8577
+                                      }
+                                    ];
+                                  })();
+
+                              if (suggestionsToRender.length === 0) {
+                                return (
+                                  <div className="p-4 text-left">
+                                    <p className="text-xs text-slate-400 italic">Type to search any location in Indore...</p>
+                                  </div>
+                                );
                               }
-                              return nameLower.includes(addressLower) || areaLower.includes(addressLower);
-                            });
 
-                            if (matches.length === 0) {
-                              return (
-                                <div className="p-4 text-left">
-                                  <p className="text-xs text-slate-400 italic">No matching areas found in Indore. Try "Palasia" or "Singapore Annexe".</p>
-                                </div>
-                              );
-                            }
-
-                            return matches.map((loc, idx) => (
-                              <button
-                                type="button"
-                                key={idx}
-                                onClick={() => {
-                                  setAddress(loc.name + ", " + loc.area);
-                                  setLocation({ lat: loc.lat, lng: loc.lng });
-                                  setMapCenter({ lat: loc.lat, lng: loc.lng });
-                                  setSelectedFromDropdown(true);
-                                  setShowSearchSuggestions(false);
-                                }}
-                                className="w-full py-2.5 px-4 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150 flex items-center gap-3.5 focus:outline-none cursor-pointer"
-                              >
-                                <span className="text-sm shrink-0">📍</span>
-                                <div>
-                                  <p className="text-xs font-bold text-slate-900 leading-normal">{loc.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">{loc.area}</p>
-                                </div>
-                              </button>
-                            ));
-                          })()}
+                              return suggestionsToRender.map((loc, idx) => (
+                                <button
+                                  type="button"
+                                  key={idx}
+                                  onClick={() => {
+                                    setAddress(loc.name + (loc.area ? ", " + loc.area : ""));
+                                    setLocation({ lat: loc.lat, lng: loc.lng });
+                                    setMapCenter({ lat: loc.lat, lng: loc.lng });
+                                    setSelectedFromDropdown(true);
+                                    setShowSearchSuggestions(false);
+                                  }}
+                                  className="w-full py-2.5 px-4 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150 flex items-center gap-3.5 focus:outline-none cursor-pointer"
+                                >
+                                  <span className="text-sm shrink-0">📍</span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-bold text-slate-900 leading-normal truncate">{loc.name}</p>
+                                    <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5 truncate">{loc.area}</p>
+                                  </div>
+                                </button>
+                              ));
+                            })()
+                          )}
                         </div>
                       )}
                     </div>
@@ -2032,53 +2111,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
                   </div>
 
-                  {/* Contact Accuracy, Accessibility, & Security */}
-                  {(!profile?.email || !profile?.phoneNumber) && (
-                    <div id="contact-info-container" className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="w-1 h-2 bg-blue-700 rounded-full" />
-                        <p className="text-[9px] text-slate-900 font-black uppercase tracking-widest">Contact Info Required</p>
-                      </div>
-
-                      {!profile?.email && (
-                        <div className="space-y-1 text-left">
-                          <label className="text-[9px] text-slate-450 uppercase font-bold tracking-widest block">Your Email Address</label>
-                          <input 
-                            id="contact-email-input"
-                            type="email"
-                            value={contactEmail}
-                            onChange={(e) => setContactEmail(e.target.value)}
-                            placeholder="name@domain.com"
-                            className={`w-full text-xs font-semibold px-3 py-2 rounded-lg focus:outline-none transition-all placeholder:text-slate-300 ${
-                              emailErrorFlashing
-                                ? 'bg-red-50 border-2 border-red-500 text-red-900 ring-2 ring-red-200 animate-pulse'
-                                : 'bg-slate-50 border border-slate-200 text-slate-900 focus:ring-1 focus:ring-blue-700'
-                            }`}
-                          />
-                        </div>
-                      )}
-
-                      {!profile?.phoneNumber && (
-                        <div className="space-y-1 text-left">
-                          <label className="text-[9px] text-slate-450 uppercase font-bold tracking-widest block">Your Mobile Number</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-450">+91</span>
-                            <input 
-                              type="tel"
-                              value={contactPhone.replace('+91', '')}
-                              onChange={(e) => {
-                                const raw = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                setContactPhone(raw ? `+91${raw}` : '');
-                              }}
-                              placeholder="Enter 10-digit number"
-                              className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 pl-11 pr-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-700 transition-all placeholder:text-slate-300"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className="bg-white rounded-2xl border border-slate-150 p-3.5 space-y-3">
                     <p className="text-[9px] text-[#0a2540] uppercase font-black tracking-widest text-left">Payment Method</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -2222,11 +2254,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <p className="text-xs font-medium text-slate-500">Service Base Price</p>
                       <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
                     </div>
-                    {isSurgePricingActive() && (
+                     {isSurgePricingActive() && (
                       <div className="flex justify-between items-center bg-rose-50/50 px-2.5 py-1 rounded-lg border border-rose-100">
                         <div className="flex items-center gap-1">
                           <Zap size={10} className="text-rose-600 fill-rose-600 animate-pulse" />
-                          <p className="text-[11px] font-bold text-rose-650 uppercase">Prime Surge</p>
+                          <p className="text-[11px] font-bold text-rose-650 uppercase">
+                            {time === '19:00' ? "Evening Surge (20% Extra)" : "Prime Surge"}
+                          </p>
                         </div>
                         <p className="text-[11px] font-heavy text-rose-650">+₹{getSurgeAmount()}</p>
                       </div>
@@ -2289,7 +2323,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       onClick={handleConfirmServiceClick}
                       className="w-full bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-800 transition-all flex justify-center items-center gap-1.5 shadow active:scale-[0.98] cursor-pointer"
                     >
-                      {loading ? 'Processing...' : 'Review Selection'}
+                      {loading ? 'Processing...' : 'Continue / Book Now'}
                     </button>
                   </div>
                 </motion.div>
@@ -2400,7 +2434,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </button>
                     <button 
                       disabled={loading}
-                      onClick={handleBooking} 
+                      onClick={() => handleBooking()} 
                       className="py-2.5 rounded-lg font-bold text-[9px] uppercase tracking-widest bg-blue-700 text-white hover:bg-blue-800 transition-all shadow active:scale-95 cursor-pointer"
                     >
                       {loading ? 'Confirming...' : 'Continue'}
@@ -2445,6 +2479,129 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 >
                   Choose Another Date
                 </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showContactPopup && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowContactPopup(false)}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full max-w-md bg-white rounded-[24px] p-6 sm:p-8 shadow-2xl overflow-hidden z-10 text-center border border-slate-100"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none" />
+                
+                <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100">
+                   <AlertCircle size={24} />
+                </div>
+                
+                <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 tracking-tight">
+                  Almost there!
+                </h3>
+                
+                <p className="text-xs text-slate-500 mb-6 leading-relaxed max-w-sm mx-auto">
+                  Provide your details to confirm. We will send booking updates and order tracking details to this contact.
+                </p>
+
+                {popupError && (
+                  <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-600 text-xs font-bold text-left animate-shake">
+                    <AlertCircle size={14} className="shrink-0" /> {popupError}
+                  </div>
+                )}
+
+                <div className="space-y-4 text-left">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-450 uppercase font-black tracking-widest block">
+                      Mobile Number <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">+91</span>
+                      <input 
+                        type="tel"
+                        value={popupPhone}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setPopupPhone(raw);
+                          setPopupError(null);
+                        }}
+                        placeholder="Enter 10-digit number"
+                        className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 pl-11 pr-3.5 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-750 transition-all placeholder:text-slate-350"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-450 uppercase font-black tracking-widest block">
+                      Email Address <span className="text-slate-400 font-normal">(Optional)</span>
+                    </label>
+                    <input 
+                      type="email"
+                      value={popupEmail}
+                      onChange={(e) => {
+                        setPopupEmail(e.target.value);
+                        setPopupError(null);
+                      }}
+                      placeholder="name@example.com"
+                      className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 px-3.5 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-750 transition-all placeholder:text-slate-350"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                  <button
+                    type="button"
+                    onClick={() => setShowContactPopup(false)}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-650 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      const emailTrimmed = popupEmail.trim();
+                      const phoneDigits = popupPhone.replace(/\D/g, '').trim();
+
+                      if (emailTrimmed) {
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (!emailRegex.test(emailTrimmed)) {
+                          setPopupError("Please enter a valid email address.");
+                          return;
+                        }
+                      }
+
+                      if (phoneDigits.length !== 10) {
+                        setPopupError("Please enter a valid 10-digit mobile number.");
+                        return;
+                      }
+
+                      setPopupError(null);
+                      
+                      // Save back to main states
+                      setContactEmail(emailTrimmed);
+                      setContactPhone(`+91${phoneDigits}`);
+                      
+                      setShowContactPopup(false);
+                      
+                      // Proceed directly to the booking write promise
+                      await handleBooking(emailTrimmed, `+91${phoneDigits}`);
+                    }}
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {loading ? 'Processing...' : 'Verify & Book'}
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}

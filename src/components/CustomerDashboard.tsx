@@ -3,6 +3,7 @@ import {
   collection,
   query,
   where,
+  or,
   onSnapshot,
   orderBy,
   getDocs,
@@ -736,7 +737,10 @@ export default function CustomerDashboard({
   useEffect(() => {
     const q = query(
       collection(db, "bookings"),
-      where("customerId", "==", profile.uid),
+      or(
+        where("customerId", "==", profile.uid),
+        where("userId", "==", profile.uid)
+      ),
       orderBy("createdAt", "desc"),
     );
 

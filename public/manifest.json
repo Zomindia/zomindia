@@ -1,84 +1,148 @@
 {
-  "name": "ZomIndia",
-  "short_name": "ZomIndia",
-  "description": "India's premium service marketplace connecting homeowners with professional service partners for cleaning, repairs, beauty, and maintenance.",
-  "start_url": "/?utm_source=pwa",
+  "id": "com.zomindia.app",
+  "name": "Zomindia",
+  "short_name": "Zomindia",
+  "description": "India's premium home service marketplace. Trusted experts for cleaning, repairs, and beauty at home in Indore.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay"],
+  "orientation": "portrait-primary",
   "background_color": "#ffffff",
   "theme_color": "#0a2540",
-  "orientation": "portrait-primary",
+  "categories": ["business", "utilities", "lifestyle"],
+  "dir": "ltr",
+  "lang": "en-US",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "48x48",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "48x48",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/src/assets/logo-icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/src/assets/logo-icon.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/src/assets/logo-icon.png",
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Zomindia Mobile Home Screen"
+    },
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Zomindia Desktop Home Screen"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Special Offers",
+      "short_name": "Offers",
+      "description": "View active deals and coupon discounts",
+      "url": "/#offers",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "My Profile Settings",
+      "short_name": "Profile",
+      "description": "View and manage your service user account",
+      "url": "/#profile",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share-target",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+zomindia",
+      "url": "/?uri=%s"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/open-config",
+      "accept": {
+        "application/json": [".ziconfig"]
+      },
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ],
+      "launch_type": "single-client"
+    }
+  ],
+  "widgets": [
+    {
+      "name": "Active Bookings Tracker",
+      "short_name": "Bookings",
+      "description": "Real-time track Indore home service booking status",
+      "tag": "booking-widget",
+      "template": "booking-widget-template",
+      "ms_template": "booking-widget-template",
+      "data": "/widget-data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "label": "Tracker Widget"
+        }
+      ],
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "note_taking": {
+    "new_note_url": "/#notes"
+  },
+  "scope_extensions": [
+    {
+      "origin": "https://zomindia.app"
     }
   ]
 }

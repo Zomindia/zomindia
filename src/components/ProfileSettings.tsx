@@ -117,6 +117,14 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
     };
   }, []);
 
+  useEffect(() => {
+    // Body scroll lock active profile sheet
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   // Security OTP Interceptor for basic information / delivery parameters editing
   const [securityOtpModalOpen, setSecurityOtpModalOpen] = useState(false);
   const [securityOtpInputs, setSecurityOtpInputs] = useState(['', '', '', '']);
@@ -750,7 +758,24 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
   };
 
   return (
-    <div id="profile-settings-container" className="max-w-6xl mx-auto px-4 py-6 sm:py-12">
+    <div className="fixed inset-0 z-50 min-h-screen h-full w-full bg-[#0a2540] overflow-y-auto">
+      {/* Absolute Back Header inside our full screen layout */}
+      <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
+        <button
+          onClick={() => setActiveTab('home')}
+          className="inline-flex items-center gap-2 text-xs font-black uppercase text-white bg-white/10 hover:bg-white/20 px-4.5 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+        >
+          <ArrowLeft size={14} />
+          <span>Back to Home</span>
+        </button>
+        <span className="text-[10px] font-black uppercase tracking-widest text-[#22c55e] flex items-center gap-1.5 bg-[#22c55e]/10 border border-[#22c55e]/20 px-3.5 py-1.5 rounded-xl">
+          <span className="text-cyan-400 font-extrabold text-sm animate-pulse">•</span>
+          <span>नमस्ते{auth.currentUser ? ', ' : ''}</span>
+          {auth.currentUser && <span className="text-white">VIKASS</span>}
+        </span>
+      </div>
+
+      <div id="profile-settings-container" className="max-w-6xl mx-auto px-4 py-6 sm:py-12">
       
       {/* SECTION 1: Zomato/Urban Company Inspired High-Trust Header card */}
       <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-neutral-100 p-4.5 sm:p-8 mb-6 sm:mb-8 shadow-sm">
@@ -2538,5 +2563,6 @@ export default function ProfileSettings({ profile, onUpdate, setActiveTab }: Pro
       </AnimatePresence>
 
     </div>
+  </div>
   );
 }

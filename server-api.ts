@@ -497,6 +497,7 @@ router.post("/bookings", async (req: any, res: any) => {
     // Structure secure booking payload (ensure customerId matches authenticated token UID!)
     const bookingPayload = {
       customerId: customerId,
+      userId: customerId, // Relational userId matching active customer uid
       serviceId,
       partnerId: partnerId || null,
       status: status || "pending",
@@ -679,6 +680,7 @@ router.post("/bookings/create", async (req: any, res: any) => {
     // 5. Structure custom booking blueprint
     const bookingPayload = {
       customerId,
+      userId: customerId, // Relational userId matching active customer uid
       partnerId: null,
       serviceId,
       status: "pending",

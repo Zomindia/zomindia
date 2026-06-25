@@ -1385,10 +1385,9 @@ If you have any billing questions, or if your refund is delayed, please email us
                     >
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                        <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end">
-                          <span className="text-cyan-400 font-extrabold text-sm">•</span>
-                          <span className="text-slate-800">नमस्ते,</span>
-                          <span className="text-[#0a2540] uppercase whitespace-nowrap">VIKASS</span>
+                        <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end text-[#22c55e]" id="portal-header-greeter">
+                          <span>•</span>
+                          <span>नमस्ते, VIKASS</span>
                         </span>
                         {/* IMMUTABLE GREETER BLOCK END */}
                         <span 
@@ -1531,10 +1530,9 @@ If you have any billing questions, or if your refund is delayed, please email us
                   {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
                   <div className="flex md:hidden items-center gap-2 select-none">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                    <span className="text-[10px] font-black text-slate-700 bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
-                      <span className="text-cyan-400 font-extrabold text-xs">•</span>
-                      <span>नमस्ते,</span>
-                      <span className="text-[#0a2540]">VIKASS</span>
+                    <span className="text-[10px] font-black text-[#22c55e] bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
+                      <span>•</span>
+                      <span>नमस्ते, VIKASS</span>
                     </span>
                     {/* IMMUTABLE GREETER BLOCK END */}
                     <button
@@ -1681,10 +1679,9 @@ If you have any billing questions, or if your refund is delayed, please email us
                     )}
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                      <p className="text-sm font-black text-slate-800 font-display uppercase leading-tight flex items-center gap-1">
-                        <span className="text-cyan-400 font-extrabold text-sm">•</span>
-                        <span>नमस्ते,</span>
-                        <span className="text-[#0a2540]">VIKASS</span>
+                      <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
+                        <span>•</span>
+                        <span>नमस्ते, VIKASS</span>
                       </p>
                       {/* IMMUTABLE GREETER BLOCK END */}
                       <p 

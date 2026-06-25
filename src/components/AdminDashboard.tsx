@@ -635,7 +635,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {bookings.filter(b => !['completed', 'finalized', 'cancelled'].includes(b.status)).slice(0, 6).map(b => {
-                          const customer = users.find(u => u.uid === b.customerId);
+                          const customer = users.find(u => u.uid === b.customerId || u.uid === b.userId);
                           const serviceObj = services.find(s => s.id === b.serviceId);
                           return (
                             <div 
@@ -662,7 +662,7 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                               </div>
                               <h4 className="text-sm font-black text-slate-900 leading-tight uppercase truncate">{serviceObj?.name || 'Home Service'}</h4>
                               <p className="text-[10px] text-slate-500 font-bold mt-1.5 flex items-center gap-1">
-                                <span className="text-slate-400 font-medium">Customer:</span> {customer?.displayName || 'Client'}
+                                <span className="text-slate-400 font-medium">Customer:</span> {customer?.fullName || customer?.displayName || b.customerBookedName || b.customerName || 'Client'}
                               </p>
                               <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1 italic truncate">
                                 <span className="font-bold uppercase tracking-wider not-italic text-[8px]">Address:</span> {b.address}

@@ -518,6 +518,7 @@ export default function CustomerHome({
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({});
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
+  const [zomatoActiveBooking, setZomatoActiveBooking] = useState<Booking | null>(null);
   const [tickerDismissed, setTickerDismissed] = useState<boolean>(false);
   const [spotlightDismissed, setSpotlightDismissed] = useState<boolean>(false);
 
@@ -762,6 +763,58 @@ export default function CustomerHome({
       }
     });
   }, [profile?.uid]);
+
+  useEffect(() => {
+    if (!profile?.uid) {
+      setZomatoActiveBooking(null);
+      return;
+    }
+    const q = query(
+      collection(db, "bookings"),
+      where("customerId", "==", profile.uid)
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      // Sort in-memory to prevent composite indexing requirements
+      docs.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+      const active = docs.find(b => {
+        const s = (b.status || "").toLowerCase();
+        return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
+      });
+      setZomatoActiveBooking(active || null);
+    }, (err) => {
+      console.error("Error watching active bookings for Zomato overlay card:", err);
+    });
+    return () => unsubscribe();
+  }, [profile?.uid]);
+
+  const getZomatoStatusText = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "Booking Received";
+      case "pending_acceptance":
+        return "Assigning Expert Partner";
+      case "confirmed":
+      case "assigned":
+        return "Partner is assigned";
+      case "on_the_way":
+        return "Partner is arriving";
+      case "arrived":
+        return "Partner has arrived";
+      case "in_progress":
+        return "Service in progress";
+      case "payment_pending":
+        return "Payment pending";
+      case "pending_parts":
+        return "Awaiting parts";
+      default:
+        return status.replace("_", " ");
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, "promotions"), where("active", "==", true));
@@ -4328,6 +4381,47 @@ export default function CustomerHome({
           )}
         </AnimatePresence>
       </motion.div>
+
+      <AnimatePresence>
+        {zomatoActiveBooking && (
+          <motion.div
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            transition={{ type: "spring", damping: 25, stiffness: 350 }}
+            className="fixed bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md bg-[#0a2540] text-white p-4 rounded-[20px] shadow-2xl border border-white/10 z-[100] overflow-hidden"
+            id="zomato-active-booking-overlay"
+          >
+            {/* Pulse glow background */}
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent pointer-events-none animate-pulse" />
+            
+            <div className="relative z-10 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-500/10 p-2.5 rounded-full text-emerald-400">
+                  <Zap className="w-5 h-5 animate-bounce" />
+                </div>
+                <div className="text-left font-sans">
+                  <h4 className="text-sm font-bold tracking-tight text-white line-clamp-1">
+                    {allServices.find((s) => s.id === zomatoActiveBooking?.serviceId)?.name || (zomatoActiveBooking as any)?.serviceName || "Service Booking"}
+                  </h4>
+                  <p className="text-xs font-black text-[#22c55e] uppercase tracking-wider mt-0.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-ping" />
+                    {getZomatoStatusText(zomatoActiveBooking.status)}
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setActiveTab("bookings", zomatoActiveBooking.id)}
+                className="bg-[#22c55e] hover:bg-[#1eb050] text-[#0a2540] text-xs font-black py-2.5 px-4 rounded-xl transition duration-150 flex items-center gap-1.5 shadow-md shrink-0 cursor-pointer uppercase tracking-wider border-0"
+              >
+                Track Order
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

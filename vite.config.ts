@@ -17,144 +17,64 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'prompt',
+        strategies: 'injectManifest',
+        srcDir: 'public',
+        filename: 'sw.js',
+        injectRegister: null, // manually registered in src/main.tsx
         devOptions: {
           // Disable PWA in dev to avoid [vite] middleware and service worker errors
           enabled: false
         },
-        workbox: {
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
-          globPatterns: [
-            '**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'
-          ],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-                }
-              }
-            },
-            {
-              urlPattern: /\.(?:js|css|html)$/,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'static-resources',
-                expiration: {
-                  maxEntries: 80,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-                }
-              }
-            },
-            {
-              urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'local-images',
-                expiration: {
-                  maxEntries: 120,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-                }
-              }
-            },
-            {
-              urlPattern: /^https:\/\/(?:images\.unsplash\.com|api\.dicebear\.com)\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'external-images',
-                expiration: {
-                  maxEntries: 150,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-                }
-              }
-            }
-          ]
-        },
         manifest: {
-          name: 'Zomindia',
-          short_name: 'Zomindia',
-          description: 'India\'s premium service marketplace',
-          theme_color: '#0a2540',
-          background_color: '#ffffff',
-          display: 'standalone',
-          start_url: '/',
-          scope: '/',
+          id: "com.zomindia.app",
+          name: "Zomindia",
+          short_name: "Zomindia",
+          description: "India's premium home service marketplace. Trusted experts for cleaning, repairs, and beauty at home in Indore.",
+          start_url: "/",
+          scope: "/",
+          display: "standalone",
+          display_override: ["standalone", "window-controls-overlay"],
+          orientation: "portrait-primary",
+          background_color: "#ffffff",
+          theme_color: "#0a2540",
+          categories: ["business", "utilities", "lifestyle"],
+          dir: "ltr",
+          lang: "en-US",
+          prefer_related_applications: false,
           icons: [
             {
-              src: '/src/assets/logo-icon.png',
-              sizes: '48x48',
-              type: 'image/png',
-              purpose: 'any'
+              "src": "/icon-192.png",
+              "sizes": "192x192",
+              "type": "image/png",
+              "purpose": "any"
             },
             {
-              src: '/src/assets/logo-icon.png',
-              sizes: '48x48',
-              type: 'image/png',
-              purpose: 'maskable'
+              "src": "/icon-512.png",
+              "sizes": "512x512",
+              "type": "image/png",
+              "purpose": "any"
             },
             {
-              src: '/src/assets/logo-icon.png',
-              sizes: '72x72',
-              type: 'image/png',
-              purpose: 'any'
+              "src": "/icon-maskable-512.png",
+              "sizes": "512x512",
+              "type": "image/png",
+              "purpose": "maskable"
+            }
+          ],
+          screenshots: [
+            {
+              "src": "/screenshot-mobile.png",
+              "sizes": "1080x1920",
+              "type": "image/png",
+              "form_factor": "narrow",
+              "label": "Zomindia Mobile Home Screen"
             },
             {
-              src: '/src/assets/logo-icon.png',
-              sizes: '72x72',
-              type: 'image/png',
-              purpose: 'maskable'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '96x96',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '96x96',
-              type: 'image/png',
-              purpose: 'maskable'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '128x128',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '128x128',
-              type: 'image/png',
-              purpose: 'maskable'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'maskable'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/src/assets/logo-icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable'
+              "src": "/screenshot-desktop.png",
+              "sizes": "1920x1080",
+              "type": "image/png",
+              "form_factor": "wide",
+              "label": "Zomindia Desktop Home Screen"
             }
           ]
         }
@@ -172,6 +92,13 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          }
+        }
+      }
     },
     server: {
       // Explicitly disable HMR to avoid websocket connection errors in this environment

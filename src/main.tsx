@@ -2,7 +2,6 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { registerSW } from 'virtual:pwa-register';
 import ErrorBoundary from './components/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
 import { initSecurityShield } from './utils/securityShield';
@@ -27,7 +26,15 @@ initSecurityShield();
 console.log("[Zomindia Telecom] Whitelisting metadata registered for WebRTC and Masked calling gateway.");
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  registerSW({ immediate: true });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((reg) => {
+        console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
+      })
+      .catch((err) => {
+        console.error('[PWA] Service Worker registration failed:', err);
+      });
+  });
 }
 
 // Global listener to capture `beforeinstallprompt` and persist globally
