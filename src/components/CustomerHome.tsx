@@ -1264,10 +1264,10 @@ export default function CustomerHome({
                     <img
                       src={
                         partner.photoURL ||
-                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${partner.displayName}`
+                        "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
                       }
                       alt={partner.displayName}
-                      className="w-24 h-24 rounded-3xl object-cover bg-white"
+                      className="w-24 h-24 rounded-full object-cover bg-white border-2 border-[#22c55e]"
                       referrerPolicy="no-referrer"
                       loading="lazy"
                     />

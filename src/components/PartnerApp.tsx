@@ -274,9 +274,9 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
            </button>
            <button 
              onClick={() => navigateWithTarget('settings')}
-             className={`w-8 h-8 rounded-xl overflow-hidden bg-slate-100 border transition-all shrink-0 ${activeScreen === 'settings' ? 'border-blue-700 ring-2 ring-blue-700/10' : 'border-slate-200'}`}
+             className={`w-8 h-8 rounded-full overflow-hidden bg-slate-100 border-2 transition-all shrink-0 ${activeScreen === 'settings' ? 'border-[#22c55e] ring-2 ring-[#22c55e]/10' : 'border-[#22c55e]'}`}
            >
-              <img src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} alt="" className="w-full h-full object-cover" />
+              <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
            </button>
            <button 
              onClick={() => setShowStatusModal(true)}

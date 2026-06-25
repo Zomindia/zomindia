@@ -160,8 +160,8 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
           {/* Profile Header */}
           <section className="flex items-center gap-6">
              <div className="relative group italic">
-                <div className="w-20 h-20 rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner">
-                   <img src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} alt="" className="w-full h-full object-cover" />
+                <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner">
+                   <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-700 border-4 border-slate-50 rounded-full flex items-center justify-center text-white">
                    <Check size={12} />
@@ -336,8 +336,8 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
 
             {/* Profile Photo Uploader */}
             <div className="p-5 bg-blue-50/40 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner shrink-0 relative group">
-                <img src={editForm.photoURL || profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} alt="" className="w-full h-full object-cover" />
+              <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner shrink-0 relative group">
+                <img src={editForm.photoURL || profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera size={14} />
                 </div>

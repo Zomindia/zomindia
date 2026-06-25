@@ -768,11 +768,11 @@ export default function ServiceDetails({ serviceId, profile, onBack, onAuthRequi
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="relative">
-                              <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white shadow-md transform group-hover:rotate-3 transition-transform">
+                              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#22c55e] shadow-md transform group-hover:rotate-3 transition-transform">
                                 <img 
-                                  src={partner.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${partner.displayName}`} 
+                                  src={partner.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} 
                                   alt={partner.displayName}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover rounded-full"
                                   referrerPolicy="no-referrer"
                                   loading="lazy"
                                 />

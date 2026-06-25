@@ -3379,9 +3379,10 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
                <div className="relative z-10 flex flex-col items-center text-center">
                   <div className="relative mb-6">
                      <img 
-                        src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName}`} 
-                        className="w-24 h-24 rounded-[32px] object-cover bg-slate-50"
+                        src={user?.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} 
+                        className="w-24 h-24 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e]"
                         alt={user?.displayName}
+                        referrerPolicy="no-referrer"
                      />
                      {p.isVerified ? (
                        <div className="absolute -bottom-2 -right-2 p-1.5 bg-white rounded-full shadow-sm text-emerald-500 border border-slate-100">
@@ -3749,8 +3750,8 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
                <div className="p-10 space-y-10">
                   <div className="flex items-center gap-8">
                      <img 
-                        src={selectedProfilePartner.user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedProfilePartner.user?.displayName}`} 
-                        className="w-32 h-32 rounded-[40px] object-cover bg-slate-50 border-4 border-slate-50 shadow-xl"
+                        src={selectedProfilePartner.user?.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} 
+                        className="w-32 h-32 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e] shadow-xl"
                         alt={selectedProfilePartner.user?.displayName}
                      />
                      <div>

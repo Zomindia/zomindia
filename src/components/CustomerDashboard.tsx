@@ -1853,12 +1853,19 @@ export default function CustomerDashboard({
                     {hasPartner ? (
                       <div className="bg-white border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
                         <div className="flex items-start gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-650 border border-slate-150 flex items-center justify-center shrink-0 overflow-hidden font-black text-sm relative">
-                            {partnerUser?.photoURL ? (
-                              <img src={partnerUser.photoURL} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              (partnerUser?.displayName || "P").split(" ").map((n) => n[0]).join("").toUpperCase()
-                            )}
+                          <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative">
+                            <img
+                              src={
+                                (booking as any).assignedPartner?.profileImage ||
+                                (booking as any).assignedPartner?.photoURL ||
+                                partnerUser?.photoURL ||
+                                "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                              }
+                              alt=""
+                              className="w-full h-full object-cover rounded-full"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
                           </div>
                           <div>
                             <span className="text-[8px] font-black uppercase text-[#22c55e] tracking-wider bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-md inline-block mb-1">
@@ -2313,21 +2320,19 @@ export default function CustomerDashboard({
                       {hasPartner ? (
                         <div className="bg-slate-850/40 border border-slate-800 p-5 rounded-3xl space-y-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/10 flex items-center justify-center relative shadow-sm shrink-0 overflow-hidden font-black text-lg font-mono">
-                              {partnerUser?.photoURL ? (
-                                <img
-                                  src={partnerUser.photoURL}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                  loading="lazy"
-                                />
-                              ) : (
-                                (partnerUser?.displayName || "P")
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .toUpperCase()
-                              )}
+                            <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative">
+                              <img
+                                src={
+                                  (booking as any).assignedPartner?.profileImage ||
+                                  (booking as any).assignedPartner?.photoURL ||
+                                  partnerUser?.photoURL ||
+                                  "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                                }
+                                alt=""
+                                className="w-full h-full object-cover rounded-full"
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                              />
                             </div>
                             <div className="min-w-0 flex-1 text-left">
                               <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-md inline-block mb-1">
@@ -2810,14 +2815,17 @@ export default function CustomerDashboard({
                           {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) ? (
                             <div className="booking-details-modal flex gap-4 p-5 rounded-[28px] bg-slate-900 text-white items-center relative overflow-hidden group border border-slate-800 shadow-xl">
                               <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/15 rounded-full blur-2xl group-hover:bg-blue-600/25 transition-all duration-500 pointer-events-none" />
-                              <div className="w-12 h-12 rounded-2xl bg-white/10 overflow-hidden shrink-0 border border-white/10">
+                              <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e]">
                                 <img
                                   src={
+                                    (booking as any).assignedPartner?.profileImage ||
+                                    (booking as any).assignedPartner?.photoURL ||
                                     partners[booking.partnerId]?.photoURL ||
-                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${partners[booking.partnerId]?.displayName || booking.partnerId}`
+                                    "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
                                   }
                                   alt=""
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover rounded-full"
+                                  referrerPolicy="no-referrer"
                                   loading="lazy"
                                 />
                               </div>
