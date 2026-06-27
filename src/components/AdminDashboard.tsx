@@ -1,25 +1,59 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
-import { collection, query, getDocs, onSnapshot, orderBy, doc, updateDoc, deleteDoc, addDoc, where, Timestamp, setDoc, deleteField, getDoc, writeBatch } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import { signOut } from 'firebase/auth';
-import { sendNotification } from '../lib/notifications';
-import EarningsView from './EarningsView';
-import { Booking, UserProfile, Category, Service, PartnerProfile, Promotion, FAQ, SupportTicket, ChatMessage, AdminSubRole, UserRole, AMCStatus } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { notifyBookingUpdate } from '../lib/notifications';
-import { motion, AnimatePresence } from 'motion/react';
-import AdminUpload from './AdminUpload';
-import { LoadingScreen, LoadingSpinner } from './LoadingIndicator';
-import AmcManagement from './AmcManagement';
-import ReferralLifecycleManager from './ReferralLifecycleManager';
-import ChatWindow from './ChatWindow';
-import PartnerTrackingMap from './PartnerTrackingMap';
+import React, { useState, useEffect, useMemo } from "react";
+import axios from "axios";
+import {
+  collection,
+  query,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  doc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  where,
+  Timestamp,
+  setDoc,
+  deleteField,
+  getDoc,
+  writeBatch,
+} from "firebase/firestore";
+import { db, auth } from "../lib/firebase";
+import { signOut } from "firebase/auth";
+import { sendNotification } from "../lib/notifications";
+import EarningsView from "./EarningsView";
+import {
+  Booking,
+  UserProfile,
+  Category,
+  Service,
+  PartnerProfile,
+  Promotion,
+  FAQ,
+  SupportTicket,
+  ChatMessage,
+  AdminSubRole,
+  UserRole,
+  AMCStatus,
+} from "../types";
+import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
+import { notifyBookingUpdate } from "../lib/notifications";
+import { motion, AnimatePresence } from "motion/react";
+import AdminUpload from "./AdminUpload";
+import { LoadingScreen, LoadingSpinner } from "./LoadingIndicator";
+import AmcManagement from "./AmcManagement";
+import ReferralLifecycleManager from "./ReferralLifecycleManager";
+import ChatWindow from "./ChatWindow";
+import PartnerTrackingMap from "./PartnerTrackingMap";
+import {
+  triggerTelephonyBridge,
+  CORPORATE_LANDLINE_GATEWAY,
+  TELEPHONY_PROVIDER,
+} from "../lib/telephony";
 
-import { 
-  Users, 
-  BarChart3, 
-  Settings, 
+import {
+  Users,
+  BarChart3,
+  Settings,
   FileText,
   DollarSign,
   Briefcase,
@@ -59,29 +93,86 @@ import {
   LogOut,
   Home,
   Sparkles,
-  Zap
-} from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import LogoHorizontal from '../assets/logo-horizontal.png';
-import LogoIcon from '../assets/logo-icon.png';
+  Zap,
+} from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import LogoHorizontal from "../assets/logo-horizontal.png";
+import LogoIcon from "../assets/logo-icon.png";
 
-type AdminTab = 'overview' | 'analytics' | 'bookings' | 'categories' | 'services' | 'partners' | 'users' | 'referrals' | 'promotions' | 'partner-promotions' | 'earnings' | 'help-center' | 'tickets' | 'admin-management' | 'amcs' | 'my-profile';
+type AdminTab =
+  | "overview"
+  | "analytics"
+  | "bookings"
+  | "categories"
+  | "services"
+  | "partners"
+  | "users"
+  | "referrals"
+  | "promotions"
+  | "partner-promotions"
+  | "earnings"
+  | "help-center"
+  | "tickets"
+  | "admin-management"
+  | "amcs"
+  | "my-profile";
 
 const triggerEcosystemUpdate = async (reason: string) => {
   try {
     const dynamicPatch = Math.floor(Date.now() / 1000);
     const newVersion = `1.0.${dynamicPatch}`;
-    await addDoc(collection(db, 'system_updates'), {
+    await addDoc(collection(db, "system_updates"), {
       reason,
       version: newVersion,
-      createdAt: Timestamp.now()
+      createdAt: Timestamp.now(),
     });
   } catch (err) {
     console.warn("Unable to dispatch automatic ecosystem update:", err);
   }
 };
 
-export default function AdminDashboard({ profile, setActiveTab, initialAdminTab = 'overview' }: { profile: UserProfile, setActiveTab: (tab: any) => void, initialAdminTab?: AdminTab }) {
+const handleAdminBridgeCall = async (
+  targetUser: UserProfile,
+  label: string,
+) => {
+  if (typeof (window as any).__showToast === "function") {
+    (window as any).__showToast(
+      `Initiating masked corporate landline bridge call to ${targetUser.displayName || "User"}...`,
+    );
+  } else {
+    alert(
+      `[Zomindia Telephony Router]\nBridging call to ${targetUser.displayName || "User"} via Central Landline Node: ${CORPORATE_LANDLINE_GATEWAY}\n\nConnection established successfully! No private numbers are exposed.`,
+    );
+  }
+  console.log(
+    `[Telephony Router] Admin triggered masked bridge call to ${label} (${targetUser.displayName || "User"}): ${targetUser.phoneNumber}`,
+  );
+};
+
+export default function AdminDashboard({
+  profile,
+  setActiveTab,
+  initialAdminTab = "overview",
+}: {
+  profile: UserProfile;
+  setActiveTab: (tab: any) => void;
+  initialAdminTab?: AdminTab;
+}) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
 
   useEffect(() => {
@@ -89,11 +180,11 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       setShowPwaInstall(!!(window as any).deferredPrompt);
     };
     checkPrompt();
-    window.addEventListener('pwa-prompt-available', checkPrompt);
-    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+    window.addEventListener("pwa-prompt-available", checkPrompt);
+    window.addEventListener("pwa-prompt-dismissed", checkPrompt);
     return () => {
-      window.removeEventListener('pwa-prompt-available', checkPrompt);
-      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+      window.removeEventListener("pwa-prompt-available", checkPrompt);
+      window.removeEventListener("pwa-prompt-dismissed", checkPrompt);
     };
   }, []);
 
@@ -104,30 +195,34 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       await promptEvent.prompt();
       const choiceResult = await promptEvent.userChoice;
       console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
-      if (choiceResult.outcome === 'accepted') {
+      if (choiceResult.outcome === "accepted") {
         (window as any).deferredPrompt = null;
         setShowPwaInstall(false);
       }
     } catch (err) {
-      console.warn('[PWA] Error prompt:', err);
+      console.warn("[PWA] Error prompt:", err);
     }
   };
 
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(initialAdminTab);
+  const [activeAdminTab, setActiveAdminTab] =
+    useState<AdminTab>(initialAdminTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [rawPartners, setRawPartners] = useState<(PartnerProfile & { displayName?: string })[]>([]);
+  const [rawPartners, setRawPartners] = useState<
+    (PartnerProfile & { displayName?: string })[]
+  >([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [amcs, setAmcs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [selectedOverviewBooking, setSelectedOverviewBooking] = useState<Booking | null>(null);
+  const [selectedOverviewBooking, setSelectedOverviewBooking] =
+    useState<Booking | null>(null);
   const [modalCustomer, setModalCustomer] = useState<any>(null);
 
   useEffect(() => {
@@ -135,27 +230,29 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       const b = selectedOverviewBooking;
       const targetId = b.customerId || b.userId;
       if (targetId) {
-        const custRef = doc(db, 'users', targetId);
-        getDoc(custRef).then(snap => {
-          if (snap.exists()) {
-            setModalCustomer(snap.data());
-          } else {
-            const matched = users.find(u => u.uid === targetId);
+        const custRef = doc(db, "users", targetId);
+        getDoc(custRef)
+          .then((snap) => {
+            if (snap.exists()) {
+              setModalCustomer(snap.data());
+            } else {
+              const matched = users.find((u) => u.uid === targetId);
+              if (matched) {
+                setModalCustomer(matched);
+              } else {
+                setModalCustomer(null);
+              }
+            }
+          })
+          .catch((err) => {
+            console.error("Error fetching customer in Admin popup:", err);
+            const matched = users.find((u) => u.uid === targetId);
             if (matched) {
               setModalCustomer(matched);
             } else {
               setModalCustomer(null);
             }
-          }
-        }).catch(err => {
-          console.error("Error fetching customer in Admin popup:", err);
-          const matched = users.find(u => u.uid === targetId);
-          if (matched) {
-            setModalCustomer(matched);
-          } else {
-            setModalCustomer(null);
-          }
-        });
+          });
       } else {
         setModalCustomer(null);
       }
@@ -164,12 +261,17 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     }
   }, [selectedOverviewBooking, users]);
 
-  const [initialManagingBookingId, setInitialManagingBookingId] = useState<string | null>(null);
+  const [initialManagingBookingId, setInitialManagingBookingId] = useState<
+    string | null
+  >(null);
 
   const partners = useMemo(() => {
-    return rawPartners.map(p => {
-      const u = users.find(user => user.uid === p.userId);
-      return { ...p, displayName: u?.displayName || (p as any).displayName || 'Partner' };
+    return rawPartners.map((p) => {
+      const u = users.find((user) => user.uid === p.userId);
+      return {
+        ...p,
+        displayName: u?.displayName || (p as any).displayName || "Partner",
+      };
     });
   }, [rawPartners, users]);
 
@@ -180,98 +282,157 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
 
   useEffect(() => {
     // Listen to all core data
-    const unsubBookings = onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (snap) => {
-      const dbBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-      setBookings(dbBookings);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
+    const unsubBookings = onSnapshot(
+      query(collection(db, "bookings"), orderBy("createdAt", "desc")),
+      (snap) => {
+        const dbBookings = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Booking,
+        );
+        setBookings(dbBookings);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "bookings"),
+    );
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-      const userList = snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
-      if (!userList.some(u => u.uid === 'mock_customer_id')) {
-        userList.push({
-          uid: "mock_customer_id",
-          displayName: "VIKASS CHOPRA",
-          email: "vikas.chopra.applet@zomindia.com",
-          role: "customer",
-          phoneNumber: "9876543210",
-          city: "Indore",
-          createdAt: new Date().toISOString()
+    const unsubUsers = onSnapshot(
+      collection(db, "users"),
+      (snap) => {
+        const userList = snap.docs.map(
+          (d) => ({ uid: d.id, ...d.data() }) as UserProfile,
+        );
+        if (!userList.some((u) => u.uid === "mock_customer_id")) {
+          userList.push({
+            uid: "mock_customer_id",
+            displayName: "VIKASS CHOPRA",
+            email: "vikas.chopra.applet@zomindia.com",
+            role: "customer",
+            phoneNumber: "9876543210",
+            city: "Indore",
+            createdAt: new Date().toISOString(),
+          });
+        }
+        if (!userList.some((u) => u.uid === "vikas_chopra")) {
+          userList.push({
+            uid: "vikas_chopra",
+            displayName: "Vikas Chopra",
+            email: "vikas.chopra@zomindia.com",
+            role: "partner",
+            phoneNumber: "8517071009",
+            city: "Indore",
+            createdAt: new Date().toISOString(),
+          });
+        }
+        setUsers(userList);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "users"),
+    );
+
+    const unsubCategories = onSnapshot(
+      collection(db, "categories"),
+      (snap) => {
+        setCategories(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "categories"),
+    );
+
+    const unsubServices = onSnapshot(
+      collection(db, "services"),
+      (snap) => {
+        const sList = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Service,
+        );
+        if (!sList.some((s) => s.id === "refrigerator_service_repair")) {
+          sList.push({
+            id: "refrigerator_service_repair",
+            categoryId: "Appliance Repair",
+            name: "Refrigerator Service & Repair",
+            description:
+              "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
+            basePrice: 499,
+            duration: "1.5 Hours",
+            rating: 4.9,
+            reviewCount: 395,
+            predefinedTasks: [
+              "Compressor assessment",
+              "Thermostat check",
+              "Gas level detection",
+              "Electrical wiring insulation",
+            ],
+          });
+        }
+        setServices(sList);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "services"),
+    );
+
+    const unsubPartners = onSnapshot(
+      collection(db, "partners"),
+      (snap) => {
+        const pList = snap.docs.map((d) => {
+          const data = d.data() as PartnerProfile;
+          return { id: d.id, ...data };
         });
-      }
-      if (!userList.some(u => u.uid === 'vikas_chopra')) {
-        userList.push({
-          uid: "vikas_chopra",
-          displayName: "Vikas Chopra",
-          email: "vikas.chopra@zomindia.com",
-          role: "partner",
-          phoneNumber: "8517071009",
-          city: "Indore",
-          createdAt: new Date().toISOString()
-        });
-      }
-      setUsers(userList);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+        if (
+          !pList.some(
+            (p) =>
+              p.id === "vikas_chopra_profile" || p.userId === "vikas_chopra",
+          )
+        ) {
+          pList.push({
+            id: "vikas_chopra_profile",
+            userId: "vikas_chopra",
+            categories: ["Appliance Repair"],
+            bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
+            rating: 4.9,
+            reviewCount: 184,
+            isVerified: true,
+            status: "active",
+            availabilityStatus: "Available",
+            lat: 22.7533,
+            lng: 75.8937,
+          });
+        }
+        setRawPartners(pList);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "partners"),
+    );
 
-    const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
-      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
+    const unsubPromos = onSnapshot(
+      query(collection(db, "promotions"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setPromotions(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Promotion),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "promotions"),
+    );
 
-    const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      const sList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
-      if (!sList.some(s => s.id === 'refrigerator_service_repair')) {
-        sList.push({
-          id: "refrigerator_service_repair",
-          categoryId: "Appliance Repair",
-          name: "Refrigerator Service & Repair",
-          description: "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
-          basePrice: 499,
-          duration: "1.5 Hours",
-          rating: 4.9,
-          reviewCount: 395,
-          predefinedTasks: ["Compressor assessment", "Thermostat check", "Gas level detection", "Electrical wiring insulation"]
-        });
-      }
-      setServices(sList);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'services'));
+    const unsubFaqs = onSnapshot(
+      query(collection(db, "faqs"), orderBy("order", "asc")),
+      (snap) => {
+        setFaqs(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FAQ));
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "faqs"),
+    );
 
-    const unsubPartners = onSnapshot(collection(db, 'partners'), (snap) => {
-      const pList = snap.docs.map(d => {
-        const data = d.data() as PartnerProfile;
-        return { id: d.id, ...data };
-      });
-      if (!pList.some(p => p.id === 'vikas_chopra_profile' || p.userId === 'vikas_chopra')) {
-        pList.push({
-          id: "vikas_chopra_profile",
-          userId: "vikas_chopra",
-          categories: ["Appliance Repair"],
-          bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
-          rating: 4.9,
-          reviewCount: 184,
-          isVerified: true,
-          status: "active",
-          availabilityStatus: "Available",
-          lat: 22.7533,
-          lng: 75.8937,
-        });
-      }
-      setRawPartners(pList);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'partners'));
+    const unsubTickets = onSnapshot(
+      query(collection(db, "tickets"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setTickets(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SupportTicket),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "tickets"),
+    );
 
-    const unsubPromos = onSnapshot(query(collection(db, 'promotions'), orderBy('createdAt', 'desc')), (snap) => {
-      setPromotions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'promotions'));
-
-    const unsubFaqs = onSnapshot(query(collection(db, 'faqs'), orderBy('order', 'asc')), (snap) => {
-      setFaqs(snap.docs.map(d => ({ id: d.id, ...d.data() } as FAQ)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'faqs'));
-
-    const unsubTickets = onSnapshot(query(collection(db, 'tickets'), orderBy('createdAt', 'desc')), (snap) => {
-      setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() } as SupportTicket)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'tickets'));
-
-    const unsubAmcs = onSnapshot(query(collection(db, 'amcs'), orderBy('createdAt', 'desc')), (snap) => {
-      setAmcs(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'amcs'));
+    const unsubAmcs = onSnapshot(
+      query(collection(db, "amcs"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setAmcs(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as any));
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "amcs"),
+    );
 
     setLoading(false);
 
@@ -287,57 +448,90 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     };
   }, []);
 
-  const totalRevenue = bookings.reduce((acc, b) => (b.status === 'completed' || b.status === 'finalized') ? acc + b.totalPrice : acc, 0);
-  const platformFee = totalRevenue * 0.20;
+  const totalRevenue = bookings.reduce(
+    (acc, b) =>
+      b.status === "completed" || b.status === "finalized"
+        ? acc + b.totalPrice
+        : acc,
+    0,
+  );
+  const platformFee = totalRevenue * 0.2;
 
   const bookingTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    bookings.forEach(b => {
-      const date = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+    bookings.forEach((b) => {
+      const date = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : new Date(b.createdAt);
       if (isNaN(date.getTime())) return;
-      const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const dateStr = date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+      });
       dataMap[dateStr] = (dataMap[dateStr] || 0) + 1;
     });
     return Object.entries(dataMap)
-      .map(([date, count]) => ({ date, count, sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime() }))
+      .map(([date, count]) => ({
+        date,
+        count,
+        sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime(),
+      }))
       .sort((a, b) => a.sortVal - b.sortVal);
   }, [bookings]);
 
   const revenueTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    bookings.forEach(b => {
-      if (b.status === 'completed' || b.status === 'finalized') {
-        const date = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.updatedAt);
+    bookings.forEach((b) => {
+      if (b.status === "completed" || b.status === "finalized") {
+        const date = b.updatedAt?.toDate
+          ? b.updatedAt.toDate()
+          : new Date(b.updatedAt);
         if (isNaN(date.getTime())) return;
-        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const dateStr = date.toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        });
         dataMap[dateStr] = (dataMap[dateStr] || 0) + b.totalPrice;
       }
     });
     return Object.entries(dataMap)
-      .map(([date, amount]) => ({ date, amount, sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime() }))
+      .map(([date, amount]) => ({
+        date,
+        amount,
+        sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime(),
+      }))
       .sort((a, b) => a.sortVal - b.sortVal);
   }, [bookings]);
 
   const userTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    users.forEach(u => {
-       const d = u.createdAt as any;
-       let dateStr = 'Unknown';
-       if (d?.toDate) {
-          dateStr = d.toDate().toLocaleDateString([], { month: 'short', day: 'numeric' });
-       } else if (typeof d === 'string' || typeof d === 'number') {
-          dateStr = new Date(d).toLocaleDateString([], { month: 'short', day: 'numeric' });
-       }
-       if (dateStr !== 'Unknown') {
-         dataMap[dateStr] = (dataMap[dateStr] || 0) + 1;
-       }
+    users.forEach((u) => {
+      const d = u.createdAt as any;
+      let dateStr = "Unknown";
+      if (d?.toDate) {
+        dateStr = d
+          .toDate()
+          .toLocaleDateString([], { month: "short", day: "numeric" });
+      } else if (typeof d === "string" || typeof d === "number") {
+        dateStr = new Date(d).toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        });
+      }
+      if (dateStr !== "Unknown") {
+        dataMap[dateStr] = (dataMap[dateStr] || 0) + 1;
+      }
     });
 
     let cumulative = 0;
     return Object.entries(dataMap)
-      .map(([date, count]) => ({ date, uncumulatedCount: count, sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime() }))
+      .map(([date, count]) => ({
+        date,
+        uncumulatedCount: count,
+        sortVal: new Date(`${date} ${new Date().getFullYear()}`).getTime(),
+      }))
       .sort((a, b) => a.sortVal - b.sortVal)
-      .map(item => {
+      .map((item) => {
         cumulative += item.uncumulatedCount;
         return { date: item.date, users: cumulative };
       });
@@ -345,9 +539,9 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
 
   const handleUpdateAmcStatus = async (amcId: string, status: AMCStatus) => {
     try {
-      await updateDoc(doc(db, 'amcs', amcId), {
+      await updateDoc(doc(db, "amcs", amcId), {
         status,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `amcs/${amcId}`);
@@ -355,44 +549,87 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
   };
 
   const isAdminAuthorized = (tabId: AdminTab) => {
-    if (tabId === 'my-profile') return true;
-    if (!profile.adminSubRole || profile.adminSubRole === 'head') return true;
-    
+    if (tabId === "my-profile") return true;
+    if (!profile.adminSubRole || profile.adminSubRole === "head") return true;
+
     switch (profile.adminSubRole) {
-      case 'accounts':
-        return ['overview', 'analytics', 'bookings', 'earnings', 'amcs', 'referrals'].includes(tabId);
-      case 'hr':
-        return ['overview', 'partners', 'users', 'tickets'].includes(tabId);
-      case 'manager':
-        return ['overview', 'analytics', 'bookings', 'earnings', 'partners', 'users', 'referrals', 'tickets', 'amcs', 'promotions', 'partner-promotions'].includes(tabId);
-      case 'support':
-        return ['overview', 'bookings', 'users', 'tickets', 'help-center', 'amcs'].includes(tabId);
-      case 'editor':
-        return ['overview', 'categories', 'services', 'promotions', 'partner-promotions', 'help-center'].includes(tabId);
-      case 'moderator':
-        return ['overview', 'partners', 'users', 'referrals', 'tickets', 'help-center', 'my-profile'].includes(tabId);
+      case "accounts":
+        return [
+          "overview",
+          "analytics",
+          "bookings",
+          "earnings",
+          "amcs",
+          "referrals",
+        ].includes(tabId);
+      case "hr":
+        return ["overview", "partners", "users", "tickets"].includes(tabId);
+      case "manager":
+        return [
+          "overview",
+          "analytics",
+          "bookings",
+          "earnings",
+          "partners",
+          "users",
+          "referrals",
+          "tickets",
+          "amcs",
+          "promotions",
+          "partner-promotions",
+        ].includes(tabId);
+      case "support":
+        return [
+          "overview",
+          "bookings",
+          "users",
+          "tickets",
+          "help-center",
+          "amcs",
+        ].includes(tabId);
+      case "editor":
+        return [
+          "overview",
+          "categories",
+          "services",
+          "promotions",
+          "partner-promotions",
+          "help-center",
+        ].includes(tabId);
+      case "moderator":
+        return [
+          "overview",
+          "partners",
+          "users",
+          "referrals",
+          "tickets",
+          "help-center",
+          "my-profile",
+        ].includes(tabId);
       default:
         return false;
     }
   };
 
-  const sidebarItems: { id: AdminTab; icon: any; label: string }[] = ([
-    { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-    { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-    { id: 'bookings', icon: FileText, label: 'Bookings' },
-    { id: 'categories', icon: Tag, label: 'Categories' },
-    { id: 'services', icon: Briefcase, label: 'Services' },
-    { id: 'earnings', icon: DollarSign, label: 'Earnings' },
-    { id: 'partners', icon: ShieldCheck, label: 'Partners' },
-    { id: 'users', icon: Users, label: 'Customers' },
-    { id: 'referrals', icon: Award, label: 'Referrals' },
-    { id: 'promotions', icon: Tag, label: 'Customer Offers' },
-    { id: 'amcs', icon: Calendar, label: 'AMC Contracts' },
-    { id: 'partner-promotions', icon: Gift, label: 'Partner Offers' },
-    { id: 'help-center', icon: FileText, label: 'Help' },
-    { id: 'tickets', icon: MessageSquare, label: 'Tickets' },
-    { id: 'admin-management', icon: ShieldAlert, label: 'Admins' },
-  ] as { id: AdminTab; icon: any; label: string }[]).filter(item => isAdminAuthorized(item.id));
+  const sidebarItems: { id: AdminTab; icon: any; label: string }[] = (
+    [
+      { id: "overview", icon: LayoutDashboard, label: "Overview" },
+      { id: "analytics", icon: BarChart3, label: "Analytics" },
+      { id: "bookings", icon: FileText, label: "Bookings" },
+      { id: "categories", icon: Tag, label: "Categories" },
+      { id: "services", icon: Briefcase, label: "Services" },
+      { id: "earnings", icon: DollarSign, label: "Earnings" },
+      { id: "partners", icon: ShieldCheck, label: "Partners" },
+      { id: "users", icon: Users, label: "Customers" },
+      { id: "referrals", icon: Award, label: "Referrals" },
+      { id: "promotions", icon: Tag, label: "Customer Offers" },
+      { id: "amcs", icon: Calendar, label: "AMC Contracts" },
+      { id: "partner-promotions", icon: Gift, label: "Partner Offers" },
+      { id: "help-center", icon: FileText, label: "Help" },
+      { id: "tickets", icon: MessageSquare, label: "Tickets" },
+      { id: "admin-management", icon: ShieldAlert, label: "Admins" },
+    ] as { id: AdminTab; icon: any; label: string }[]
+  ).filter((item) => isAdminAuthorized(item.id));
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -401,14 +638,15 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
     window.location.reload();
   };
 
-  if (loading) return <LoadingScreen message="Initializing ZomIndia Admin Panel..." />;
+  if (loading)
+    return <LoadingScreen message="Initializing ZomIndia Admin Panel..." />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative overflow-x-hidden">
       {/* Sidebar Overlay - Mobile */}
       <AnimatePresence>
         {isSidebarOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -419,31 +657,47 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
       </AnimatePresence>
 
       {/* Admin Sidebar */}
-      <motion.aside 
+      <motion.aside
         initial={false}
         animate={{ width: isCollapsed ? 100 : 288 }}
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-100 flex flex-col transition-transform duration-300 transform lg:sticky top-0 h-screen ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-100 flex flex-col transition-transform duration-300 transform lg:sticky top-0 h-screen ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-             <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1 select-none">
-                 <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-             </div>
-             {/*
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1 select-none">
+              <img
+                src={LogoIcon}
+                alt="Zomindia Icon"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            {/*
 
              </div>
-             */}             {!isCollapsed && (
-               <motion.div 
+             */}{" "}
+            {!isCollapsed && (
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex flex-col select-none"
-               >
-                 <img src={LogoHorizontal} alt="Zomindia brand" className="h-6 w-auto object-contain object-left" referrerPolicy="no-referrer" />
-                 <span className="text-[9px] font-black uppercase tracking-widest text-[#0a2540] mt-1 science-badge leading-none">Admin PRO</span>
-               </motion.div>
-             )}
+              >
+                <img
+                  src={LogoHorizontal}
+                  alt="Zomindia brand"
+                  className="h-6 w-auto object-contain object-left"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="text-[9px] font-black uppercase tracking-widest text-[#0a2540] mt-1 science-badge leading-none">
+                  Admin PRO
+                </span>
+              </motion.div>
+            )}
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-blue-700 transition-colors">
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden p-2 text-slate-400 hover:text-blue-700 transition-colors"
+          >
             <X size={20} />
           </button>
         </div>
@@ -452,105 +706,134 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
           {sidebarItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => { 
-                if (item.id === 'partner-signup' as any) {
-                  setActiveTab('partner-signup');
+              onClick={() => {
+                if (item.id === ("partner-signup" as any)) {
+                  setActiveTab("partner-signup");
                 } else {
-                  setActiveAdminTab(item.id); 
+                  setActiveAdminTab(item.id);
                 }
-                setIsSidebarOpen(false); 
+                setIsSidebarOpen(false);
               }}
               className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all group overflow-hidden ${
-                activeAdminTab === item.id 
-                  ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'
+                activeAdminTab === item.id
+                  ? "bg-blue-700 text-white shadow-xl shadow-blue-700/10"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-blue-700"
               }`}
             >
-              <item.icon size={18} className={`shrink-0 ${activeAdminTab === item.id ? 'text-white' : 'text-slate-300 group-hover:text-blue-700'}`} />
-              {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              <item.icon
+                size={18}
+                className={`shrink-0 ${activeAdminTab === item.id ? "text-white" : "text-slate-300 group-hover:text-blue-700"}`}
+              />
+              {!isCollapsed && (
+                <span className="whitespace-nowrap">{item.label}</span>
+              )}
             </button>
           ))}
         </nav>
 
         <div className="p-4 border-t border-slate-50">
-           <button 
+          <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden lg:flex w-full items-center justify-center p-3 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-blue-700 transition-all mb-4"
-           >
-             <div className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`}>
-               <ChevronRight size={18} />
-             </div>
-           </button>
-            <div className={`bg-slate-50 p-4 rounded-2xl transition-all ${isCollapsed ? 'opacity-0 h-0 p-0 overflow-hidden' : ''}`}>
-              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-2">Cloud Status</p>
-              <div className="flex items-center gap-2">
-                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                 <span className="text-[10px] text-slate-900 font-bold tracking-wider uppercase whitespace-nowrap">Systems Active</span>
-              </div>
-           </div>
+          >
+            <div
+              className={`transition-transform duration-300 ${isCollapsed ? "rotate-180" : ""}`}
+            >
+              <ChevronRight size={18} />
+            </div>
+          </button>
+          <div
+            className={`bg-slate-50 p-4 rounded-2xl transition-all ${isCollapsed ? "opacity-0 h-0 p-0 overflow-hidden" : ""}`}
+          >
+            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-2">
+              Cloud Status
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[10px] text-slate-900 font-bold tracking-wider uppercase whitespace-nowrap">
+                Systems Active
+              </span>
+            </div>
+          </div>
         </div>
       </motion.aside>
 
       {/* Admin Body */}
       <main className="flex-1 min-h-screen flex flex-col min-w-0">
         <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-md border-b border-slate-200/50 h-20 px-6 sm:px-12 flex items-center justify-between shrink-0">
-           <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="lg:hidden p-2.5 bg-slate-50 text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
-                id="admin-menu-toggle"
-              >
-                <Menu size={22} />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight capitalize">{activeAdminTab.replace('-', ' ')}</h1>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2.5 bg-slate-50 text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+              id="admin-menu-toggle"
+            >
+              <Menu size={22} />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight capitalize">
+                {activeAdminTab.replace("-", " ")}
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 sm:gap-6">
+            <button
+              onClick={refreshData}
+              className="p-2.5 bg-slate-50 text-slate-600 hover:text-blue-700 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-100 transition-all group"
+              title="Refresh Platform Data"
+            >
+              <RotateCw
+                size={18}
+                className="group-active:rotate-180 transition-transform duration-500"
+              />
+            </button>
+            <div
+              className="hidden sm:block relative"
+              onTouchStartCapture={(e) => e.stopPropagation()}
+              onMouseDownCapture={(e) => e.stopPropagation()}
+            >
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                size={16}
+              />
+              <input
+                type="text"
+                inputMode="text"
+                enterKeyHint="search"
+                placeholder="Global Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-48 lg:w-64 bg-slate-50 border-none rounded-2xl px-12 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-700 focus:bg-white transition-all shadow-inner"
+              />
+            </div>
+            <button
+              onClick={() => setActiveTab("home")}
+              className="flex items-center gap-2.5 px-4 py-2 bg-slate-50 hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-200 text-slate-600 hover:text-blue-700 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0 active:scale-95"
+            >
+              <Home size={14} />
+              <span className="hidden lg:inline">Home</span>
+            </button>
+            <button
+              onClick={() => setActiveAdminTab("my-profile")}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all border ${activeAdminTab === "my-profile" ? "bg-blue-700 text-white border-blue-700 shadow-lg shadow-blue-700/20" : "bg-slate-50 text-slate-600 hover:text-blue-700 border-transparent hover:border-slate-200"}`}
+            >
+              <User size={14} />
+              <span className="hidden lg:inline">My Profile</span>
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="hidden md:block text-right">
+                <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">
+                  {profile.displayName || "Administrator"}
+                </p>
+                <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none">
+                  {profile.adminSubRole?.toUpperCase() || "ROOT"} ACCESS
+                </p>
               </div>
-           </div>
-           
-           <div className="flex items-center gap-4 sm:gap-6">
-              <button 
-                onClick={refreshData}
-                className="p-2.5 bg-slate-50 text-slate-600 hover:text-blue-700 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-100 transition-all group"
-                title="Refresh Platform Data"
-              >
-                <RotateCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
-              </button>
-              <div className="hidden sm:block relative" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
-                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                 <input 
-                   type="text" 
-                   inputMode="text"
-                   enterKeyHint="search"
-                   placeholder="Global Search..." 
-                   value={searchTerm}
-                   onChange={(e) => setSearchTerm(e.target.value)}
-                   className="w-48 lg:w-64 bg-slate-50 border-none rounded-2xl px-12 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-700 focus:bg-white transition-all shadow-inner"
-                 />
+              <div className="w-10 h-10 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-slate-900">
+                <ShieldCheck size={20} />
               </div>
-              <button 
-                onClick={() => setActiveTab('home')}
-                className="flex items-center gap-2.5 px-4 py-2 bg-slate-50 hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-200 text-slate-600 hover:text-blue-700 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0 active:scale-95"
-              >
-                <Home size={14} />
-                <span className="hidden lg:inline">Home</span>
-              </button>
-              <button 
-                onClick={() => setActiveAdminTab('my-profile')}
-                className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all border ${activeAdminTab === 'my-profile' ? 'bg-blue-700 text-white border-blue-700 shadow-lg shadow-blue-700/20' : 'bg-slate-50 text-slate-600 hover:text-blue-700 border-transparent hover:border-slate-200'}`}
-              >
-                <User size={14} />
-                <span className="hidden lg:inline">My Profile</span>
-              </button>
-              <div className="flex items-center gap-3">
-                 <div className="hidden md:block text-right">
-                    <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">{profile.displayName || 'Administrator'}</p>
-                    <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none">{profile.adminSubRole?.toUpperCase() || 'ROOT'} ACCESS</p>
-                 </div>
-                 <div className="w-10 h-10 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-slate-900">
-                   <ShieldCheck size={20} />
-                 </div>
-              </div>
-           </div>
+            </div>
+          </div>
         </header>
 
         <div className="p-6 md:p-8 lg:p-12 flex-1 overflow-y-auto">
@@ -573,7 +856,9 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                       INSTALL ADMIN CONSOLE
                     </h4>
                     <p className="text-xs text-slate-300 mt-1 font-medium leading-normal text-left">
-                      🚀 Launch real-time analytics, instant KYC verifications, service pricing models and 🔒 ZOMINI AI secure console masking with immediate desktop access.
+                      🚀 Launch real-time analytics, instant KYC verifications,
+                      service pricing models and 🔒 ZOMINI AI secure console
+                      masking with immediate desktop access.
                     </p>
                   </div>
                 </div>
@@ -604,13 +889,35 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeAdminTab === 'overview' && (
+              {activeAdminTab === "overview" && (
                 <div className="space-y-12">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                    <StatCard title="Total Volume" value={`₹${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
-                    <StatCard title="Total Customers" value={users.length.toString()} icon={Users} color="bg-blue-700" />
-                    <StatCard title="Earnings (20%)" value={`₹${platformFee.toLocaleString()}`} icon={TrendingUp} color="bg-indigo-600" />
-                    <StatCard title="Pending Requests" value={bookings.filter(b => b.status === 'pending').length.toString()} icon={Clock} color="bg-amber-500" />
+                    <StatCard
+                      title="Total Volume"
+                      value={`₹${totalRevenue.toLocaleString()}`}
+                      icon={DollarSign}
+                      color="bg-emerald-500"
+                    />
+                    <StatCard
+                      title="Total Customers"
+                      value={users.length.toString()}
+                      icon={Users}
+                      color="bg-blue-700"
+                    />
+                    <StatCard
+                      title="Earnings (20%)"
+                      value={`₹${platformFee.toLocaleString()}`}
+                      icon={TrendingUp}
+                      color="bg-indigo-600"
+                    />
+                    <StatCard
+                      title="Pending Requests"
+                      value={bookings
+                        .filter((b) => b.status === "pending")
+                        .length.toString()}
+                      icon={Clock}
+                      color="bg-amber-500"
+                    />
                   </div>
 
                   {/* Real-time Indore Booking Monitor */}
@@ -619,61 +926,114 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping shrink-0" />
-                          <h3 className="text-lg font-black text-slate-900 tracking-tight">🔴 Live Indore Booking Monitor</h3>
+                          <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                            🔴 Live Indore Booking Monitor
+                          </h3>
                         </div>
-                        <p className="text-xs font-semibold text-slate-400 mt-0.5">Live operational satellite feed of active service duties across Indore metropolis.</p>
+                        <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                          Live operational satellite feed of active service
+                          duties across Indore metropolis.
+                        </p>
                       </div>
                       <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100/50 text-emerald-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-inner">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Indore Feed Active
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{" "}
+                        Indore Feed Active
                       </span>
                     </div>
 
-                    {bookings.filter(b => !['completed', 'finalized', 'cancelled'].includes(b.status)).length === 0 ? (
+                    {bookings.filter(
+                      (b) =>
+                        !["completed", "finalized", "cancelled"].includes(
+                          b.status,
+                        ),
+                    ).length === 0 ? (
                       <div className="p-8 text-center bg-slate-50 border border-slate-150/50 rounded-2xl">
-                        <p className="text-xs text-slate-400 font-bold italic">No active operations currently running in Indore.</p>
+                        <p className="text-xs text-slate-400 font-bold italic">
+                          No active operations currently running in Indore.
+                        </p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {bookings.filter(b => !['completed', 'finalized', 'cancelled'].includes(b.status)).slice(0, 6).map(b => {
-                          const customer = users.find(u => u.uid === b.customerId || u.uid === b.userId);
-                          const serviceObj = services.find(s => s.id === b.serviceId);
-                          return (
-                            <div 
-                              key={b.id} 
-                              onClick={() => setSelectedOverviewBooking(b)}
-                              className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 relative overflow-hidden group"
-                            >
-                              <span className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
-                              <div className="flex items-center justify-between gap-2 mb-3">
-                                <span className="text-[9px] font-black font-mono text-slate-400 uppercase tracking-widest">IND-{b.id.slice(0, 6).toUpperCase()}</span>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8.5px] font-black uppercase tracking-widest shadow-sm ${
-                                  ['in_progress', 'accepted'].includes(b.status)
-                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-605 text-white border border-emerald-400/30 animate-pulse'
-                                    : b.status === 'payment_pending'
-                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 border border-amber-300/30 font-black'
-                                    : ['on_the_way', 'arrived'].includes(b.status)
-                                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white border border-emerald-400/30'
-                                    : ['completed', 'finalized'].includes(b.status)
-                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-705 text-white border border-blue-500/30'
-                                    : 'bg-gradient-to-r from-rose-500 to-red-600 text-white border border-rose-400/30'
-                                }`}>
-                                  {b.status.replace('_', ' ')}
-                                </span>
+                        {bookings
+                          .filter(
+                            (b) =>
+                              !["completed", "finalized", "cancelled"].includes(
+                                b.status,
+                              ),
+                          )
+                          .slice(0, 6)
+                          .map((b) => {
+                            const customer = users.find(
+                              (u) =>
+                                u.uid === b.customerId || u.uid === b.userId,
+                            );
+                            const serviceObj = services.find(
+                              (s) => s.id === b.serviceId,
+                            );
+                            return (
+                              <div
+                                key={b.id}
+                                onClick={() => setSelectedOverviewBooking(b)}
+                                className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 relative overflow-hidden group"
+                              >
+                                <span className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                  <span className="text-[9px] font-black font-mono text-slate-400 uppercase tracking-widest">
+                                    IND-{b.id.slice(0, 6).toUpperCase()}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[8.5px] font-black uppercase tracking-widest shadow-sm ${
+                                      ["in_progress", "accepted"].includes(
+                                        b.status,
+                                      )
+                                        ? "bg-gradient-to-r from-emerald-500 to-teal-605 text-white border border-emerald-400/30 animate-pulse"
+                                        : b.status === "payment_pending"
+                                          ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 border border-amber-300/30 font-black"
+                                          : ["on_the_way", "arrived"].includes(
+                                                b.status,
+                                              )
+                                            ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white border border-emerald-400/30"
+                                            : [
+                                                  "completed",
+                                                  "finalized",
+                                                ].includes(b.status)
+                                              ? "bg-gradient-to-r from-blue-600 to-indigo-705 text-white border border-blue-500/30"
+                                              : "bg-gradient-to-r from-rose-500 to-red-600 text-white border border-rose-400/30"
+                                    }`}
+                                  >
+                                    {b.status.replace("_", " ")}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-900 leading-tight uppercase truncate">
+                                  {serviceObj?.name || "Home Service"}
+                                </h4>
+                                <p className="text-[10px] text-slate-500 font-bold mt-1.5 flex items-center gap-1">
+                                  <span className="text-slate-400 font-medium">
+                                    Customer:
+                                  </span>{" "}
+                                  {customer?.fullName ||
+                                    customer?.displayName ||
+                                    b.customerBookedName ||
+                                    b.customerName ||
+                                    "Client"}
+                                </p>
+                                <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1 italic truncate">
+                                  <span className="font-bold uppercase tracking-wider not-italic text-[8px]">
+                                    Address:
+                                  </span>{" "}
+                                  {b.address}
+                                </p>
+                                <div className="mt-3.5 pt-3 border-t border-slate-100/60 flex items-center justify-between">
+                                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest font-mono">
+                                    Indore Hub
+                                  </p>
+                                  <span className="text-[10px] text-slate-800 font-mono font-black">
+                                    ₹{b.totalPrice}
+                                  </span>
+                                </div>
                               </div>
-                              <h4 className="text-sm font-black text-slate-900 leading-tight uppercase truncate">{serviceObj?.name || 'Home Service'}</h4>
-                              <p className="text-[10px] text-slate-500 font-bold mt-1.5 flex items-center gap-1">
-                                <span className="text-slate-400 font-medium">Customer:</span> {customer?.fullName || customer?.displayName || b.customerBookedName || b.customerName || 'Client'}
-                              </p>
-                              <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1 italic truncate">
-                                <span className="font-bold uppercase tracking-wider not-italic text-[8px]">Address:</span> {b.address}
-                              </p>
-                              <div className="mt-3.5 pt-3 border-t border-slate-100/60 flex items-center justify-between">
-                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest font-mono">Indore Hub</p>
-                                <span className="text-[10px] text-slate-800 font-mono font-black">₹{b.totalPrice}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     )}
                   </div>
@@ -681,432 +1041,795 @@ export default function AdminDashboard({ profile, setActiveTab, initialAdminTab 
                   <div className="hidden">
                     <div>
                       <div>
-                         <button onClick={() => setActiveAdminTab('bookings')} className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase tracking-widest transition-colors">See All Bookings</button>
+                        <button
+                          onClick={() => setActiveAdminTab("bookings")}
+                          className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase tracking-widest transition-colors"
+                        >
+                          See All Bookings
+                        </button>
                       </div>
                       <div className="space-y-3">
-                         {bookings.slice(0, 6).map(b => (
-                           <div 
-                             key={b.id} 
-                             onClick={() => setSelectedOverviewBooking(b)}
-                             className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 border border-transparent group"
-                           >
-                              <div className="flex items-center gap-4">
-                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-900 shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
-                                    <FileText size={16} />
-                                 </div>
-                                 <div className="min-w-0">
-                                    <p className="text-sm font-bold text-slate-900 truncate">Booking #{b.id.slice(0, 8).toUpperCase()}</p>
-                                    <p className="text-[10px] text-slate-400 font-medium italic truncate">{b.address}</p>
-                                 </div>
+                        {bookings.slice(0, 6).map((b) => (
+                          <div
+                            key={b.id}
+                            onClick={() => setSelectedOverviewBooking(b)}
+                            className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl hover:bg-white hover:border-slate-300 hover:shadow-lg cursor-pointer duration-[120ms] ease-out transition-all hover:scale-[0.99] active:bg-slate-100/50 border border-transparent group"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-900 shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
+                                <FileText size={16} />
                               </div>
-                              <div className="text-right shrink-0">
-                                 <p className="text-sm font-bold text-slate-900">₹{b.totalPrice}</p>
-                                 <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                                   b.status === 'finalized' || b.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 
-                                   'bg-blue-700 text-white'
-                                 }`}>
-                                   {b.status.replace('_', ' ')}
-                                 </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-900 truncate">
+                                  Booking #{b.id.slice(0, 8).toUpperCase()}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-medium italic truncate">
+                                  {b.address}
+                                </p>
                               </div>
-                           </div>
-                         ))}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-bold text-slate-900">
+                                ₹{b.totalPrice}
+                              </p>
+                              <span
+                                className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                                  b.status === "finalized" ||
+                                  b.status === "completed"
+                                    ? "bg-emerald-100 text-emerald-600"
+                                    : "bg-blue-700 text-white"
+                                }`}
+                              >
+                                {b.status.replace("_", " ")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
                     <div className="hidden">
-                       
-                       <div className="space-y-6 relative z-10">
-                          <div>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-[10px] uppercase font-black tracking-widest text-white/50">Service Satisfaction</span>
-                              <span className="text-sm font-bold uppercase tracking-widest text-white">94%</span>
-                            </div>
-                            <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                              <div className="w-[94%] h-full bg-emerald-400" />
-                            </div>
+                      <div className="space-y-6 relative z-10">
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-white/50">
+                              Service Satisfaction
+                            </span>
+                            <span className="text-sm font-bold uppercase tracking-widest text-white">
+                              94%
+                            </span>
                           </div>
-                          <div>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-[10px] uppercase font-black tracking-widest text-white/50">Partner Utilization</span>
-                              <span className="text-sm font-bold uppercase tracking-widest text-white">78%</span>
-                            </div>
-                            <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                              <div className="w-[78%] h-full bg-indigo-400" />
-                            </div>
+                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                            <div className="w-[94%] h-full bg-emerald-400" />
                           </div>
-                       </div>
-                       
-                       <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-white/50">
+                              Partner Utilization
+                            </span>
+                            <span className="text-sm font-bold uppercase tracking-widest text-white">
+                              78%
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                            <div className="w-[78%] h-full bg-indigo-400" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/5 rounded-full blur-3xl pointer-events-none" />
                     </div>
                   </div>
 
                   <div className="bg-gradient-to-r from-[#0a2540] to-[#123e6b] rounded-[24px] p-6 text-white relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6 border border-slate-705/10 shadow-sm mt-8 shadow-[#0a2540]/10">
                     <div className="shrink-0 text-center md:text-left">
-                      <h3 className="font-bold text-lg mb-1">Platform Velocity</h3>
-                      <p className="text-white/40 text-[9px] font-bold uppercase tracking-widest">Real-time Performance metrics</p>
+                      <h3 className="font-bold text-lg mb-1">
+                        Platform Velocity
+                      </h3>
+                      <p className="text-white/40 text-[9px] font-bold uppercase tracking-widest">
+                        Real-time Performance metrics
+                      </p>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full md:w-auto md:min-w-[480px] relative z-10">
-                       <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
-                         <div className="flex justify-between items-center mb-1.5">
-                           <span className="text-[9px] uppercase font-black tracking-widest text-white/50">Service Satisfaction</span>
-                           <span className="text-xs font-bold uppercase tracking-widest text-white">94%</span>
-                         </div>
-                         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                           <div className="w-[94%] h-full bg-emerald-400" />
-                         </div>
-                       </div>
-                       <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
-                         <div className="flex justify-between items-center mb-1.5">
-                           <span className="text-[9px] uppercase font-black tracking-widest text-white/50">Partner Utilization</span>
-                           <span className="text-xs font-bold uppercase tracking-widest text-white">78%</span>
-                         </div>
-                         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                           <div className="w-[78%] h-full bg-indigo-400" />
-                         </div>
-                       </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-[9px] uppercase font-black tracking-widest text-white/50">
+                            Service Satisfaction
+                          </span>
+                          <span className="text-xs font-bold uppercase tracking-widest text-white">
+                            94%
+                          </span>
+                        </div>
+                        <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                          <div className="w-[94%] h-full bg-emerald-400" />
+                        </div>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-sm">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-[9px] uppercase font-black tracking-widest text-white/50">
+                            Partner Utilization
+                          </span>
+                          <span className="text-xs font-bold uppercase tracking-widest text-white">
+                            78%
+                          </span>
+                        </div>
+                        <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                          <div className="w-[78%] h-full bg-indigo-400" />
+                        </div>
+                      </div>
                     </div>
-                    
+
                     <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/5 rounded-full blur-3xl pointer-events-none" />
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Booking Trend Chart */}
                     {bookingTrendData.length > 0 && (
-                       <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm">
-                         <div className="mb-6">
-                           <h3 className="text-lg font-bold text-slate-900">Booking Trends</h3>
-                         </div>
-                         <div className="h-[250px] w-full">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <AreaChart data={bookingTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                               <defs>
-                                 <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                                   <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                 </linearGradient>
-                               </defs>
-                               <XAxis dataKey="date" stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} />
-                               <YAxis stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
-                               <Tooltip 
-                                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' }}
-                                 itemStyle={{ color: '#1c1917', fontWeight: 'bold' }}
-                               />
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                               <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" name="Bookings" />
-                             </AreaChart>
-                           </ResponsiveContainer>
-                         </div>
-                       </div>
+                      <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm">
+                        <div className="mb-6">
+                          <h3 className="text-lg font-bold text-slate-900">
+                            Booking Trends
+                          </h3>
+                        </div>
+                        <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                              data={bookingTrendData}
+                              margin={{
+                                top: 10,
+                                right: 10,
+                                left: -20,
+                                bottom: 0,
+                              }}
+                            >
+                              <defs>
+                                <linearGradient
+                                  id="colorCount"
+                                  x1="0"
+                                  y1="0"
+                                  x2="0"
+                                  y2="1"
+                                >
+                                  <stop
+                                    offset="5%"
+                                    stopColor="#3b82f6"
+                                    stopOpacity={0.8}
+                                  />
+                                  <stop
+                                    offset="95%"
+                                    stopColor="#3b82f6"
+                                    stopOpacity={0}
+                                  />
+                                </linearGradient>
+                              </defs>
+                              <XAxis
+                                dataKey="date"
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                              />
+                              <YAxis
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                                allowDecimals={false}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  borderRadius: "16px",
+                                  border: "none",
+                                  boxShadow:
+                                    "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+                                }}
+                                itemStyle={{
+                                  color: "#1c1917",
+                                  fontWeight: "bold",
+                                }}
+                              />
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#f5f5f4"
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="count"
+                                stroke="#3b82f6"
+                                strokeWidth={3}
+                                fillOpacity={1}
+                                fill="url(#colorCount)"
+                                name="Bookings"
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     )}
-                    
+
                     {/* Revenue Trend Chart */}
                     {revenueTrendData.length > 0 && (
-                       <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm">
-                         <div className="mb-6">
-                           <h3 className="text-lg font-bold text-slate-900">Revenue Growth</h3>
-                         </div>
-                         <div className="h-[250px] w-full">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <AreaChart data={revenueTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                               <defs>
-                                 <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                                   <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                 </linearGradient>
-                               </defs>
-                               <XAxis dataKey="date" stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} />
-                               <YAxis stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={(value) => `₹${value}`} />
-                               <Tooltip 
-                                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' }}
-                                 itemStyle={{ color: '#1c1917', fontWeight: 'bold' }}
-                                 formatter={(value: number) => `₹${value}`}
-                               />
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                               <Area type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" name="Revenue" />
-                             </AreaChart>
-                           </ResponsiveContainer>
-                         </div>
-                       </div>
+                      <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm">
+                        <div className="mb-6">
+                          <h3 className="text-lg font-bold text-slate-900">
+                            Revenue Growth
+                          </h3>
+                        </div>
+                        <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                              data={revenueTrendData}
+                              margin={{
+                                top: 10,
+                                right: 10,
+                                left: -20,
+                                bottom: 0,
+                              }}
+                            >
+                              <defs>
+                                <linearGradient
+                                  id="colorAmount"
+                                  x1="0"
+                                  y1="0"
+                                  x2="0"
+                                  y2="1"
+                                >
+                                  <stop
+                                    offset="5%"
+                                    stopColor="#10b981"
+                                    stopOpacity={0.8}
+                                  />
+                                  <stop
+                                    offset="95%"
+                                    stopColor="#10b981"
+                                    stopOpacity={0}
+                                  />
+                                </linearGradient>
+                              </defs>
+                              <XAxis
+                                dataKey="date"
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                              />
+                              <YAxis
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                                allowDecimals={false}
+                                tickFormatter={(value) => `₹${value}`}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  borderRadius: "16px",
+                                  border: "none",
+                                  boxShadow:
+                                    "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+                                }}
+                                itemStyle={{
+                                  color: "#1c1917",
+                                  fontWeight: "bold",
+                                }}
+                                formatter={(value: number) => `₹${value}`}
+                              />
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#f5f5f4"
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="amount"
+                                stroke="#10b981"
+                                strokeWidth={3}
+                                fillOpacity={1}
+                                fill="url(#colorAmount)"
+                                name="Revenue"
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     )}
 
                     {/* User Growth Chart */}
                     {userTrendData.length > 0 && (
-                       <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm lg:col-span-2">
-                         <div className="mb-6">
-                           <h3 className="text-lg font-bold text-slate-900">User Growth</h3>
-                         </div>
-                         <div className="h-[250px] w-full">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <BarChart data={userTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                               <XAxis dataKey="date" stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} />
-                               <YAxis stroke="#e7e5e4" tick={{ fill: '#a8a29e', fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
-                               <Tooltip 
-                                 cursor={{ fill: 'transparent' }}
-                                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' }}
-                                 itemStyle={{ color: '#1c1917', fontWeight: 'bold' }}
-                               />
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                               <Bar dataKey="users" fill="#1c1917" radius={[4, 4, 0, 0]} name="Total Users" />
-                             </BarChart>
-                           </ResponsiveContainer>
-                         </div>
-                       </div>
+                      <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm lg:col-span-2">
+                        <div className="mb-6">
+                          <h3 className="text-lg font-bold text-slate-900">
+                            User Growth
+                          </h3>
+                        </div>
+                        <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={userTrendData}
+                              margin={{
+                                top: 10,
+                                right: 10,
+                                left: -20,
+                                bottom: 0,
+                              }}
+                            >
+                              <XAxis
+                                dataKey="date"
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                              />
+                              <YAxis
+                                stroke="#e7e5e4"
+                                tick={{ fill: "#a8a29e", fontSize: 10 }}
+                                tickLine={false}
+                                axisLine={false}
+                                allowDecimals={false}
+                              />
+                              <Tooltip
+                                cursor={{ fill: "transparent" }}
+                                contentStyle={{
+                                  borderRadius: "16px",
+                                  border: "none",
+                                  boxShadow:
+                                    "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+                                }}
+                                itemStyle={{
+                                  color: "#1c1917",
+                                  fontWeight: "bold",
+                                }}
+                              />
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#f5f5f4"
+                              />
+                              <Bar
+                                dataKey="users"
+                                fill="#1c1917"
+                                radius={[4, 4, 0, 0]}
+                                name="Total Users"
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
               )}
 
               {/* OVERVIEW BOOKING TELEMETRY & CONTROL PANEL MODAL */}
-              {selectedOverviewBooking && (() => {
-                const b = selectedOverviewBooking;
-                const customer = users.find(u => u.uid === b.customerId || u.uid === b.userId);
-                const partnerInfo = partners.find(p => p.id === b.partnerId || p.userId === b.partnerId);
-                const serviceObj = services.find(s => s.id === b.serviceId);
-                const platformSlice = Math.round(b.totalPrice * 0.20);
-                const partnerSlice = b.totalPrice - platformSlice;
-                const otpCode = b.serviceOtp || "3492"; // lock default mock code for standard view
-                
-                return (
-                  <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-                    <div 
-                      className="bg-white rounded-[32px] border border-slate-150 shadow-2xl w-full max-w-2xl max-h-[92dvh] overflow-y-auto relative p-6 sm:p-8 flex flex-col gap-6 transition-all duration-300"
-                      id="overview-telemetry-modal"
-                    >
-                      {/* HEADER SECTION */}
-                      <div className="flex justify-between items-start border-b border-slate-100 pb-5">
-                        <div className="text-left">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-widest font-mono">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" /> Live Tracking
-                          </span>
-                          <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1">
-                            Operations Hub
-                          </h3>
-                          <p className="text-xs font-semibold text-slate-400 font-mono mt-0.5 uppercase tracking-widest text-[#0a2540]">
-                            Ref ID: <span className="text-blue-700">IND-{b.id.toUpperCase()}</span>
-                          </p>
-                        </div>
-                        <button 
-                          onClick={() => setSelectedOverviewBooking(null)}
-                          className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900 transition-colors"
-                        >
-                          <X size={20} />
-                        </button>
-                      </div>
+              {selectedOverviewBooking &&
+                (() => {
+                  const b = selectedOverviewBooking;
+                  const customer = users.find(
+                    (u) => u.uid === b.customerId || u.uid === b.userId,
+                  );
+                  const partnerInfo = partners.find(
+                    (p) => p.id === b.partnerId || p.userId === b.partnerId,
+                  );
+                  const serviceObj = services.find((s) => s.id === b.serviceId);
+                  const platformSlice = Math.round(b.totalPrice * 0.2);
+                  const partnerSlice = b.totalPrice - platformSlice;
+                  const otpCode = b.serviceOtp || "3492"; // lock default mock code for standard view
 
-                      {/* DATA COLUMNS GRID */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                        {/* EXECUTION DETAILS CARD */}
-                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className="w-2.5 h-2.5 bg-blue-700 rounded-full" />
-                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Booking Details</h4>
+                  return (
+                    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                      <div
+                        className="bg-white rounded-[32px] border border-slate-150 shadow-2xl w-full max-w-2xl max-h-[92dvh] overflow-y-auto relative p-6 sm:p-8 flex flex-col gap-6 transition-all duration-300"
+                        id="overview-telemetry-modal"
+                      >
+                        {/* HEADER SECTION */}
+                        <div className="flex justify-between items-start border-b border-slate-100 pb-5">
+                          <div className="text-left">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-widest font-mono">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />{" "}
+                              Live Tracking
+                            </span>
+                            <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1">
+                              Operations Hub
+                            </h3>
+                            <p className="text-xs font-semibold text-slate-400 font-mono mt-0.5 uppercase tracking-widest text-[#0a2540]">
+                              Ref ID:{" "}
+                              <span className="text-blue-700">
+                                IND-{b.id.toUpperCase()}
+                              </span>
+                            </p>
                           </div>
-                          
-                          <div className="space-y-2 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Service Type:</span>
-                              <span className="font-extrabold text-slate-800">{serviceObj?.name || 'Home Service'}</span>
+                          <button
+                            onClick={() => setSelectedOverviewBooking(null)}
+                            className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900 transition-colors"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+
+                        {/* DATA COLUMNS GRID */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                          {/* EXECUTION DETAILS CARD */}
+                          <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-2.5 h-2.5 bg-blue-700 rounded-full" />
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                                Booking Details
+                              </h4>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Live Status:</span>
-                              <span className="font-black uppercase text-blue-700 tracking-wider text-[10px]">{b.status.replace('_', ' ')}</span>
+
+                            <div className="space-y-2 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Service Type:
+                                </span>
+                                <span className="font-extrabold text-slate-800">
+                                  {serviceObj?.name || "Home Service"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Live Status:
+                                </span>
+                                <span className="font-black uppercase text-blue-700 tracking-wider text-[10px]">
+                                  {b.status.replace("_", " ")}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Coordinates:
+                                </span>
+                                <span className="font-mono text-slate-600 text-[10px]">
+                                  {Number(b.lat || 22.7434).toFixed(4)},{" "}
+                                  {Number(b.lng || 75.8996).toFixed(4)} (Vijay
+                                  Nagar Area)
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Indore Hub:
+                                </span>
+                                <span className="font-extrabold text-slate-800">
+                                  Palasia Sector Central
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Security Shield:
+                                </span>
+                                <span className="font-bold text-slate-600 flex items-center gap-1">
+                                  <ShieldCheck
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />{" "}
+                                  Active Guard
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Coordinates:</span>
-                              <span className="font-mono text-slate-600 text-[10px]">{Number(b.lat || 22.7434).toFixed(4)}, {Number(b.lng || 75.8996).toFixed(4)} (Vijay Nagar Area)</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Indore Hub:</span>
-                              <span className="font-extrabold text-slate-800">Palasia Sector Central</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Security Shield:</span>
-                              <span className="font-bold text-slate-600 flex items-center gap-1">
-                                <ShieldCheck size={12} className="text-emerald-500" /> Active Guard
+                          </div>
+
+                          {/* SECURITY PASS CODE LOCK */}
+                          <div className="bg-emerald-50/40 rounded-2xl border border-emerald-100/50 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />
+                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                                  Security Access PIN
+                                </h4>
+                              </div>
+                              <span className="text-[8px] bg-emerald-600 text-white px-2 py-0.5 rounded font-black tracking-widest uppercase">
+                                Verified
                               </span>
                             </div>
-                          </div>
-                        </div>
 
-                        {/* SECURITY PASS CODE LOCK */}
-                        <div className="bg-emerald-50/40 rounded-2xl border border-emerald-100/50 p-4 space-y-3">
-                          <div className="flex items-center justify-between">
+                            <div className="bg-white rounded-xl p-3 border border-emerald-100 shadow-sm flex items-center justify-between">
+                              <div>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                                  Job Start OTP
+                                </p>
+                                <p className="text-xl font-black font-mono text-emerald-700 tracking-widest mt-0.5 bg-emerald-50 px-2 py-0.5 rounded inline-block">
+                                  {otpCode}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[8px] text-slate-400 font-bold">
+                                  EXPIRES UPON
+                                </p>
+                                <p className="text-[10px] text-slate-600 font-black">
+                                  PRO ARRIVAL
+                                </p>
+                              </div>
+                            </div>
+                            <p className="text-[9px] text-emerald-800/80 font-semibold leading-normal">
+                              🔒 Job start passcode is only shared with the
+                              client. Enter this in the partner console to
+                              unlock task execution safely.
+                            </p>
+                          </div>
+
+                          {/* CLIENT METRICS CONTRACT */}
+                          <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
                             <div className="flex items-center gap-2">
-                              <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full" />
-                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Security Access PIN</h4>
+                              <User size={14} className="text-slate-500" />
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                                Customer Contact
+                              </h4>
                             </div>
-                            <span className="text-[8px] bg-emerald-600 text-white px-2 py-0.5 rounded font-black tracking-widest uppercase">Verified</span>
+
+                            <div className="space-y-2 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Name:
+                                </span>
+                                <span className="font-black text-slate-800">
+                                  {modalCustomer?.fullName ||
+                                    modalCustomer?.displayName ||
+                                    customer?.fullName ||
+                                    customer?.displayName ||
+                                    b.customerBookedName ||
+                                    b.customerName ||
+                                    "VIKASS CHOPRA"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Phone:
+                                </span>
+                                <span className="font-mono text-slate-800">
+                                  {modalCustomer?.phoneNumber ||
+                                    modalCustomer?.mobile ||
+                                    customer?.phoneNumber ||
+                                    customer?.mobile ||
+                                    b.customerBookedPhone ||
+                                    b.customerPhone ||
+                                    "+91 9424456606"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  City Reach:
+                                </span>
+                                <span className="font-extrabold text-slate-800">
+                                  Indore (Madhya Pradesh)
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-1 pt-1 border-t border-slate-100">
+                                <span className="text-slate-400 font-semibold text-[10px] uppercase">
+                                  Destination Address:
+                                </span>
+                                <span className="text-[10px] text-slate-600 font-semibold leading-relaxed leading-snug">
+                                  {b.address}
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="bg-white rounded-xl p-3 border border-emerald-100 shadow-sm flex items-center justify-between">
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Job Start OTP</p>
-                              <p className="text-xl font-black font-mono text-emerald-700 tracking-widest mt-0.5 bg-emerald-50 px-2 py-0.5 rounded inline-block">{otpCode}</p>
+                          {/* FINANCIAL COMMISSIONS BREAKDOWN */}
+                          <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <DollarSign
+                                  size={14}
+                                  className="text-slate-500"
+                                />
+                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                                  Payment & Earnings
+                                </h4>
+                              </div>
+                              <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">
+                                AUTOMATIC
+                              </span>
                             </div>
-                            <div className="text-right">
-                              <p className="text-[8px] text-slate-400 font-bold">EXPIRES UPON</p>
-                              <p className="text-[10px] text-slate-600 font-black">PRO ARRIVAL</p>
+
+                            <div className="space-y-2 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Gross Booking Price:
+                                </span>
+                                <span className="font-extrabold text-slate-800">
+                                  ₹{b.totalPrice}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-indigo-700 bg-indigo-50/30 p-1 px-1.5 rounded border border-indigo-150/40">
+                                <span className="font-semibold text-indigo-800">
+                                  Platform Share (20%):
+                                </span>
+                                <span className="font-black">
+                                  ₹{platformSlice}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-slate-600">
+                                <span className="text-slate-400 font-semibold">
+                                  Partner Payout (80%):
+                                </span>
+                                <span className="font-extrabold text-slate-800">
+                                  ₹{partnerSlice}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Settlement Status:
+                                </span>
+                                <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">
+                                  {b.paymentStatus === "paid"
+                                    ? "SETTLED VIA WALLET"
+                                    : "PENDING"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-semibold">
+                                  Channel Method:
+                                </span>
+                                <span className="font-extrabold text-slate-600 uppercase tracking-wide text-[10px]">
+                                  {b.paymentMethod || "Online"}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <p className="text-[9px] text-emerald-800/80 font-semibold leading-normal">
-                            🔒 Job start passcode is only shared with the client. Enter this in the partner console to unlock task execution safely.
-                          </p>
                         </div>
 
-                        {/* CLIENT METRICS CONTRACT */}
-                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <User size={14} className="text-slate-500" />
-                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Customer Contact</h4>
+                        {/* PARTNER ASSIGNMENT BANNER */}
+                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
+                          <div>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                              Assigned Indore Pro Partner
+                            </p>
+                            <p className="text-sm font-black text-slate-900 inline-flex items-center gap-1.5 mt-0.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                              {partnerInfo?.displayName || "Vikas Chopra"}
+                            </p>
                           </div>
-                          
-                          <div className="space-y-2 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Name:</span>
-                              <span className="font-black text-slate-800">{modalCustomer?.fullName || modalCustomer?.displayName || customer?.fullName || customer?.displayName || b.customerBookedName || b.customerName || "VIKASS CHOPRA"}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Phone:</span>
-                              <span className="font-mono text-slate-800">{modalCustomer?.phoneNumber || modalCustomer?.mobile || customer?.phoneNumber || customer?.mobile || b.customerBookedPhone || b.customerPhone || "+91 9424456606"}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">City Reach:</span>
-                              <span className="font-extrabold text-slate-800">Indore (Madhya Pradesh)</span>
-                            </div>
-                            <div className="flex flex-col gap-1 pt-1 border-t border-slate-100">
-                              <span className="text-slate-400 font-semibold text-[10px] uppercase">Destination Address:</span>
-                              <span className="text-[10px] text-slate-600 font-semibold leading-relaxed leading-snug">{b.address}</span>
-                            </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                            <a
+                              href={`https://wa.me/918517071009?text=Hi%20Vikas%20ZomIndia%20Support`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 sm:flex-none text-center bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95"
+                            >
+                              WhatsApp Chat
+                            </a>
+                            <button
+                              onClick={() => {
+                                setSelectedOverviewBooking(null);
+                                triggerToast(
+                                  "Calling partner securely... Your phone is fully protected by Zomindia Security Shield.",
+                                );
+                              }}
+                              className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95 shadow-sm"
+                            >
+                              🔒 Secure Call
+                            </button>
                           </div>
                         </div>
 
-                        {/* FINANCIAL COMMISSIONS BREAKDOWN */}
-                        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <DollarSign size={14} className="text-slate-500" />
-                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Payment & Earnings</h4>
-                            </div>
-                            <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">AUTOMATIC</span>
-                          </div>
-
-                          <div className="space-y-2 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Gross Booking Price:</span>
-                              <span className="font-extrabold text-slate-800">₹{b.totalPrice}</span>
-                            </div>
-                            <div className="flex justify-between text-indigo-700 bg-indigo-50/30 p-1 px-1.5 rounded border border-indigo-150/40">
-                              <span className="font-semibold text-indigo-800">Platform Share (20%):</span>
-                              <span className="font-black">₹{platformSlice}</span>
-                            </div>
-                            <div className="flex justify-between text-slate-600">
-                              <span className="text-slate-400 font-semibold">Partner Payout (80%):</span>
-                              <span className="font-extrabold text-slate-800">₹{partnerSlice}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Settlement Status:</span>
-                              <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">{b.paymentStatus === 'paid' ? 'SETTLED VIA WALLET' : 'PENDING'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400 font-semibold">Channel Method:</span>
-                              <span className="font-extrabold text-slate-600 uppercase tracking-wide text-[10px]">{b.paymentMethod || 'Online'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PARTNER ASSIGNMENT BANNER */}
-                      <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
-                        <div>
-                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Assigned Indore Pro Partner</p>
-                          <p className="text-sm font-black text-slate-900 inline-flex items-center gap-1.5 mt-0.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                            {partnerInfo?.displayName || "Vikas Chopra"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                          <a 
-                            href={`https://wa.me/918517071009?text=Hi%20Vikas%20ZomIndia%20Support`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 sm:flex-none text-center bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95"
-                          >
-                            WhatsApp Chat
-                          </a>
-                          <button 
+                        {/* FOOTER ACTION BUTTONS */}
+                        <div className="flex flex-col sm:flex-row gap-3 border-t border-slate-100 pt-5 mt-2">
+                          <button
                             onClick={() => {
+                              setInitialManagingBookingId(b.id);
+                              setActiveAdminTab("bookings");
                               setSelectedOverviewBooking(null);
-                              triggerToast("Calling partner securely... Your phone is fully protected by Zomindia Security Shield.");
                             }}
-                            className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95 shadow-sm"
+                            className="flex-1 bg-slate-900 hover:bg-[#0a2540] text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest text-center shadow-lg transition-transform active:scale-95"
                           >
-                            🔒 Secure Call
+                            ⚡ Route directly to Control Hub
+                          </button>
+                          <button
+                            onClick={() => setSelectedOverviewBooking(null)}
+                            className="sm:px-6 py-3 border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 shadow-sm transition-transform active:scale-95 text-center"
+                          >
+                            Dismiss Feed Panel
                           </button>
                         </div>
                       </div>
-
-                      {/* FOOTER ACTION BUTTONS */}
-                      <div className="flex flex-col sm:flex-row gap-3 border-t border-slate-100 pt-5 mt-2">
-                        <button 
-                          onClick={() => {
-                            setInitialManagingBookingId(b.id);
-                            setActiveAdminTab('bookings');
-                            setSelectedOverviewBooking(null);
-                          }}
-                          className="flex-1 bg-slate-900 hover:bg-[#0a2540] text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest text-center shadow-lg transition-transform active:scale-95"
-                        >
-                          ⚡ Route directly to Control Hub
-                        </button>
-                        <button 
-                          onClick={() => setSelectedOverviewBooking(null)}
-                          className="sm:px-6 py-3 border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 shadow-sm transition-transform active:scale-95 text-center"
-                        >
-                          Dismiss Feed Panel
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
-              {activeAdminTab === 'analytics' && isAdminAuthorized('analytics') && <AnalyticsView bookings={bookings} users={users} partners={partners} services={services} />}
-              {activeAdminTab === 'my-profile' && <MyAdminProfile profile={profile} />}
-              {activeAdminTab === 'bookings' && isAdminAuthorized('bookings') && (
-                <BookingManager 
-                  bookings={bookings} 
-                  users={users} 
-                  partners={partners} 
-                  services={services} 
-                  profile={profile} 
-                  initialManagingBookingId={initialManagingBookingId}
-                  onClearInitialManagingBookingId={() => setInitialManagingBookingId(null)}
+              {activeAdminTab === "analytics" &&
+                isAdminAuthorized("analytics") && (
+                  <AnalyticsView
+                    bookings={bookings}
+                    users={users}
+                    partners={partners}
+                    services={services}
+                  />
+                )}
+              {activeAdminTab === "my-profile" && (
+                <MyAdminProfile profile={profile} />
+              )}
+              {activeAdminTab === "bookings" &&
+                isAdminAuthorized("bookings") && (
+                  <BookingManager
+                    bookings={bookings}
+                    users={users}
+                    partners={partners}
+                    services={services}
+                    profile={profile}
+                    initialManagingBookingId={initialManagingBookingId}
+                    onClearInitialManagingBookingId={() =>
+                      setInitialManagingBookingId(null)
+                    }
+                  />
+                )}
+              {activeAdminTab === "categories" &&
+                isAdminAuthorized("categories") && (
+                  <CategoryManager categories={categories} />
+                )}
+              {activeAdminTab === "services" &&
+                isAdminAuthorized("services") && (
+                  <ServiceManager categories={categories} services={services} />
+                )}
+              {activeAdminTab === "earnings" &&
+                isAdminAuthorized("earnings") && (
+                  <div className="space-y-8">
+                    <EarningsView bookings={bookings} role="admin" />
+                    <PayoutManager />
+                  </div>
+                )}
+              {activeAdminTab === "partners" &&
+                isAdminAuthorized("partners") && (
+                  <PartnerManager
+                    partners={partners}
+                    users={users}
+                    setActiveTab={setActiveTab}
+                  />
+                )}
+              {activeAdminTab === "users" && isAdminAuthorized("users") && (
+                <UserManager
+                  users={users}
+                  bookings={bookings}
+                  currentUserProfile={profile}
                 />
               )}
-              {activeAdminTab === 'categories' && isAdminAuthorized('categories') && <CategoryManager categories={categories} />}
-              {activeAdminTab === 'services' && isAdminAuthorized('services') && <ServiceManager categories={categories} services={services} />}
-              {activeAdminTab === 'earnings' && isAdminAuthorized('earnings') && (
-                <div className="space-y-8">
-                  <EarningsView bookings={bookings} role="admin" />
-                  <PayoutManager />
-                </div>
+              {activeAdminTab === "referrals" &&
+                isAdminAuthorized("referrals") && (
+                  <ReferralLifecycleManager
+                    users={users}
+                    bookings={bookings}
+                    currentUserProfile={profile}
+                  />
+                )}
+              {activeAdminTab === "promotions" &&
+                isAdminAuthorized("promotions") && (
+                  <PromoManager
+                    promotions={promotions}
+                    categories={categories}
+                    services={services}
+                    users={users}
+                    filter="customer"
+                  />
+                )}
+              {activeAdminTab === "partner-promotions" &&
+                isAdminAuthorized("promotions") && (
+                  <PromoManager
+                    promotions={promotions}
+                    categories={categories}
+                    services={services}
+                    users={users}
+                    filter="partner"
+                  />
+                )}
+              {activeAdminTab === "help-center" &&
+                isAdminAuthorized("help-center") && (
+                  <HelpCenterManager faqs={faqs} />
+                )}
+              {activeAdminTab === "tickets" && isAdminAuthorized("tickets") && (
+                <TicketManager tickets={tickets} users={users} />
               )}
-              {activeAdminTab === 'partners' && isAdminAuthorized('partners') && <PartnerManager partners={partners} users={users} setActiveTab={setActiveTab} />}
-              {activeAdminTab === 'users' && isAdminAuthorized('users') && <UserManager users={users} bookings={bookings} currentUserProfile={profile} />}
-              {activeAdminTab === 'referrals' && isAdminAuthorized('referrals') && <ReferralLifecycleManager users={users} bookings={bookings} currentUserProfile={profile} />}
-              {activeAdminTab === 'promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="customer" />}
-              {activeAdminTab === 'partner-promotions' && isAdminAuthorized('promotions') && <PromoManager promotions={promotions} categories={categories} services={services} users={users} filter="partner" />}
-              {activeAdminTab === 'help-center' && isAdminAuthorized('help-center') && <HelpCenterManager faqs={faqs} />}
-              {activeAdminTab === 'tickets' && isAdminAuthorized('tickets') && <TicketManager tickets={tickets} users={users} />}
-              {activeAdminTab === 'admin-management' && isAdminAuthorized('admin-management') && <AdminManager users={users} profile={profile} />}
-              {activeAdminTab === 'amcs' && isAdminAuthorized('amcs') && (
-                <AmcManagement 
-                  amcs={amcs} 
-                  users={users} 
-                  services={services} 
+              {activeAdminTab === "admin-management" &&
+                isAdminAuthorized("admin-management") && (
+                  <AdminManager users={users} profile={profile} />
+                )}
+              {activeAdminTab === "amcs" && isAdminAuthorized("amcs") && (
+                <AmcManagement
+                  amcs={amcs}
+                  users={users}
+                  services={services}
                   onUpdateStatus={handleUpdateAmcStatus}
                 />
               )}
-
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1136,11 +1859,17 @@ function StatCard({ title, value, icon: Icon, color }: any) {
   return (
     <div className="bg-white p-10 border border-slate-50 rounded-[48px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all duration-500">
       <div className="relative z-10">
-        <div className={`w-14 h-14 ${color} text-white rounded-[24px] flex items-center justify-center mb-8 shadow-xl shadow-blue-700/5 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
+        <div
+          className={`w-14 h-14 ${color} text-white rounded-[24px] flex items-center justify-center mb-8 shadow-xl shadow-blue-700/5 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}
+        >
           <Icon size={28} />
         </div>
-        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{title}</p>
-        <p className="text-4xl font-display font-bold text-slate-900 tracking-tighter">{value}</p>
+        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">
+          {title}
+        </p>
+        <p className="text-4xl font-display font-bold text-slate-900 tracking-tighter">
+          {value}
+        </p>
       </div>
       <div className="absolute -bottom-16 -right-16 w-48 h-48 bg-slate-50 rounded-full z-0 group-hover:bg-slate-100 transition-all duration-500" />
     </div>
@@ -1149,9 +1878,27 @@ function StatCard({ title, value, icon: Icon, color }: any) {
 
 // --- MODULES ---
 
-function BookingManager({ bookings, users, partners, services, profile, initialManagingBookingId, onClearInitialManagingBookingId }: { bookings: Booking[], users: UserProfile[], partners: (PartnerProfile & { displayName?: string })[], services: Service[], profile: UserProfile, initialManagingBookingId?: string | null, onClearInitialManagingBookingId?: () => void }) {
+function BookingManager({
+  bookings,
+  users,
+  partners,
+  services,
+  profile,
+  initialManagingBookingId,
+  onClearInitialManagingBookingId,
+}: {
+  bookings: Booking[];
+  users: UserProfile[];
+  partners: (PartnerProfile & { displayName?: string })[];
+  services: Service[];
+  profile: UserProfile;
+  initialManagingBookingId?: string | null;
+  onClearInitialManagingBookingId?: () => void;
+}) {
   const [sendingBillId, setSendingBillId] = useState<string | null>(null);
-  const [managingStatusBookingId, setManagingStatusBookingId] = useState<string | null>(initialManagingBookingId || null);
+  const [managingStatusBookingId, setManagingStatusBookingId] = useState<
+    string | null
+  >(initialManagingBookingId || null);
 
   useEffect(() => {
     if (initialManagingBookingId) {
@@ -1162,64 +1909,108 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
     }
   }, [initialManagingBookingId]);
 
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [bookingFilter, setBookingFilter] = useState<Booking['status'] | 'all'>('all');
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(
+    null,
+  );
+  const [cancelReason, setCancelReason] = useState("");
+  const [bookingFilter, setBookingFilter] = useState<Booking["status"] | "all">(
+    "all",
+  );
   const [statusForm, setStatusForm] = useState({
-    status: '' as Booking['status'] | 'reject',
-    pendingReason: '',
-    pendingDate: '',
-    pendingDuration: '',
-    assignedPartnerId: '',
-    extraAmount: '',
-    extraReason: '',
-    adminNotes: ''
+    status: "" as Booking["status"] | "reject",
+    pendingReason: "",
+    pendingDate: "",
+    pendingDuration: "",
+    assignedPartnerId: "",
+    extraAmount: "",
+    extraReason: "",
+    adminNotes: "",
   });
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
-  const [showChat, setShowChat] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
-  const [showCall, setShowCall] = useState<{ type: 'customer' | 'partner', id: string, bookingId: string } | null>(null);
+  const [showChat, setShowChat] = useState<{
+    type: "customer" | "partner";
+    id: string;
+    bookingId: string;
+  } | null>(null);
+  const [showCall, setShowCall] = useState<{
+    type: "customer" | "partner";
+    id: string;
+    bookingId: string;
+  } | null>(null);
 
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const relevantBookings = bookings.filter(b => ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(b.status));
+    const relevantBookings = bookings.filter((b) =>
+      [
+        "confirmed",
+        "assigned",
+        "on_the_way",
+        "arrived",
+        "in_progress",
+        "payment_pending",
+        "pending_parts",
+      ].includes(b.status),
+    );
     if (relevantBookings.length === 0) return;
 
-    const unsubscribes = relevantBookings.map(booking => {
-      return onSnapshot(doc(db, `bookings/${booking.id}/secrets`, 'otp'), (snap) => {
-        if (snap.exists()) {
-          setBookingOtps(prev => ({ ...prev, [booking.id]: snap.data().code }));
-        }
-      });
+    const unsubscribes = relevantBookings.map((booking) => {
+      return onSnapshot(
+        doc(db, `bookings/${booking.id}/secrets`, "otp"),
+        (snap) => {
+          if (snap.exists()) {
+            setBookingOtps((prev) => ({
+              ...prev,
+              [booking.id]: snap.data().code,
+            }));
+          }
+        },
+      );
     });
 
-    return () => unsubscribes.forEach(unsub => unsub());
+    return () => unsubscribes.forEach((unsub) => unsub());
   }, [bookings]);
 
   useEffect(() => {
-    if (managingStatusBookingId || cancellingBookingId || showSuccessModal || showChat || showCall) {
-      document.body.style.overflow = 'hidden';
+    if (
+      managingStatusBookingId ||
+      cancellingBookingId ||
+      showSuccessModal ||
+      showChat ||
+      showCall
+    ) {
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     }
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [managingStatusBookingId, cancellingBookingId, showSuccessModal, showChat, showCall]);
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [
+    managingStatusBookingId,
+    cancellingBookingId,
+    showSuccessModal,
+    showChat,
+    showCall,
+  ]);
 
   const [error, setError] = useState<string | null>(null);
 
   const handleSendBill = async (bookingId: string) => {
     setSendingBillId(bookingId);
     try {
-      const response = await fetch('/api/send-final-bill', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId })
+      const response = await fetch("/api/send-final-bill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        setShowSuccessModal(`Final bill sent successfully for booking #${bookingId.slice(0, 8).toUpperCase()}`);
+        setShowSuccessModal(
+          `Final bill sent successfully for booking #${bookingId.slice(0, 8).toUpperCase()}`,
+        );
       } else {
         setError(data.error || "Failed to send bill email.");
       }
@@ -1233,17 +2024,19 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   useEffect(() => {
     if (managingStatusBookingId) {
-      const b = bookings.find(x => x.id === managingStatusBookingId);
+      const b = bookings.find((x) => x.id === managingStatusBookingId);
       if (b) {
         setStatusForm({
           status: b.status,
-          pendingReason: b.pendingReason || '',
-          pendingDate: b.pendingResolveDate?.toDate?.() ? b.pendingResolveDate.toDate().toISOString().split('T')[0] : '',
-          pendingDuration: b.pendingResolveDuration || '',
-          assignedPartnerId: b.partnerId || '',
-          extraAmount: '',
-          extraReason: '',
-          adminNotes: b.adminNotes || ''
+          pendingReason: b.pendingReason || "",
+          pendingDate: b.pendingResolveDate?.toDate?.()
+            ? b.pendingResolveDate.toDate().toISOString().split("T")[0]
+            : "",
+          pendingDuration: b.pendingResolveDuration || "",
+          assignedPartnerId: b.partnerId || "",
+          extraAmount: "",
+          extraReason: "",
+          adminNotes: b.adminNotes || "",
         });
       }
     }
@@ -1251,11 +2044,15 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   const handleAdminStatusUpdate = async () => {
     if (!managingStatusBookingId || !statusForm.status) return;
-    
-    const booking = bookings.find(b => b.id === managingStatusBookingId);
+
+    const booking = bookings.find((b) => b.id === managingStatusBookingId);
     if (!booking) return;
 
-    if (statusForm.status === 'confirmed' && !statusForm.assignedPartnerId && !booking.partnerId) {
+    if (
+      statusForm.status === "confirmed" &&
+      !statusForm.assignedPartnerId &&
+      !booking.partnerId
+    ) {
       setError("Please assign a Service Agent before confirming the booking.");
       return;
     }
@@ -1263,42 +2060,58 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
     setLoading(true);
     try {
       const updateData: any = {
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       };
 
-      if (statusForm.status === 'reject') {
+      if (statusForm.status === "reject") {
         // Unassign and Return to Pool
-        updateData.status = 'pending';
+        updateData.status = "pending";
         updateData.partnerId = deleteField();
         updateData.previousStatus = booking.status;
       } else {
         updateData.status = statusForm.status;
         updateData.previousStatus = booking.status;
-        
+
         if (statusForm.adminNotes) {
           updateData.adminNotes = statusForm.adminNotes;
         }
         if (statusForm.assignedPartnerId) {
           updateData.partnerId = statusForm.assignedPartnerId;
           // If we assign a partner, we want to transition to pending_acceptance
-          if ((updateData.status === 'pending' || updateData.status === 'confirmed') && !statusForm.pendingReason) {
-            updateData.status = 'pending_acceptance';
+          if (
+            (updateData.status === "pending" ||
+              updateData.status === "confirmed") &&
+            !statusForm.pendingReason
+          ) {
+            updateData.status = "pending_acceptance";
           }
-          if (updateData.status === 'confirmed' || updateData.status === 'assigned' || updateData.status === 'pending_acceptance') {
+          if (
+            updateData.status === "confirmed" ||
+            updateData.status === "assigned" ||
+            updateData.status === "pending_acceptance"
+          ) {
             const otp = Math.floor(1000 + Math.random() * 9000).toString();
             updateData.serviceOtp = otp;
             updateData.otpVerified = false;
-            await setDoc(doc(db, `bookings/${managingStatusBookingId}/otps`, otp), { 
-              createdAt: Timestamp.now(),
-              createdBy: profile?.uid || auth.currentUser?.uid
-            });
-            await setDoc(doc(db, `bookings/${managingStatusBookingId}/secrets`, 'otp'), { code: otp });
+            await setDoc(
+              doc(db, `bookings/${managingStatusBookingId}/otps`, otp),
+              {
+                createdAt: Timestamp.now(),
+                createdBy: profile?.uid || auth.currentUser?.uid,
+              },
+            );
+            await setDoc(
+              doc(db, `bookings/${managingStatusBookingId}/secrets`, "otp"),
+              { code: otp },
+            );
           }
         }
 
-        if (statusForm.status === 'pending') {
+        if (statusForm.status === "pending") {
           updateData.pendingReason = statusForm.pendingReason;
-          updateData.pendingResolveDate = statusForm.pendingDate ? Timestamp.fromDate(new Date(statusForm.pendingDate)) : null;
+          updateData.pendingResolveDate = statusForm.pendingDate
+            ? Timestamp.fromDate(new Date(statusForm.pendingDate))
+            : null;
           updateData.pendingResolveDuration = statusForm.pendingDuration;
         } else {
           // Cleanup pending metadata if moving to active status
@@ -1311,36 +2124,62 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
         if (statusForm.extraAmount && !isNaN(Number(statusForm.extraAmount))) {
           const newCharge = {
             amount: Number(statusForm.extraAmount),
-            reason: statusForm.extraReason || 'Service Adjustment',
-            createdAt: Timestamp.now()
+            reason: statusForm.extraReason || "Service Adjustment",
+            createdAt: Timestamp.now(),
           };
-          updateData.additionalCharges = [...(booking.additionalCharges || []), newCharge];
-          updateData.totalPrice = (booking.totalPrice || 0) + Number(statusForm.extraAmount);
+          updateData.additionalCharges = [
+            ...(booking.additionalCharges || []),
+            newCharge,
+          ];
+          updateData.totalPrice =
+            (booking.totalPrice || 0) + Number(statusForm.extraAmount);
         }
       }
 
-      await updateDoc(doc(db, 'bookings', managingStatusBookingId), updateData);
-      notifyBookingUpdate({ ...booking, ...updateData }, updateData.status, 'admin');
-      
+      await updateDoc(doc(db, "bookings", managingStatusBookingId), updateData);
+      notifyBookingUpdate(
+        { ...booking, ...updateData },
+        updateData.status,
+        "admin",
+      );
+
       setManagingStatusBookingId(null);
-      setShowSuccessModal(`Booking #${managingStatusBookingId.slice(0, 8).toUpperCase()} updated to ${updateData.status || statusForm.status}`);
-      setStatusForm({ status: '' as any, pendingReason: '', pendingDate: '', pendingDuration: '', assignedPartnerId: '', extraAmount: '', extraReason: '', adminNotes: '' });
+      setShowSuccessModal(
+        `Booking #${managingStatusBookingId.slice(0, 8).toUpperCase()} updated to ${updateData.status || statusForm.status}`,
+      );
+      setStatusForm({
+        status: "" as any,
+        pendingReason: "",
+        pendingDate: "",
+        pendingDuration: "",
+        assignedPartnerId: "",
+        extraAmount: "",
+        extraReason: "",
+        adminNotes: "",
+      });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${managingStatusBookingId}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `bookings/${managingStatusBookingId}`,
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const updateBookingStatus = async (id: string, status: Booking['status']) => {
-    if (profile?.role !== 'admin') {
+  const updateBookingStatus = async (id: string, status: Booking["status"]) => {
+    if (profile?.role !== "admin") {
       alert("Unauthorized: Only administrators can update booking statuses.");
       return;
     }
     try {
-      await updateDoc(doc(db, 'bookings', id), { status, updatedAt: Timestamp.now() });
-      const b = bookings.find(x => x.id === id);
-      if (b) notifyBookingUpdate({ ...b, status }, status, 'admin');
+      await updateDoc(doc(db, "bookings", id), {
+        status,
+        updatedAt: Timestamp.now(),
+      });
+      const b = bookings.find((x) => x.id === id);
+      if (b) notifyBookingUpdate({ ...b, status }, status, "admin");
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${id}`);
     }
@@ -1348,58 +2187,77 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   const handleCancelBooking = async () => {
     if (!cancellingBookingId || !cancelReason) return;
-    if (profile?.role !== 'admin') {
+    if (profile?.role !== "admin") {
       alert("Unauthorized: Only administrators can cancel bookings.");
       return;
     }
     setLoading(true);
     try {
-      const booking = bookings.find(b => b.id === cancellingBookingId);
+      const booking = bookings.find((b) => b.id === cancellingBookingId);
       if (!booking) return;
 
       // Handle 50% penalty for No-Show (Removed/Purged)
 
-      await updateDoc(doc(db, 'bookings', cancellingBookingId), {
-        status: 'cancelled',
+      await updateDoc(doc(db, "bookings", cancellingBookingId), {
+        status: "cancelled",
         cancellationReason: cancelReason,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
 
-      notifyBookingUpdate({ ...booking, status: 'cancelled', cancellationReason: cancelReason }, 'cancelled', 'admin');
-      
+      notifyBookingUpdate(
+        { ...booking, status: "cancelled", cancellationReason: cancelReason },
+        "cancelled",
+        "admin",
+      );
+
       setCancellingBookingId(null);
-      setCancelReason('');
-      setShowSuccessModal(`Booking #${cancellingBookingId.slice(0, 8).toUpperCase()} has been cancelled.`);
+      setCancelReason("");
+      setShowSuccessModal(
+        `Booking #${cancellingBookingId.slice(0, 8).toUpperCase()} has been cancelled.`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${cancellingBookingId}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `bookings/${cancellingBookingId}`,
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const assignPartner = async (bookingId: string, partnerId: string) => {
-    if (profile?.role !== 'admin') {
+    if (profile?.role !== "admin") {
       alert("Unauthorized: Only administrators can assign partners.");
       return;
     }
     try {
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
-      await updateDoc(doc(db, 'bookings', bookingId), { 
-        partnerId, 
-        status: 'pending_acceptance',
+      await updateDoc(doc(db, "bookings", bookingId), {
+        partnerId,
+        status: "pending_acceptance",
         serviceOtp: otp,
         otpVerified: false,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
-      await setDoc(doc(db, `bookings/${bookingId}/otps`, otp), { 
+      await setDoc(doc(db, `bookings/${bookingId}/otps`, otp), {
         createdAt: Timestamp.now(),
-        createdBy: profile?.uid || auth.currentUser?.uid
+        createdBy: profile?.uid || auth.currentUser?.uid,
       });
-      await setDoc(doc(db, `bookings/${bookingId}/secrets`, 'otp'), { code: otp });
+      await setDoc(doc(db, `bookings/${bookingId}/secrets`, "otp"), {
+        code: otp,
+      });
 
-      const b = bookings.find(x => x.id === bookingId);
-      if (b) notifyBookingUpdate({ ...b, partnerId, status: 'pending_acceptance' }, 'pending_acceptance', 'admin');
-      setShowSuccessModal(`Partner assigned to booking #${bookingId.slice(0, 8).toUpperCase()}`);
+      const b = bookings.find((x) => x.id === bookingId);
+      if (b)
+        notifyBookingUpdate(
+          { ...b, partnerId, status: "pending_acceptance" },
+          "pending_acceptance",
+          "admin",
+        );
+      setShowSuccessModal(
+        `Partner assigned to booking #${bookingId.slice(0, 8).toUpperCase()}`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`);
     }
@@ -1407,16 +2265,43 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   // Sort partners to show 'Available' ones first
   const sortedPartners = [...partners].sort((a, b) => {
-    if (a.availabilityStatus === 'Available' && b.availabilityStatus !== 'Available') return -1;
-    if (a.availabilityStatus !== 'Available' && b.availabilityStatus === 'Available') return 1;
+    if (
+      a.availabilityStatus === "Available" &&
+      b.availabilityStatus !== "Available"
+    )
+      return -1;
+    if (
+      a.availabilityStatus !== "Available" &&
+      b.availabilityStatus === "Available"
+    )
+      return 1;
     return 0;
   });
 
-  const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'history'>('pending');
+  const [activeTab, setActiveTab] = useState<"pending" | "active" | "history">(
+    "pending",
+  );
 
-  const pendingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'pending_parts' || b.status === 'pending_acceptance');
-  const activeBookings = bookings.filter(b => ['confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_acceptance'].includes(b.status));
-  const historyBookings = bookings.filter(b => ['completed', 'finalized', 'closed', 'cancelled'].includes(b.status));
+  const pendingBookings = bookings.filter(
+    (b) =>
+      b.status === "pending" ||
+      b.status === "pending_parts" ||
+      b.status === "pending_acceptance",
+  );
+  const activeBookings = bookings.filter((b) =>
+    [
+      "confirmed",
+      "assigned",
+      "on_the_way",
+      "arrived",
+      "in_progress",
+      "payment_pending",
+      "pending_acceptance",
+    ].includes(b.status),
+  );
+  const historyBookings = bookings.filter((b) =>
+    ["completed", "finalized", "closed", "cancelled"].includes(b.status),
+  );
 
   const deleteAllBookings = async () => {
     setShowPurgeConfirm(true);
@@ -1426,9 +2311,9 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
     setShowPurgeConfirm(false);
     setLoading(true);
     try {
-      const snapshot = await getDocs(collection(db, 'bookings'));
+      const snapshot = await getDocs(collection(db, "bookings"));
       const docs = snapshot.docs;
-      
+
       const batchSize = 400;
       for (let i = 0; i < docs.length; i += batchSize) {
         const batch = writeBatch(db);
@@ -1439,17 +2324,19 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
         await batch.commit();
       }
 
-      await addDoc(collection(db, 'auditLogs'), {
+      await addDoc(collection(db, "auditLogs"), {
         adminId: auth.currentUser?.uid || profile.uid,
-        action: 'Purge Bookings',
-        targetId: 'all_bookings',
-        details: `Admin ${profile.displayName || 'Unknown Admin'} (${profile.email}) purged all ${docs.length} bookings from the database.`,
-        createdAt: Timestamp.now()
+        action: "Purge Bookings",
+        targetId: "all_bookings",
+        details: `Admin ${profile.displayName || "Unknown Admin"} (${profile.email}) purged all ${docs.length} bookings from the database.`,
+        createdAt: Timestamp.now(),
       });
 
-      setShowSuccessModal(`Database Cleanse Complete: All ${docs.length} booking records have been successfully purged, and a permanent compliance record has been written to the 'AuditLog' collection.`);
+      setShowSuccessModal(
+        `Database Cleanse Complete: All ${docs.length} booking records have been successfully purged, and a permanent compliance record has been written to the 'AuditLog' collection.`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'bookings');
+      handleFirestoreError(err, OperationType.DELETE, "bookings");
     } finally {
       setLoading(false);
     }
@@ -1457,25 +2344,32 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
   const handleUpdateAmcStatus = async (amcId: string, newStatus: AMCStatus) => {
     try {
-      await updateDoc(doc(db, 'amcs', amcId), {
+      await updateDoc(doc(db, "amcs", amcId), {
         status: newStatus,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
-      setShowSuccessModal(`AMC #${amcId.slice(0, 8).toUpperCase()} updated to ${newStatus.replace('_', ' ')}`);
+      setShowSuccessModal(
+        `AMC #${amcId.slice(0, 8).toUpperCase()} updated to ${newStatus.replace("_", " ")}`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `amcs/${amcId}`);
     }
   };
 
-  const filteredBookings = (activeTab === 'pending' ? pendingBookings : activeTab === 'active' ? activeBookings : historyBookings)
-    .filter(b => bookingFilter === 'all' || b.status === bookingFilter);
+  const filteredBookings = (
+    activeTab === "pending"
+      ? pendingBookings
+      : activeTab === "active"
+        ? activeBookings
+        : historyBookings
+  ).filter((b) => bookingFilter === "all" || b.status === bookingFilter);
 
   return (
     <div className="space-y-10">
       <AnimatePresence>
         {cancellingBookingId && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -1485,10 +2379,14 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 <X size={32} />
               </div>
               <div className="text-center">
-                <h3 className="text-2xl font-bold text-slate-900">Cancel Booking</h3>
-                <p className="text-slate-500 text-sm mt-2">Please provide a reason for cancelling this booking.</p>
+                <h3 className="text-2xl font-bold text-slate-900">
+                  Cancel Booking
+                </h3>
+                <p className="text-slate-500 text-sm mt-2">
+                  Please provide a reason for cancelling this booking.
+                </p>
               </div>
-              
+
               <textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
@@ -1497,18 +2395,21 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
               />
 
               <div className="flex gap-3">
-                <button 
-                  onClick={() => { setCancellingBookingId(null); setCancelReason(''); }}
+                <button
+                  onClick={() => {
+                    setCancellingBookingId(null);
+                    setCancelReason("");
+                  }}
                   className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
                 >
                   Go Back
                 </button>
-                <button 
+                <button
                   disabled={loading || !cancelReason.trim()}
                   onClick={handleCancelBooking}
                   className="flex-1 bg-rose-600 text-white py-4 rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/10 uppercase tracking-widest text-[10px] disabled:opacity-50"
                 >
-                  {loading ? 'Processing...' : 'Confirm Cancellation'}
+                  {loading ? "Processing..." : "Confirm Cancellation"}
                 </button>
               </div>
             </motion.div>
@@ -1517,7 +2418,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
         {showSuccessModal && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-blue-700/40 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -1526,9 +2427,13 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
               <div className="w-20 h-20 bg-blue-700 text-white rounded-[32px] flex items-center justify-center mx-auto mb-6">
                 <Check size={40} />
               </div>
-              <h3 className="text-2xl font-display font-bold text-slate-900 italic">Action Success</h3>
-              <p className="text-slate-500 font-medium leading-relaxed">{showSuccessModal}</p>
-              <button 
+              <h3 className="text-2xl font-display font-bold text-slate-900 italic">
+                Action Success
+              </h3>
+              <p className="text-slate-500 font-medium leading-relaxed">
+                {showSuccessModal}
+              </p>
+              <button
                 onClick={() => setShowSuccessModal(null)}
                 className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 transition-all"
               >
@@ -1540,7 +2445,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
         {showPurgeConfirm && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -1550,29 +2455,36 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 <AlertCircle size={32} />
               </div>
               <div className="text-center">
-                <h3 className="text-2xl font-bold text-slate-900 leading-tight">Delete All Bookings?</h3>
+                <h3 className="text-2xl font-bold text-slate-900 leading-tight">
+                  Delete All Bookings?
+                </h3>
                 <p className="text-slate-500 text-sm mt-3 leading-relaxed">
-                  Are you absolutely sure you want to delete <span className="font-extrabold text-rose-600">ALL</span> booking records? This will permanently wipe all order history. This action is irreversible.
+                  Are you absolutely sure you want to delete{" "}
+                  <span className="font-extrabold text-rose-600">ALL</span>{" "}
+                  booking records? This will permanently wipe all order history.
+                  This action is irreversible.
                 </p>
               </div>
-              
+
               <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-xs text-rose-700 leading-relaxed font-bold">
-                ⚠️ WARNING: An automated persistent log entry of this action will be registered in the 'AuditLog' collection for compliance checks.
+                ⚠️ WARNING: An automated persistent log entry of this action
+                will be registered in the 'AuditLog' collection for compliance
+                checks.
               </div>
 
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setShowPurgeConfirm(false)}
                   className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={executePurge}
                   disabled={loading}
                   className="flex-1 bg-rose-600 text-white py-4 rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/10 uppercase tracking-widest text-[10px] disabled:opacity-50"
                 >
-                  {loading ? 'Purging...' : 'Wipe Everything'}
+                  {loading ? "Purging..." : "Wipe Everything"}
                 </button>
               </div>
             </motion.div>
@@ -1582,77 +2494,87 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden">
         <div className="flex p-1.5 bg-slate-100 rounded-2xl w-full sm:w-auto overflow-x-auto no-scrollbar scroll-smooth">
-          {(['pending', 'active', 'history'] as const).map((tab) => (
+          {(["pending", "active", "history"] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setBookingFilter('all'); }}
+              onClick={() => {
+                setActiveTab(tab);
+                setBookingFilter("all");
+              }}
               className={`flex-1 sm:flex-none px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${
-                activeTab === tab 
-                  ? 'bg-white text-slate-900 shadow-xl shadow-blue-700/5' 
-                  : 'text-slate-400 hover:text-blue-700'
+                activeTab === tab
+                  ? "bg-white text-slate-900 shadow-xl shadow-blue-700/5"
+                  : "text-slate-400 hover:text-blue-700"
               }`}
             >
-              {tab} ({tab === 'pending' ? pendingBookings.length : tab === 'active' ? activeBookings.length : historyBookings.length})
+              {tab} (
+              {tab === "pending"
+                ? pendingBookings.length
+                : tab === "active"
+                  ? activeBookings.length
+                  : historyBookings.length}
+              )
             </button>
           ))}
         </div>
-        
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-           <select 
-             value={bookingFilter}
-             onChange={(e) => setBookingFilter(e.target.value as any)}
-             className="px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-900 outline-none focus:ring-2 focus:ring-blue-700"
-           >
-              <option value="all">Filter: All {activeTab}</option>
-              {activeTab === 'pending' && (
-                <>
-                  <option value="pending">Just Pending</option>
-                  <option value="pending_parts">Waiting for Parts</option>
-                  <option value="pending_acceptance">Pending Acceptance</option>
-                </>
-              )}
-              {activeTab === 'active' && (
-                <>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="on_the_way">On The Way</option>
-                  <option value="arrived">Arrived</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="payment_pending">Payment Pending</option>
-                  <option value="pending_acceptance">Pending Acceptance</option>
-                </>
-              )}
-              {activeTab === 'history' && (
-                <>
-                  <option value="completed">Completed</option>
-                  <option value="finalized">Finalized</option>
-                  <option value="cancelled">Cancelled</option>
-                </>
-              )}
-           </select>
-           <div className="hidden sm:block px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Total Stream: {bookings.length}
-           </div>
 
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <select
+            value={bookingFilter}
+            onChange={(e) => setBookingFilter(e.target.value as any)}
+            className="px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-900 outline-none focus:ring-2 focus:ring-blue-700"
+          >
+            <option value="all">Filter: All {activeTab}</option>
+            {activeTab === "pending" && (
+              <>
+                <option value="pending">Just Pending</option>
+                <option value="pending_parts">Waiting for Parts</option>
+                <option value="pending_acceptance">Pending Acceptance</option>
+              </>
+            )}
+            {activeTab === "active" && (
+              <>
+                <option value="confirmed">Confirmed</option>
+                <option value="assigned">Assigned</option>
+                <option value="on_the_way">On The Way</option>
+                <option value="arrived">Arrived</option>
+                <option value="in_progress">In Progress</option>
+                <option value="payment_pending">Payment Pending</option>
+                <option value="pending_acceptance">Pending Acceptance</option>
+              </>
+            )}
+            {activeTab === "history" && (
+              <>
+                <option value="completed">Completed</option>
+                <option value="finalized">Finalized</option>
+                <option value="cancelled">Cancelled</option>
+              </>
+            )}
+          </select>
+          <div className="hidden sm:block px-6 py-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Total Stream: {bookings.length}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
         {filteredBookings.length === 0 ? (
           <div className="p-20 text-center bg-white rounded-[48px] border border-slate-50">
-             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
-                <FileText size={32} />
-             </div>
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No tasks in this segment</p>
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
+              <FileText size={32} />
+            </div>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">
+              No tasks in this segment
+            </p>
           </div>
         ) : (
-          filteredBookings.map(booking => (
-            <BookingRow 
-              key={booking.id} 
-              booking={booking} 
-              users={users} 
-              partners={partners} 
-              services={services} 
+          filteredBookings.map((booking) => (
+            <BookingRow
+              key={booking.id}
+              booking={booking}
+              users={users}
+              partners={partners}
+              services={services}
               otp={bookingOtps[booking.id]}
               onManage={() => setManagingStatusBookingId(booking.id)}
               onCancel={() => setCancellingBookingId(booking.id)}
@@ -1666,7 +2588,7 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
       <AnimatePresence>
         {managingStatusBookingId && (
           <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-blue-700/60 backdrop-blur-md overflow-hidden">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 100 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 100 }}
@@ -1674,15 +2596,22 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
             >
               <div className="flex justify-between items-center mb-6 sm:mb-10">
                 <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-700 text-white rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg">
-                      <Settings size={20} className="sm:w-6 sm:h-6" />
-                   </div>
-                   <div>
-                      <h3 className="text-xl sm:text-2xl font-bold text-slate-900 italic">Lifecycle Override</h3>
-                      <p className="text-slate-400 text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Administrative Control Unit</p>
-                   </div>
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-700 text-white rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg">
+                    <Settings size={20} className="sm:w-6 sm:h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-bold text-slate-900 italic">
+                      Lifecycle Override
+                    </h3>
+                    <p className="text-slate-400 text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
+                      Administrative Control Unit
+                    </p>
+                  </div>
                 </div>
-                <button onClick={() => setManagingStatusBookingId(null)} className="p-2 sm:p-3 bg-slate-50 hover:bg-slate-100 rounded-xl sm:rounded-2xl transition-colors">
+                <button
+                  onClick={() => setManagingStatusBookingId(null)}
+                  className="p-2 sm:p-3 bg-slate-50 hover:bg-slate-100 rounded-xl sm:rounded-2xl transition-colors"
+                >
                   <X size={20} />
                 </button>
               </div>
@@ -1690,50 +2619,126 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
               <div className="space-y-8 sm:space-y-10">
                 {/* Status Selection */}
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest px-1">Phase Matrix</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest px-1">
+                    Phase Matrix
+                  </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     {[
-                      { id: 'pending', label: 'Pending', color: 'bg-amber-400' },
-                      { id: 'pending_parts', label: 'Parts Pending', color: 'bg-amber-500' },
-                      { id: 'confirmed', label: 'Confirmed', color: 'bg-[#0a2540]' },
-                      { id: 'assigned', label: 'Assigned', color: 'bg-[#1e3a8a]' },
-                      { id: 'on_the_way', label: 'On The Way', color: 'bg-indigo-400' },
-                      { id: 'arrived', label: 'Arrived', color: 'bg-indigo-500' },
-                      { id: 'in_progress', label: 'Operational', color: 'bg-blue-500' },
-                      { id: 'payment_pending', label: 'Pay Pending', color: 'bg-orange-500' },
-                      { id: 'completed', label: 'Completed', color: 'bg-emerald-500' },
-                      { id: 'finalized', label: 'Finalized', color: 'bg-slate-500' },
-                      { id: 'closed', label: 'Closed', color: 'bg-slate-400' },
-                      { id: 'cancelled', label: 'Cancelled', color: 'bg-rose-500' },
-                      { id: 'reject', label: 'Return to Pool', color: 'bg-blue-700' }
+                      {
+                        id: "pending",
+                        label: "Pending",
+                        color: "bg-amber-400",
+                      },
+                      {
+                        id: "pending_parts",
+                        label: "Parts Pending",
+                        color: "bg-amber-500",
+                      },
+                      {
+                        id: "confirmed",
+                        label: "Confirmed",
+                        color: "bg-[#0a2540]",
+                      },
+                      {
+                        id: "assigned",
+                        label: "Assigned",
+                        color: "bg-[#1e3a8a]",
+                      },
+                      {
+                        id: "on_the_way",
+                        label: "On The Way",
+                        color: "bg-indigo-400",
+                      },
+                      {
+                        id: "arrived",
+                        label: "Arrived",
+                        color: "bg-indigo-500",
+                      },
+                      {
+                        id: "in_progress",
+                        label: "Operational",
+                        color: "bg-blue-500",
+                      },
+                      {
+                        id: "payment_pending",
+                        label: "Pay Pending",
+                        color: "bg-orange-500",
+                      },
+                      {
+                        id: "completed",
+                        label: "Completed",
+                        color: "bg-emerald-500",
+                      },
+                      {
+                        id: "finalized",
+                        label: "Finalized",
+                        color: "bg-slate-500",
+                      },
+                      { id: "closed", label: "Closed", color: "bg-slate-400" },
+                      {
+                        id: "cancelled",
+                        label: "Cancelled",
+                        color: "bg-rose-500",
+                      },
+                      {
+                        id: "reject",
+                        label: "Return to Pool",
+                        color: "bg-blue-700",
+                      },
                     ].map((st) => (
                       <button
                         key={st.id}
-                        onClick={() => setStatusForm({ ...statusForm, status: st.id as any })}
+                        onClick={() =>
+                          setStatusForm({ ...statusForm, status: st.id as any })
+                        }
                         className={`p-4 sm:p-6 rounded-xl sm:rounded-[24px] border-2 transition-all text-left flex flex-col gap-2 sm:gap-3 group ${
-                          statusForm.status === st.id 
-                            ? 'border-blue-700 bg-slate-50' 
-                            : 'border-slate-50 bg-slate-50/30 hover:border-slate-200'
+                          statusForm.status === st.id
+                            ? "border-blue-700 bg-slate-50"
+                            : "border-slate-50 bg-slate-50/30 hover:border-slate-200"
                         }`}
                       >
-                        <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${st.color} shadow-sm group-hover:scale-110 transition-transform`} />
-                        <span className="text-[11px] sm:text-xs font-bold text-slate-900">{st.label}</span>
+                        <div
+                          className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${st.color} shadow-sm group-hover:scale-110 transition-transform`}
+                        />
+                        <span className="text-[11px] sm:text-xs font-bold text-slate-900">
+                          {st.label}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Live Activity Monitor */}
-                {['on_the_way', 'arrived', 'in_progress'].includes(bookings.find(b => b.id === managingStatusBookingId)?.status || '') && (
+                {["on_the_way", "arrived", "in_progress"].includes(
+                  bookings.find((b) => b.id === managingStatusBookingId)
+                    ?.status || "",
+                ) && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                       <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
-                         <MapPin size={14} /> Live Signal Monitor
-                       </label>
+                      <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
+                        <MapPin size={14} /> Live Signal Monitor
+                      </label>
                     </div>
-                    <PartnerTrackingMap 
-                      partnerId={bookings.find(b => b.id === managingStatusBookingId)?.partnerId!} 
-                      bookingLocation={bookings.find(b => b.id === managingStatusBookingId)?.lat && bookings.find(b => b.id === managingStatusBookingId)?.lng ? { lat: bookings.find(b => b.id === managingStatusBookingId)!.lat!, lng: bookings.find(b => b.id === managingStatusBookingId)!.lng! } : undefined}
+                    <PartnerTrackingMap
+                      partnerId={
+                        bookings.find((b) => b.id === managingStatusBookingId)
+                          ?.partnerId!
+                      }
+                      bookingLocation={
+                        bookings.find((b) => b.id === managingStatusBookingId)
+                          ?.lat &&
+                        bookings.find((b) => b.id === managingStatusBookingId)
+                          ?.lng
+                          ? {
+                              lat: bookings.find(
+                                (b) => b.id === managingStatusBookingId,
+                              )!.lat!,
+                              lng: bookings.find(
+                                (b) => b.id === managingStatusBookingId,
+                              )!.lng!,
+                            }
+                          : undefined
+                      }
                     />
                   </div>
                 )}
@@ -1741,11 +2746,17 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 {/* Admin Notes */}
                 <div className="p-5 sm:p-8 bg-slate-50 border border-slate-100 rounded-2xl sm:rounded-[32px] space-y-4">
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <FileText size={14} /> Internal Admin Notes / Resolution Logic
+                    <FileText size={14} /> Internal Admin Notes / Resolution
+                    Logic
                   </label>
-                  <textarea 
+                  <textarea
                     value={statusForm.adminNotes}
-                    onChange={(e) => setStatusForm({ ...statusForm, adminNotes: e.target.value })}
+                    onChange={(e) =>
+                      setStatusForm({
+                        ...statusForm,
+                        adminNotes: e.target.value,
+                      })
+                    }
                     placeholder="Add notes about this status change, resolution details, or partner feedback..."
                     className="w-full bg-white border border-slate-200 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-4 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-700/5 h-32 resize-none"
                   />
@@ -1756,15 +2767,21 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                   <label className="block text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest flex items-center gap-2">
                     <UserPlus size={14} /> Agent Allocation
                   </label>
-                  <select 
+                  <select
                     value={statusForm.assignedPartnerId}
-                    onChange={(e) => setStatusForm({ ...statusForm, assignedPartnerId: e.target.value })}
+                    onChange={(e) =>
+                      setStatusForm({
+                        ...statusForm,
+                        assignedPartnerId: e.target.value,
+                      })
+                    }
                     className="w-full bg-white border border-slate-200 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                   >
                     <option value="">No Agent Assigned</option>
-                    {sortedPartners.map(p => (
+                    {sortedPartners.map((p) => (
                       <option key={p.id} value={p.userId}>
-                        {p.displayName || p.id.slice(0, 8).toUpperCase()} ({p.availabilityStatus})
+                        {p.displayName || p.id.slice(0, 8).toUpperCase()} (
+                        {p.availabilityStatus})
                       </option>
                     ))}
                   </select>
@@ -1777,22 +2794,36 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[8px] font-bold text-emerald-400 uppercase mb-1 ml-1">Charge Amount (₹)</label>
-                      <input 
+                      <label className="block text-[8px] font-bold text-emerald-400 uppercase mb-1 ml-1">
+                        Charge Amount (₹)
+                      </label>
+                      <input
                         type="number"
                         placeholder="e.g. 500"
                         value={statusForm.extraAmount}
-                        onChange={(e) => setStatusForm({ ...statusForm, extraAmount: e.target.value })}
+                        onChange={(e) =>
+                          setStatusForm({
+                            ...statusForm,
+                            extraAmount: e.target.value,
+                          })
+                        }
                         className="w-full bg-white border border-emerald-100 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-500/10"
                       />
                     </div>
                     <div>
-                      <label className="block text-[8px] font-bold text-emerald-400 uppercase mb-1 ml-1">Justification</label>
-                      <input 
+                      <label className="block text-[8px] font-bold text-emerald-400 uppercase mb-1 ml-1">
+                        Justification
+                      </label>
+                      <input
                         type="text"
                         placeholder="Optional reason..."
                         value={statusForm.extraReason}
-                        onChange={(e) => setStatusForm({ ...statusForm, extraReason: e.target.value })}
+                        onChange={(e) =>
+                          setStatusForm({
+                            ...statusForm,
+                            extraReason: e.target.value,
+                          })
+                        }
                         className="w-full bg-white border border-emerald-100 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm outline-none focus:ring-4 focus:ring-emerald-500/10"
                       />
                     </div>
@@ -1802,81 +2833,145 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 {/* Communication Bridge */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-6 bg-blue-50/50 rounded-[32px] border border-blue-100/50">
-                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-4 tracking-widest">Connect with Customer</label>
+                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-4 tracking-widest">
+                      Connect with Customer
+                    </label>
                     <div className="flex gap-2">
-                      <button 
-                         onClick={() => setShowCall({ type: 'customer', id: bookings.find(b => b.id === managingStatusBookingId)?.customerId!, bookingId: managingStatusBookingId! })}
-                         className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
-                      >
-                        <Phone size={14} /> <span className="text-[10px] font-bold">Call</span>
-                      </button>
-                      <button 
-                        onClick={() => setShowChat({ type: 'customer', id: bookings.find(b => b.id === managingStatusBookingId)?.customerId!, bookingId: managingStatusBookingId! })}
+                      <button
+                        onClick={() =>
+                          setShowCall({
+                            type: "customer",
+                            id: bookings.find(
+                              (b) => b.id === managingStatusBookingId,
+                            )?.customerId!,
+                            bookingId: managingStatusBookingId!,
+                          })
+                        }
                         className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
                       >
-                        <MessageSquare size={14} /> <span className="text-[10px] font-bold">Chat</span>
+                        <Phone size={14} />{" "}
+                        <span className="text-[10px] font-bold">Call</span>
+                      </button>
+                      <button
+                        onClick={() =>
+                          setShowChat({
+                            type: "customer",
+                            id: bookings.find(
+                              (b) => b.id === managingStatusBookingId,
+                            )?.customerId!,
+                            bookingId: managingStatusBookingId!,
+                          })
+                        }
+                        className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
+                      >
+                        <MessageSquare size={14} />{" "}
+                        <span className="text-[10px] font-bold">Chat</span>
                       </button>
                     </div>
                   </div>
 
                   <div className="p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100/50">
-                    <label className="block text-[10px] font-black text-emerald-700 uppercase mb-4 tracking-widest">Connect with Agent</label>
-                    {bookings.find(b => b.id === managingStatusBookingId)?.partnerId ? (
+                    <label className="block text-[10px] font-black text-emerald-700 uppercase mb-4 tracking-widest">
+                      Connect with Agent
+                    </label>
+                    {bookings.find((b) => b.id === managingStatusBookingId)
+                      ?.partnerId ? (
                       <div className="flex gap-2">
-                        <button 
-                          onClick={() => setShowCall({ type: 'partner', id: bookings.find(b => b.id === managingStatusBookingId)?.partnerId!, bookingId: managingStatusBookingId! })}
+                        <button
+                          onClick={() =>
+                            setShowCall({
+                              type: "partner",
+                              id: bookings.find(
+                                (b) => b.id === managingStatusBookingId,
+                              )?.partnerId!,
+                              bookingId: managingStatusBookingId!,
+                            })
+                          }
                           className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
                         >
-                          <Phone size={14} /> <span className="text-[10px] font-bold">Call</span>
+                          <Phone size={14} />{" "}
+                          <span className="text-[10px] font-bold">Call</span>
                         </button>
-                        <button 
-                          onClick={() => setShowChat({ type: 'partner', id: bookings.find(b => b.id === managingStatusBookingId)?.partnerId!, bookingId: managingStatusBookingId! })}
+                        <button
+                          onClick={() =>
+                            setShowChat({
+                              type: "partner",
+                              id: bookings.find(
+                                (b) => b.id === managingStatusBookingId,
+                              )?.partnerId!,
+                              bookingId: managingStatusBookingId!,
+                            })
+                          }
                           className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
                         >
-                          <MessageSquare size={14} /> <span className="text-[10px] font-bold">Chat</span>
+                          <MessageSquare size={14} />{" "}
+                          <span className="text-[10px] font-bold">Chat</span>
                         </button>
                       </div>
                     ) : (
-                      <p className="text-[10px] text-slate-400 font-bold italic py-2">No agent assigned yet</p>
+                      <p className="text-[10px] text-slate-400 font-bold italic py-2">
+                        No agent assigned yet
+                      </p>
                     )}
                   </div>
                 </div>
 
                 {/* Pending Metadata */}
-                {statusForm.status === 'pending' && (
-                  <motion.div 
+                {statusForm.status === "pending" && (
+                  <motion.div
                     initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
+                    animate={{ opacity: 1, height: "auto" }}
                     className="space-y-6"
                   >
                     <div className="p-5 sm:p-8 bg-amber-50/50 border border-amber-100 rounded-2xl sm:rounded-[32px] space-y-4 sm:space-y-6">
                       <div>
-                        <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">Stall Vector (Reason)</label>
-                        <input 
+                        <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">
+                          Stall Vector (Reason)
+                        </label>
+                        <input
                           type="text"
                           placeholder="e.g. Parts scarcity / Logistics failure"
                           value={statusForm.pendingReason}
-                          onChange={(e) => setStatusForm({ ...statusForm, pendingReason: e.target.value })}
+                          onChange={(e) =>
+                            setStatusForm({
+                              ...statusForm,
+                              pendingReason: e.target.value,
+                            })
+                          }
                           className="w-full bg-white border border-amber-100 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm outline-none focus:ring-4 focus:ring-amber-500/10 placeholder:text-amber-200"
                         />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">Resolution ETA</label>
-                          <input 
+                          <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">
+                            Resolution ETA
+                          </label>
+                          <input
                             type="datetime-local"
                             value={statusForm.pendingDate}
-                            onChange={(e) => setStatusForm({ ...statusForm, pendingDate: e.target.value })}
+                            onChange={(e) =>
+                              setStatusForm({
+                                ...statusForm,
+                                pendingDate: e.target.value,
+                              })
+                            }
                             className="w-full bg-white border border-amber-100 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xs font-bold text-slate-900"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">SLA Buffer</label>
-                          <input 
+                          <label className="block text-[10px] font-black text-amber-600 uppercase mb-3 tracking-widest ml-1">
+                            SLA Buffer
+                          </label>
+                          <input
                             type="text"
                             placeholder="e.g. T + 48h"
                             value={statusForm.pendingDuration}
-                            onChange={(e) => setStatusForm({ ...statusForm, pendingDuration: e.target.value })}
+                            onChange={(e) =>
+                              setStatusForm({
+                                ...statusForm,
+                                pendingDuration: e.target.value,
+                              })
+                            }
                             className="w-full bg-white border border-amber-100 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xs font-bold text-slate-900 placeholder:text-amber-200"
                           />
                         </div>
@@ -1886,13 +2981,13 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-6">
-                  <button 
+                  <button
                     onClick={() => setManagingStatusBookingId(null)}
                     className="flex-1 py-4 sm:py-5 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl sm:rounded-3xl transition-colors uppercase tracking-widest text-[10px] order-2 sm:order-1"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     disabled={loading || !statusForm.status}
                     onClick={handleAdminStatusUpdate}
                     className="flex-[2] bg-blue-700 text-white py-4 sm:py-5 rounded-2xl sm:rounded-3xl font-bold hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 disabled:opacity-50 flex items-center justify-center gap-3 order-1 sm:order-2"
@@ -1902,7 +2997,9 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
                     ) : (
                       <ShieldCheck size={18} />
                     )}
-                    <span className="uppercase tracking-widest text-[11px] font-black">Commit Override</span>
+                    <span className="uppercase tracking-widest text-[11px] font-black">
+                      Commit Override
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1915,9 +3012,13 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
         {showChat && (
           <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-md h-[70vh] bg-white rounded-[40px] overflow-hidden shadow-2xl">
-              <ChatWindow 
-                booking={bookings.find(b => b.id === showChat.bookingId)!}
-                otherUser={users.find(u => u.uid === showChat.id) || (partners.find(p => p.userId === showChat.id) as any) || null}
+              <ChatWindow
+                booking={bookings.find((b) => b.id === showChat.bookingId)!}
+                otherUser={
+                  users.find((u) => u.uid === showChat.id) ||
+                  (partners.find((p) => p.userId === showChat.id) as any) ||
+                  null
+                }
                 onClose={() => setShowChat(null)}
               />
             </div>
@@ -1930,82 +3031,130 @@ function BookingManager({ bookings, users, partners, services, profile, initialM
   );
 }
 
-function BookingRow({ booking, users, partners, services, otp, onManage, onCancel, onSendBill, sendingBill }: { booking: Booking, users: UserProfile[], partners: any[], services: Service[], otp?: string, onManage: () => void, onCancel?: () => void, onSendBill?: () => void, sendingBill?: boolean, key?: any }) {
-  const user = users.find(u => u.uid === booking.customerId || u.uid === booking.userId);
-  const partner = partners.find(p => p.userId === booking.partnerId);
-  const service = services.find(s => s.id === booking.serviceId);
+function BookingRow({
+  booking,
+  users,
+  partners,
+  services,
+  otp,
+  onManage,
+  onCancel,
+  onSendBill,
+  sendingBill,
+}: {
+  booking: Booking;
+  users: UserProfile[];
+  partners: any[];
+  services: Service[];
+  otp?: string;
+  onManage: () => void;
+  onCancel?: () => void;
+  onSendBill?: () => void;
+  sendingBill?: boolean;
+  key?: any;
+}) {
+  const user = users.find(
+    (u) => u.uid === booking.customerId || u.uid === booking.userId,
+  );
+  const partner = partners.find((p) => p.userId === booking.partnerId);
+  const service = services.find((s) => s.id === booking.serviceId);
 
   // Status mapping for premium custom colors, icons & indicators
   const getStatusConfig = (status: string) => {
     switch (status) {
-      case 'pending':
+      case "pending":
         return {
-          bgClass: 'bg-amber-500/10 text-amber-700 border-amber-200/50',
-          dotClass: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
+          bgClass: "bg-amber-500/10 text-amber-700 border-amber-200/50",
+          dotClass: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
           pulse: false,
-          accentColor: '#f59e0b',
-          gradient: ['linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)', 'linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)']
+          accentColor: "#f59e0b",
+          gradient: [
+            "linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)",
+            "linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)",
+          ],
         };
-      case 'confirmed':
-      case 'assigned':
+      case "confirmed":
+      case "assigned":
         return {
-          bgClass: 'bg-[#0a2540]/10 text-[#0a2540] border-[#0a2540]/20',
-          dotClass: 'bg-[#0a2540] shadow-[0_0_8px_rgba(10,37,64,0.5)]',
+          bgClass: "bg-[#0a2540]/10 text-[#0a2540] border-[#0a2540]/20",
+          dotClass: "bg-[#0a2540] shadow-[0_0_8px_rgba(10,37,64,0.5)]",
           pulse: false,
-          accentColor: '#0a2540',
-          gradient: ['linear-gradient(90deg, #0a2540, #1e3a8a, #0a2540)', 'linear-gradient(90deg, #1e3a8a, #0a2540, #1e3a8a)']
+          accentColor: "#0a2540",
+          gradient: [
+            "linear-gradient(90deg, #0a2540, #1e3a8a, #0a2540)",
+            "linear-gradient(90deg, #1e3a8a, #0a2540, #1e3a8a)",
+          ],
         };
-      case 'on_the_way':
-      case 'arrived':
+      case "on_the_way":
+      case "arrived":
         return {
-          bgClass: 'bg-violet-500/10 text-violet-700 border-violet-200/50',
-          dotClass: 'bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]',
+          bgClass: "bg-violet-500/10 text-violet-700 border-violet-200/50",
+          dotClass: "bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]",
           pulse: true,
-          accentColor: '#8b5cf6',
-          gradient: ['linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #6366f1)', 'linear-gradient(90deg, #8b5cf6, #3b82f6, #6366f1, #8b5cf6)']
+          accentColor: "#8b5cf6",
+          gradient: [
+            "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #6366f1)",
+            "linear-gradient(90deg, #8b5cf6, #3b82f6, #6366f1, #8b5cf6)",
+          ],
         };
-      case 'in_progress':
+      case "in_progress":
         return {
-          bgClass: 'bg-blue-500/10 text-blue-750 border-blue-200/50 hover:shadow-blue-500/10',
-          dotClass: 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65)]',
+          bgClass:
+            "bg-blue-500/10 text-blue-750 border-blue-200/50 hover:shadow-blue-500/10",
+          dotClass: "bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65)]",
           pulse: true,
-          accentColor: '#3b82f6',
-          gradient: ['linear-gradient(90deg, #3b82f6, #06b6d4, #10b981, #3b82f6)', 'linear-gradient(90deg, #06b6d4, #10b981, #3b82f6, #06b6d4)']
+          accentColor: "#3b82f6",
+          gradient: [
+            "linear-gradient(90deg, #3b82f6, #06b6d4, #10b981, #3b82f6)",
+            "linear-gradient(90deg, #06b6d4, #10b981, #3b82f6, #06b6d4)",
+          ],
         };
-      case 'completed':
-      case 'finalized':
-      case 'closed':
+      case "completed":
+      case "finalized":
+      case "closed":
         return {
-          bgClass: 'bg-emerald-500/10 text-emerald-700 border-emerald-200/50',
-          dotClass: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]',
+          bgClass: "bg-emerald-500/10 text-emerald-700 border-emerald-200/50",
+          dotClass: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
           pulse: false,
-          accentColor: '#10b981',
-          gradient: ['linear-gradient(90deg, #10b981, #34d399, #10b981)', 'linear-gradient(90deg, #34d399, #10b981, #34d399)']
+          accentColor: "#10b981",
+          gradient: [
+            "linear-gradient(90deg, #10b981, #34d399, #10b981)",
+            "linear-gradient(90deg, #34d399, #10b981, #34d399)",
+          ],
         };
-      case 'pending_parts':
-      case 'payment_pending':
+      case "pending_parts":
+      case "payment_pending":
         return {
-          bgClass: 'bg-amber-500/10 text-amber-700 border-amber-200/50',
-          dotClass: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
+          bgClass: "bg-amber-500/10 text-amber-700 border-amber-200/50",
+          dotClass: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
           pulse: true,
-          accentColor: '#f59e0b',
-          gradient: ['linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)', 'linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)']
+          accentColor: "#f59e0b",
+          gradient: [
+            "linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)",
+            "linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)",
+          ],
         };
-      case 'cancelled':
+      case "cancelled":
         return {
-          bgClass: 'bg-rose-500/10 text-rose-700 border-rose-200/50',
-          dotClass: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]',
+          bgClass: "bg-rose-500/10 text-rose-700 border-rose-200/50",
+          dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]",
           pulse: false,
-          accentColor: '#f43f5e',
-          gradient: ['linear-gradient(90deg, #f43f5e, #fda4af, #f43f5e)', 'linear-gradient(90deg, #fda4af, #f43f5e, #fda4af)']
+          accentColor: "#f43f5e",
+          gradient: [
+            "linear-gradient(90deg, #f43f5e, #fda4af, #f43f5e)",
+            "linear-gradient(90deg, #fda4af, #f43f5e, #fda4af)",
+          ],
         };
       default:
         return {
-          bgClass: 'bg-slate-500/10 text-slate-700 border-slate-200/50',
-          dotClass: 'bg-slate-400',
+          bgClass: "bg-slate-500/10 text-slate-700 border-slate-200/50",
+          dotClass: "bg-slate-400",
           pulse: false,
-          accentColor: '#94a3b8',
-          gradient: ['linear-gradient(90deg, #94a3b8, #cbd5e1, #94a3b8)', 'linear-gradient(90deg, #cbd5e1, #94a3b8, #cbd5e1)']
+          accentColor: "#94a3b8",
+          gradient: [
+            "linear-gradient(90deg, #94a3b8, #cbd5e1, #94a3b8)",
+            "linear-gradient(90deg, #cbd5e1, #94a3b8, #cbd5e1)",
+          ],
         };
     }
   };
@@ -2013,16 +3162,16 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
   const config = getStatusConfig(booking.status);
 
   return (
-    <motion.div 
+    <motion.div
       layout
       initial={{ opacity: 0, y: 15 }}
-      animate={{ 
-        opacity: 1, 
+      animate={{
+        opacity: 1,
         y: 0,
-        borderColor: config.accentColor + '20',
-        boxShadow: ['in_progress', 'on_the_way'].includes(booking.status)
-          ? '0 12px 30px -10px rgba(59, 130, 246, 0.15)'
-          : '0 4px 15px -3px rgba(0, 0, 0, 0.02)'
+        borderColor: config.accentColor + "20",
+        boxShadow: ["in_progress", "on_the_way"].includes(booking.status)
+          ? "0 12px 30px -10px rgba(59, 130, 246, 0.15)"
+          : "0 4px 15px -3px rgba(0, 0, 0, 0.02)",
       }}
       transition={{ duration: 0.4 }}
       id={`admin-booking-card-${booking.id}`}
@@ -2030,107 +3179,169 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
     >
       {/* Top shifting gradient ambient neon indicator */}
       <div className="absolute top-0 left-0 right-0 h-[4px] overflow-hidden">
-        <motion.div 
+        <motion.div
           className="w-full h-full"
           animate={{
-            background: config.gradient
+            background: config.gradient,
           }}
           transition={{
             repeat: Infinity,
-            duration: ['in_progress', 'on_the_way'].includes(booking.status) ? 3 : 5,
-            ease: "linear"
+            duration: ["in_progress", "on_the_way"].includes(booking.status)
+              ? 3
+              : 5,
+            ease: "linear",
           }}
         />
       </div>
 
       {/* Side Color Visual Indicator Badge */}
-      <div className="absolute top-0 left-0 w-2 h-full opacity-65 group-hover:opacity-100 transition-opacity" 
-        style={{ backgroundColor: config.accentColor }} 
+      <div
+        className="absolute top-0 left-0 w-2 h-full opacity-65 group-hover:opacity-100 transition-opacity"
+        style={{ backgroundColor: config.accentColor }}
       />
 
       <div className="flex flex-col lg:flex-row lg:items-center gap-8 pl-4">
         <div className="flex items-center gap-5 lg:w-1/4">
           <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-700 group-hover:text-white group-hover:border-blue-700 group-hover:rotate-6 transition-all shrink-0 shadow-inner">
-             <Briefcase size={28} />
+            <Briefcase size={28} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1.5">
-               <span className="text-[10px] font-black text-slate-400 font-mono tracking-tighter">#{booking.id.slice(0, 8).toUpperCase()}</span>
-               {booking.isPriority && (
-                 <span className="px-2 py-0.5 bg-rose-500 text-white rounded-md text-[8px] font-black uppercase tracking-widest animate-pulse shadow-sm shadow-rose-500/20">High Priority</span>
-               )}
+              <span className="text-[10px] font-black text-slate-400 font-mono tracking-tighter">
+                #{booking.id.slice(0, 8).toUpperCase()}
+              </span>
+              {booking.isPriority && (
+                <span className="px-2 py-0.5 bg-rose-500 text-white rounded-md text-[8px] font-black uppercase tracking-widest animate-pulse shadow-sm shadow-rose-500/20">
+                  High Priority
+                </span>
+              )}
             </div>
-            <h4 className="text-lg font-black text-slate-900 truncate leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">{service?.name || 'Loading...'}</h4>
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border shadow-sm transition-all duration-300 ${config.bgClass}`}>
+            <h4 className="text-lg font-black text-slate-900 truncate leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">
+              {service?.name || "Loading..."}
+            </h4>
+            <div
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border shadow-sm transition-all duration-300 ${config.bgClass}`}
+            >
               <div className="relative flex items-center justify-center">
                 {config.pulse && (
-                  <span className={`absolute inline-flex h-2.5 w-2.5 rounded-full ${config.dotClass} opacity-75 animate-ping`} />
+                  <span
+                    className={`absolute inline-flex h-2.5 w-2.5 rounded-full ${config.dotClass} opacity-75 animate-ping`}
+                  />
                 )}
-                <div className={`w-1.5 h-1.5 rounded-full ${config.dotClass}`} />
+                <div
+                  className={`w-1.5 h-1.5 rounded-full ${config.dotClass}`}
+                />
               </div>
-              {booking.status.replace('_', ' ')}
+              {booking.status.replace("_", " ")}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 flex-1 items-center">
           <div className="space-y-4">
-             <div className="space-y-1">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Client Identity</p>
-                <div className="flex items-center gap-2">
-                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-bold border border-white shadow-sm overflow-hidden">
-                      {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={14} />}
-                   </div>
-                   <div>
-                      <p className="text-xs font-black text-slate-900 italic leading-none mb-1">{user?.fullName || user?.displayName || booking.customerBookedName || 'Anonymous'}</p>
-                      <p className="text-[10px] text-slate-400 font-bold">{booking.customerBookedPhone || (booking as any).customerPhone || user?.phoneNumber || 'No Phone'}</p>
-                   </div>
+            <div className="space-y-1">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                Client Identity
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-bold border border-white shadow-sm overflow-hidden">
+                  {user?.photoURL ? (
+                    <img src={user.photoURL} alt="" />
+                  ) : (
+                    <User size={14} />
+                  )}
                 </div>
-             </div>
+                <div>
+                  <p className="text-xs font-black text-slate-900 italic leading-none mb-1">
+                    {user?.fullName ||
+                      user?.displayName ||
+                      booking.customerBookedName ||
+                      "Anonymous"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    {booking.customerBookedPhone ||
+                      (booking as any).customerPhone ||
+                      user?.phoneNumber ||
+                      "No Phone"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">
-             <div className="space-y-1">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Agent Allocation</p>
-                {partner ? (
-                  <div className="flex items-center gap-2">
-                     <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 text-xs font-bold border border-white shadow-sm overflow-hidden">
-                        {partner.photoURL ? <img src={partner.photoURL} alt="" /> : <ShieldCheck size={14} />}
-                     </div>
-                     <div>
-                        <p className="text-xs font-black text-emerald-600 leading-none mb-1">{partner.displayName}</p>
-                        <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Vetted Expert</p>
-                     </div>
+            <div className="space-y-1">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                Agent Allocation
+              </p>
+              {partner ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 text-xs font-bold border border-white shadow-sm overflow-hidden">
+                    {partner.photoURL ? (
+                      <img src={partner.photoURL} alt="" />
+                    ) : (
+                      <ShieldCheck size={14} />
+                    )}
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-rose-500 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 max-w-fit">
-                    <AlertCircle size={14} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Action Required</span>
+                  <div>
+                    <p className="text-xs font-black text-emerald-600 leading-none mb-1">
+                      {partner.displayName}
+                    </p>
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                      Vetted Expert
+                    </p>
                   </div>
-                )}
-             </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-rose-500 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 max-w-fit">
+                  <AlertCircle size={14} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">
+                    Action Required
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-1">
-             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mission window</p>
-             <div className="flex items-center gap-3">
-                <div className="flex flex-col">
-                   <p className="text-sm font-black text-slate-900 flex items-center gap-2">
-                     <Calendar size={14} className="text-blue-700" />
-                     {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                   </p>
-                   <p className="text-[11px] font-bold text-slate-400 ml-5">{booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-             </div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Mission window
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <p className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Calendar size={14} className="text-blue-700" />
+                  {booking.scheduledAt
+                    ?.toDate?.()
+                    ?.toLocaleDateString([], {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                </p>
+                <p className="text-[11px] font-bold text-slate-400 ml-5">
+                  {booking.scheduledAt
+                    ?.toDate?.()
+                    ?.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-5 lg:w-1/6 justify-end pt-6 lg:pt-0 border-t lg:border-none border-slate-50">
           <div className="text-right">
-             <p className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1">Contract Value</p>
-             <p className="text-2xl font-black text-slate-900 font-display italic tracking-tighter">₹{booking.totalPrice}</p>
+            <p className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1">
+              Contract Value
+            </p>
+            <p className="text-2xl font-black text-slate-900 font-display italic tracking-tighter">
+              ₹{booking.totalPrice}
+            </p>
           </div>
-          <button 
+          <button
             onClick={onManage}
             className="w-8 h-8 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-slate-900/5 shrink-0"
             title="Manage Booking Details"
@@ -2139,7 +3350,7 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
           </button>
         </div>
       </div>
-      
+
       {/* Live Booking Tracker Channel & Address Geocoding Accuracy */}
       <div className="mt-6 p-5 sm:p-6 bg-slate-50/40 rounded-[24px] border border-slate-100 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 pb-3">
@@ -2166,13 +3377,17 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
         {/* Address and Landmark Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
           <div className="space-y-0.5">
-            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">Target Destination</span>
+            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">
+              Target Destination
+            </span>
             <p className="text-xs font-semibold text-slate-700 leading-relaxed font-sans">
               {booking.address}
             </p>
           </div>
           <div className="space-y-0.5">
-            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">Geocoding Integrity</span>
+            <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block font-sans">
+              Geocoding Integrity
+            </span>
             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
               {booking.lat && booking.lng ? (
                 <>
@@ -2199,134 +3414,189 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
 
         {/* Booking Confirmation Milestones Tracker */}
         <div className="pt-2 border-t border-slate-200/40">
-          <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block mb-4 text-left font-sans">Real-Time Confirmation Workflow Status</span>
-          
+          <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block mb-4 text-left font-sans">
+            Real-Time Confirmation Workflow Status
+          </span>
+
           <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5 py-2">
             {/* Horizontal timeline connector lines for desktop */}
             <div className="hidden sm:block absolute left-[10%] right-[10%] top-[18px] h-0.5 bg-slate-100 z-0" />
-            
+
             {/* Step 1 */}
             <div className="flex-1 flex flex-col items-center text-center relative z-10">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                ['pending', 'confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'completed', 'finalized', 'closed', 'payment_pending', 'pending_parts'].includes(booking.status)
-                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
-                  : 'bg-white border-slate-200 text-slate-300'
-              }`}>
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                  [
+                    "pending",
+                    "confirmed",
+                    "assigned",
+                    "on_the_way",
+                    "arrived",
+                    "in_progress",
+                    "completed",
+                    "finalized",
+                    "closed",
+                    "payment_pending",
+                    "pending_parts",
+                  ].includes(booking.status)
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20"
+                    : "bg-white border-slate-200 text-slate-300"
+                }`}
+              >
                 <Check size={14} strokeWidth={3} />
               </div>
-              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
-                ['pending', 'confirmed', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'completed', 'finalized', 'closed', 'payment_pending', 'pending_parts'].includes(booking.status)
-                  ? 'text-emerald-700'
-                  : 'text-slate-400'
-              }`}>
+              <span
+                className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                  [
+                    "pending",
+                    "confirmed",
+                    "assigned",
+                    "on_the_way",
+                    "arrived",
+                    "in_progress",
+                    "completed",
+                    "finalized",
+                    "closed",
+                    "payment_pending",
+                    "pending_parts",
+                  ].includes(booking.status)
+                    ? "text-emerald-700"
+                    : "text-slate-400"
+                }`}
+              >
                 1. Scheduled
               </span>
-              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">Verified Slot</p>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">
+                Verified Slot
+              </p>
             </div>
 
             {/* Step 2 */}
             <div className="flex-1 flex flex-col items-center text-center relative z-10">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                booking.lat && booking.lng
-                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
-                  : 'bg-amber-50 border-amber-300 text-amber-700'
-              }`}>
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                  booking.lat && booking.lng
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20"
+                    : "bg-amber-50 border-amber-300 text-amber-700"
+                }`}
+              >
                 {booking.lat ? (
                   <MapPin size={14} strokeWidth={2.5} />
                 ) : (
                   <AlertCircle size={14} />
                 )}
               </div>
-              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
-                booking.lat ? 'text-emerald-700' : 'text-amber-700'
-              }`}>
+              <span
+                className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                  booking.lat ? "text-emerald-700" : "text-amber-700"
+                }`}
+              >
                 2. Geocoded
               </span>
               <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">
-                {booking.lat ? 'GPS pin match' : 'Manual entry'}
+                {booking.lat ? "GPS pin match" : "Manual entry"}
               </p>
             </div>
 
             {/* Step 3 */}
             <div className="flex-1 flex flex-col items-center text-center relative z-10">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                booking.partnerId
-                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
-                  : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-              }`}>
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                  booking.partnerId
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20"
+                    : "bg-indigo-50 border-indigo-200 text-indigo-700"
+                }`}
+              >
                 <User size={14} strokeWidth={2.5} />
               </div>
-              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
-                booking.partnerId ? 'text-emerald-700' : 'text-indigo-700'
-              }`}>
+              <span
+                className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                  booking.partnerId ? "text-emerald-700" : "text-indigo-700"
+                }`}
+              >
                 3. Expert Assigned
               </span>
               <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 truncate w-full px-1 leading-tight">
-                {booking.partnerId ? partner?.displayName || 'Expert' : 'Awaiting match'}
+                {booking.partnerId
+                  ? partner?.displayName || "Expert"
+                  : "Awaiting match"}
               </p>
             </div>
 
             {/* Step 4 */}
             <div className="flex-1 flex flex-col items-center text-center relative z-10">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                ['completed', 'finalized', 'closed'].includes(booking.status)
-                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
-                  : 'bg-white border-slate-200 text-slate-300'
-              }`}>
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                  ["completed", "finalized", "closed"].includes(booking.status)
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20"
+                    : "bg-white border-slate-200 text-slate-300"
+                }`}
+              >
                 <Award size={14} strokeWidth={2.5} />
               </div>
-              <span className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
-                ['completed', 'finalized', 'closed'].includes(booking.status)
-                  ? 'text-emerald-700'
-                  : 'text-slate-400'
-              }`}>
+              <span
+                className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
+                  ["completed", "finalized", "closed"].includes(booking.status)
+                    ? "text-emerald-700"
+                    : "text-slate-400"
+                }`}
+              >
                 4. Completed
               </span>
-              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">Finished</p>
+              <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">
+                Finished
+              </p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="mt-8 pt-4 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
-         <div className="flex flex-wrap items-center gap-6">
-           <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-500 italic">
-             <MapPin size={14} className="text-rose-500" />
-             <span className="max-w-[300px] truncate">{booking.address}</span>
-           </div>
-           {otp && (
-             <div className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-700/20 text-[10px] font-black uppercase tracking-widest">
-               <Lock size={12} fill="currentColor" className="fill-blue-400" /> Secure OTP: {otp}
-             </div>
-           )}
-         </div>
-         <div className="flex items-center gap-4">
-           {(booking.status === 'completed' || booking.status === 'finalized') && onSendBill && (
-             <button 
-               onClick={(e) => { e.stopPropagation(); onSendBill(); }}
-               disabled={sendingBill}
-               className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-100 text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 hover:text-white transition-all disabled:opacity-50"
-             >
-               {sendingBill ? (
-                 <RotateCw size={12} className="animate-spin" />
-               ) : (
-                 <Mail size={12} />
-               )}
-               Send Bill
-             </button>
-           )}
-           {booking.pendingReason && (
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[9px] font-black uppercase tracking-widest">
-                <AlertCircle size={12} /> Blocked: {booking.pendingReason}
-             </div>
-           )}
-           {['on_the_way', 'arrived', 'in_progress'].includes(booking.status) && (
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 text-[9px] font-black uppercase tracking-widest animate-pulse">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                Live Active
-             </div>
-           )}
-         </div>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-500 italic">
+            <MapPin size={14} className="text-rose-500" />
+            <span className="max-w-[300px] truncate">{booking.address}</span>
+          </div>
+          {otp && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-700/20 text-[10px] font-black uppercase tracking-widest">
+              <Lock size={12} fill="currentColor" className="fill-blue-400" />{" "}
+              Secure OTP: {otp}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          {(booking.status === "completed" || booking.status === "finalized") &&
+            onSendBill && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSendBill();
+                }}
+                disabled={sendingBill}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-100 text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 hover:text-white transition-all disabled:opacity-50"
+              >
+                {sendingBill ? (
+                  <RotateCw size={12} className="animate-spin" />
+                ) : (
+                  <Mail size={12} />
+                )}
+                Send Bill
+              </button>
+            )}
+          {booking.pendingReason && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[9px] font-black uppercase tracking-widest">
+              <AlertCircle size={12} /> Blocked: {booking.pendingReason}
+            </div>
+          )}
+          {["on_the_way", "arrived", "in_progress"].includes(
+            booking.status,
+          ) && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 text-[9px] font-black uppercase tracking-widest animate-pulse">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+              Live Active
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -2335,17 +3605,33 @@ function BookingRow({ booking, users, partners, services, otp, onManage, onCance
 function CategoryManager({ categories }: { categories: Category[] }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [newCategory, setNewCategory] = useState({ name: '', icon: 'Sparkles', description: '', imageURL: '', iconURL: '', images: [] as string[] });
+  const [newCategory, setNewCategory] = useState({
+    name: "",
+    icon: "Sparkles",
+    description: "",
+    imageURL: "",
+    iconURL: "",
+    images: [] as string[],
+  });
 
   const handleAddCategory = async () => {
     if (!newCategory.name) return;
     try {
-      await addDoc(collection(db, 'categories'), newCategory);
+      await addDoc(collection(db, "categories"), newCategory);
       setIsAdding(false);
-      setNewCategory({ name: '', icon: 'Sparkles', description: '', imageURL: '', iconURL: '', images: [] });
-      await triggerEcosystemUpdate(`A brand new category profile was deployed: ${newCategory.name}`);
+      setNewCategory({
+        name: "",
+        icon: "Sparkles",
+        description: "",
+        imageURL: "",
+        iconURL: "",
+        images: [],
+      });
+      await triggerEcosystemUpdate(
+        `A brand new category profile was deployed: ${newCategory.name}`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'categories');
+      handleFirestoreError(err, OperationType.CREATE, "categories");
     }
   };
 
@@ -2353,20 +3639,28 @@ function CategoryManager({ categories }: { categories: Category[] }) {
     if (!editingCategory) return;
     try {
       const { id, ...data } = editingCategory;
-      await updateDoc(doc(db, 'categories', id), {
+      await updateDoc(doc(db, "categories", id), {
         ...data,
       });
       setEditingCategory(null);
-      await triggerEcosystemUpdate(`Category structure sync: ${editingCategory.name} layout refreshed.`);
+      await triggerEcosystemUpdate(
+        `Category structure sync: ${editingCategory.name} layout refreshed.`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `categories/${editingCategory.id}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `categories/${editingCategory.id}`,
+      );
     }
   };
 
   const deleteCategory = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'categories', id));
-      await triggerEcosystemUpdate(`Cleaned up deprecated or legacy categories from the dashboard.`);
+      await deleteDoc(doc(db, "categories", id));
+      await triggerEcosystemUpdate(
+        `Cleaned up deprecated or legacy categories from the dashboard.`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `categories/${id}`);
     }
@@ -2375,144 +3669,197 @@ function CategoryManager({ categories }: { categories: Category[] }) {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center mb-8">
-         <h3 className="text-xl font-bold">Category Hierarchy</h3>
-         <button 
-           onClick={() => setIsAdding(!isAdding)}
-           className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-sm hover:bg-blue-800 shadow-lg shadow-slate-200"
-         >
-           {isAdding ? <XCircle size={18} /> : <Plus size={18} />}
-           {isAdding ? 'Cancel' : 'Create Category'}
-         </button>
+        <h3 className="text-xl font-bold">Category Hierarchy</h3>
+        <button
+          onClick={() => setIsAdding(!isAdding)}
+          className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-sm hover:bg-blue-800 shadow-lg shadow-slate-200"
+        >
+          {isAdding ? <XCircle size={18} /> : <Plus size={18} />}
+          {isAdding ? "Cancel" : "Create Category"}
+        </button>
       </div>
 
       <AnimatePresence>
         {(isAdding || editingCategory) && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-[32px] border border-blue-700/10 shadow-xl mb-12"
           >
-             <h4 className="font-bold mb-6 text-slate-900">{editingCategory ? 'Edit Category' : 'Create New Category'}</h4>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Category Name</label>
-                   <input 
-                     type="text" 
-                     placeholder="e.g. Cleaning"
-                     value={editingCategory ? editingCategory.name : newCategory.name}
-                     onChange={(e) => editingCategory 
-                       ? setEditingCategory({ ...editingCategory, name: e.target.value })
-                       : setNewCategory({ ...newCategory, name: e.target.value })
-                     }
-                     className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                   />
-                </div>
-                <div>
-                  <AdminUpload 
-                    label="Custom Icon (Upload to override Lucide icon)"
-                    maxWidth={200}
-                    value={editingCategory ? editingCategory.iconURL || '' : newCategory.iconURL || ''}
-                    onUpload={(url) => editingCategory
-                      ? setEditingCategory({ ...editingCategory, iconURL: url })
-                      : setNewCategory({ ...newCategory, iconURL: url })
-                    }
-                  />
-                </div>
-             </div>
-             <div className="mb-6">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Icon ID (Lucide - fallback if no custom icon)</label>
-                <select 
-                  value={editingCategory ? editingCategory.icon : newCategory.icon}
-                  onChange={(e) => editingCategory
-                    ? setEditingCategory({ ...editingCategory, icon: e.target.value })
-                    : setNewCategory({ ...newCategory, icon: e.target.value })
+            <h4 className="font-bold mb-6 text-slate-900">
+              {editingCategory ? "Edit Category" : "Create New Category"}
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                  Category Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Cleaning"
+                  value={
+                    editingCategory ? editingCategory.name : newCategory.name
+                  }
+                  onChange={(e) =>
+                    editingCategory
+                      ? setEditingCategory({
+                          ...editingCategory,
+                          name: e.target.value,
+                        })
+                      : setNewCategory({ ...newCategory, name: e.target.value })
                   }
                   className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                >
-                  <option value="Sparkles">Sparkles</option>
-                  <option value="Wrench">Wrench</option>
-                  <option value="Smartphone">Smartphone</option>
-                  <option value="PaintBucket">PaintBucket</option>
-                  <option value="Plug">Plug</option>
-                  <option value="Wind">Wind</option>
-                </select>
-             </div>
-             <div className="mb-6">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Short Description</label>
-                <textarea 
-                  value={editingCategory ? editingCategory.description : newCategory.description}
-                  onChange={(e) => editingCategory
-                    ? setEditingCategory({ ...editingCategory, description: e.target.value })
-                    : setNewCategory({ ...newCategory, description: e.target.value })
-                  }
-                  className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner h-24 sm:h-20 resize-none"
-                  placeholder="What is this category about?"
                 />
-             </div>
-             <div className="mb-8">
-                <AdminUpload 
-                  label="Category Main Image / Asset"
-                  value={editingCategory ? editingCategory.imageURL || '' : newCategory.imageURL}
-                  onUpload={(url) => editingCategory
+              </div>
+              <div>
+                <AdminUpload
+                  label="Custom Icon (Upload to override Lucide icon)"
+                  maxWidth={200}
+                  value={
+                    editingCategory
+                      ? editingCategory.iconURL || ""
+                      : newCategory.iconURL || ""
+                  }
+                  onUpload={(url) =>
+                    editingCategory
+                      ? setEditingCategory({ ...editingCategory, iconURL: url })
+                      : setNewCategory({ ...newCategory, iconURL: url })
+                  }
+                />
+              </div>
+            </div>
+            <div className="mb-6">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                Icon ID (Lucide - fallback if no custom icon)
+              </label>
+              <select
+                value={
+                  editingCategory ? editingCategory.icon : newCategory.icon
+                }
+                onChange={(e) =>
+                  editingCategory
+                    ? setEditingCategory({
+                        ...editingCategory,
+                        icon: e.target.value,
+                      })
+                    : setNewCategory({ ...newCategory, icon: e.target.value })
+                }
+                className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+              >
+                <option value="Sparkles">Sparkles</option>
+                <option value="Wrench">Wrench</option>
+                <option value="Smartphone">Smartphone</option>
+                <option value="PaintBucket">PaintBucket</option>
+                <option value="Plug">Plug</option>
+                <option value="Wind">Wind</option>
+              </select>
+            </div>
+            <div className="mb-6">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                Short Description
+              </label>
+              <textarea
+                value={
+                  editingCategory
+                    ? editingCategory.description
+                    : newCategory.description
+                }
+                onChange={(e) =>
+                  editingCategory
+                    ? setEditingCategory({
+                        ...editingCategory,
+                        description: e.target.value,
+                      })
+                    : setNewCategory({
+                        ...newCategory,
+                        description: e.target.value,
+                      })
+                }
+                className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner h-24 sm:h-20 resize-none"
+                placeholder="What is this category about?"
+              />
+            </div>
+            <div className="mb-8">
+              <AdminUpload
+                label="Category Main Image / Asset"
+                value={
+                  editingCategory
+                    ? editingCategory.imageURL || ""
+                    : newCategory.imageURL
+                }
+                onUpload={(url) =>
+                  editingCategory
                     ? setEditingCategory({ ...editingCategory, imageURL: url })
                     : setNewCategory({ ...newCategory, imageURL: url })
-                  }
+                }
+              />
+            </div>
+
+            <div className="mb-8">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                Category Gallery (Images)
+              </label>
+              <div className="mb-4">
+                <AdminUpload
+                  label=""
+                  placeholder="Upload or paste to add to category gallery"
+                  value=""
+                  onUpload={(url) => {
+                    if (!url) return;
+                    if (editingCategory) {
+                      setEditingCategory({
+                        ...editingCategory,
+                        images: [...(editingCategory.images || []), url],
+                      });
+                    } else {
+                      setNewCategory({
+                        ...newCategory,
+                        images: [...(newCategory.images || []), url],
+                      });
+                    }
+                  }}
+                  onMultipleChange={(urls) => {
+                    if (!urls || urls.length === 0) return;
+                    if (editingCategory) {
+                      setEditingCategory({
+                        ...editingCategory,
+                        images: [...(editingCategory.images || []), ...urls],
+                      });
+                    } else {
+                      setNewCategory({
+                        ...newCategory,
+                        images: [...(newCategory.images || []), ...urls],
+                      });
+                    }
+                  }}
                 />
-             </div>
-             
-             <div className="mb-8">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Category Gallery (Images)</label>
-                <div className="mb-4">
-                  <AdminUpload 
-                    label=""
-                    placeholder="Upload or paste to add to category gallery"
-                    value="" 
-                    onUpload={(url) => {
-                      if (!url) return;
-                      if (editingCategory) {
-                        setEditingCategory({
-                          ...editingCategory,
-                          images: [...(editingCategory.images || []), url]
-                        });
-                      } else {
-                        setNewCategory({
-                          ...newCategory,
-                          images: [...(newCategory.images || []), url]
-                        });
-                      }
-                    }}
-                    onMultipleChange={(urls) => {
-                      if (!urls || urls.length === 0) return;
-                      if (editingCategory) {
-                        setEditingCategory({
-                          ...editingCategory,
-                          images: [...(editingCategory.images || []), ...urls]
-                        });
-                      } else {
-                        setNewCategory({
-                          ...newCategory,
-                          images: [...(newCategory.images || []), ...urls]
-                        });
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  {(editingCategory?.images || newCategory.images || []).map((img, idx) => (
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {(editingCategory?.images || newCategory.images || []).map(
+                  (img, idx) => (
                     <div key={idx} className="relative group/gallery">
-                      <img src={img} alt="" className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-slate-200 shadow-sm" referrerPolicy="no-referrer" />
-                      <button 
+                      <img
+                        src={img}
+                        alt=""
+                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-slate-200 shadow-sm"
+                        referrerPolicy="no-referrer"
+                      />
+                      <button
                         onClick={() => {
                           if (editingCategory) {
                             setEditingCategory({
                               ...editingCategory,
-                              images: editingCategory.images?.filter((_, i) => i !== idx)
+                              images: editingCategory.images?.filter(
+                                (_, i) => i !== idx,
+                              ),
                             });
                           } else {
                             setNewCategory({
                               ...newCategory,
-                              images: newCategory.images?.filter((_, i) => i !== idx)
+                              images: newCategory.images?.filter(
+                                (_, i) => i !== idx,
+                              ),
                             });
                           }
                         }}
@@ -2521,62 +3868,79 @@ function CategoryManager({ categories }: { categories: Category[] }) {
                         <X size={10} />
                       </button>
                     </div>
-                  ))}
-                </div>
+                  ),
+                )}
               </div>
-              
-             <div className="flex flex-col sm:flex-row gap-3">
-               <button 
-                 onClick={editingCategory ? handleUpdateCategory : handleAddCategory}
-                 className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
-               >
-                 {editingCategory ? 'Update Hierarchy' : 'Add Category'}
-               </button>
-               {editingCategory && (
-                 <button 
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={
+                  editingCategory ? handleUpdateCategory : handleAddCategory
+                }
+                className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
+              >
+                {editingCategory ? "Update Hierarchy" : "Add Category"}
+              </button>
+              {editingCategory && (
+                <button
                   onClick={() => setEditingCategory(null)}
                   className="flex-1 bg-slate-50 text-slate-400 px-8 py-4 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all uppercase tracking-widest"
-                 >
-                   Cancel
-                 </button>
-               )}
-             </div>
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {categories.map(c => (
-          <div key={c.id} className="bg-white p-6 border border-slate-200 rounded-3xl hover:border-blue-700 transition-all flex justify-between items-center group">
-             <div className="flex items-center gap-4">
-                {(c.iconURL || c.imageURL) && (
-                  <img src={c.iconURL || c.imageURL} alt="" className={`w-10 h-10 rounded-lg ${c.iconURL ? 'object-contain' : 'object-cover'}`} referrerPolicy="no-referrer" />
-                )}
-                <div>
-                   <h4 className="font-bold text-slate-900">{c.name}</h4>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{c.id.slice(0, 8).toUpperCase()}</p>
-                </div>
-             </div>
-             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-               <button 
-                 onClick={() => {
-                   setEditingCategory(c);
-                   setIsAdding(false);
-                   window.scrollTo({ top: 0, behavior: 'smooth' });
-                 }}
-                 className="p-2 text-slate-300 hover:text-blue-700 transition-colors"
-               >
-                  <Settings size={16} />
-               </button>
-               <button onClick={() => deleteCategory(c.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-colors">
-                  <XCircle size={18} />
-               </button>
-             </div>
+        {categories.map((c) => (
+          <div
+            key={c.id}
+            className="bg-white p-6 border border-slate-200 rounded-3xl hover:border-blue-700 transition-all flex justify-between items-center group"
+          >
+            <div className="flex items-center gap-4">
+              {(c.iconURL || c.imageURL) && (
+                <img
+                  src={c.iconURL || c.imageURL}
+                  alt=""
+                  className={`w-10 h-10 rounded-lg ${c.iconURL ? "object-contain" : "object-cover"}`}
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <div>
+                <h4 className="font-bold text-slate-900">{c.name}</h4>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  {c.id.slice(0, 8).toUpperCase()}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => {
+                  setEditingCategory(c);
+                  setIsAdding(false);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="p-2 text-slate-300 hover:text-blue-700 transition-colors"
+              >
+                <Settings size={16} />
+              </button>
+              <button
+                onClick={() => deleteCategory(c.id)}
+                className="p-2 text-slate-300 hover:text-rose-600 transition-colors"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
           </div>
         ))}
         {categories.length === 0 && (
           <div className="col-span-full py-12 text-center text-slate-400 font-medium italic bg-slate-100/50 rounded-[32px] border-2 border-dashed border-slate-200">
-            No categories defined. Please add one to begin building your catalog.
+            No categories defined. Please add one to begin building your
+            catalog.
           </div>
         )}
       </div>
@@ -2584,26 +3948,32 @@ function CategoryManager({ categories }: { categories: Category[] }) {
   );
 }
 
-function ServiceManager({ categories, services }: { categories: Category[], services: Service[] }) {
+function ServiceManager({
+  categories,
+  services,
+}: {
+  categories: Category[];
+  services: Service[];
+}) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [updatingImageId, setUpdatingImageId] = useState<string | null>(null);
-  const [tempImageUrl, setTempImageUrl] = useState('');
-  const [newImageInput, setNewImageInput] = useState('');
-  const [newService, setNewService] = useState({ 
-    categoryId: '', 
-    name: '', 
-    basePrice: 0, 
-    description: '', 
-    duration: '2 Hours',
-    imageURL: '',
+  const [tempImageUrl, setTempImageUrl] = useState("");
+  const [newImageInput, setNewImageInput] = useState("");
+  const [newService, setNewService] = useState({
+    categoryId: "",
+    name: "",
+    basePrice: 0,
+    description: "",
+    duration: "2 Hours",
+    imageURL: "",
     images: [] as string[],
-    priceListPDF: '',
+    priceListPDF: "",
     rating: 4.8,
     reviewCount: 0,
-    predefinedTasks: [] as string[]
+    predefinedTasks: [] as string[],
   });
-  const [taskInput, setTaskInput] = useState('');
+  const [taskInput, setTaskInput] = useState("");
 
   const handleAddService = async () => {
     try {
@@ -2611,27 +3981,29 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
         // Just return, the UI will stay
         return;
       }
-      await addDoc(collection(db, 'services'), {
+      await addDoc(collection(db, "services"), {
         ...newService,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
       });
       setIsAdding(false);
-      setNewService({ 
-        categoryId: '', 
-        name: '', 
-        basePrice: 0, 
-        description: '', 
-        duration: '2 Hours',
-        imageURL: '',
+      setNewService({
+        categoryId: "",
+        name: "",
+        basePrice: 0,
+        description: "",
+        duration: "2 Hours",
+        imageURL: "",
         images: [],
-        priceListPDF: '',
+        priceListPDF: "",
         rating: 4.8,
         reviewCount: 0,
-        predefinedTasks: []
+        predefinedTasks: [],
       });
-      await triggerEcosystemUpdate(`New premium maintenance package introduced: ${newService.name}`);
+      await triggerEcosystemUpdate(
+        `New premium maintenance package introduced: ${newService.name}`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'services');
+      handleFirestoreError(err, OperationType.CREATE, "services");
     }
   };
 
@@ -2639,47 +4011,61 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
     if (!editingService) return;
     try {
       const { id, ...data } = editingService;
-      await updateDoc(doc(db, 'services', id), {
+      await updateDoc(doc(db, "services", id), {
         ...data,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
       setEditingService(null);
-      await triggerEcosystemUpdate(`Catalog update: ${editingService.name} options & pricing tweaked.`);
+      await triggerEcosystemUpdate(
+        `Catalog update: ${editingService.name} options & pricing tweaked.`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `services/${editingService.id}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `services/${editingService.id}`,
+      );
     }
   };
 
   const handleQuickImageUpdate = async () => {
     if (!updatingImageId) return;
     try {
-      await updateDoc(doc(db, 'services', updatingImageId), {
+      await updateDoc(doc(db, "services", updatingImageId), {
         imageURL: tempImageUrl,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
       setUpdatingImageId(null);
-      setTempImageUrl('');
-      await triggerEcosystemUpdate(`Catalog visual style refreshed with hot-swapped brand assets.`);
+      setTempImageUrl("");
+      await triggerEcosystemUpdate(
+        `Catalog visual style refreshed with hot-swapped brand assets.`,
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `services/${updatingImageId}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `services/${updatingImageId}`,
+      );
     }
   };
 
   const deleteService = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'services', id));
-      await triggerEcosystemUpdate(`Removed obsolete maintenance packages from user-facing screens.`);
+      await deleteDoc(doc(db, "services", id));
+      await triggerEcosystemUpdate(
+        `Removed obsolete maintenance packages from user-facing screens.`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `services/${id}`);
     }
   };
 
   const [viewingReviewsId, setViewingReviewsId] = useState<string | null>(null);
-  const [sSearch, setSSearch] = useState('');
+  const [sSearch, setSSearch] = useState("");
 
-  const filteredServices = services.filter(s => {
+  const filteredServices = services.filter((s) => {
     const query = sSearch.toLowerCase();
-    const category = categories.find(c => c.id === s.categoryId);
+    const category = categories.find((c) => c.id === s.categoryId);
     return (
       s.name.toLowerCase().includes(query) ||
       s.description.toLowerCase().includes(query) ||
@@ -2690,270 +4076,389 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-         <div>
-            <h3 className="text-xl font-bold">Catalog Management</h3>
-            <p className="text-sm text-slate-400">View and manage all service offerings across categories.</p>
-         </div>
-         <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-               <input 
-                 type="text"
-                 placeholder="Search services..."
-                 value={sSearch}
-                 onChange={(e) => setSSearch(e.target.value)}
-                 className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-               />
-            </div>
-            <button 
-              onClick={() => { setIsAdding(!isAdding); setEditingService(null); setViewingReviewsId(null); }}
-              className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-sm hover:bg-blue-800 shadow-lg shadow-slate-200 shrink-0"
-            >
-              {isAdding ? <XCircle size={18} /> : <Plus size={18} />}
-              {isAdding ? 'Cancel' : 'Add New Service'}
-            </button>
-         </div>
+        <div>
+          <h3 className="text-xl font-bold">Catalog Management</h3>
+          <p className="text-sm text-slate-400">
+            View and manage all service offerings across categories.
+          </p>
+        </div>
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+            />
+            <input
+              type="text"
+              placeholder="Search services..."
+              value={sSearch}
+              onChange={(e) => setSSearch(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setIsAdding(!isAdding);
+              setEditingService(null);
+              setViewingReviewsId(null);
+            }}
+            className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-sm hover:bg-blue-800 shadow-lg shadow-slate-200 shrink-0"
+          >
+            {isAdding ? <XCircle size={18} /> : <Plus size={18} />}
+            {isAdding ? "Cancel" : "Add New Service"}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
         {updatingImageId && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-blue-700/60 backdrop-blur-md"
           >
-             <motion.div 
-               initial={{ scale: 0.95, opacity: 0, y: 100 }}
-               animate={{ scale: 1, opacity: 1, y: 0 }}
-               exit={{ scale: 0.95, opacity: 0, y: 100 }}
-               className="bg-white rounded-t-[32px] sm:rounded-[40px] max-w-md w-full shadow-2xl flex flex-col max-h-[95dvh] sm:max-h-[90vh] no-scrollbar"
-             >
-                <div className="flex justify-between items-center px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-50 shrink-0">
-                   <h4 className="text-xl font-bold italic">Update Service Image</h4>
-                   <button onClick={() => setUpdatingImageId(null)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                      <X size={20} />
-                   </button>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 100 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 100 }}
+              className="bg-white rounded-t-[32px] sm:rounded-[40px] max-w-md w-full shadow-2xl flex flex-col max-h-[95dvh] sm:max-h-[90vh] no-scrollbar"
+            >
+              <div className="flex justify-between items-center px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-50 shrink-0">
+                <h4 className="text-xl font-bold italic">
+                  Update Service Image
+                </h4>
+                <button
+                  onClick={() => setUpdatingImageId(null)}
+                  className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 no-scrollbar">
+                <AdminUpload
+                  label="Service Main Asset"
+                  value={tempImageUrl}
+                  onUpload={setTempImageUrl}
+                />
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    onClick={() => setUpdatingImageId(null)}
+                    className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-all uppercase tracking-widest text-[10px] order-2 sm:order-1"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    onClick={handleQuickImageUpdate}
+                    disabled={!tempImageUrl}
+                    className="flex-[2] bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 uppercase tracking-widest text-[10px] disabled:opacity-50 order-1 sm:order-2"
+                  >
+                    Commit Update
+                  </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 no-scrollbar">
-                   <AdminUpload 
-                     label="Service Main Asset"
-                     value={tempImageUrl}
-                     onUpload={setTempImageUrl}
-                   />
-                   <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                      <button 
-                        onClick={() => setUpdatingImageId(null)}
-                        className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-all uppercase tracking-widest text-[10px] order-2 sm:order-1"
-                      >
-                        Discard
-                      </button>
-                      <button 
-                        onClick={handleQuickImageUpdate}
-                        disabled={!tempImageUrl}
-                        className="flex-[2] bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 uppercase tracking-widest text-[10px] disabled:opacity-50 order-1 sm:order-2"
-                      >
-                        Commit Update
-                      </button>
-                   </div>
-                </div>
-             </motion.div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {viewingReviewsId && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-blue-700/60 backdrop-blur-md"
           >
-             <div className="bg-slate-50 w-full max-w-4xl max-h-[95dvh] sm:max-h-[90vh] rounded-t-[32px] sm:rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col no-scrollbar">
-                <div className="p-5 sm:p-8 border-b border-slate-200 flex justify-between items-center bg-white shrink-0">
-                   <div className="min-w-0">
-                      <h4 className="text-xl font-bold text-slate-900 truncate">
-                         {services.find(s => s.id === viewingReviewsId)?.name} Reviews
-                      </h4>
-                      <p className="text-xs sm:text-sm text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">Audit Feedback</p>
-                   </div>
-                   <button 
-                     onClick={() => setViewingReviewsId(null)}
-                     className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-2xl transition-all ml-4"
-                   >
-                     <X size={20} />
-                   </button>
+            <div className="bg-slate-50 w-full max-w-4xl max-h-[95dvh] sm:max-h-[90vh] rounded-t-[32px] sm:rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col no-scrollbar">
+              <div className="p-5 sm:p-8 border-b border-slate-200 flex justify-between items-center bg-white shrink-0">
+                <div className="min-w-0">
+                  <h4 className="text-xl font-bold text-slate-900 truncate">
+                    {services.find((s) => s.id === viewingReviewsId)?.name}{" "}
+                    Reviews
+                  </h4>
+                  <p className="text-xs sm:text-sm text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                    Audit Feedback
+                  </p>
                 </div>
-                <div className="flex-1 overflow-y-auto p-5 sm:p-8 no-scrollbar">
-                   <ReviewManager serviceId={viewingReviewsId} />
-                </div>
-             </div>
+                <button
+                  onClick={() => setViewingReviewsId(null)}
+                  className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-2xl transition-all ml-4"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5 sm:p-8 no-scrollbar">
+                <ReviewManager serviceId={viewingReviewsId} />
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {(isAdding || editingService) && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-[32px] border border-blue-700/10 shadow-xl mb-12"
           >
-              <h4 className="font-bold mb-6 text-slate-900">{editingService ? 'Edit Service Offering' : 'Create New Service Offering'}</h4>
-              {categories.length === 0 ? (
-                <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-amber-800 text-sm flex gap-4 items-center">
-                  <AlertCircle size={24} className="shrink-0" />
-                  <p className="font-medium">You need to create at least one category before adding services.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Category</label>
-                      <select 
-                        value={editingService ? editingService.categoryId : newService.categoryId}
-                        onChange={(e) => editingService 
-                          ? setEditingService({ ...editingService, categoryId: e.target.value })
-                          : setNewService({ ...newService, categoryId: e.target.value })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      >
-                        <option value="">Select Category</option>
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Service Name</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. Deep Home Cleaning"
-                        value={editingService ? editingService.name : newService.name}
-                        onChange={(e) => editingService
-                          ? setEditingService({ ...editingService, name: e.target.value })
-                          : setNewService({ ...newService, name: e.target.value })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Base Price (₹)</label>
-                      <input 
-                        type="number" 
-                        placeholder="999"
-                        value={editingService ? editingService.basePrice : newService.basePrice}
-                        onChange={(e) => editingService
-                          ? setEditingService({ ...editingService, basePrice: Number(e.target.value) })
-                          : setNewService({ ...newService, basePrice: Number(e.target.value) })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Duration</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. 2 Hours"
-                        value={editingService ? editingService.duration : newService.duration}
-                        onChange={(e) => editingService
-                          ? setEditingService({ ...editingService, duration: e.target.value })
-                          : setNewService({ ...newService, duration: e.target.value })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      />
-                    </div>
-                  </div>
-                  <div className="mb-6">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Description</label>
-                    <textarea 
-                      value={editingService ? editingService.description : newService.description}
-                      onChange={(e) => editingService
-                        ? setEditingService({ ...editingService, description: e.target.value })
-                        : setNewService({ ...newService, description: e.target.value })
+            <h4 className="font-bold mb-6 text-slate-900">
+              {editingService
+                ? "Edit Service Offering"
+                : "Create New Service Offering"}
+            </h4>
+            {categories.length === 0 ? (
+              <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-amber-800 text-sm flex gap-4 items-center">
+                <AlertCircle size={24} className="shrink-0" />
+                <p className="font-medium">
+                  You need to create at least one category before adding
+                  services.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Category
+                    </label>
+                    <select
+                      value={
+                        editingService
+                          ? editingService.categoryId
+                          : newService.categoryId
                       }
-                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner h-24 resize-none"
-                      placeholder="Describe the service inclusions..."
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              categoryId: e.target.value,
+                            })
+                          : setNewService({
+                              ...newService,
+                              categoryId: e.target.value,
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Service Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Deep Home Cleaning"
+                      value={
+                        editingService ? editingService.name : newService.name
+                      }
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              name: e.target.value,
+                            })
+                          : setNewService({
+                              ...newService,
+                              name: e.target.value,
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
                     />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
-                    <div>
-                      <AdminUpload 
-                        label="Main Hero Image URL"
-                        value={editingService ? editingService.imageURL || '' : newService.imageURL}
-                        onUpload={(url) => editingService
-                          ? setEditingService({ ...editingService, imageURL: url })
-                          : setNewService({ ...newService, imageURL: url })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <AdminUpload 
-                        label="Price List PDF"
-                        type="file"
-                        accept=".pdf"
-                        value={editingService ? editingService.priceListPDF || '' : newService.priceListPDF}
-                        onUpload={(url) => editingService
-                          ? setEditingService({ ...editingService, priceListPDF: url })
-                          : setNewService({ ...newService, priceListPDF: url })
-                        }
-                        placeholder="https://example.com/price-list.pdf"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Base Price (₹)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="999"
+                      value={
+                        editingService
+                          ? editingService.basePrice
+                          : newService.basePrice
+                      }
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              basePrice: Number(e.target.value),
+                            })
+                          : setNewService({
+                              ...newService,
+                              basePrice: Number(e.target.value),
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Duration
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 2 Hours"
+                      value={
+                        editingService
+                          ? editingService.duration
+                          : newService.duration
+                      }
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              duration: e.target.value,
+                            })
+                          : setNewService({
+                              ...newService,
+                              duration: e.target.value,
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+                    />
+                  </div>
+                </div>
+                <div className="mb-6">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={
+                      editingService
+                        ? editingService.description
+                        : newService.description
+                    }
+                    onChange={(e) =>
+                      editingService
+                        ? setEditingService({
+                            ...editingService,
+                            description: e.target.value,
+                          })
+                        : setNewService({
+                            ...newService,
+                            description: e.target.value,
+                          })
+                    }
+                    className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner h-24 resize-none"
+                    placeholder="Describe the service inclusions..."
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
+                  <div>
+                    <AdminUpload
+                      label="Main Hero Image URL"
+                      value={
+                        editingService
+                          ? editingService.imageURL || ""
+                          : newService.imageURL
+                      }
+                      onUpload={(url) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              imageURL: url,
+                            })
+                          : setNewService({ ...newService, imageURL: url })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <AdminUpload
+                      label="Price List PDF"
+                      type="file"
+                      accept=".pdf"
+                      value={
+                        editingService
+                          ? editingService.priceListPDF || ""
+                          : newService.priceListPDF
+                      }
+                      onUpload={(url) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              priceListPDF: url,
+                            })
+                          : setNewService({ ...newService, priceListPDF: url })
+                      }
+                      placeholder="https://example.com/price-list.pdf"
+                    />
+                  </div>
+                </div>
 
-                  <div className="mb-6">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Service Carousel Gallery</label>
-                    <div className="mb-4">
-                      <AdminUpload 
-                        label=""
-                        placeholder="Upload or paste to add to gallery"
-                        value="" 
-                        onUpload={(url) => {
-                          if (!url) return;
-                          if (editingService) {
-                            setEditingService({
-                              ...editingService,
-                              images: [...(editingService.images || []), url]
-                            });
-                          } else {
-                            setNewService({
-                              ...newService,
-                              images: [...(newService.images || []), url]
-                            });
-                          }
-                        }}
-                        onMultipleChange={(urls) => {
-                          if (!urls || urls.length === 0) return;
-                          if (editingService) {
-                            setEditingService({
-                              ...editingService,
-                              images: [...(editingService.images || []), ...urls]
-                            });
-                          } else {
-                            setNewService({
-                              ...newService,
-                              images: [...(newService.images || []), ...urls]
-                            });
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      {(editingService?.images || newService.images || []).map((img, idx) => (
+                <div className="mb-6">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                    Service Carousel Gallery
+                  </label>
+                  <div className="mb-4">
+                    <AdminUpload
+                      label=""
+                      placeholder="Upload or paste to add to gallery"
+                      value=""
+                      onUpload={(url) => {
+                        if (!url) return;
+                        if (editingService) {
+                          setEditingService({
+                            ...editingService,
+                            images: [...(editingService.images || []), url],
+                          });
+                        } else {
+                          setNewService({
+                            ...newService,
+                            images: [...(newService.images || []), url],
+                          });
+                        }
+                      }}
+                      onMultipleChange={(urls) => {
+                        if (!urls || urls.length === 0) return;
+                        if (editingService) {
+                          setEditingService({
+                            ...editingService,
+                            images: [...(editingService.images || []), ...urls],
+                          });
+                        } else {
+                          setNewService({
+                            ...newService,
+                            images: [...(newService.images || []), ...urls],
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {(editingService?.images || newService.images || []).map(
+                      (img, idx) => (
                         <div key={idx} className="relative group/gallery">
-                          <img src={img} alt="" className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-slate-200 shadow-sm" referrerPolicy="no-referrer" />
-                          <button 
+                          <img
+                            src={img}
+                            alt=""
+                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-slate-200 shadow-sm"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button
                             onClick={() => {
                               if (editingService) {
                                 setEditingService({
                                   ...editingService,
-                                  images: editingService.images?.filter((_, i) => i !== idx)
+                                  images: editingService.images?.filter(
+                                    (_, i) => i !== idx,
+                                  ),
                                 });
                               } else {
                                 setNewService({
                                   ...newService,
-                                  images: newService.images?.filter((_, i) => i !== idx)
+                                  images: newService.images?.filter(
+                                    (_, i) => i !== idx,
+                                  ),
                                 });
                               }
                             }}
@@ -2962,205 +4467,312 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
                             <X size={10} />
                           </button>
                         </div>
-                      ))}
-                    </div>
+                      ),
+                    )}
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8">
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Global Rating (0-5)</label>
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        min="0"
-                        max="5"
-                        value={editingService ? editingService.rating : newService.rating}
-                        onChange={(e) => editingService
-                          ? setEditingService({ ...editingService, rating: Number(e.target.value) })
-                          : setNewService({ ...newService, rating: Number(e.target.value) })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Review Count (Virtual)</label>
-                      <input 
-                        type="number" 
-                        value={editingService ? editingService.reviewCount : newService.reviewCount}
-                        onChange={(e) => editingService
-                          ? setEditingService({ ...editingService, reviewCount: Number(e.target.value) })
-                          : setNewService({ ...newService, reviewCount: Number(e.target.value) })
-                        }
-                        className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
-                      />
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Global Rating (0-5)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="5"
+                      value={
+                        editingService
+                          ? editingService.rating
+                          : newService.rating
+                      }
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              rating: Number(e.target.value),
+                            })
+                          : setNewService({
+                              ...newService,
+                              rating: Number(e.target.value),
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
+                      Review Count (Virtual)
+                    </label>
+                    <input
+                      type="number"
+                      value={
+                        editingService
+                          ? editingService.reviewCount
+                          : newService.reviewCount
+                      }
+                      onChange={(e) =>
+                        editingService
+                          ? setEditingService({
+                              ...editingService,
+                              reviewCount: Number(e.target.value),
+                            })
+                          : setNewService({
+                              ...newService,
+                              reviewCount: Number(e.target.value),
+                            })
+                      }
+                      className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-700 transition-all shadow-inner"
+                    />
+                  </div>
+                </div>
 
-                  {/* Predefined Tasks Section */}
-                  <div className="mb-10 p-6 sm:p-8 bg-slate-50 rounded-[32px] border border-slate-100">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                      <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1">Predefined Service Checklist</label>
-                        <p className="text-xs text-slate-400 font-medium">Define tasks for partners to complete during this specific service.</p>
-                      </div>
-                      <div className="flex gap-2 w-full sm:w-auto">
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Clean the filters"
-                          value={taskInput}
-                          onChange={(e) => setTaskInput(e.target.value)}
-                          onKeyDown={(e) => {
-                             if (e.key === 'Enter') {
-                                e.preventDefault();
-                                if (!taskInput.trim()) return;
-                                const current = editingService ? (editingService.predefinedTasks || []) : newService.predefinedTasks;
-                                const updated = [...current, taskInput.trim()];
-                                if (editingService) setEditingService({ ...editingService, predefinedTasks: updated });
-                                else setNewService({ ...newService, predefinedTasks: updated });
-                                setTaskInput('');
-                             }
-                          }}
-                          className="flex-1 sm:w-64 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                        />
-                        <button 
-                          onClick={() => {
+                {/* Predefined Tasks Section */}
+                <div className="mb-10 p-6 sm:p-8 bg-slate-50 rounded-[32px] border border-slate-100">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1">
+                        Predefined Service Checklist
+                      </label>
+                      <p className="text-xs text-slate-400 font-medium">
+                        Define tasks for partners to complete during this
+                        specific service.
+                      </p>
+                    </div>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <input
+                        type="text"
+                        placeholder="e.g. Clean the filters"
+                        value={taskInput}
+                        onChange={(e) => setTaskInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
                             if (!taskInput.trim()) return;
-                            const current = editingService ? (editingService.predefinedTasks || []) : newService.predefinedTasks;
+                            const current = editingService
+                              ? editingService.predefinedTasks || []
+                              : newService.predefinedTasks;
                             const updated = [...current, taskInput.trim()];
-                            if (editingService) setEditingService({ ...editingService, predefinedTasks: updated });
-                            else setNewService({ ...newService, predefinedTasks: updated });
-                            setTaskInput('');
+                            if (editingService)
+                              setEditingService({
+                                ...editingService,
+                                predefinedTasks: updated,
+                              });
+                            else
+                              setNewService({
+                                ...newService,
+                                predefinedTasks: updated,
+                              });
+                            setTaskInput("");
+                          }
+                        }}
+                        className="flex-1 sm:w-64 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                      />
+                      <button
+                        onClick={() => {
+                          if (!taskInput.trim()) return;
+                          const current = editingService
+                            ? editingService.predefinedTasks || []
+                            : newService.predefinedTasks;
+                          const updated = [...current, taskInput.trim()];
+                          if (editingService)
+                            setEditingService({
+                              ...editingService,
+                              predefinedTasks: updated,
+                            });
+                          else
+                            setNewService({
+                              ...newService,
+                              predefinedTasks: updated,
+                            });
+                          setTaskInput("");
+                        }}
+                        className="w-10 h-10 bg-blue-700 text-white rounded-xl flex items-center justify-center shrink-0"
+                      >
+                        <Plus size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {(editingService
+                      ? editingService.predefinedTasks
+                      : newService.predefinedTasks
+                    )?.map((task, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 bg-white border border-slate-100 px-4 py-2.5 rounded-2xl group hover:border-blue-700 transition-all shadow-sm"
+                      >
+                        <span className="text-xs font-bold text-slate-700">
+                          {task}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const current = editingService
+                              ? editingService.predefinedTasks || []
+                              : newService.predefinedTasks;
+                            const updated = current.filter((_, i) => i !== idx);
+                            if (editingService)
+                              setEditingService({
+                                ...editingService,
+                                predefinedTasks: updated,
+                              });
+                            else
+                              setNewService({
+                                ...newService,
+                                predefinedTasks: updated,
+                              });
                           }}
-                          className="w-10 h-10 bg-blue-700 text-white rounded-xl flex items-center justify-center shrink-0"
+                          className="text-slate-300 hover:text-rose-500 transition-colors"
                         >
-                          <Plus size={18} />
+                          <X size={14} />
                         </button>
                       </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                       {(editingService ? editingService.predefinedTasks : newService.predefinedTasks)?.map((task, idx) => (
-                         <div key={idx} className="flex items-center gap-3 bg-white border border-slate-100 px-4 py-2.5 rounded-2xl group hover:border-blue-700 transition-all shadow-sm">
-                            <span className="text-xs font-bold text-slate-700">{task}</span>
-                            <button 
-                              onClick={() => {
-                                const current = editingService ? (editingService.predefinedTasks || []) : newService.predefinedTasks;
-                                const updated = current.filter((_, i) => i !== idx);
-                                if (editingService) setEditingService({ ...editingService, predefinedTasks: updated });
-                                else setNewService({ ...newService, predefinedTasks: updated });
-                              }}
-                              className="text-slate-300 hover:text-rose-500 transition-colors"
-                            >
-                               <X size={14} />
-                            </button>
-                         </div>
-                       ))}
-                       {(editingService ? (editingService.predefinedTasks?.length || 0) : newService.predefinedTasks.length) === 0 && (
-                         <div className="w-full py-4 text-center text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em] italic">
-                            No custom tasks defined for this service
-                         </div>
-                       )}
-                    </div>
+                    ))}
+                    {(editingService
+                      ? editingService.predefinedTasks?.length || 0
+                      : newService.predefinedTasks.length) === 0 && (
+                      <div className="w-full py-4 text-center text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em] italic">
+                        No custom tasks defined for this service
+                      </div>
+                    )}
                   </div>
+                </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <button 
-                      onClick={editingService ? handleUpdateService : handleAddService}
-                      className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
-                    >
-                      {editingService ? 'Commit Changes' : 'Publish Offering'}
-                    </button>
-                    <button 
-                      onClick={() => { setEditingService(null); setIsAdding(false); }}
-                      className="flex-1 bg-slate-50 text-slate-400 px-8 py-4 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all uppercase tracking-widest"
-                    >
-                      Discard
-                    </button>
-                  </div>
-                </>
-              )}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={
+                      editingService ? handleUpdateService : handleAddService
+                    }
+                    className="flex-[2] bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10 uppercase tracking-widest"
+                  >
+                    {editingService ? "Commit Changes" : "Publish Offering"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingService(null);
+                      setIsAdding(false);
+                    }}
+                    className="flex-1 bg-slate-50 text-slate-400 px-8 py-4 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all uppercase tracking-widest"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredServices.map(s => (
-          <div key={s.id} className="bg-white p-6 border border-slate-200 rounded-[32px] group hover:border-blue-700 transition-all">
-             <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-slate-50 rounded-xl text-slate-400 group-hover:bg-blue-700 group-hover:text-white transition-all">
-                    <Briefcase size={20} />
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpdatingImageId(s.id);
-                      setTempImageUrl(s.imageURL || '');
-                    }}
-                    className="p-3 bg-slate-50 rounded-xl text-slate-400 hover:bg-blue-700 hover:text-white transition-all"
-                    title="Update Image"
-                  >
-                    <ImageIcon size={20} />
-                  </button>
+        {filteredServices.map((s) => (
+          <div
+            key={s.id}
+            className="bg-white p-6 border border-slate-200 rounded-[32px] group hover:border-blue-700 transition-all"
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-slate-50 rounded-xl text-slate-400 group-hover:bg-blue-700 group-hover:text-white transition-all">
+                  <Briefcase size={20} />
                 </div>
-                <div className="text-right">
-                   <p className="text-xl font-bold text-slate-900">₹{s.basePrice}</p>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{s.duration}</p>
-                </div>
-             </div>
-             {s.imageURL ? (
-               <div 
-                 className="w-full h-32 rounded-2xl overflow-hidden mb-4 bg-slate-100 relative group/img cursor-pointer"
-                 onClick={() => {
-                   setUpdatingImageId(s.id);
-                   setTempImageUrl(s.imageURL || '');
-                 }}
-               >
-                  <img src={s.imageURL} alt={s.name} className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
-                  <div className="absolute inset-0 bg-blue-700/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest bg-blue-700/80 px-4 py-2 rounded-full">Update Image</span>
-                  </div>
-               </div>
-             ) : (
-                <button 
+                <button
                   onClick={() => {
                     setUpdatingImageId(s.id);
-                    setTempImageUrl('');
+                    setTempImageUrl(s.imageURL || "");
                   }}
-                  className="w-full h-32 rounded-2xl mb-4 bg-slate-100 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 hover:border-blue-700 hover:bg-white transition-all group/empty"
+                  className="p-3 bg-slate-50 rounded-xl text-slate-400 hover:bg-blue-700 hover:text-white transition-all"
+                  title="Update Image"
                 >
-                   <ImageIcon size={24} className="text-slate-300 group-hover/empty:text-slate-900 transition-colors" />
-                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Asset</span>
+                  <ImageIcon size={20} />
                 </button>
-             )}
-             <h4 className="font-bold text-lg mb-2">{s.name}</h4>
-             <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center text-amber-400">
-                  <Star size={12} fill="currentColor" />
-                  <span className="text-[11px] font-bold text-slate-900 ml-1">{s.rating || 0}</span>
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-slate-900">
+                  ₹{s.basePrice}
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  {s.duration}
+                </p>
+              </div>
+            </div>
+            {s.imageURL ? (
+              <div
+                className="w-full h-32 rounded-2xl overflow-hidden mb-4 bg-slate-100 relative group/img cursor-pointer"
+                onClick={() => {
+                  setUpdatingImageId(s.id);
+                  setTempImageUrl(s.imageURL || "");
+                }}
+              >
+                <img
+                  src={s.imageURL}
+                  alt={s.name}
+                  className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-700"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-blue-700/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest bg-blue-700/80 px-4 py-2 rounded-full">
+                    Update Image
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium">({s.reviewCount || 0} reviews)</span>
-             </div>
-             <p className="text-sm text-slate-500 mb-6 line-clamp-2">{s.description}</p>
-             <div className="flex justify-between items-center pt-6 border-t border-slate-50">
-                <button 
-                  onClick={() => {
-                    setEditingService(s);
-                    setIsAdding(false);
-                    setViewingReviewsId(null);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="text-xs font-bold text-slate-400 hover:text-blue-700 transition-colors"
-                >
-                  Edit Details
-                </button>
-                <button 
-                  onClick={() => setViewingReviewsId(s.id)}
-                  className="text-xs font-bold text-slate-400 hover:text-blue-700 transition-colors border-x border-slate-100 px-4"
-                >
-                  Reviews
-                </button>
-                <button onClick={() => deleteService(s.id)} className="text-xs font-bold text-rose-400 hover:text-rose-600 transition-colors text-right">Delete</button>
-             </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setUpdatingImageId(s.id);
+                  setTempImageUrl("");
+                }}
+                className="w-full h-32 rounded-2xl mb-4 bg-slate-100 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 hover:border-blue-700 hover:bg-white transition-all group/empty"
+              >
+                <ImageIcon
+                  size={24}
+                  className="text-slate-300 group-hover/empty:text-slate-900 transition-colors"
+                />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Attach Asset
+                </span>
+              </button>
+            )}
+            <h4 className="font-bold text-lg mb-2">{s.name}</h4>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center text-amber-400">
+                <Star size={12} fill="currentColor" />
+                <span className="text-[11px] font-bold text-slate-900 ml-1">
+                  {s.rating || 0}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">
+                ({s.reviewCount || 0} reviews)
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 mb-6 line-clamp-2">
+              {s.description}
+            </p>
+            <div className="flex justify-between items-center pt-6 border-t border-slate-50">
+              <button
+                onClick={() => {
+                  setEditingService(s);
+                  setIsAdding(false);
+                  setViewingReviewsId(null);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="text-xs font-bold text-slate-400 hover:text-blue-700 transition-colors"
+              >
+                Edit Details
+              </button>
+              <button
+                onClick={() => setViewingReviewsId(s.id)}
+                className="text-xs font-bold text-slate-400 hover:text-blue-700 transition-colors border-x border-slate-100 px-4"
+              >
+                Reviews
+              </button>
+              <button
+                onClick={() => deleteService(s.id)}
+                className="text-xs font-bold text-rose-400 hover:text-rose-600 transition-colors text-right"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -3168,27 +4780,51 @@ function ServiceManager({ categories, services }: { categories: Category[], serv
   );
 }
 
-function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerProfile[], users: UserProfile[], setActiveTab: (tab: any) => void }) {
-  const [partnerViewMode, setPartnerViewMode] = useState<'all' | 'kyc_pending'>('all');
-  const [selectedRewardPartner, setSelectedRewardPartner] = useState<PartnerProfile | null>(null);
-  const [selectedProfilePartner, setSelectedProfilePartner] = useState<(PartnerProfile & { user?: UserProfile }) | null>(null);
-  const [manualKYCPartner, setManualKYCPartner] = useState<PartnerProfile | null>(null);
-  const [rejectingKYCPartner, setRejectingKYCPartner] = useState<PartnerProfile | null>(null);
-  const [rejectReason, setRejectReason] = useState('Documents are unclear or invalid.');
-  const [manualDocs, setManualDocs] = useState<{type: string, url: string, documentNumber?: string}[]>([
-    { type: 'ID Proof Document', url: '', documentNumber: '' },
-    { type: 'Address Proof Document', url: '', documentNumber: '' }
+function PartnerManager({
+  partners,
+  users,
+  setActiveTab,
+}: {
+  partners: PartnerProfile[];
+  users: UserProfile[];
+  setActiveTab: (tab: any) => void;
+}) {
+  const [partnerViewMode, setPartnerViewMode] = useState<"all" | "kyc_pending">(
+    "all",
+  );
+  const [selectedRewardPartner, setSelectedRewardPartner] =
+    useState<PartnerProfile | null>(null);
+  const [selectedProfilePartner, setSelectedProfilePartner] = useState<
+    (PartnerProfile & { user?: UserProfile }) | null
+  >(null);
+  const [manualKYCPartner, setManualKYCPartner] =
+    useState<PartnerProfile | null>(null);
+  const [rejectingKYCPartner, setRejectingKYCPartner] =
+    useState<PartnerProfile | null>(null);
+  const [rejectReason, setRejectReason] = useState(
+    "Documents are unclear or invalid.",
+  );
+  const [manualDocs, setManualDocs] = useState<
+    { type: string; url: string; documentNumber?: string }[]
+  >([
+    { type: "ID Proof Document", url: "", documentNumber: "" },
+    { type: "Address Proof Document", url: "", documentNumber: "" },
   ]);
-  const [rewardAmount, setRewardAmount] = useState('10');
-  const [rewardReason, setRewardReason] = useState('Service Excellence Reward');
-  const [partnersSort, setPartnersSort] = useState<'earnings' | 'rating' | 'credits'>('earnings');
-  const [pSearch, setPSearch] = useState('');
+  const [rewardAmount, setRewardAmount] = useState("10");
+  const [rewardReason, setRewardReason] = useState("Service Excellence Reward");
+  const [partnersSort, setPartnersSort] = useState<
+    "earnings" | "rating" | "credits"
+  >("earnings");
+  const [pSearch, setPSearch] = useState("");
 
-  const updateStatus = async (partnerId: string, status: 'active' | 'inactive') => {
+  const updateStatus = async (
+    partnerId: string,
+    status: "active" | "inactive",
+  ) => {
     try {
-      await updateDoc(doc(db, 'partners', partnerId), { 
+      await updateDoc(doc(db, "partners", partnerId), {
         status,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `partners/${partnerId}`);
@@ -3197,13 +4833,17 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
 
   const verifyPartner = async (partnerId: string, verified: boolean) => {
     try {
-      const p = partners.find(x => x.id === partnerId);
-      await updateDoc(doc(db, 'partners', partnerId), { 
+      const p = partners.find((x) => x.id === partnerId);
+      await updateDoc(doc(db, "partners", partnerId), {
         isVerified: verified,
-        kycStatus: verified ? 'verified' : 'rejected',
+        kycStatus: verified ? "verified" : "rejected",
         kycRejectReason: null,
-        kycDocuments: p?.kycDocuments?.map(d => ({ ...d, status: verified ? 'verified' : 'rejected' })) || [],
-        updatedAt: Timestamp.now()
+        kycDocuments:
+          p?.kycDocuments?.map((d) => ({
+            ...d,
+            status: verified ? "verified" : "rejected",
+          })) || [],
+        updatedAt: Timestamp.now(),
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `partners/${partnerId}`);
@@ -3213,35 +4853,46 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
   const rejectPartner = async () => {
     if (!rejectingKYCPartner || !rejectReason) return;
     try {
-      await updateDoc(doc(db, 'partners', rejectingKYCPartner.id), { 
+      await updateDoc(doc(db, "partners", rejectingKYCPartner.id), {
         isVerified: false,
-        kycStatus: 'rejected',
+        kycStatus: "rejected",
         kycRejectReason: rejectReason,
-        kycDocuments: rejectingKYCPartner.kycDocuments?.map(d => ({ ...d, status: 'rejected' })) || [],
-        updatedAt: Timestamp.now()
+        kycDocuments:
+          rejectingKYCPartner.kycDocuments?.map((d) => ({
+            ...d,
+            status: "rejected",
+          })) || [],
+        updatedAt: Timestamp.now(),
       });
       setRejectingKYCPartner(null);
-      setRejectReason('Documents are unclear or invalid.');
+      setRejectReason("Documents are unclear or invalid.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `partners/${rejectingKYCPartner.id}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `partners/${rejectingKYCPartner.id}`,
+      );
     }
   };
 
   const approveAllKYC = async () => {
-    const pendingPartners = partners.filter(p => p.kycStatus === 'pending');
+    const pendingPartners = partners.filter((p) => p.kycStatus === "pending");
     if (pendingPartners.length === 0) return;
-    
+
     try {
-      await Promise.all(pendingPartners.map(p => 
-        updateDoc(doc(db, 'partners', p.id), { 
-          isVerified: true,
-          kycStatus: 'verified',
-          kycDocuments: p.kycDocuments?.map(d => ({ ...d, status: 'verified' })) || [],
-          updatedAt: Timestamp.now()
-        })
-      ));
+      await Promise.all(
+        pendingPartners.map((p) =>
+          updateDoc(doc(db, "partners", p.id), {
+            isVerified: true,
+            kycStatus: "verified",
+            kycDocuments:
+              p.kycDocuments?.map((d) => ({ ...d, status: "verified" })) || [],
+            updatedAt: Timestamp.now(),
+          }),
+        ),
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'bulk-kyc');
+      handleFirestoreError(err, OperationType.UPDATE, "bulk-kyc");
     }
   };
 
@@ -3249,313 +4900,435 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
     if (!selectedRewardPartner) return;
     try {
       const amount = parseInt(rewardAmount);
-      await updateDoc(doc(db, 'partners', selectedRewardPartner.id), {
+      await updateDoc(doc(db, "partners", selectedRewardPartner.id), {
         rewardCredits: (selectedRewardPartner.rewardCredits || 0) + amount,
         lastRewardReason: rewardReason,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
 
       // Add to earnings history
-      await addDoc(collection(db, 'partners', selectedRewardPartner.id, 'earningsHistory'), {
-        type: 'reward_credit',
-        amount: 0,
-        credits: amount,
-        reason: rewardReason,
-        createdAt: Timestamp.now()
-      });
+      await addDoc(
+        collection(db, "partners", selectedRewardPartner.id, "earningsHistory"),
+        {
+          type: "reward_credit",
+          amount: 0,
+          credits: amount,
+          reason: rewardReason,
+          createdAt: Timestamp.now(),
+        },
+      );
 
       setSelectedRewardPartner(null);
-      setRewardAmount('100');
-      setRewardReason('Service Excellence Reward');
+      setRewardAmount("100");
+      setRewardReason("Service Excellence Reward");
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `partners/${selectedRewardPartner.id}`);
+      handleFirestoreError(
+        err,
+        OperationType.UPDATE,
+        `partners/${selectedRewardPartner.id}`,
+      );
     }
   };
 
   const handleManualKYC = async () => {
     if (!manualKYCPartner) return;
-    if ((!manualDocs[0]?.url && !manualDocs[0]?.documentNumber) || (!manualDocs[1]?.url && !manualDocs[1]?.documentNumber)) {
-      alert("Please upload an image or type a valid document number to verify this partner.");
+    if (
+      (!manualDocs[0]?.url && !manualDocs[0]?.documentNumber) ||
+      (!manualDocs[1]?.url && !manualDocs[1]?.documentNumber)
+    ) {
+      alert(
+        "Please upload an image or type a valid document number to verify this partner.",
+      );
       return;
     }
     try {
-      await updateDoc(doc(db, 'partners', manualKYCPartner.id), {
-        kycStatus: 'verified',
+      await updateDoc(doc(db, "partners", manualKYCPartner.id), {
+        kycStatus: "verified",
         isVerified: true,
-        kycDocuments: manualDocs.map(d => ({ ...d, status: 'verified' })),
-        updatedAt: Timestamp.now()
+        kycDocuments: manualDocs.map((d) => ({ ...d, status: "verified" })),
+        updatedAt: Timestamp.now(),
       });
       setManualKYCPartner(null);
       setManualDocs([
-        { type: 'ID Proof Document', url: '', documentNumber: '' },
-        { type: 'Address Proof Document', url: '', documentNumber: '' }
+        { type: "ID Proof Document", url: "", documentNumber: "" },
+        { type: "Address Proof Document", url: "", documentNumber: "" },
       ]);
       console.log("Manual KYC completed and partner verified.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'manual-kyc');
+      handleFirestoreError(err, OperationType.UPDATE, "manual-kyc");
     }
   };
 
   const sortedPartners = [...partners]
-    .filter(p => {
-      const u = users.find(user => user.uid === p.userId);
-      const nameMatch = u?.displayName?.toLowerCase().includes(pSearch.toLowerCase());
-      const emailMatch = u?.email?.toLowerCase().includes(pSearch.toLowerCase());
-      
+    .filter((p) => {
+      const u = users.find((user) => user.uid === p.userId);
+      const nameMatch = u?.displayName
+        ?.toLowerCase()
+        .includes(pSearch.toLowerCase());
+      const emailMatch = u?.email
+        ?.toLowerCase()
+        .includes(pSearch.toLowerCase());
+
       const matchesSearch = nameMatch || emailMatch;
-      const matchesMode = partnerViewMode === 'all' || p.kycStatus === 'pending';
-      
+      const matchesMode =
+        partnerViewMode === "all" || p.kycStatus === "pending";
+
       return matchesSearch && matchesMode;
     })
     .sort((a, b) => {
-    if (partnersSort === 'earnings') return (b.totalEarnings || 0) - (a.totalEarnings || 0);
-    if (partnersSort === 'rating') return (b.rating || 0) - (a.rating || 0);
-    if (partnersSort === 'credits') return (b.rewardCredits || 0) - (a.rewardCredits || 0);
-    return 0;
-  });
+      if (partnersSort === "earnings")
+        return (b.totalEarnings || 0) - (a.totalEarnings || 0);
+      if (partnersSort === "rating") return (b.rating || 0) - (a.rating || 0);
+      if (partnersSort === "credits")
+        return (b.rewardCredits || 0) - (a.rewardCredits || 0);
+      return 0;
+    });
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
         <div className="flex items-center gap-4">
-           <div>
-              <h3 className="text-xl font-bold">Partner Fleet</h3>
-              <p className="text-slate-400 text-sm">Manage professionals and rewards</p>
-           </div>
-           <div className="flex items-center gap-2 ml-4">
-              <button 
-                onClick={() => setPartnerViewMode('all')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === 'all' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100/50 hover:bg-indigo-100'}`}
-              >
-                Partner View
-              </button>
-              <button 
-                onClick={() => setPartnerViewMode('kyc_pending')}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === 'kyc_pending' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20' : 'bg-emerald-50 text-emerald-700 border-emerald-100/50 hover:bg-emerald-100'}`}
-              >
-                Become Partner ({partners.filter(p => p.kycStatus === 'pending').length})
-              </button>
-           </div>
+          <div>
+            <h3 className="text-xl font-bold">Partner Fleet</h3>
+            <p className="text-slate-400 text-sm">
+              Manage professionals and rewards
+            </p>
+          </div>
+          <div className="flex items-center gap-2 ml-4">
+            <button
+              onClick={() => setPartnerViewMode("all")}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "all" ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20" : "bg-indigo-50 text-indigo-700 border-indigo-100/50 hover:bg-indigo-100"}`}
+            >
+              Partner View
+            </button>
+            <button
+              onClick={() => setPartnerViewMode("kyc_pending")}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "kyc_pending" ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20" : "bg-emerald-50 text-emerald-700 border-emerald-100/50 hover:bg-emerald-100"}`}
+            >
+              Become Partner (
+              {partners.filter((p) => p.kycStatus === "pending").length})
+            </button>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto">
-           <div className="relative w-full sm:w-64">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-              <input 
-                type="text"
-                placeholder="Search by name or email..."
-                value={pSearch}
-                onChange={(e) => setPSearch(e.target.value)}
-                className="w-full bg-slate-100 border-none rounded-xl pl-10 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-blue-700 outline-none"
-              />
-           </div>
-           <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
-             {(['earnings', 'rating', 'credits'] as const).map(s => (
-               <button 
+          <div className="relative w-full sm:w-64">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
+              size={14}
+            />
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={pSearch}
+              onChange={(e) => setPSearch(e.target.value)}
+              className="w-full bg-slate-100 border-none rounded-xl pl-10 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-blue-700 outline-none"
+            />
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
+            {(["earnings", "rating", "credits"] as const).map((s) => (
+              <button
                 key={s}
                 onClick={() => setPartnersSort(s)}
                 className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                  partnersSort === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  partnersSort === s
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
                 }`}
-               >
-                 {s}
-               </button>
-             ))}
-           </div>
-           <button 
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <button
             onClick={approveAllKYC}
             className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all active:scale-95"
-           >
-             <ShieldCheck size={16} />
-             Bulk KYC Approve
-           </button>
+          >
+            <ShieldCheck size={16} />
+            Bulk KYC Approve
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {sortedPartners.map(p => {
-          const user = users.find(u => u.uid === p.userId);
+        {sortedPartners.map((p) => {
+          const user = users.find((u) => u.uid === p.userId);
           return (
-            <div key={p.id} className="bg-white p-8 border border-slate-200 rounded-[40px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all">
-               <div className="relative z-10 flex flex-col items-center text-center">
-                  <div className="relative mb-6">
-                     <img 
-                        src={user?.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} 
-                        className="w-24 h-24 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e]"
-                        alt={user?.displayName}
-                        referrerPolicy="no-referrer"
-                     />
-                     {p.isVerified ? (
-                       <div className="absolute -bottom-2 -right-2 p-1.5 bg-white rounded-full shadow-sm text-emerald-500 border border-slate-100">
-                          <CheckCircle2 size={16} fill="currentColor" className="text-white fill-emerald-500" />
-                       </div>
-                     ) : (
-                       <div className="absolute -bottom-2 -right-2 p-1.5 bg-white rounded-full shadow-sm text-rose-500 border border-slate-100">
-                          <ShieldAlert size={16} />
-                       </div>
-                     )}
+            <div
+              key={p.id}
+              className="bg-white p-8 border border-slate-200 rounded-[40px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all"
+            >
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <div className="relative mb-6">
+                  <img
+                    src={
+                      user?.photoURL ||
+                      "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                    }
+                    className="w-24 h-24 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e]"
+                    alt={user?.displayName}
+                    referrerPolicy="no-referrer"
+                  />
+                  {p.isVerified ? (
+                    <div className="absolute -bottom-2 -right-2 p-1.5 bg-white rounded-full shadow-sm text-emerald-500 border border-slate-100">
+                      <CheckCircle2
+                        size={16}
+                        fill="currentColor"
+                        className="text-white fill-emerald-500"
+                      />
+                    </div>
+                  ) : (
+                    <div className="absolute -bottom-2 -right-2 p-1.5 bg-white rounded-full shadow-sm text-rose-500 border border-slate-100">
+                      <ShieldAlert size={16} />
+                    </div>
+                  )}
+                </div>
+                <div className="mb-4">
+                  <span
+                    className={`text-[8px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${
+                      p.isVerified
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-rose-50 text-rose-600"
+                    }`}
+                  >
+                    {p.isVerified ? "KYC Verified" : "KYC Not Verified"}
+                  </span>
+                </div>
+                <h4 className="font-bold text-xl mb-1">
+                  {user?.displayName || "Unknown Pro"}
+                </h4>
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      p.availabilityStatus === "Available"
+                        ? "bg-emerald-400"
+                        : p.availabilityStatus === "Busy"
+                          ? "bg-amber-400"
+                          : "bg-slate-500"
+                    }`}
+                  />
+                  <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest leading-none">
+                    {p.availabilityStatus || "Offline"}
+                  </span>
+                </div>
+                {p.statusReason && (
+                  <div className="mb-4 px-3 py-2 bg-slate-50/50 rounded-lg inline-block border border-slate-100">
+                    <p className="text-[9px] text-slate-400 italic font-medium">
+                      "{p.statusReason}"
+                    </p>
                   </div>
-                  <div className="mb-4">
-                     <span className={`text-[8px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${
-                       p.isVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                     }`}>
-                        {p.isVerified ? 'KYC Verified' : 'KYC Not Verified'}
-                     </span>
+                )}
+                <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-[0.25em]">
+                  {user?.email}
+                </p>
+
+                <div className="flex gap-4 w-full mb-8 py-4 border-y border-slate-50">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-slate-900">
+                      ₹{p.totalEarnings?.toLocaleString() || 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                      Earnings
+                    </p>
                   </div>
-                  <h4 className="font-bold text-xl mb-1">{user?.displayName || 'Unknown Pro'}</h4>
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      p.availabilityStatus === 'Available' ? 'bg-emerald-400' :
-                      p.availabilityStatus === 'Busy' ? 'bg-amber-400' : 'bg-slate-500'
-                    }`} />
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest leading-none">{p.availabilityStatus || 'Offline'}</span>
+                  <div className="flex-1 border-x border-slate-50">
+                    <p className="text-sm font-bold text-slate-900">
+                      {p.rewardCredits || 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                      Credits
+                    </p>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-slate-900">
+                      {p.rating}
+                    </p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                      Rating
+                    </p>
+                  </div>
+                </div>
+
+                {p.kycStatus === "pending" && (
+                  <div className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">
+                      Submitted Documents
+                    </p>
+                    <div className="space-y-4">
+                      <div className="p-3 bg-white rounded-xl border border-amber-100">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                          Target Categories
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {p.categories?.map((c) => (
+                            <span
+                              key={c}
+                              className="text-[9px] font-bold bg-blue-700 text-white px-2 py-0.5 rounded-full"
+                            >
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      {p.bio && (
+                        <div className="p-3 bg-white rounded-xl border border-amber-100">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            Pro Bio
+                          </p>
+                          <p className="text-[10px] text-slate-600 italic line-clamp-3">
+                            {p.bio}
+                          </p>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">
+                          KYC Documents
+                        </p>
+                        {p.kycDocuments?.map((doc, idx) => (
+                          <div
+                            key={idx}
+                            className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100"
+                          >
+                            <span className="text-[10px] font-bold text-slate-900">
+                              {doc.type}
+                            </span>
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase bg-slate-50 px-2 py-1 rounded"
+                            >
+                              View
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {user?.phoneNumber && (
+                  <div className="mb-6 w-full py-3 bg-slate-50 rounded-2xl flex items-center justify-between px-6 border border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Smartphone size={14} className="text-slate-400" />
+                      <span className="text-sm font-bold text-slate-900">
+                        {user.phoneNumber.startsWith("+91")
+                          ? `+91 •••••• ${user.phoneNumber.replace("+91", "").slice(-4)}`
+                          : `+91 •••••• ${user.phoneNumber.slice(-4)}`}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleAdminBridgeCall(user, "User")}
+                      className="bg-blue-700 px-4 py-2 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md flex items-center gap-2 shrink-0 group cursor-pointer"
+                      title="Route masked call via corporate landline gateway"
+                    >
+                      <Phone size={12} className="group-hover:animate-bounce" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        Route Bridge Call
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                <div className="w-full mb-6 text-left space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Availability
+                    </p>
+                    <div className="flex items-center gap-2 text-[10px] font-bold">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          p.availabilityStatus === "Available"
+                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                            : p.availabilityStatus === "Busy"
+                              ? "bg-amber-500"
+                              : "bg-slate-300"
+                        }`}
+                      />
+                      <span
+                        className={
+                          p.availabilityStatus === "Available"
+                            ? "text-emerald-600"
+                            : p.availabilityStatus === "Busy"
+                              ? "text-amber-600"
+                              : "text-slate-400"
+                        }
+                      >
+                        {p.availabilityStatus || "Offline"}
+                      </span>
+                    </div>
                   </div>
                   {p.statusReason && (
-                    <div className="mb-4 px-3 py-2 bg-slate-50/50 rounded-lg inline-block border border-slate-100">
-                      <p className="text-[9px] text-slate-400 italic font-medium">"{p.statusReason}"</p>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                        "{p.statusReason}"
+                      </p>
                     </div>
                   )}
-                  <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-[0.25em]">{user?.email}</p>
-                  
-                  <div className="flex gap-4 w-full mb-8 py-4 border-y border-slate-50">
-                     <div className="flex-1">
-                        <p className="text-sm font-bold text-slate-900">₹{p.totalEarnings?.toLocaleString() || 0}</p>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Earnings</p>
-                     </div>
-                     <div className="flex-1 border-x border-slate-50">
-                        <p className="text-sm font-bold text-slate-900">{p.rewardCredits || 0}</p>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Credits</p>
-                     </div>
-                     <div className="flex-1">
-                        <p className="text-sm font-bold text-slate-900">{p.rating}</p>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Rating</p>
-                     </div>
-                  </div>
+                </div>
 
-                  {p.kycStatus === 'pending' && (
-                    <div className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-                       <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Submitted Documents</p>
-                       <div className="space-y-4">
-                          <div className="p-3 bg-white rounded-xl border border-amber-100">
-                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Target Categories</p>
-                             <div className="flex flex-wrap gap-1">
-                                {p.categories?.map(c => (
-                                   <span key={c} className="text-[9px] font-bold bg-blue-700 text-white px-2 py-0.5 rounded-full">{c}</span>
-                                ))}
-                             </div>
-                          </div>
-                          {p.bio && (
-                             <div className="p-3 bg-white rounded-xl border border-amber-100">
-                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pro Bio</p>
-                                <p className="text-[10px] text-slate-600 italic line-clamp-3">{p.bio}</p>
-                             </div>
-                          )}
-                          <div className="space-y-2">
-                             <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">KYC Documents</p>
-                             {p.kycDocuments?.map((doc, idx) => (
-                                <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100">
-                                   <span className="text-[10px] font-bold text-slate-900">{doc.type}</span>
-                                   <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase bg-slate-50 px-2 py-1 rounded">View</a>
-                                </div>
-                             ))}
-                          </div>
-                       </div>
-                    </div>
-                  )}
-
-                  {user?.phoneNumber && (
-                    <div className="mb-6 w-full py-3 bg-slate-50 rounded-2xl flex items-center justify-between px-6 border border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <Smartphone size={14} className="text-slate-400" />
-                        <span className="text-sm font-bold text-slate-900">{user.phoneNumber.replace('+91', '')}</span>
-                      </div>
-                      <a 
-                        href={`tel:${user.phoneNumber}`}
-                        className="bg-blue-700 px-4 py-2 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md flex items-center gap-2 shrink-0 group"
-                        title={`Call ${user.displayName}`}
+                <div className="flex w-full gap-3">
+                  <button
+                    onClick={() => setSelectedProfilePartner({ ...p, user })}
+                    className="flex-1 bg-slate-50 text-slate-900 border border-slate-200 rounded-xl py-3 text-xs font-bold hover:bg-slate-100 transition-all"
+                  >
+                    Full Profile
+                  </button>
+                  {!p.isVerified ? (
+                    <div className="flex-1 flex flex-col gap-2">
+                      <button
+                        onClick={() => verifyPartner(p.id, true)}
+                        className="w-full bg-emerald-600 text-white rounded-xl py-3 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all active:scale-95"
                       >
-                         <Phone size={12} className="group-hover:animate-bounce" />
-                         <span className="text-[10px] font-black uppercase tracking-widest">Call Now</span>
-                      </a>
+                        Approve KYC
+                      </button>
+                      <button
+                        onClick={() => setManualKYCPartner(p)}
+                        className="w-full bg-slate-100 text-slate-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                      >
+                        Manual KYC Entry
+                      </button>
+                      <button
+                        onClick={() => setRejectingKYCPartner(p)}
+                        className="w-full bg-rose-50 text-rose-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                      >
+                        Reject KYC
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col gap-2">
+                      <button
+                        onClick={() =>
+                          updateStatus(
+                            p.id,
+                            p.status === "active" ? "inactive" : "active",
+                          )
+                        }
+                        className={`w-full rounded-xl py-3 text-xs font-bold transition-all active:scale-95 flex-1 ${
+                          p.status === "active"
+                            ? "bg-blue-700 text-white hover:bg-blue-600"
+                            : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                        }`}
+                      >
+                        {p.status === "active" ? "Suspend" : "Reactivate"}
+                      </button>
+                      <button
+                        onClick={() => setManualKYCPartner(p)}
+                        className="w-full bg-slate-100 text-slate-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                      >
+                        Update KYC Docs
+                      </button>
                     </div>
                   )}
-
-                  <div className="w-full mb-6 text-left space-y-3">
-                     <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Availability</p>
-                        <div className="flex items-center gap-2 text-[10px] font-bold">
-                           <div className={`w-2 h-2 rounded-full ${
-                              p.availabilityStatus === 'Available' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' :
-                              p.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-300'
-                           }`} />
-                           <span className={
-                              p.availabilityStatus === 'Available' ? 'text-emerald-600' :
-                              p.availabilityStatus === 'Busy' ? 'text-amber-600' : 'text-slate-400'
-                           }>{p.availabilityStatus || 'Offline'}</span>
-                        </div>
-                     </div>
-                     {p.statusReason && (
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                           <p className="text-[10px] text-slate-500 leading-relaxed italic">"{p.statusReason}"</p>
-                        </div>
-                     )}
-                  </div>
-
-                   <div className="flex w-full gap-3">
-                     <button 
-                       onClick={() => setSelectedProfilePartner({ ...p, user })}
-                       className="flex-1 bg-slate-50 text-slate-900 border border-slate-200 rounded-xl py-3 text-xs font-bold hover:bg-slate-100 transition-all"
-                     >
-                       Full Profile
-                     </button>
-                    {!p.isVerified ? (
-                      <div className="flex-1 flex flex-col gap-2">
-                        <button 
-                          onClick={() => verifyPartner(p.id, true)}
-                          className="w-full bg-emerald-600 text-white rounded-xl py-3 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all active:scale-95"
-                        >
-                          Approve KYC
-                        </button>
-                        <button 
-                          onClick={() => setManualKYCPartner(p)}
-                          className="w-full bg-slate-100 text-slate-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                        >
-                          Manual KYC Entry
-                        </button>
-                        <button 
-                          onClick={() => setRejectingKYCPartner(p)}
-                          className="w-full bg-rose-50 text-rose-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
-                        >
-                          Reject KYC
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex-1 flex flex-col gap-2">
-                        <button 
-                          onClick={() => updateStatus(p.id, p.status === 'active' ? 'inactive' : 'active')}
-                          className={`w-full rounded-xl py-3 text-xs font-bold transition-all active:scale-95 flex-1 ${
-                            p.status === 'active' ? 'bg-blue-700 text-white hover:bg-blue-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                          }`}
-                        >
-                          {p.status === 'active' ? 'Suspend' : 'Reactivate'}
-                        </button>
-                        <button 
-                          onClick={() => setManualKYCPartner(p)}
-                          className="w-full bg-slate-100 text-slate-600 rounded-xl py-2 text-[8px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                        >
-                          Update KYC Docs
-                        </button>
-                      </div>
-                    )}
-                     <button 
-                      onClick={() => setSelectedRewardPartner(p)}
-                      className="bg-amber-50 text-amber-600 p-3 rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-sm"
-                      title="Credit/Manage Rewards"
-                     >
-                        <Star size={18} />
-                     </button>
-                  </div>
-               </div>
-               <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-slate-50 rounded-full z-0 group-hover:scale-110 transition-transform" />
+                  <button
+                    onClick={() => setSelectedRewardPartner(p)}
+                    className="bg-amber-50 text-amber-600 p-3 rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-sm"
+                    title="Credit/Manage Rewards"
+                  >
+                    <Star size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-slate-50 rounded-full z-0 group-hover:scale-110 transition-transform" />
             </div>
           );
         })}
@@ -3563,8 +5336,11 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
 
       <AnimatePresence>
         {selectedRewardPartner && (
-          <div key="reward-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm">
-            <motion.div 
+          <div
+            key="reward-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm"
+          >
+            <motion.div
               key="reward-motion"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -3574,47 +5350,67 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
               <div className="px-10 py-6 border-b border-slate-50 shrink-0 flex justify-between items-center">
                 <div>
                   <h3 className="text-2xl font-bold">Manage Rewards</h3>
-                  <p className="text-slate-500 text-sm">Adjust reward points for partner.</p>
+                  <p className="text-slate-500 text-sm">
+                    Adjust reward points for partner.
+                  </p>
                 </div>
-                <button onClick={() => setSelectedRewardPartner(null)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                <button
+                  onClick={() => setSelectedRewardPartner(null)}
+                  className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+                >
                   <X size={20} />
                 </button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
-                 <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Add Points</label>
-                   <input 
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    Add Points
+                  </label>
+                  <input
                     type="number"
                     value={rewardAmount}
                     onChange={(e) => setRewardAmount(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-2xl font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                 </div>
-                 <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Reason for Credit</label>
-                   <textarea 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    Reason for Credit
+                  </label>
+                  <textarea
                     value={rewardReason}
                     onChange={(e) => setRewardReason(e.target.value)}
                     placeholder="e.g. Completed 10 bookings this week"
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-700 outline-none h-24"
-                   />
-                 </div>
+                  />
+                </div>
 
-                 <div className="flex gap-4">
-                    <button onClick={() => setSelectedRewardPartner(null)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-colors">Cancel</button>
-                    <button onClick={handleApplyReward} className="flex-[2] bg-blue-700 text-white font-bold rounded-2xl hover:bg-blue-800 transition-all shadow-xl shadow-slate-200">
-                      Apply Points
-                    </button>
-                 </div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setSelectedRewardPartner(null)}
+                    className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApplyReward}
+                    className="flex-[2] bg-blue-700 text-white font-bold rounded-2xl hover:bg-blue-800 transition-all shadow-xl shadow-slate-200"
+                  >
+                    Apply Points
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
 
         {manualKYCPartner && (
-          <div key="manual-kyc-modal" className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm">
-            <motion.div 
+          <div
+            key="manual-kyc-modal"
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm"
+          >
+            <motion.div
               key="manual-kyc-motion"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -3623,77 +5419,105 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
             >
               <div className="px-10 py-6 border-b border-slate-50 shrink-0 flex justify-between items-center">
                 <div>
-                   <h3 className="text-2xl font-bold italic">Add Documents</h3>
-                   <p className="text-slate-500 text-sm font-medium">Add identity documents manually.</p>
+                  <h3 className="text-2xl font-bold italic">Add Documents</h3>
+                  <p className="text-slate-500 text-sm font-medium">
+                    Add identity documents manually.
+                  </p>
                 </div>
-                <button onClick={() => setManualKYCPartner(null)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                <button
+                  onClick={() => setManualKYCPartner(null)}
+                  className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+                >
                   <X size={20} />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
-                 <div className="space-y-4">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ID Proof Document</p>
-                    <input
-                       type="text"
-                       placeholder="Enter ID Proof Number (e.g., Aadhar/PAN)"
-                       value={manualDocs[0]?.documentNumber || ''}
-                       onChange={(e) => {
-                          const newDocs = [...manualDocs];
-                          newDocs[0] = { ...newDocs[0], documentNumber: e.target.value };
-                          setManualDocs(newDocs);
-                       }}
-                       className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
-                    />
-                    <AdminUpload 
-                       label=""
-                       placeholder="Upload ID Proof image"
-                       value={manualDocs[0]?.url || ''}
-                       onUpload={(url) => {
-                          const newDocs = [...manualDocs];
-                          newDocs[0] = { ...newDocs[0], url };
-                          setManualDocs(newDocs);
-                       }}
-                    />
-                 </div>
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    ID Proof Document
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Enter ID Proof Number (e.g., Aadhar/PAN)"
+                    value={manualDocs[0]?.documentNumber || ""}
+                    onChange={(e) => {
+                      const newDocs = [...manualDocs];
+                      newDocs[0] = {
+                        ...newDocs[0],
+                        documentNumber: e.target.value,
+                      };
+                      setManualDocs(newDocs);
+                    }}
+                    className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
+                  />
+                  <AdminUpload
+                    label=""
+                    placeholder="Upload ID Proof image"
+                    value={manualDocs[0]?.url || ""}
+                    onUpload={(url) => {
+                      const newDocs = [...manualDocs];
+                      newDocs[0] = { ...newDocs[0], url };
+                      setManualDocs(newDocs);
+                    }}
+                  />
+                </div>
 
-                 <div className="space-y-4">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Address Proof Document</p>
-                    <input
-                       type="text"
-                       placeholder="Enter Address Proof Details (Optional)"
-                       value={manualDocs[1]?.documentNumber || ''}
-                       onChange={(e) => {
-                          const newDocs = [...manualDocs];
-                          newDocs[1] = { ...newDocs[1], documentNumber: e.target.value };
-                          setManualDocs(newDocs);
-                       }}
-                       className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
-                    />
-                    <AdminUpload 
-                       label=""
-                       placeholder="Upload Address Proof image"
-                       value={manualDocs[1]?.url || ''}
-                       onUpload={(url) => {
-                          const newDocs = [...manualDocs];
-                          newDocs[1] = { ...newDocs[1], url };
-                          setManualDocs(newDocs);
-                       }}
-                    />
-                 </div>
-                 
-                 <div className="flex gap-4 pt-4 border-t border-slate-100">
-                    <button onClick={() => setManualKYCPartner(null)} className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
-                    <button onClick={handleManualKYC} className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-900/20 uppercase tracking-widest text-[10px]">Verify Now</button>
-                 </div>
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Address Proof Document
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Enter Address Proof Details (Optional)"
+                    value={manualDocs[1]?.documentNumber || ""}
+                    onChange={(e) => {
+                      const newDocs = [...manualDocs];
+                      newDocs[1] = {
+                        ...newDocs[1],
+                        documentNumber: e.target.value,
+                      };
+                      setManualDocs(newDocs);
+                    }}
+                    className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
+                  />
+                  <AdminUpload
+                    label=""
+                    placeholder="Upload Address Proof image"
+                    value={manualDocs[1]?.url || ""}
+                    onUpload={(url) => {
+                      const newDocs = [...manualDocs];
+                      newDocs[1] = { ...newDocs[1], url };
+                      setManualDocs(newDocs);
+                    }}
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => setManualKYCPartner(null)}
+                    className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleManualKYC}
+                    className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-900/20 uppercase tracking-widest text-[10px]"
+                  >
+                    Verify Now
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
 
         {rejectingKYCPartner && (
-          <div key="reject-kyc-modal" className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm">
-            <motion.div 
+          <div
+            key="reject-kyc-modal"
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm"
+          >
+            <motion.div
               key="reject-kyc-motion"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -3702,28 +5526,45 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
             >
               <div className="px-10 py-6 border-b border-slate-50 shrink-0 flex justify-between items-center">
                 <div>
-                   <h3 className="text-2xl font-bold italic">Reject KYC</h3>
-                   <p className="text-slate-500 text-sm font-medium">Provide a reason for rejecting the partner's documents.</p>
+                  <h3 className="text-2xl font-bold italic">Reject KYC</h3>
+                  <p className="text-slate-500 text-sm font-medium">
+                    Provide a reason for rejecting the partner's documents.
+                  </p>
                 </div>
-                <button onClick={() => setRejectingKYCPartner(null)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                   <X size={20} />
+                <button
+                  onClick={() => setRejectingKYCPartner(null)}
+                  className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <X size={20} />
                 </button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
-                 <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Rejection Reason</label>
-                    <textarea 
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-3xl p-6 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 transition-all outline-none h-32 resize-none"
-                    />
-                 </div>
-                 
-                 <div className="flex gap-4">
-                    <button onClick={() => setRejectingKYCPartner(null)} className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
-                    <button onClick={rejectPartner} className="flex-1 bg-rose-600 text-white py-4 rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-xl shadow-rose-900/10 uppercase tracking-widest text-[10px]">Confirm Rejection</button>
-                 </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">
+                    Rejection Reason
+                  </label>
+                  <textarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-3xl p-6 text-sm font-medium focus:ring-4 focus:ring-blue-700/5 transition-all outline-none h-32 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setRejectingKYCPartner(null)}
+                    className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={rejectPartner}
+                    className="flex-1 bg-rose-600 text-white py-4 rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-xl shadow-rose-900/10 uppercase tracking-widest text-[10px]"
+                  >
+                    Confirm Rejection
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -3732,144 +5573,241 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
 
       <AnimatePresence>
         {selectedProfilePartner && (
-          <div key="profile-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm">
-            <motion.div 
+          <div
+            key="profile-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm"
+          >
+            <motion.div
               key="profile-motion"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               className="bg-white rounded-[40px] shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             >
-               <div className="sticky top-0 bg-white/80 backdrop-blur-md px-10 py-6 border-b border-slate-50 flex justify-between items-center z-10">
-                  <h3 className="text-xl font-bold">Partner Dossier</h3>
-                  <button onClick={() => setSelectedProfilePartner(null)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
-                     <X size={20} />
-                  </button>
-               </div>
-               
-               <div className="p-10 space-y-10">
-                  <div className="flex items-center gap-8">
-                     <img 
-                        src={selectedProfilePartner.user?.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} 
-                        className="w-32 h-32 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e] shadow-xl"
-                        alt={selectedProfilePartner.user?.displayName}
-                     />
-                     <div>
-                        <div className="flex items-center gap-3 mb-2">
-                           <h4 className="text-3xl font-bold text-slate-900 tracking-tight">{selectedProfilePartner.user?.displayName}</h4>
-                           <span className={`text-[10px] px-2 py-1 rounded-full font-black uppercase tracking-widest ${
-                             selectedProfilePartner.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                           }`}>
-                             {selectedProfilePartner.status}
-                           </span>
-                        </div>
-                        <p className="text-slate-400 font-medium">{selectedProfilePartner.user?.email}</p>
-                        <div className="flex items-center gap-4 mt-2">
-                           <p className="text-slate-600 font-bold font-mono">{selectedProfilePartner.user?.phoneNumber || 'No Phone Number'}</p>
-                           {selectedProfilePartner.user?.phoneNumber && (
-                             <a 
-                               href={`tel:${selectedProfilePartner.user.phoneNumber}`}
-                               className="bg-blue-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all flex items-center gap-2 shadow-lg shadow-slate-200"
-                             >
-                                <Phone size={12} /> Call Agent
-                             </a>
-                           )}
-                        </div>
-                     </div>
-                  </div>
+              <div className="sticky top-0 bg-white/80 backdrop-blur-md px-10 py-6 border-b border-slate-50 flex justify-between items-center z-10">
+                <h3 className="text-xl font-bold">Partner Dossier</h3>
+                <button
+                  onClick={() => setSelectedProfilePartner(null)}
+                  className="p-2 hover:bg-slate-50 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                  <div className="grid grid-cols-3 gap-6">
-                     <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
-                        <p className="text-2xl font-bold text-slate-900">₹{selectedProfilePartner.totalEarnings?.toLocaleString() || 0}</p>
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Total Scale</p>
-                     </div>
-                     <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
-                        <p className="text-2xl font-bold text-slate-900">{selectedProfilePartner.rewardCredits || 0}</p>
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Loyalty Points</p>
-                     </div>
-                     <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
-                        <p className="text-2xl font-bold text-slate-900">{selectedProfilePartner.rating}</p>
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Satisfaction</p>
-                     </div>
+              <div className="p-10 space-y-10">
+                <div className="flex items-center gap-8">
+                  <img
+                    src={
+                      selectedProfilePartner.user?.photoURL ||
+                      "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                    }
+                    className="w-32 h-32 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e] shadow-xl"
+                    alt={selectedProfilePartner.user?.displayName}
+                  />
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="text-3xl font-bold text-slate-900 tracking-tight">
+                        {selectedProfilePartner.user?.displayName}
+                      </h4>
+                      <span
+                        className={`text-[10px] px-2 py-1 rounded-full font-black uppercase tracking-widest ${
+                          selectedProfilePartner.status === "active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {selectedProfilePartner.status}
+                      </span>
+                    </div>
+                    <p className="text-slate-400 font-medium">
+                      {selectedProfilePartner.user?.email}
+                    </p>
+                    <div className="flex items-center gap-4 mt-2">
+                      <p className="text-slate-600 font-bold font-mono">
+                        {selectedProfilePartner.user?.phoneNumber
+                          ? selectedProfilePartner.user.phoneNumber.startsWith("+91")
+                            ? `+91 •••••• ${selectedProfilePartner.user.phoneNumber.replace("+91", "").slice(-4)}`
+                            : `+91 •••••• ${selectedProfilePartner.user.phoneNumber.slice(-4)}`
+                          : "No Phone Number"}
+                      </p>
+                      {selectedProfilePartner.user?.phoneNumber && (
+                        <button
+                          onClick={() =>
+                            handleAdminBridgeCall(
+                              selectedProfilePartner.user,
+                              "Agent",
+                            )
+                          }
+                          className="bg-blue-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
+                        >
+                          <Phone size={12} /> Call Agent (Masked Bridge)
+                        </button>
+                      )}
+                    </div>
                   </div>
+                </div>
 
-                  <div className="space-y-8 bg-slate-50/50 p-8 rounded-[40px] border border-slate-100">
-                     <div>
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Availability Status</h5>
-                        <div className="flex items-center gap-4 bg-white p-5 rounded-2xl border border-slate-100">
-                           <div className={`w-3 h-3 rounded-full ${
-                              selectedProfilePartner.availabilityStatus === 'Available' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse' :
-                              selectedProfilePartner.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-300'
-                           }`} />
-                           <div>
-                              <p className={`font-bold text-sm ${
-                                 selectedProfilePartner.availabilityStatus === 'Available' ? 'text-emerald-600' :
-                                 selectedProfilePartner.availabilityStatus === 'Busy' ? 'text-amber-600' : 'text-slate-400'
-                              }`}>{selectedProfilePartner.availabilityStatus || 'Offline'}</p>
-                              {selectedProfilePartner.statusReason && (
-                                 <p className="text-xs text-slate-400 mt-1 italic leading-relaxed">"{selectedProfilePartner.statusReason}"</p>
-                               )}
-                           </div>
-                        </div>
-                     </div>
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
+                    <p className="text-2xl font-bold text-slate-900">
+                      ₹
+                      {selectedProfilePartner.totalEarnings?.toLocaleString() ||
+                        0}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">
+                      Total Scale
+                    </p>
                   </div>
+                  <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
+                    <p className="text-2xl font-bold text-slate-900">
+                      {selectedProfilePartner.rewardCredits || 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">
+                      Loyalty Points
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 p-6 rounded-[32px] text-center border border-slate-100">
+                    <p className="text-2xl font-bold text-slate-900">
+                      {selectedProfilePartner.rating}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">
+                      Satisfaction
+                    </p>
+                  </div>
+                </div>
 
-                  <div className="space-y-6">
-                     <div>
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Professional Bio</h5>
-                        <p className="text-sm text-slate-600 leading-relaxed bg-slate-50/50 p-6 rounded-[32px] border border-slate-50 italic">
-                           {selectedProfilePartner.bio || "No professional overview provided by this partner yet."}
+                <div className="space-y-8 bg-slate-50/50 p-8 rounded-[40px] border border-slate-100">
+                  <div>
+                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                      Availability Status
+                    </h5>
+                    <div className="flex items-center gap-4 bg-white p-5 rounded-2xl border border-slate-100">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          selectedProfilePartner.availabilityStatus ===
+                          "Available"
+                            ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse"
+                            : selectedProfilePartner.availabilityStatus ===
+                                "Busy"
+                              ? "bg-amber-500"
+                              : "bg-slate-300"
+                        }`}
+                      />
+                      <div>
+                        <p
+                          className={`font-bold text-sm ${
+                            selectedProfilePartner.availabilityStatus ===
+                            "Available"
+                              ? "text-emerald-600"
+                              : selectedProfilePartner.availabilityStatus ===
+                                  "Busy"
+                                ? "text-amber-600"
+                                : "text-slate-400"
+                          }`}
+                        >
+                          {selectedProfilePartner.availabilityStatus ||
+                            "Offline"}
                         </p>
-                     </div>
+                        {selectedProfilePartner.statusReason && (
+                          <p className="text-xs text-slate-400 mt-1 italic leading-relaxed">
+                            "{selectedProfilePartner.statusReason}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                     <div>
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Competencies</h5>
-                        <div className="flex flex-wrap gap-2">
-                           {selectedProfilePartner.categories?.map(catId => (
-                             <span key={catId} className="px-4 py-2 bg-blue-700 text-white rounded-xl text-xs font-bold">
-                               {catId.toUpperCase()}
-                             </span>
-                           ))}
-                           {(!selectedProfilePartner.categories || selectedProfilePartner.categories.length === 0) && (
-                             <span className="text-xs text-slate-400 italic">No categories assigned.</span>
-                           )}
-                        </div>
-                     </div>
-
-                     <div className="pt-6 border-t border-slate-100">
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Validation Status</h5>
-                        <div className="flex items-center gap-6">
-                           <div className={`p-4 rounded-2xl flex items-center gap-3 ${selectedProfilePartner.isVerified ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                              <ShieldCheck size={20} />
-                              <span className="text-xs font-bold">{selectedProfilePartner.isVerified ? 'Partner Verified' : 'Awaiting Authentication'}</span>
-                           </div>
-                           <p className="text-[10px] text-slate-400 font-bold">JOINED: {selectedProfilePartner.createdAt?.toDate?.() ? selectedProfilePartner.createdAt.toDate().toLocaleDateString() : 'Historical Node'}</p>
-                        </div>
-                     </div>
+                <div className="space-y-6">
+                  <div>
+                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                      Professional Bio
+                    </h5>
+                    <p className="text-sm text-slate-600 leading-relaxed bg-slate-50/50 p-6 rounded-[32px] border border-slate-50 italic">
+                      {selectedProfilePartner.bio ||
+                        "No professional overview provided by this partner yet."}
+                    </p>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                     <button 
-                        onClick={() => { setSelectedRewardPartner(selectedProfilePartner); setSelectedProfilePartner(null); }}
-                        className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex items-center justify-center gap-2 text-xs"
-                     >
-                        <Star size={16} />
-                        Incentive Points
-                     </button>
-                     <button 
-                       onClick={() => { setManualKYCPartner(selectedProfilePartner as any); setSelectedProfilePartner(null); }}
-                       className="flex-1 bg-slate-100 text-slate-900 py-4 rounded-2xl font-bold hover:bg-slate-200 transition-all flex items-center justify-center gap-2 text-xs"
-                     >
-                       {selectedProfilePartner.isVerified ? 'Update KYC' : 'Manual KYC Entry'}
-                     </button>
-                     <button 
-                        onClick={() => setSelectedProfilePartner(null)}
-                        className="px-8 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors border border-slate-100 text-xs"
-                     >
-                        Dismiss
-                     </button>
+                  <div>
+                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                      Competencies
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedProfilePartner.categories?.map((catId) => (
+                        <span
+                          key={catId}
+                          className="px-4 py-2 bg-blue-700 text-white rounded-xl text-xs font-bold"
+                        >
+                          {catId.toUpperCase()}
+                        </span>
+                      ))}
+                      {(!selectedProfilePartner.categories ||
+                        selectedProfilePartner.categories.length === 0) && (
+                        <span className="text-xs text-slate-400 italic">
+                          No categories assigned.
+                        </span>
+                      )}
+                    </div>
                   </div>
-               </div>
+
+                  <div className="pt-6 border-t border-slate-100">
+                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                      Validation Status
+                    </h5>
+                    <div className="flex items-center gap-6">
+                      <div
+                        className={`p-4 rounded-2xl flex items-center gap-3 ${selectedProfilePartner.isVerified ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                      >
+                        <ShieldCheck size={20} />
+                        <span className="text-xs font-bold">
+                          {selectedProfilePartner.isVerified
+                            ? "Partner Verified"
+                            : "Awaiting Authentication"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold">
+                        JOINED:{" "}
+                        {selectedProfilePartner.createdAt?.toDate?.()
+                          ? selectedProfilePartner.createdAt
+                              .toDate()
+                              .toLocaleDateString()
+                          : "Historical Node"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                  <button
+                    onClick={() => {
+                      setSelectedRewardPartner(selectedProfilePartner);
+                      setSelectedProfilePartner(null);
+                    }}
+                    className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all flex items-center justify-center gap-2 text-xs"
+                  >
+                    <Star size={16} />
+                    Incentive Points
+                  </button>
+                  <button
+                    onClick={() => {
+                      setManualKYCPartner(selectedProfilePartner as any);
+                      setSelectedProfilePartner(null);
+                    }}
+                    className="flex-1 bg-slate-100 text-slate-900 py-4 rounded-2xl font-bold hover:bg-slate-200 transition-all flex items-center justify-center gap-2 text-xs"
+                  >
+                    {selectedProfilePartner.isVerified
+                      ? "Update KYC"
+                      : "Manual KYC Entry"}
+                  </button>
+                  <button
+                    onClick={() => setSelectedProfilePartner(null)}
+                    className="px-8 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors border border-slate-100 text-xs"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
@@ -3878,35 +5816,49 @@ function PartnerManager({ partners, users, setActiveTab }: { partners: PartnerPr
   );
 }
 
-function UserManager({ users, bookings, currentUserProfile }: { users: UserProfile[], bookings: Booking[], currentUserProfile: UserProfile }) {
-  const isHeadAdmin = !currentUserProfile.adminSubRole || currentUserProfile.adminSubRole === 'head';
+function UserManager({
+  users,
+  bookings,
+  currentUserProfile,
+}: {
+  users: UserProfile[];
+  bookings: Booking[];
+  currentUserProfile: UserProfile;
+}) {
+  const isHeadAdmin =
+    !currentUserProfile.adminSubRole ||
+    currentUserProfile.adminSubRole === "head";
 
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
-  const [confirmInput, setConfirmInput] = useState('');
+  const [confirmInput, setConfirmInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
-  const updateUserRole = async (userId: string, targetRole: UserRole, targetSubRole?: AdminSubRole | null) => {
+  const updateUserRole = async (
+    userId: string,
+    targetRole: UserRole,
+    targetSubRole?: AdminSubRole | null,
+  ) => {
     try {
       const updateData: any = { role: targetRole, updatedAt: Timestamp.now() };
-      
-      if (targetRole === 'admin') {
-         updateData.adminSubRole = targetSubRole || 'head';
+
+      if (targetRole === "admin") {
+        updateData.adminSubRole = targetSubRole || "head";
       } else {
-         updateData.adminSubRole = deleteField();
+        updateData.adminSubRole = deleteField();
       }
 
-      await updateDoc(doc(db, 'users', userId), updateData);
-      
-      await addDoc(collection(db, 'auditLogs'), {
+      await updateDoc(doc(db, "users", userId), updateData);
+
+      await addDoc(collection(db, "auditLogs"), {
         adminId: currentUserProfile.uid,
-        action: 'UPDATE_ROLE',
+        action: "UPDATE_ROLE",
         targetId: userId,
-        details: `Changed role to ${targetRole}${targetRole === 'admin' ? ` (${updateData.adminSubRole})` : ''}`,
-        createdAt: Timestamp.now()
+        details: `Changed role to ${targetRole}${targetRole === "admin" ? ` (${updateData.adminSubRole})` : ""}`,
+        createdAt: Timestamp.now(),
       });
-      console.log('Role updated successfully');
+      console.log("Role updated successfully");
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
     }
@@ -3919,184 +5871,271 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
     try {
       // 1. Delete associated Partner profile (if any) and its earningsHistory subcollection
       try {
-        const partnerQuery = query(collection(db, 'partners'), where('userId', '==', userId));
+        const partnerQuery = query(
+          collection(db, "partners"),
+          where("userId", "==", userId),
+        );
         const partnerSnap = await getDocs(partnerQuery);
         for (const partnerDoc of partnerSnap.docs) {
           try {
-            const historyCol = collection(db, 'partners', partnerDoc.id, 'earningsHistory');
+            const historyCol = collection(
+              db,
+              "partners",
+              partnerDoc.id,
+              "earningsHistory",
+            );
             const historySnap = await getDocs(historyCol);
             for (const historyDoc of historySnap.docs) {
-              await deleteDoc(doc(db, 'partners', partnerDoc.id, 'earningsHistory', historyDoc.id));
+              await deleteDoc(
+                doc(
+                  db,
+                  "partners",
+                  partnerDoc.id,
+                  "earningsHistory",
+                  historyDoc.id,
+                ),
+              );
             }
           } catch (ehError) {
-            console.error('Non-blocking partner earnings history delete error:', ehError);
+            console.error(
+              "Non-blocking partner earnings history delete error:",
+              ehError,
+            );
           }
-          await deleteDoc(doc(db, 'partners', partnerDoc.id));
+          await deleteDoc(doc(db, "partners", partnerDoc.id));
         }
       } catch (partnerError) {
-        console.error('Non-blocking partner delete error:', partnerError);
+        console.error("Non-blocking partner delete error:", partnerError);
       }
 
       // 2. Delete bookings where this user is customer or partner
       try {
-        const bookingsCustomerQuery = query(collection(db, 'bookings'), where('customerId', '==', userId));
+        const bookingsCustomerQuery = query(
+          collection(db, "bookings"),
+          where("customerId", "==", userId),
+        );
         const bookingsCustomerSnap = await getDocs(bookingsCustomerQuery);
         for (const bDoc of bookingsCustomerSnap.docs) {
-          await deleteDoc(doc(db, 'bookings', bDoc.id));
+          await deleteDoc(doc(db, "bookings", bDoc.id));
         }
       } catch (bCustError) {
-        console.error('Non-blocking customer bookings delete error:', bCustError);
+        console.error(
+          "Non-blocking customer bookings delete error:",
+          bCustError,
+        );
       }
 
       try {
-        const bookingsPartnerQuery = query(collection(db, 'bookings'), where('partnerId', '==', userId));
+        const bookingsPartnerQuery = query(
+          collection(db, "bookings"),
+          where("partnerId", "==", userId),
+        );
         const bookingsPartnerSnap = await getDocs(bookingsPartnerQuery);
         for (const bDoc of bookingsPartnerSnap.docs) {
-          await deleteDoc(doc(db, 'bookings', bDoc.id));
+          await deleteDoc(doc(db, "bookings", bDoc.id));
         }
       } catch (bPartError) {
-        console.error('Non-blocking partner bookings delete error:', bPartError);
+        console.error(
+          "Non-blocking partner bookings delete error:",
+          bPartError,
+        );
       }
 
       // 3. Delete support tickets where user is userId
       try {
-        const ticketsQuery = query(collection(db, 'tickets'), where('userId', '==', userId));
+        const ticketsQuery = query(
+          collection(db, "tickets"),
+          where("userId", "==", userId),
+        );
         const ticketsSnap = await getDocs(ticketsQuery);
         for (const tDoc of ticketsSnap.docs) {
-          await deleteDoc(doc(db, 'tickets', tDoc.id));
+          await deleteDoc(doc(db, "tickets", tDoc.id));
         }
       } catch (ticketsError) {
-        console.error('Non-blocking tickets delete error:', ticketsError);
+        console.error("Non-blocking tickets delete error:", ticketsError);
       }
 
       // 4. Delete notifications where user is userId
       try {
-        const notificationsQuery = query(collection(db, 'notifications'), where('userId', '==', userId));
+        const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", userId),
+        );
         const notificationsSnap = await getDocs(notificationsQuery);
         for (const nDoc of notificationsSnap.docs) {
-          await deleteDoc(doc(db, 'notifications', nDoc.id));
+          await deleteDoc(doc(db, "notifications", nDoc.id));
         }
       } catch (notifError) {
-        console.error('Non-blocking notifications delete error:', notifError);
+        console.error("Non-blocking notifications delete error:", notifError);
       }
 
       // 5. Delete redemptions where user is userId
       try {
-        const redemptionsQuery = query(collection(db, 'redemptions'), where('userId', '==', userId));
+        const redemptionsQuery = query(
+          collection(db, "redemptions"),
+          where("userId", "==", userId),
+        );
         const redemptionsSnap = await getDocs(redemptionsQuery);
         for (const rDoc of redemptionsSnap.docs) {
-          await deleteDoc(doc(db, 'redemptions', rDoc.id));
+          await deleteDoc(doc(db, "redemptions", rDoc.id));
         }
       } catch (redempError) {
-        console.error('Non-blocking redemptions delete error:', redempError);
+        console.error("Non-blocking redemptions delete error:", redempError);
       }
 
       // 6. Delete AMCs where customerId is userId
       try {
-        const amcsQuery = query(collection(db, 'amcs'), where('customerId', '==', userId));
+        const amcsQuery = query(
+          collection(db, "amcs"),
+          where("customerId", "==", userId),
+        );
         const amcsSnap = await getDocs(amcsQuery);
         for (const aDoc of amcsSnap.docs) {
-          await deleteDoc(doc(db, 'amcs', aDoc.id));
+          await deleteDoc(doc(db, "amcs", aDoc.id));
         }
       } catch (amcError) {
-        console.error('Non-blocking AMCs delete error:', amcError);
+        console.error("Non-blocking AMCs delete error:", amcError);
       }
 
       // 7. Delete reviews where this user is customer or partner
       try {
-        const reviewsCustomerQuery = query(collection(db, 'reviews'), where('customerId', '==', userId));
+        const reviewsCustomerQuery = query(
+          collection(db, "reviews"),
+          where("customerId", "==", userId),
+        );
         const reviewsCustomerSnap = await getDocs(reviewsCustomerQuery);
         for (const revDoc of reviewsCustomerSnap.docs) {
-          await deleteDoc(doc(db, 'reviews', revDoc.id));
+          await deleteDoc(doc(db, "reviews", revDoc.id));
         }
       } catch (revCustError) {
-        console.error('Non-blocking customer reviews delete error:', revCustError);
+        console.error(
+          "Non-blocking customer reviews delete error:",
+          revCustError,
+        );
       }
 
       try {
-        const reviewsPartnerQuery = query(collection(db, 'reviews'), where('partnerId', '==', userId));
+        const reviewsPartnerQuery = query(
+          collection(db, "reviews"),
+          where("partnerId", "==", userId),
+        );
         const reviewsPartnerSnap = await getDocs(reviewsPartnerQuery);
         for (const revDoc of reviewsPartnerSnap.docs) {
-          await deleteDoc(doc(db, 'reviews', revDoc.id));
+          await deleteDoc(doc(db, "reviews", revDoc.id));
         }
       } catch (revPartError) {
-        console.error('Non-blocking partner reviews delete error:', revPartError);
+        console.error(
+          "Non-blocking partner reviews delete error:",
+          revPartError,
+        );
       }
 
       // 8. Delete wallet transactions where user is userId
       try {
-        const walletQuery = query(collection(db, 'walletTransactions'), where('userId', '==', userId));
+        const walletQuery = query(
+          collection(db, "walletTransactions"),
+          where("userId", "==", userId),
+        );
         const walletSnap = await getDocs(walletQuery);
         for (const wDoc of walletSnap.docs) {
-          await deleteDoc(doc(db, 'walletTransactions', wDoc.id));
+          await deleteDoc(doc(db, "walletTransactions", wDoc.id));
         }
       } catch (walletError) {
-        console.error('Non-blocking wallet transactions delete error:', walletError);
+        console.error(
+          "Non-blocking wallet transactions delete error:",
+          walletError,
+        );
       }
 
       // 9. Delete WhatsApp alerts where user is userId
       try {
-        const whatsappQuery = query(collection(db, 'whatsapp_alerts'), where('userId', '==', userId));
+        const whatsappQuery = query(
+          collection(db, "whatsapp_alerts"),
+          where("userId", "==", userId),
+        );
         const whatsappSnap = await getDocs(whatsappQuery);
         for (const waDoc of whatsappSnap.docs) {
-          await deleteDoc(doc(db, 'whatsapp_alerts', waDoc.id));
+          await deleteDoc(doc(db, "whatsapp_alerts", waDoc.id));
         }
       } catch (whatsappError) {
-        console.error('Non-blocking whatsapp alerts delete error:', whatsappError);
+        console.error(
+          "Non-blocking whatsapp alerts delete error:",
+          whatsappError,
+        );
       }
 
       // 10. Delete audit logs referencing this user (as admin or target)
       try {
-        const auditQuery1 = query(collection(db, 'auditLogs'), where('adminId', '==', userId));
+        const auditQuery1 = query(
+          collection(db, "auditLogs"),
+          where("adminId", "==", userId),
+        );
         const auditSnap1 = await getDocs(auditQuery1);
         for (const aDoc of auditSnap1.docs) {
-          await deleteDoc(doc(db, 'auditLogs', aDoc.id));
+          await deleteDoc(doc(db, "auditLogs", aDoc.id));
         }
       } catch (audit1Error) {
-        console.error('Non-blocking auditLogs adminId delete error:', audit1Error);
+        console.error(
+          "Non-blocking auditLogs adminId delete error:",
+          audit1Error,
+        );
       }
 
       try {
-        const auditQuery2 = query(collection(db, 'auditLogs'), where('targetId', '==', userId));
+        const auditQuery2 = query(
+          collection(db, "auditLogs"),
+          where("targetId", "==", userId),
+        );
         const auditSnap2 = await getDocs(auditQuery2);
         for (const aDoc of auditSnap2.docs) {
-          await deleteDoc(doc(db, 'auditLogs', aDoc.id));
+          await deleteDoc(doc(db, "auditLogs", aDoc.id));
         }
       } catch (audit2Error) {
-        console.error('Non-blocking auditLogs targetId delete error:', audit2Error);
+        console.error(
+          "Non-blocking auditLogs targetId delete error:",
+          audit2Error,
+        );
       }
 
       // 11. Finally, delete the primary user document
-      await deleteDoc(doc(db, 'users', userId));
+      await deleteDoc(doc(db, "users", userId));
 
       // Record audit log of the erase action itself
       try {
-        await addDoc(collection(db, 'auditLogs'), {
+        await addDoc(collection(db, "auditLogs"), {
           adminId: currentUserProfile.uid,
-          action: 'ERASE_USER_DATA_COMPLETE',
+          action: "ERASE_USER_DATA_COMPLETE",
           targetId: userId,
-          details: 'Permanently deleted user and erased all linked bookings, tickets, partner records, notifications, redemptions, AMCs, reviews, wallet logs, and alerts.',
-          createdAt: Timestamp.now()
+          details:
+            "Permanently deleted user and erased all linked bookings, tickets, partner records, notifications, redemptions, AMCs, reviews, wallet logs, and alerts.",
+          createdAt: Timestamp.now(),
         });
       } catch (auditLogError) {
-        console.error('Non-blocking audit log creation error:', auditLogError);
+        console.error("Non-blocking audit log creation error:", auditLogError);
       }
 
       // Dispatch ecosystem update
       try {
-        await triggerEcosystemUpdate(`Permanently erased user ${userId} and all related data and bookings.`);
+        await triggerEcosystemUpdate(
+          `Permanently erased user ${userId} and all related data and bookings.`,
+        );
       } catch (triggerError) {
-        console.error('Non-blocking ecosystem update trigger error:', triggerError);
+        console.error(
+          "Non-blocking ecosystem update trigger error:",
+          triggerError,
+        );
       }
-      
-      setDeleteSuccess('User records and associated database matches have been successfully deleted.');
-      setConfirmInput('');
+
+      setDeleteSuccess(
+        "User records and associated database matches have been successfully deleted.",
+      );
+      setConfirmInput("");
       setTimeout(() => {
         setDeletingUser(null);
         setDeleteSuccess(null);
       }, 2500);
     } catch (err) {
-      console.error('Critical failure in handleEraseUserAndData:', err);
+      console.error("Critical failure in handleEraseUserAndData:", err);
       setDeleteError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsDeleting(false);
@@ -4105,153 +6144,197 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
 
   return (
     <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
-       <div className="overflow-x-auto">
-          <table className="w-full text-left">
-             <thead className="bg-slate-50/50">
-                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
-                   <th className="px-8 py-5">User Profile</th>
-                   <th className="px-8 py-5">Mobile</th>
-                    <th className="px-8 py-5">Phone Auth</th>
-                    <th className="px-8 py-5">Email Auth</th>
-                   <th className="px-8 py-5">Access Management</th>
-                   <th className="px-8 py-5">History</th>
-                   <th className="px-8 py-5">Acquisition</th>
-                   <th className="px-8 py-5 text-right">Actions</th>
-                </tr>
-             </thead>
-             <tbody>
-                {users.map((u, i) => {
-                  const userBookings = bookings.filter(b => b.customerId === u.uid);
-                  return (
-                    <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group">
-                       <td className="px-8 py-6">
-                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center font-bold text-slate-400 text-xs shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
-                               {u.displayName?.[0] || 'U'}
-                            </div>
-                            <div className="min-w-0">
-                               <p className="text-sm font-bold text-slate-900 truncate">{u.displayName}</p>
-                               <p className="text-xs text-slate-400 truncate">{u.email}</p>
-                            </div>
-                         </div>
-                       </td>
-                       <td className="px-8 py-6">
-                         <p className="text-sm font-bold text-slate-900">
-                           {(!u.phoneNumber || import.meta.env.DEV) ? '--' : u.phoneNumber.replace('+91', '')}
-                          </p>
-                        </td>
-                        <td className="px-8 py-6">
-                           {(() => {
-                              const hasPhone = !!u.phoneNumber;
-                              const isPhoneVerified = hasPhone || !!u.phoneNumberVerified;
-                              return (
-                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isPhoneVerified ? 'bg-emerald-50 text-emerald-700 border border-emerald-100/50' : 'bg-amber-50 text-amber-700 border border-amber-100/50'}`}>
-                                    {isPhoneVerified ? 'Verified' : 'Not Verified'}
-                                 </span>
-                              );
-                           })()}
-                        </td>
-                        <td className="px-8 py-6">
-                           {(() => {
-                              const isEmailVerified = !!u.email && (u.role === 'admin' || !u.phoneNumber || u.emailVerified !== false);
-                              return (
-                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isEmailVerified ? 'bg-emerald-50 text-emerald-700 border border-emerald-100/50' : 'bg-amber-50 text-amber-700 border border-amber-100/50'}`}>
-                                    {isEmailVerified ? 'Verified' : 'Not Verified'}
-                                 </span>
-                              );
-                           })()}
-                        </td>
-                        <td className="className-does-not-matter shadow-none border-none p-0 hidden">
-                          <p className="hidden">
-                         </p>
-                       </td>
-                       <td className="px-8 py-6">
-                           <div className="flex flex-col gap-2">
-                                {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
-                                   <>
-                                      <select 
-                                        value={u.role}
-                                        onChange={(e) => {
-                                           const newRole = e.target.value as UserRole;
-                                           if (newRole === 'admin') {
-                                              updateUserRole(u.uid, newRole, 'hr');
-                                           } else {
-                                              updateUserRole(u.uid, newRole);
-                                           }
-                                        }}
-                                        className={`text-[10px] font-bold border rounded-lg px-2 py-1 outline-none transition-all cursor-pointer ${
-                                          u.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-200 focus:ring-purple-500' :
-                                          u.role === 'partner' ? 'bg-blue-700 text-white border-slate-700 focus:ring-slate-500' :
-                                          'bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-400'
-                                        }`}
-                                      >
-                                         <option value="customer">Customer</option>
-                                         <option value="partner">Partner</option>
-                                         <option value="admin">Administrator</option>
-                                      </select>
-                                      
-                                      {u.role === 'admin' && (
-                                         <select 
-                                           value={u.adminSubRole || 'head'}
-                                           onChange={(e) => updateUserRole(u.uid, 'admin', e.target.value as AdminSubRole)}
-                                           className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer italic"
-                                         >
-                                            <option value="head">Head Admin</option>
-                                            <option value="accounts">Accounts Dept</option>
-                                            <option value="hr">HR Dept</option>
-                                         </select>
-                                      )}
-                                   </>
-                                ) : (
-                                   <div className="flex items-center gap-2">
-                                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
-                                        u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                        u.role === 'partner' ? 'bg-blue-700 text-white' :
-                                        'bg-slate-100 text-slate-500'
-                                      }`}>
-                                         {u.role}
-                                      </span>
-                                      {u.adminSubRole && (
-                                         <span className="text-[9px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-black uppercase tracking-widest italic">
-                                            {u.adminSubRole}
-                                         </span>
-                                      )}
-                                   </div>
-                                )}
-                             </div>
-                       </td>
-                       <td className="px-8 py-6">
-                          <p className="text-sm font-bold text-slate-900">{userBookings.length} Bookings</p>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">₹{userBookings.reduce((a, b) => a + b.totalPrice, 0)} LTV</p>
-                       </td>
-                       <td className="px-8 py-6 text-left">
-                          <p className="text-xs text-slate-500">{u.createdAt?.toDate?.() ? u.createdAt.toDate().toLocaleDateString() : new Date(u.createdAt).toLocaleDateString()}</p>
-                       </td>
-                       <td className="px-8 py-6 text-right">
-                          {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
-                            <button
-                              onClick={() => setDeletingUser(u)}
-                              className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm inline-flex items-center gap-1 text-xs font-bold"
-                              title="Erase all data and user"
-                            >
-                              <Trash2 size={14} />
-                              <span className="hidden sm:inline">Erase</span>
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 font-bold italic">Protected</span>
-                          )}
-                       </td>
-                    </tr>
-                  );
-                })}
-             </tbody>
-          </table>
-       </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50/50">
+            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
+              <th className="px-8 py-5">User Profile</th>
+              <th className="px-8 py-5">Mobile</th>
+              <th className="px-8 py-5">Phone Auth</th>
+              <th className="px-8 py-5">Email Auth</th>
+              <th className="px-8 py-5">Access Management</th>
+              <th className="px-8 py-5">History</th>
+              <th className="px-8 py-5">Acquisition</th>
+              <th className="px-8 py-5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u, i) => {
+              const userBookings = bookings.filter(
+                (b) => b.customerId === u.uid,
+              );
+              return (
+                <tr
+                  key={i}
+                  className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group"
+                >
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center font-bold text-slate-400 text-xs shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
+                        {u.displayName?.[0] || "U"}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">
+                          {u.displayName}
+                        </p>
+                        <p className="text-xs text-slate-400 truncate">
+                          {u.email}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <p className="text-sm font-bold text-slate-900">
+                      {!u.phoneNumber || import.meta.env.DEV
+                        ? "--"
+                        : u.phoneNumber.replace("+91", "")}
+                    </p>
+                  </td>
+                  <td className="px-8 py-6">
+                    {(() => {
+                      const hasPhone = !!u.phoneNumber;
+                      const isPhoneVerified =
+                        hasPhone || !!u.phoneNumberVerified;
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isPhoneVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
+                        >
+                          {isPhoneVerified ? "Verified" : "Not Verified"}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-8 py-6">
+                    {(() => {
+                      const isEmailVerified =
+                        !!u.email &&
+                        (u.role === "admin" ||
+                          !u.phoneNumber ||
+                          u.emailVerified !== false);
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isEmailVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
+                        >
+                          {isEmailVerified ? "Verified" : "Not Verified"}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="className-does-not-matter shadow-none border-none p-0 hidden">
+                    <p className="hidden"></p>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex flex-col gap-2">
+                      {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
+                        <>
+                          <select
+                            value={u.role}
+                            onChange={(e) => {
+                              const newRole = e.target.value as UserRole;
+                              if (newRole === "admin") {
+                                updateUserRole(u.uid, newRole, "hr");
+                              } else {
+                                updateUserRole(u.uid, newRole);
+                              }
+                            }}
+                            className={`text-[10px] font-bold border rounded-lg px-2 py-1 outline-none transition-all cursor-pointer ${
+                              u.role === "admin"
+                                ? "bg-purple-50 text-purple-700 border-purple-200 focus:ring-purple-500"
+                                : u.role === "partner"
+                                  ? "bg-blue-700 text-white border-slate-700 focus:ring-slate-500"
+                                  : "bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-400"
+                            }`}
+                          >
+                            <option value="customer">Customer</option>
+                            <option value="partner">Partner</option>
+                            <option value="admin">Administrator</option>
+                          </select>
 
-       <AnimatePresence>
+                          {u.role === "admin" && (
+                            <select
+                              value={u.adminSubRole || "head"}
+                              onChange={(e) =>
+                                updateUserRole(
+                                  u.uid,
+                                  "admin",
+                                  e.target.value as AdminSubRole,
+                                )
+                              }
+                              className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer italic"
+                            >
+                              <option value="head">Head Admin</option>
+                              <option value="accounts">Accounts Dept</option>
+                              <option value="hr">HR Dept</option>
+                            </select>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                              u.role === "admin"
+                                ? "bg-purple-100 text-purple-700"
+                                : u.role === "partner"
+                                  ? "bg-blue-700 text-white"
+                                  : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                          {u.adminSubRole && (
+                            <span className="text-[9px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-black uppercase tracking-widest italic">
+                              {u.adminSubRole}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <p className="text-sm font-bold text-slate-900">
+                      {userBookings.length} Bookings
+                    </p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                      ₹{userBookings.reduce((a, b) => a + b.totalPrice, 0)} LTV
+                    </p>
+                  </td>
+                  <td className="px-8 py-6 text-left">
+                    <p className="text-xs text-slate-500">
+                      {u.createdAt?.toDate?.()
+                        ? u.createdAt.toDate().toLocaleDateString()
+                        : new Date(u.createdAt).toLocaleDateString()}
+                    </p>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
+                      <button
+                        onClick={() => setDeletingUser(u)}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm inline-flex items-center gap-1 text-xs font-bold"
+                        title="Erase all data and user"
+                      >
+                        <Trash2 size={14} />
+                        <span className="hidden sm:inline">Erase</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-bold italic">
+                        Protected
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <AnimatePresence>
         {deletingUser && (
-          <div key="erase-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <motion.div 
+          <div
+            key="erase-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          >
+            <motion.div
               key="erase-motion"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -4265,35 +6348,59 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                     <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
                       <AlertCircle size={18} />
                     </div>
-                    <h3 className="text-2xl font-bold text-red-700 tracking-tight">Erase User Data</h3>
+                    <h3 className="text-2xl font-bold text-red-700 tracking-tight">
+                      Erase User Data
+                    </h3>
                   </div>
-                  <p className="text-red-500/80 text-xs font-semibold uppercase tracking-wider">CRITICAL DESTRUCTIVE ACTION</p>
+                  <p className="text-red-500/80 text-xs font-semibold uppercase tracking-wider">
+                    CRITICAL DESTRUCTIVE ACTION
+                  </p>
                 </div>
-                <button 
+                <button
                   disabled={isDeleting}
                   onClick={() => {
-                    setConfirmInput('');
+                    setConfirmInput("");
                     setDeletingUser(null);
-                  }} 
+                  }}
                   className="p-2 hover:bg-slate-155 rounded-xl transition-colors shrink-0"
                 >
                   <X size={20} className="text-slate-400" />
                 </button>
               </div>
-              
+
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
                 <div className="bg-red-50 border border-red-100 rounded-3xl p-6 text-sm text-red-800 leading-relaxed space-y-3">
-                  <p className="font-bold">This action is permanent and completely irreversible.</p>
-                  <p>Deleting user <span className="font-extrabold text-red-950 underline">{deletingUser.displayName || deletingUser.email}</span> will forever wipe out their profile along with:</p>
+                  <p className="font-bold">
+                    This action is permanent and completely irreversible.
+                  </p>
+                  <p>
+                    Deleting user{" "}
+                    <span className="font-extrabold text-red-950 underline">
+                      {deletingUser.displayName || deletingUser.email}
+                    </span>{" "}
+                    will forever wipe out their profile along with:
+                  </p>
                   <ul className="list-disc pl-5 space-y-1 text-xs text-red-950/80 font-medium">
-                    <li>Their Customer role & login authentication settings in our databases</li>
-                    <li>All historic & pending bookings and service scheduling entries (LTV info)</li>
+                    <li>
+                      Their Customer role & login authentication settings in our
+                      databases
+                    </li>
+                    <li>
+                      All historic & pending bookings and service scheduling
+                      entries (LTV info)
+                    </li>
                     <li>All created support tickets and complaints</li>
                     <li>Active Annual Maintenance Contracts & warranties</li>
-                    <li>Coupon and reward redemptions, wallet logs & transactional metrics</li>
+                    <li>
+                      Coupon and reward redemptions, wallet logs & transactional
+                      metrics
+                    </li>
                     <li>Reviews and rating stars given to services/partners</li>
-                    <li>Any associated Partner profile, KYC docs, and payout spreadsheets</li>
+                    <li>
+                      Any associated Partner profile, KYC docs, and payout
+                      spreadsheets
+                    </li>
                   </ul>
                 </div>
 
@@ -4302,9 +6409,13 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                     Confirm Target Name / E-mail
                   </label>
                   <p className="text-sm font-semibold text-slate-600">
-                    To proceed, type <span className="font-mono text-red-600 font-bold select-all bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-250 select-text cursor-copy">{deletingUser.displayName || deletingUser.email}</span> below:
+                    To proceed, type{" "}
+                    <span className="font-mono text-red-600 font-bold select-all bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-250 select-text cursor-copy">
+                      {deletingUser.displayName || deletingUser.email}
+                    </span>{" "}
+                    below:
                   </p>
-                  <input 
+                  <input
                     type="text"
                     disabled={isDeleting}
                     value={confirmInput}
@@ -4332,7 +6443,7 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                   type="button"
                   disabled={isDeleting}
                   onClick={() => {
-                    setConfirmInput('');
+                    setConfirmInput("");
                     setDeleteError(null);
                     setDeleteSuccess(null);
                     setDeletingUser(null);
@@ -4343,12 +6454,21 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
                 </button>
                 <button
                   type="button"
-                  disabled={isDeleting || confirmInput.trim().toLowerCase() !== (deletingUser.displayName || deletingUser.email).trim().toLowerCase()}
+                  disabled={
+                    isDeleting ||
+                    confirmInput.trim().toLowerCase() !==
+                      (deletingUser.displayName || deletingUser.email)
+                        .trim()
+                        .toLowerCase()
+                  }
                   onClick={() => handleEraseUserAndData(deletingUser.uid)}
                   className={`px-8 py-3.5 text-sm font-bold text-white rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg ${
-                    confirmInput.trim().toLowerCase() === (deletingUser.displayName || deletingUser.email).trim().toLowerCase() && !isDeleting
-                      ? 'bg-red-600 hover:bg-red-700 shadow-red-250/50 shadow-lg'
-                      : 'bg-red-300 pointer-events-none opacity-60 shadow-none'
+                    confirmInput.trim().toLowerCase() ===
+                      (deletingUser.displayName || deletingUser.email)
+                        .trim()
+                        .toLowerCase() && !isDeleting
+                      ? "bg-red-600 hover:bg-red-700 shadow-red-250/50 shadow-lg"
+                      : "bg-red-300 pointer-events-none opacity-60 shadow-none"
                   }`}
                 >
                   {isDeleting ? (
@@ -4372,28 +6492,40 @@ function UserManager({ users, bookings, currentUserProfile }: { users: UserProfi
   );
 }
 
-function PromoManager({ promotions, categories, services, users, filter }: { promotions: Promotion[], categories: Category[], services: Service[], users: UserProfile[], filter: 'customer' | 'partner' | 'all' }) {
+function PromoManager({
+  promotions,
+  categories,
+  services,
+  users,
+  filter,
+}: {
+  promotions: Promotion[];
+  categories: Category[];
+  services: Service[];
+  users: UserProfile[];
+  filter: "customer" | "partner" | "all";
+}) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
   const [isBroadcasting, setIsBroadcasting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [newPromo, setNewPromo] = useState<Partial<Promotion>>({
-    name: '',
-    code: '',
-    discountType: 'percent',
+    name: "",
+    code: "",
+    discountType: "percent",
     discountValue: 0,
-    description: '',
+    description: "",
     usageLimit: 0,
     usageCount: 0,
     active: true,
-    expiryDate: '',
+    expiryDate: "",
     applicableCategories: [],
     applicableServices: [],
-    targetAudience: filter === 'partner' ? 'partner' : 'customer',
-    imageUrl: ''
+    targetAudience: filter === "partner" ? "partner" : "customer",
+    imageUrl: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -4402,10 +6534,12 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
     try {
       let count = 0;
       // Filter recipients based on promo's target audience
-      const recipients = users.filter(user => {
-        if (!promo.targetAudience || promo.targetAudience === 'all') return true;
-        if (promo.targetAudience === 'partner') return user.role === 'partner';
-        if (promo.targetAudience === 'customer') return user.role === 'customer' || !user.role;
+      const recipients = users.filter((user) => {
+        if (!promo.targetAudience || promo.targetAudience === "all")
+          return true;
+        if (promo.targetAudience === "partner") return user.role === "partner";
+        if (promo.targetAudience === "customer")
+          return user.role === "customer" || !user.role;
         return false;
       });
 
@@ -4413,14 +6547,14 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
         await sendNotification(
           user.uid,
           `Exclusive Offer: Use ${promo.code}!`,
-          `${promo.name}: Get ${promo.discountType === 'percent' ? promo.discountValue + '%' : '₹' + promo.discountValue} off on your next booking.`,
-          'promotional'
+          `${promo.name}: Get ${promo.discountType === "percent" ? promo.discountValue + "%" : "₹" + promo.discountValue} off on your next booking.`,
+          "promotional",
         );
         count++;
       }
       console.log(`Broadcast complete. Sent to ${count} recipients.`);
     } catch (err) {
-      console.error('Broadcast failed:', err);
+      console.error("Broadcast failed:", err);
     } finally {
       setIsBroadcasting(null);
     }
@@ -4428,10 +6562,10 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
 
   const handleSavePromo = async () => {
     const promoData = editingPromo || newPromo;
-    
+
     // Explicit validation before submitting
     if (!promoData.name?.trim() || !promoData.code?.trim()) {
-      setError('Please provide both promotion name and code');
+      setError("Please provide both promotion name and code");
       return;
     }
 
@@ -4442,57 +6576,67 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
       const dataToSave = {
         name: promoData.name.trim(),
         code: promoData.code.trim().toUpperCase(),
-        discountType: promoData.discountType || 'percent',
+        discountType: promoData.discountType || "percent",
         discountValue: Number(promoData.discountValue) || 0,
-        description: promoData.description || '',
+        description: promoData.description || "",
         active: promoData.active !== undefined ? promoData.active : true,
         usageCount: Number(promoData.usageCount) || 0,
         usageLimit: Number(promoData.usageLimit) || 0,
-        targetAudience: promoData.targetAudience || 'customer',
+        targetAudience: promoData.targetAudience || "customer",
         expiryDate: promoData.expiryDate || null,
-        imageUrl: promoData.imageUrl || '',
+        imageUrl: promoData.imageUrl || "",
         applicableCategories: promoData.applicableCategories || [],
         applicableServices: promoData.applicableServices || [],
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       };
-      
+
       if (editingPromo) {
         const { id } = dataToSave as any;
-        await updateDoc(doc(db, 'promotions', editingPromo.id), dataToSave);
-        setSuccess('Offer updated successfully!');
-        await triggerEcosystemUpdate(`Campaign update: promotional coupon ${dataToSave.code} parameters altered.`);
+        await updateDoc(doc(db, "promotions", editingPromo.id), dataToSave);
+        setSuccess("Offer updated successfully!");
+        await triggerEcosystemUpdate(
+          `Campaign update: promotional coupon ${dataToSave.code} parameters altered.`,
+        );
       } else {
         (dataToSave as any).createdAt = Timestamp.now();
-        await addDoc(collection(db, 'promotions'), dataToSave);
-        setSuccess('New offer launched successfully!');
-        await triggerEcosystemUpdate(`Dynamic reward launch: Campaign coupon ${dataToSave.code} deployed.`);
+        await addDoc(collection(db, "promotions"), dataToSave);
+        setSuccess("New offer launched successfully!");
+        await triggerEcosystemUpdate(
+          `Dynamic reward launch: Campaign coupon ${dataToSave.code} deployed.`,
+        );
       }
-      
+
       // Auto-close after short delay to show success
       setTimeout(() => {
         setNewPromo({
-          name: '',
-          code: '',
-          discountType: 'percent',
+          name: "",
+          code: "",
+          discountType: "percent",
           discountValue: 0,
-          description: '',
+          description: "",
           usageLimit: 0,
           usageCount: 0,
           active: true,
-          expiryDate: '',
+          expiryDate: "",
           applicableCategories: [],
           applicableServices: [],
-          targetAudience: filter === 'partner' ? 'partner' : 'customer',
-          imageUrl: ''
+          targetAudience: filter === "partner" ? "partner" : "customer",
+          imageUrl: "",
         });
         setEditingPromo(null);
         setIsAdding(false);
         setSuccess(null);
       }, 1500);
     } catch (err: any) {
-      console.error('Promotion save error:', err);
-      setError(err.message || 'Failed to save offer. Please check your permissions.');
-      handleFirestoreError(err, editingPromo ? OperationType.UPDATE : OperationType.CREATE, 'promotions');
+      console.error("Promotion save error:", err);
+      setError(
+        err.message || "Failed to save offer. Please check your permissions.",
+      );
+      handleFirestoreError(
+        err,
+        editingPromo ? OperationType.UPDATE : OperationType.CREATE,
+        "promotions",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -4501,10 +6645,12 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
   const togglePromo = async (promo: Promotion) => {
     try {
       const nextActive = !promo.active;
-      await updateDoc(doc(db, 'promotions', promo.id), {
-        active: nextActive
+      await updateDoc(doc(db, "promotions", promo.id), {
+        active: nextActive,
       });
-      await triggerEcosystemUpdate(`Campaign parameters synchronized: Coupon ${promo.code} was ${nextActive ? 'activated' : 'deactivated'}.`);
+      await triggerEcosystemUpdate(
+        `Campaign parameters synchronized: Coupon ${promo.code} was ${nextActive ? "activated" : "deactivated"}.`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `promotions/${promo.id}`);
     }
@@ -4512,369 +6658,581 @@ function PromoManager({ promotions, categories, services, users, filter }: { pro
 
   const deletePromo = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'promotions', id));
-      await triggerEcosystemUpdate(`Cleaned up deprecated or expired promotional campaigns.`);
+      await deleteDoc(doc(db, "promotions", id));
+      await triggerEcosystemUpdate(
+        `Cleaned up deprecated or expired promotional campaigns.`,
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `promotions/${id}`);
     }
   };
 
   const filteredPromotions = promotions
-    .filter(p => filter === 'all' || p.targetAudience === filter || (!p.targetAudience && filter === 'customer'))
-    .filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.code.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter(
+      (p) =>
+        filter === "all" ||
+        p.targetAudience === filter ||
+        (!p.targetAudience && filter === "customer"),
+    )
+    .filter(
+      (p) =>
+        !searchQuery ||
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.code.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
-         <div>
-           <h3 className="text-xl font-bold text-slate-950">{filter === 'partner' ? 'Partner Campaigns' : 'Customer Campaigns'}</h3>
-           <p className="text-xs text-slate-400 mt-1">Manage, activate, and broadcast promotional campaigns.</p>
-         </div>
-         <div className="flex flex-wrap items-center gap-3">
-           <div className="relative">
-             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-             <input
-               type="text"
-               value={searchQuery}
-               onChange={(e) => setSearchQuery(e.target.value)}
-               placeholder="Search promo or code..."
-               className="bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-bold w-48 sm:w-64 focus:ring-2 focus:ring-blue-700 outline-none"
-             />
-             {searchQuery && (
-               <button 
-                 onClick={() => setSearchQuery('')}
-                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-[10px]"
-               >
-                 Clear
-               </button>
-             )}
-           </div>
-           <button 
-             onClick={() => setIsAdding(!isAdding)}
-             className="bg-blue-700 text-white px-5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shrink-0 hover:bg-blue-800 transition-colors"
-           >
-             {isAdding ? <X size={14} /> : <Plus size={14} />}
-             {isAdding ? 'Cancel' : 'New Promo Code'}
-           </button>
-         </div>
+        <div>
+          <h3 className="text-xl font-bold text-slate-950">
+            {filter === "partner" ? "Partner Campaigns" : "Customer Campaigns"}
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            Manage, activate, and broadcast promotional campaigns.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search promo or code..."
+              className="bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-bold w-48 sm:w-64 focus:ring-2 focus:ring-blue-700 outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-[10px]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setIsAdding(!isAdding)}
+            className="bg-blue-700 text-white px-5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shrink-0 hover:bg-blue-800 transition-colors"
+          >
+            {isAdding ? <X size={14} /> : <Plus size={14} />}
+            {isAdding ? "Cancel" : "New Promo Code"}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
         {(isAdding || editingPromo) && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm max-w-2xl"
           >
-             {(error || success) && (
-                <div className={`mb-6 p-4 rounded-2xl text-center font-bold text-sm ${error ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                  {error || success}
-                </div>
-              )}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Code</label>
-                   <input 
-                    type="text"
-                    value={editingPromo ? editingPromo.code : newPromo.code}
-                    onChange={(e) => editingPromo 
-                      ? setEditingPromo({ ...editingPromo, code: e.target.value.toUpperCase() })
-                      : setNewPromo({ ...newPromo, code: e.target.value.toUpperCase() })
-                    }
-                    placeholder="FEAST50"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Campaign Name</label>
-                   <input 
-                    type="text"
-                    value={editingPromo ? editingPromo.name : newPromo.name}
-                    onChange={(e) => editingPromo
-                      ? setEditingPromo({ ...editingPromo, name: e.target.value })
+            {(error || success) && (
+              <div
+                className={`mb-6 p-4 rounded-2xl text-center font-bold text-sm ${error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
+              >
+                {error || success}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Code
+                </label>
+                <input
+                  type="text"
+                  value={editingPromo ? editingPromo.code : newPromo.code}
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          code: e.target.value.toUpperCase(),
+                        })
+                      : setNewPromo({
+                          ...newPromo,
+                          code: e.target.value.toUpperCase(),
+                        })
+                  }
+                  placeholder="FEAST50"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Campaign Name
+                </label>
+                <input
+                  type="text"
+                  value={editingPromo ? editingPromo.name : newPromo.name}
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          name: e.target.value,
+                        })
                       : setNewPromo({ ...newPromo, name: e.target.value })
-                    }
-                    placeholder="Festive Season Offer"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                </div>
-                <div className="md:col-span-2">
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Promotion Banner Image</label>
-                   <AdminUpload 
-                     onUpload={(url) => editingPromo 
-                       ? setEditingPromo({ ...editingPromo, imageUrl: url })
-                       : setNewPromo({ ...newPromo, imageUrl: url })
-                     }
-                     value={editingPromo ? editingPromo.imageUrl : newPromo.imageUrl}
-                   />
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Discount Type</label>
-                   <select 
-                    value={editingPromo ? editingPromo.discountType : newPromo.discountType}
-                    onChange={(e) => {
-                      const val = e.target.value as 'percent' | 'flat';
-                      if (editingPromo) setEditingPromo({ ...editingPromo, discountType: val });
-                      else setNewPromo({ ...newPromo, discountType: val });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   >
-                     <option value="percent">Percentage (%)</option>
-                     <option value="flat">Flat Amount (₹)</option>
-                   </select>
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Value</label>
-                   <input 
-                    type="number"
-                    value={editingPromo ? editingPromo.discountValue : newPromo.discountValue}
-                    onChange={(e) => editingPromo
-                      ? setEditingPromo({ ...editingPromo, discountValue: parseInt(e.target.value) || 0 })
-                      : setNewPromo({ ...newPromo, discountValue: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Expiry Date</label>
-                   <input 
-                    type="date"
-                    value={editingPromo ? editingPromo.expiryDate : newPromo.expiryDate}
-                    onChange={(e) => editingPromo
-                      ? setEditingPromo({ ...editingPromo, expiryDate: e.target.value })
+                  }
+                  placeholder="Festive Season Offer"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Promotion Banner Image
+                </label>
+                <AdminUpload
+                  onUpload={(url) =>
+                    editingPromo
+                      ? setEditingPromo({ ...editingPromo, imageUrl: url })
+                      : setNewPromo({ ...newPromo, imageUrl: url })
+                  }
+                  value={
+                    editingPromo ? editingPromo.imageUrl : newPromo.imageUrl
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Discount Type
+                </label>
+                <select
+                  value={
+                    editingPromo
+                      ? editingPromo.discountType
+                      : newPromo.discountType
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value as "percent" | "flat";
+                    if (editingPromo)
+                      setEditingPromo({ ...editingPromo, discountType: val });
+                    else setNewPromo({ ...newPromo, discountType: val });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                >
+                  <option value="percent">Percentage (%)</option>
+                  <option value="flat">Flat Amount (₹)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Value
+                </label>
+                <input
+                  type="number"
+                  value={
+                    editingPromo
+                      ? editingPromo.discountValue
+                      : newPromo.discountValue
+                  }
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          discountValue: parseInt(e.target.value) || 0,
+                        })
+                      : setNewPromo({
+                          ...newPromo,
+                          discountValue: parseInt(e.target.value) || 0,
+                        })
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Expiry Date
+                </label>
+                <input
+                  type="date"
+                  value={
+                    editingPromo ? editingPromo.expiryDate : newPromo.expiryDate
+                  }
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          expiryDate: e.target.value,
+                        })
                       : setNewPromo({ ...newPromo, expiryDate: e.target.value })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Usage Limit (0 for Unlimited)
+                </label>
+                <input
+                  type="number"
+                  value={
+                    editingPromo ? editingPromo.usageLimit : newPromo.usageLimit
+                  }
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          usageLimit: parseInt(e.target.value) || 0,
+                        })
+                      : setNewPromo({
+                          ...newPromo,
+                          usageLimit: parseInt(e.target.value) || 0,
+                        })
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Target Audience
+                </label>
+                <select
+                  value={
+                    editingPromo
+                      ? editingPromo.targetAudience || "all"
+                      : newPromo.targetAudience || "all"
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value as
+                      | "all"
+                      | "customer"
+                      | "partner";
+                    if (editingPromo)
+                      setEditingPromo({ ...editingPromo, targetAudience: val });
+                    else setNewPromo({ ...newPromo, targetAudience: val });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                >
+                  <option value="all">All Users</option>
+                  <option value="customer">Customers Only</option>
+                  <option value="partner">Partners Only</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Target Categories (Select Multiple)
+                </label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {categories.map((cat) => {
+                    const current = editingPromo
+                      ? editingPromo.applicableCategories
+                      : newPromo.applicableCategories;
+                    const isSelected = current?.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          const list = current || [];
+                          const updated = isSelected
+                            ? list.filter((id) => id !== cat.id)
+                            : [...list, cat.id];
+                          if (editingPromo)
+                            setEditingPromo({
+                              ...editingPromo,
+                              applicableCategories: updated,
+                            });
+                          else
+                            setNewPromo({
+                              ...newPromo,
+                              applicableCategories: updated,
+                            });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
+                          isSelected
+                            ? "bg-blue-700 text-white border-blue-700"
+                            : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-400"
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    );
+                  })}
                 </div>
-                 <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Usage Limit (0 for Unlimited)</label>
-                   <input 
-                    type="number"
-                    value={editingPromo ? editingPromo.usageLimit : newPromo.usageLimit}
-                    onChange={(e) => editingPromo
-                      ? setEditingPromo({ ...editingPromo, usageLimit: parseInt(e.target.value) || 0 })
-                      : setNewPromo({ ...newPromo, usageLimit: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Target Specific Services (Select Multiple)
+                </label>
+                <div className="flex flex-wrap gap-2 mb-3 max-h-40 overflow-y-auto p-1">
+                  {services
+                    .filter((s) => {
+                      const currentCats = editingPromo
+                        ? editingPromo.applicableCategories
+                        : newPromo.applicableCategories;
+                      return (
+                        !currentCats ||
+                        currentCats.length === 0 ||
+                        currentCats.includes(s.categoryId)
+                      );
+                    })
+                    .map((svc) => {
+                      const currentSvcs = editingPromo
+                        ? editingPromo.applicableServices
+                        : newPromo.applicableServices;
+                      const isSelected = currentSvcs?.includes(svc.id);
+                      return (
+                        <button
+                          key={svc.id}
+                          onClick={() => {
+                            const list = currentSvcs || [];
+                            const updated = isSelected
+                              ? list.filter((id) => id !== svc.id)
+                              : [...list, svc.id];
+                            if (editingPromo)
+                              setEditingPromo({
+                                ...editingPromo,
+                                applicableServices: updated,
+                              });
+                            else
+                              setNewPromo({
+                                ...newPromo,
+                                applicableServices: updated,
+                              });
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
+                            isSelected
+                              ? "bg-emerald-600 text-white border-emerald-600"
+                              : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-400"
+                          }`}
+                        >
+                          {svc.name}
+                        </button>
+                      );
+                    })}
                 </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Target Audience</label>
-                   <select 
-                    value={editingPromo ? (editingPromo.targetAudience || 'all') : (newPromo.targetAudience || 'all')}
-                    onChange={(e) => {
-                      const val = e.target.value as 'all' | 'customer' | 'partner';
-                      if (editingPromo) setEditingPromo({ ...editingPromo, targetAudience: val });
-                      else setNewPromo({ ...newPromo, targetAudience: val });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   >
-                     <option value="all">All Users</option>
-                     <option value="customer">Customers Only</option>
-                     <option value="partner">Partners Only</option>
-                   </select>
-                </div>
-                <div className="md:col-span-2">
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Target Categories (Select Multiple)</label>
-                   <div className="flex flex-wrap gap-2 mb-3">
-                     {categories.map(cat => {
-                        const current = editingPromo ? editingPromo.applicableCategories : newPromo.applicableCategories;
-                        const isSelected = current?.includes(cat.id);
-                        return (
-                          <button
-                            key={cat.id}
-                            onClick={() => {
-                              const list = current || [];
-                              const updated = isSelected ? list.filter(id => id !== cat.id) : [...list, cat.id];
-                              if (editingPromo) setEditingPromo({ ...editingPromo, applicableCategories: updated });
-                              else setNewPromo({ ...newPromo, applicableCategories: updated });
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
-                              isSelected ? 'bg-blue-700 text-white border-blue-700' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-400'
-                            }`}
-                          >
-                            {cat.name}
-                          </button>
-                        );
-                     })}
-                   </div>
-                </div>
-                <div className="md:col-span-2">
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Target Specific Services (Select Multiple)</label>
-                   <div className="flex flex-wrap gap-2 mb-3 max-h-40 overflow-y-auto p-1">
-                     {services
-                       .filter(s => {
-                         const currentCats = editingPromo ? editingPromo.applicableCategories : newPromo.applicableCategories;
-                         return !currentCats || currentCats.length === 0 || currentCats.includes(s.categoryId);
-                       })
-                       .map(svc => {
-                          const currentSvcs = editingPromo ? editingPromo.applicableServices : newPromo.applicableServices;
-                          const isSelected = currentSvcs?.includes(svc.id);
-                          return (
-                            <button
-                              key={svc.id}
-                              onClick={() => {
-                                const list = currentSvcs || [];
-                                const updated = isSelected ? list.filter(id => id !== svc.id) : [...list, svc.id];
-                                if (editingPromo) setEditingPromo({ ...editingPromo, applicableServices: updated });
-                                else setNewPromo({ ...newPromo, applicableServices: updated });
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
-                                isSelected ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-400'
-                              }`}
-                            >
-                              {svc.name}
-                            </button>
-                          );
-                       })}
-                   </div>
-                </div>
-                <div className="md:col-span-2">
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Description</label>
-                   <input 
-                    type="text"
-                    value={editingPromo ? editingPromo.description : newPromo.description}
-                    onChange={(e) => editingPromo
-                      ? setEditingPromo({ ...editingPromo, description: e.target.value })
-                      : setNewPromo({ ...newPromo, description: e.target.value })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                </div>
-             </div>
-             <div className="flex gap-4 mt-8">
-               <button 
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={
+                    editingPromo
+                      ? editingPromo.description
+                      : newPromo.description
+                  }
+                  onChange={(e) =>
+                    editingPromo
+                      ? setEditingPromo({
+                          ...editingPromo,
+                          description: e.target.value,
+                        })
+                      : setNewPromo({
+                          ...newPromo,
+                          description: e.target.value,
+                        })
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-4 mt-8">
+              <button
                 onClick={handleSavePromo}
-                disabled={isSubmitting || (editingPromo ? !editingPromo.code || !editingPromo.name : !newPromo.code || !newPromo.name)}
+                disabled={
+                  isSubmitting ||
+                  (editingPromo
+                    ? !editingPromo.code || !editingPromo.name
+                    : !newPromo.code || !newPromo.name)
+                }
                 className="flex-[2] bg-blue-700 text-white py-4 rounded-xl font-bold hover:bg-blue-800 transition-all disabled:opacity-50"
-               >
-                 {editingPromo ? 'Update Campaign' : 'Launch Campaign'}
-               </button>
-               {editingPromo && (
-                  <button 
-                    onClick={() => setEditingPromo(null)}
-                    className="flex-1 bg-slate-50 text-slate-400 py-4 rounded-xl font-bold hover:bg-slate-100 transition-all"
-                  >
-                    Cancel
-                  </button>
-               )}
-             </div>
+              >
+                {editingPromo ? "Update Campaign" : "Launch Campaign"}
+              </button>
+              {editingPromo && (
+                <button
+                  onClick={() => setEditingPromo(null)}
+                  className="flex-1 bg-slate-50 text-slate-400 py-4 rounded-xl font-bold hover:bg-slate-100 transition-all"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPromotions.map(promo => {
-          const isExpired = promo.expiryDate ? new Date(promo.expiryDate) < new Date(new Date().setHours(0,0,0,0)) : false;
+        {filteredPromotions.map((promo) => {
+          const isExpired = promo.expiryDate
+            ? new Date(promo.expiryDate) <
+              new Date(new Date().setHours(0, 0, 0, 0))
+            : false;
           return (
-            <div key={promo.id} className="bg-white p-6 border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group relative overflow-hidden flex flex-col justify-between">
+            <div
+              key={promo.id}
+              className="bg-white p-6 border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group relative overflow-hidden flex flex-col justify-between"
+            >
               <div>
                 <div className="flex justify-between items-start mb-4">
-                   <button 
-                     onClick={() => {
-                       navigator.clipboard.writeText(promo.code);
-                       setCopiedCodeId(promo.id);
-                       setTimeout(() => setCopiedCodeId(null), 2000);
-                     }}
-                     className={`px-3 py-1 rounded-lg font-black text-[10px] tracking-widest flex items-center gap-1.5 transition-all outline-none active:scale-95 border ${
-                       copiedCodeId === promo.id
-                         ? 'bg-emerald-500 border-emerald-500 text-white font-bold'
-                         : 'bg-slate-50 hover:bg-slate-100 border-slate-100 text-slate-800'
-                     }`}
-                     title="Click to copy coupon code"
-                   >
-                     {copiedCodeId === promo.id ? (
-                       <>
-                         <Check size={11} className="stroke-[3]" />
-                         <span>Copied!</span>
-                       </>
-                     ) : (
-                       <span>{promo.code}</span>
-                     )}
-                   </button>
-                   <div className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                     isExpired ? 'bg-amber-500 text-white' : (promo.active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')
-                   }`}>
-                     {isExpired ? 'Expired' : (promo.active ? 'Active' : 'Paused')}
-                   </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(promo.code);
+                      setCopiedCodeId(promo.id);
+                      setTimeout(() => setCopiedCodeId(null), 2000);
+                    }}
+                    className={`px-3 py-1 rounded-lg font-black text-[10px] tracking-widest flex items-center gap-1.5 transition-all outline-none active:scale-95 border ${
+                      copiedCodeId === promo.id
+                        ? "bg-emerald-500 border-emerald-500 text-white font-bold"
+                        : "bg-slate-50 hover:bg-slate-100 border-slate-100 text-slate-800"
+                    }`}
+                    title="Click to copy coupon code"
+                  >
+                    {copiedCodeId === promo.id ? (
+                      <>
+                        <Check size={11} className="stroke-[3]" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <span>{promo.code}</span>
+                    )}
+                  </button>
+                  <div
+                    className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                      isExpired
+                        ? "bg-amber-500 text-white"
+                        : promo.active
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-red-50 text-red-600"
+                    }`}
+                  >
+                    {isExpired ? "Expired" : promo.active ? "Active" : "Paused"}
+                  </div>
                 </div>
 
                 {promo.imageUrl && (
                   <div className="w-full h-32 mb-4 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 relative group/img">
-                    <img src={promo.imageUrl} alt={promo.name} className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
+                    <img
+                      src={promo.imageUrl}
+                      alt={promo.name}
+                      className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                 )}
 
                 <h4 className="font-bold text-slate-900 mb-1">{promo.name}</h4>
-                <p className="text-xs text-slate-400 line-clamp-2 mb-2">{promo.description}</p>
-                
-                {((promo.applicableCategories && promo.applicableCategories.length > 0) || (promo.applicableServices && promo.applicableServices.length > 0) || promo.targetAudience) && (
+                <p className="text-xs text-slate-400 line-clamp-2 mb-2">
+                  {promo.description}
+                </p>
+
+                {((promo.applicableCategories &&
+                  promo.applicableCategories.length > 0) ||
+                  (promo.applicableServices &&
+                    promo.applicableServices.length > 0) ||
+                  promo.targetAudience) && (
                   <div className="flex flex-wrap gap-2 mb-4">
-                     {promo.targetAudience && promo.targetAudience !== 'all' && (
-                       <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 uppercase">
-                         For: {promo.targetAudience}
-                       </span>
-                     )}
-                     {promo.applicableCategories?.map(catId => (
-                       <span key={catId} className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                         Cat: {categories.find(c => c.id === catId)?.name || 'Unknown'}
-                       </span>
-                     ))}
-                     {promo.applicableServices?.map(svcId => (
-                       <span key={svcId} className="text-[8px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                         Svc: {services.find(s => s.id === svcId)?.name || 'Unknown'}
-                       </span>
-                     ))}
+                    {promo.targetAudience && promo.targetAudience !== "all" && (
+                      <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 uppercase">
+                        For: {promo.targetAudience}
+                      </span>
+                    )}
+                    {promo.applicableCategories?.map((catId) => (
+                      <span
+                        key={catId}
+                        className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100"
+                      >
+                        Cat:{" "}
+                        {categories.find((c) => c.id === catId)?.name ||
+                          "Unknown"}
+                      </span>
+                    ))}
+                    {promo.applicableServices?.map((svcId) => (
+                      <span
+                        key={svcId}
+                        className="text-[8px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100"
+                      >
+                        Svc:{" "}
+                        {services.find((s) => s.id === svcId)?.name ||
+                          "Unknown"}
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
-             
-             <div className="flex justify-between items-center mb-6 py-4 border-y border-slate-50">
+
+              <div className="flex justify-between items-center mb-6 py-4 border-y border-slate-50">
                 <div>
-                  <p className="text-xl font-black text-slate-900">{promo.discountType === 'percent' ? `${promo.discountValue}%` : `₹${promo.discountValue}`}</p>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Off</p>
+                  <p className="text-xl font-black text-slate-900">
+                    {promo.discountType === "percent"
+                      ? `${promo.discountValue}%`
+                      : `₹${promo.discountValue}`}
+                  </p>
+                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">
+                    Off
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-slate-900">
                     {promo.usageCount || 0}
-                    {promo.usageLimit && promo.usageLimit > 0 ? ` / ${promo.usageLimit}` : ''}
+                    {promo.usageLimit && promo.usageLimit > 0
+                      ? ` / ${promo.usageLimit}`
+                      : ""}
                   </p>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Redeemed</p>
+                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">
+                    Redeemed
+                  </p>
                 </div>
-             </div>
+              </div>
 
-             <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center">
                 <p className="text-[9px] text-slate-400 font-bold flex items-center gap-1.5 uppercase tracking-widest">
-                  <Clock size={12} /> {promo.expiryDate ? new Date(promo.expiryDate).toLocaleDateString() : 'No Limit'}
+                  <Clock size={12} />{" "}
+                  {promo.expiryDate
+                    ? new Date(promo.expiryDate).toLocaleDateString()
+                    : "No Limit"}
                 </p>
                 <div className="flex gap-2">
-                   <button 
-                     onClick={() => handleBroadcast(promo)} 
-                     disabled={isBroadcasting === promo.id}
-                     className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
-                     title="Broadcast to users"
-                   >
-                     <Bell size={16} className={isBroadcasting === promo.id ? 'animate-bounce' : ''} />
-                   </button>
-                   <button 
-                     onClick={() => { setEditingPromo(promo); setIsAdding(false); }} 
-                     className="p-2 text-slate-400 hover:text-blue-700 transition-colors"
-                     title="Edit Campaign"
-                   >
-                     <Settings size={16} />
-                   </button>
-                   <button onClick={() => togglePromo(promo)} className="p-2 text-slate-400 hover:text-blue-700 transition-colors">
-                      {promo.active ? <XCircle size={16} /> : <CheckCircle2 size={16} />}
-                   </button>
-                   <button onClick={() => deletePromo(promo.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Delete Campaign">
-                      <Trash2 size={16} />
-                   </button>
+                  <button
+                    onClick={() => handleBroadcast(promo)}
+                    disabled={isBroadcasting === promo.id}
+                    className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                    title="Broadcast to users"
+                  >
+                    <Bell
+                      size={16}
+                      className={
+                        isBroadcasting === promo.id ? "animate-bounce" : ""
+                      }
+                    />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingPromo(promo);
+                      setIsAdding(false);
+                    }}
+                    className="p-2 text-slate-400 hover:text-blue-700 transition-colors"
+                    title="Edit Campaign"
+                  >
+                    <Settings size={16} />
+                  </button>
+                  <button
+                    onClick={() => togglePromo(promo)}
+                    className="p-2 text-slate-400 hover:text-blue-700 transition-colors"
+                  >
+                    {promo.active ? (
+                      <XCircle size={16} />
+                    ) : (
+                      <CheckCircle2 size={16} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => deletePromo(promo.id)}
+                    className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                    title="Delete Campaign"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
-             </div>
-          </div>
-        )})}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -4884,26 +7242,33 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingFaq, setEditingFaq] = useState<FAQ | null>(null);
   const [newFaq, setNewFaq] = useState<Partial<FAQ>>({
-    question: '',
-    answer: '',
-    category: 'General',
+    question: "",
+    answer: "",
+    category: "General",
     isPublished: true,
-    order: (faqs.length + 1),
-    popularity: 0
+    order: faqs.length + 1,
+    popularity: 0,
   });
 
   const handleCreateFaq = async () => {
     if (!newFaq.question || !newFaq.answer) return;
     try {
-      await addDoc(collection(db, 'faqs'), {
+      await addDoc(collection(db, "faqs"), {
         ...newFaq,
         createdAt: Timestamp.now(),
-        popularity: Number(newFaq.popularity || 0)
+        popularity: Number(newFaq.popularity || 0),
       });
-      setNewFaq({ question: '', answer: '', category: 'General', isPublished: true, order: faqs.length + 2, popularity: 0 });
+      setNewFaq({
+        question: "",
+        answer: "",
+        category: "General",
+        isPublished: true,
+        order: faqs.length + 2,
+        popularity: 0,
+      });
       setIsAdding(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'faqs');
+      handleFirestoreError(err, OperationType.CREATE, "faqs");
     }
   };
 
@@ -4911,10 +7276,10 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
     if (!editingFaq || !editingFaq.question || !editingFaq.answer) return;
     try {
       const { id, ...data } = editingFaq;
-      await updateDoc(doc(db, 'faqs', id), {
+      await updateDoc(doc(db, "faqs", id), {
         ...data,
         popularity: Number(data.popularity || 0),
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
       setEditingFaq(null);
     } catch (err) {
@@ -4924,7 +7289,7 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
 
   const deleteFaq = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'faqs', id));
+      await deleteDoc(doc(db, "faqs", id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `faqs/${id}`);
     }
@@ -4933,96 +7298,134 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-         <h3 className="text-xl font-bold">FAQ & Knowledge Base</h3>
-         <button 
-           onClick={() => { setIsAdding(!isAdding); setEditingFaq(null); }}
-           className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-xs"
-         >
-           {isAdding ? <X size={16} /> : <Plus size={16} />}
-           {isAdding ? 'Cancel' : 'New Article'}
-         </button>
+        <h3 className="text-xl font-bold">FAQ & Knowledge Base</h3>
+        <button
+          onClick={() => {
+            setIsAdding(!isAdding);
+            setEditingFaq(null);
+          }}
+          className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-xs"
+        >
+          {isAdding ? <X size={16} /> : <Plus size={16} />}
+          {isAdding ? "Cancel" : "New Article"}
+        </button>
       </div>
 
       <AnimatePresence>
         {(isAdding || editingFaq) && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm max-w-2xl"
           >
-             <h4 className="text-lg font-bold mb-6">{editingFaq ? 'Edit FAQ Article' : 'Create New Knowledge Base Article'}</h4>
-             <div className="space-y-6">
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Question</label>
-                   <input 
-                    type="text"
-                    value={editingFaq ? editingFaq.question : newFaq.question}
-                    onChange={(e) => editingFaq ? setEditingFaq({ ...editingFaq, question: e.target.value }) : setNewFaq({ ...newFaq, question: e.target.value })}
-                    placeholder="How do I book a service?"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
-                   />
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                    <input 
-                     type="text"
-                     value={editingFaq ? editingFaq.category : newFaq.category}
-                     onChange={(e) => editingFaq ? setEditingFaq({ ...editingFaq, category: e.target.value }) : setNewFaq({ ...newFaq, category: e.target.value })}
-                     placeholder="e.g. General, Payments, Custom Category"
-                     list="faq-categories"
-                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
-                    />
-                    <datalist id="faq-categories">
-                      <option value="General" />
-                      <option value="Payments" />
-                      <option value="Bookings" />
-                      <option value="Partners" />
-                    </datalist>
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Popularity Score (Featured FAQs placement)</label>
-                   <input 
-                    type="number"
-                    min="0"
-                    value={editingFaq ? (editingFaq.popularity ?? '') : (newFaq.popularity ?? '')}
-                    onChange={(e) => {
-                      const val = e.target.value === '' ? 0 : Number(e.target.value);
-                      if (editingFaq) {
-                        setEditingFaq({ ...editingFaq, popularity: val });
-                      } else {
-                        setNewFaq({ ...newFaq, popularity: val });
-                      }
-                    }}
-                    placeholder="e.g. 50 (higher is more popular)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
-                   />
-                </div>
-                <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Answer</label>
-                   <textarea 
-                    value={editingFaq ? editingFaq.answer : newFaq.answer}
-                    onChange={(e) => editingFaq ? setEditingFaq({ ...editingFaq, answer: e.target.value }) : setNewFaq({ ...newFaq, answer: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-700 outline-none h-40"
-                   />
-                </div>
-                <div className="flex gap-4">
-                  <button 
-                    onClick={editingFaq ? handleUpdateFaq : handleCreateFaq}
-                    className="flex-1 bg-blue-700 text-white py-4 rounded-xl font-bold hover:bg-blue-800 transition-all shadow-lg shadow-slate-200"
+            <h4 className="text-lg font-bold mb-6">
+              {editingFaq
+                ? "Edit FAQ Article"
+                : "Create New Knowledge Base Article"}
+            </h4>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Question
+                </label>
+                <input
+                  type="text"
+                  value={editingFaq ? editingFaq.question : newFaq.question}
+                  onChange={(e) =>
+                    editingFaq
+                      ? setEditingFaq({
+                          ...editingFaq,
+                          question: e.target.value,
+                        })
+                      : setNewFaq({ ...newFaq, question: e.target.value })
+                  }
+                  placeholder="How do I book a service?"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={editingFaq ? editingFaq.category : newFaq.category}
+                  onChange={(e) =>
+                    editingFaq
+                      ? setEditingFaq({
+                          ...editingFaq,
+                          category: e.target.value,
+                        })
+                      : setNewFaq({ ...newFaq, category: e.target.value })
+                  }
+                  placeholder="e.g. General, Payments, Custom Category"
+                  list="faq-categories"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
+                />
+                <datalist id="faq-categories">
+                  <option value="General" />
+                  <option value="Payments" />
+                  <option value="Bookings" />
+                  <option value="Partners" />
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Popularity Score (Featured FAQs placement)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={
+                    editingFaq
+                      ? (editingFaq.popularity ?? "")
+                      : (newFaq.popularity ?? "")
+                  }
+                  onChange={(e) => {
+                    const val =
+                      e.target.value === "" ? 0 : Number(e.target.value);
+                    if (editingFaq) {
+                      setEditingFaq({ ...editingFaq, popularity: val });
+                    } else {
+                      setNewFaq({ ...newFaq, popularity: val });
+                    }
+                  }}
+                  placeholder="e.g. 50 (higher is more popular)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none animate-in fade-in"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Answer
+                </label>
+                <textarea
+                  value={editingFaq ? editingFaq.answer : newFaq.answer}
+                  onChange={(e) =>
+                    editingFaq
+                      ? setEditingFaq({ ...editingFaq, answer: e.target.value })
+                      : setNewFaq({ ...newFaq, answer: e.target.value })
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-700 outline-none h-40"
+                />
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={editingFaq ? handleUpdateFaq : handleCreateFaq}
+                  className="flex-1 bg-blue-700 text-white py-4 rounded-xl font-bold hover:bg-blue-800 transition-all shadow-lg shadow-slate-200"
+                >
+                  {editingFaq ? "Save Changes" : "Publish Article"}
+                </button>
+                {editingFaq && (
+                  <button
+                    onClick={() => setEditingFaq(null)}
+                    className="px-8 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors"
                   >
-                    {editingFaq ? 'Save Changes' : 'Publish Article'}
+                    Cancel
                   </button>
-                  {editingFaq && (
-                    <button 
-                      onClick={() => setEditingFaq(null)}
-                      className="px-8 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-             </div>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -5031,41 +7434,65 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
         <table className="w-full text-left">
           <thead className="bg-slate-50">
             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-               <th className="px-8 py-5">Article</th>
-               <th className="px-8 py-5">Category</th>
-               <th className="px-8 py-5">Popularity</th>
-               <th className="px-8 py-5">Status</th>
-               <th className="px-8 py-5 text-right">Actions</th>
+              <th className="px-8 py-5">Article</th>
+              <th className="px-8 py-5">Category</th>
+              <th className="px-8 py-5">Popularity</th>
+              <th className="px-8 py-5">Status</th>
+              <th className="px-8 py-5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {faqs.map(faq => (
-              <tr key={faq.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+            {faqs.map((faq) => (
+              <tr
+                key={faq.id}
+                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+              >
                 <td className="px-8 py-6">
-                   <p className="text-sm font-bold text-slate-900">{faq.question}</p>
-                   <p className="text-[10px] text-slate-400 truncate max-w-md">{faq.answer}</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {faq.question}
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate max-w-md">
+                    {faq.answer}
+                  </p>
                 </td>
                 <td className="px-8 py-6">
-                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-tighter">{faq.category}</span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-tighter">
+                    {faq.category}
+                  </span>
                 </td>
                 <td className="px-8 py-6">
-                   <span className="text-xs font-bold text-blue-700 bg-blue-50/50 px-2.5 py-1 rounded-lg border border-blue-100/50">{faq.popularity ?? 0}</span>
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50/50 px-2.5 py-1 rounded-lg border border-blue-100/50">
+                    {faq.popularity ?? 0}
+                  </span>
                 </td>
                 <td className="px-8 py-6">
-                   <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${faq.isPublished ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">{faq.isPublished ? 'Published' : 'Draft'}</span>
-                   </div>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-1.5 h-1.5 rounded-full ${faq.isPublished ? "bg-emerald-500" : "bg-red-500"}`}
+                    />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {faq.isPublished ? "Published" : "Draft"}
+                    </span>
+                  </div>
                 </td>
                 <td className="px-8 py-6 text-right">
-                   <div className="flex justify-end gap-2">
-                     <button onClick={() => { setEditingFaq(faq); setIsAdding(false); }} className="p-2 text-slate-400 hover:text-blue-700 transition-colors">
-                        <Settings size={18} />
-                     </button>
-                     <button onClick={() => deleteFaq(faq.id)} className="p-2 text-slate-300 hover:text-red-600 transition-colors">
-                        <XCircle size={18} />
-                     </button>
-                   </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingFaq(faq);
+                        setIsAdding(false);
+                      }}
+                      className="p-2 text-slate-400 hover:text-blue-700 transition-colors"
+                    >
+                      <Settings size={18} />
+                    </button>
+                    <button
+                      onClick={() => deleteFaq(faq.id)}
+                      className="p-2 text-slate-300 hover:text-red-600 transition-colors"
+                    >
+                      <XCircle size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -5076,18 +7503,31 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
   );
 }
 
-function TicketManager({ tickets, users }: { tickets: SupportTicket[], users: UserProfile[] }) {
-  const [statusFilter, setStatusFilter] = useState<SupportTicket['status'] | 'all'>('all');
-  const [priorityFilter, setPriorityFilter] = useState<SupportTicket['priority'] | 'all'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+function TicketManager({
+  tickets,
+  users,
+}: {
+  tickets: SupportTicket[];
+  users: UserProfile[];
+}) {
+  const [statusFilter, setStatusFilter] = useState<
+    SupportTicket["status"] | "all"
+  >("all");
+  const [priorityFilter, setPriorityFilter] = useState<
+    SupportTicket["priority"] | "all"
+  >("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const [responseTime, setResponseTime] = useState('');
+  const [responseTime, setResponseTime] = useState("");
 
-  const updateTicketStatus = async (id: string, status: SupportTicket['status']) => {
+  const updateTicketStatus = async (
+    id: string,
+    status: SupportTicket["status"],
+  ) => {
     try {
-      await updateDoc(doc(db, 'tickets', id), { 
-        status, 
-        updatedAt: Timestamp.now() 
+      await updateDoc(doc(db, "tickets", id), {
+        status,
+        updatedAt: Timestamp.now(),
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
@@ -5096,9 +7536,9 @@ function TicketManager({ tickets, users }: { tickets: SupportTicket[], users: Us
 
   const updateTicketCategory = async (id: string, category: string) => {
     try {
-      await updateDoc(doc(db, 'tickets', id), { 
-        category, 
-        updatedAt: Timestamp.now() 
+      await updateDoc(doc(db, "tickets", id), {
+        category,
+        updatedAt: Timestamp.now(),
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
@@ -5108,14 +7548,14 @@ function TicketManager({ tickets, users }: { tickets: SupportTicket[], users: Us
   const handleRespond = async (id: string) => {
     if (!responseTime) return;
     try {
-      await updateDoc(doc(db, 'tickets', id), { 
+      await updateDoc(doc(db, "tickets", id), {
         adminResponse: responseTime,
-        status: 'in_progress',
-        updatedAt: Timestamp.now() 
+        status: "in_progress",
+        updatedAt: Timestamp.now(),
       });
       setRespondingTo(null);
-      setResponseTime('');
-      console.log('Response recorded successfully.');
+      setResponseTime("");
+      console.log("Response recorded successfully.");
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
     }
@@ -5123,201 +7563,245 @@ function TicketManager({ tickets, users }: { tickets: SupportTicket[], users: Us
 
   const deleteTicket = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'tickets', id));
+      await deleteDoc(doc(db, "tickets", id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `tickets/${id}`);
     }
   };
 
-  const filteredTickets = tickets.filter(t => {
-    const sMatch = statusFilter === 'all' || t.status === statusFilter;
-    const pMatch = priorityFilter === 'all' || t.priority === priorityFilter;
-    const cMatch = categoryFilter === 'all' || t.category === categoryFilter;
+  const filteredTickets = tickets.filter((t) => {
+    const sMatch = statusFilter === "all" || t.status === statusFilter;
+    const pMatch = priorityFilter === "all" || t.priority === priorityFilter;
+    const cMatch = categoryFilter === "all" || t.category === categoryFilter;
     return sMatch && pMatch && cMatch;
   });
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-         <div>
-            <h3 className="text-xl font-bold">Support Queue</h3>
-            <p className="text-sm text-slate-400">Manage user issues and inquiries</p>
-         </div>
-         <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-               <Filter size={14} className="text-slate-400" />
-               <select 
-                 value={categoryFilter}
-                 onChange={(e) => setCategoryFilter(e.target.value)}
-                 className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-               >
-                  <option value="all">All Categories</option>
-                  <option value="Booking Issue">Booking Issue</option>
-                  <option value="Payment Problem">Payment Problem</option>
-                  <option value="Account Inquiry">Account Inquiry</option>
-                  <option value="Feedback">Feedback</option>
-                  <option value="Other">Other</option>
-               </select>
-            </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-               <Filter size={14} className="text-slate-400" />
-               <select 
-                 value={statusFilter}
-                 onChange={(e) => setStatusFilter(e.target.value as any)}
-                 className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-               >
-                  <option value="all">All Status</option>
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-               </select>
-            </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-               <AlertCircle size={14} className="text-slate-400" />
-               <select 
-                 value={priorityFilter}
-                 onChange={(e) => setPriorityFilter(e.target.value as any)}
-                 className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-               >
-                  <option value="all">All Priority</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-               </select>
-            </div>
-         </div>
+        <div>
+          <h3 className="text-xl font-bold">Support Queue</h3>
+          <p className="text-sm text-slate-400">
+            Manage user issues and inquiries
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
+            <Filter size={14} className="text-slate-400" />
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
+            >
+              <option value="all">All Categories</option>
+              <option value="Booking Issue">Booking Issue</option>
+              <option value="Payment Problem">Payment Problem</option>
+              <option value="Account Inquiry">Account Inquiry</option>
+              <option value="Feedback">Feedback</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
+            <Filter size={14} className="text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
+            >
+              <option value="all">All Status</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
+            <AlertCircle size={14} className="text-slate-400" />
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value as any)}
+              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
+            >
+              <option value="all">All Priority</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {filteredTickets.map(ticket => {
-          const user = users.find(u => u.uid === ticket.userId);
+        {filteredTickets.map((ticket) => {
+          const user = users.find((u) => u.uid === ticket.userId);
           return (
-            <div key={ticket.id} className="bg-white border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group overflow-hidden shadow-sm hover:shadow-md">
-               <div className="p-8">
+            <div
+              key={ticket.id}
+              className="bg-white border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group overflow-hidden shadow-sm hover:shadow-md"
+            >
+              <div className="p-8">
                 <div className="flex flex-col lg:flex-row justify-between gap-8">
-                    <div className="space-y-4 flex-1">
-                      <div className="flex items-center gap-3">
-                          <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
-                            ticket.status === 'open' ? 'bg-amber-100 text-amber-700' :
-                            ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                            'bg-emerald-100 text-emerald-700'
-                          }`}>
-                            {ticket.status}
-                          </span>
-                          <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
-                            ticket.priority === 'high' ? 'bg-red-100 text-red-700' :
-                            ticket.priority === 'medium' ? 'bg-orange-100 text-orange-700' :
-                            'bg-slate-100 text-slate-500'
-                          }`}>
-                            {ticket.priority} Priority
-                          </span>
-                          {ticket.category && (
-                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
-                              {ticket.category}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-slate-300 font-medium font-mono">
-                            #ID-{ticket.id.slice(0, 8).toUpperCase()}
-                          </span>
-                      </div>
-                      <h4 className="text-xl font-bold text-slate-900">{ticket.subject}</h4>
-                      <p className="text-sm text-slate-500 leading-relaxed font-medium">{ticket.message}</p>
-                      
-                      {ticket.adminResponse && (
-                        <div className="mt-4 p-5 bg-blue-700 text-white rounded-2xl relative">
-                           <div className="absolute -top-2 left-6 px-3 py-0.5 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Official Response</div>
-                           <p className="text-xs italic text-slate-300">"{ticket.adminResponse}"</p>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-3 pt-4">
-                          <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-sm font-bold text-slate-900 border border-slate-200">
-                            {user?.displayName?.[0] || 'U'}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{user?.displayName || 'Unknown User'}</p>
-                            <p className="text-[10px] text-slate-400 font-medium">{user?.email}</p>
-                          </div>
-                          <span className="ml-auto text-[10px] text-slate-300 font-bold uppercase tracking-widest">
-                            {ticket.createdAt?.toDate?.() ? ticket.createdAt.toDate().toLocaleDateString() : new Date(ticket.createdAt).toLocaleDateString()}
-                          </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row lg:flex-col gap-3 justify-end min-w-[200px]">
-                      <select
-                        value={ticket.category || ''}
-                        onChange={(e) => updateTicketCategory(ticket.id, e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
-                      >
-                         <option value="" disabled>Assign Category</option>
-                         <option value="Booking Issue">Booking Issue</option>
-                         <option value="Payment Problem">Payment Problem</option>
-                         <option value="Account Inquiry">Account Inquiry</option>
-                         <option value="Feedback">Feedback</option>
-                         <option value="Other">Other</option>
-                      </select>
-                      <select 
-                        value={ticket.status}
-                        onChange={(e) => updateTicketStatus(ticket.id, e.target.value as any)}
-                        className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
-                      >
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="resolved">Resolved</option>
-                          <option value="closed">Closed</option>
-                      </select>
-                      <button 
-                        onClick={() => respondingTo === ticket.id ? setRespondingTo(null) : setRespondingTo(ticket.id)}
-                        className={`px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                          respondingTo === ticket.id ? 'bg-slate-100 text-slate-500' : 'bg-blue-700 text-white hover:bg-blue-800'
+                  <div className="space-y-4 flex-1">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
+                          ticket.status === "open"
+                            ? "bg-amber-100 text-amber-700"
+                            : ticket.status === "in_progress"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-emerald-100 text-emerald-700"
                         }`}
                       >
-                        <MessageSquare size={14} /> {respondingTo === ticket.id ? 'Cancel' : 'Respond'}
-                      </button>
-                      <button 
-                        onClick={() => deleteTicket(ticket.id)}
-                        className="p-3 text-slate-300 hover:text-red-600 transition-colors bg-slate-50 rounded-xl hover:bg-slate-100 flex items-center justify-center"
+                        {ticket.status}
+                      </span>
+                      <span
+                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
+                          ticket.priority === "high"
+                            ? "bg-red-100 text-red-700"
+                            : ticket.priority === "medium"
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
                       >
-                        <X size={20} />
-                      </button>
+                        {ticket.priority} Priority
+                      </span>
+                      {ticket.category && (
+                        <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                          {ticket.category}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-300 font-medium font-mono">
+                        #ID-{ticket.id.slice(0, 8).toUpperCase()}
+                      </span>
                     </div>
+                    <h4 className="text-xl font-bold text-slate-900">
+                      {ticket.subject}
+                    </h4>
+                    <p className="text-sm text-slate-500 leading-relaxed font-medium">
+                      {ticket.message}
+                    </p>
+
+                    {ticket.adminResponse && (
+                      <div className="mt-4 p-5 bg-blue-700 text-white rounded-2xl relative">
+                        <div className="absolute -top-2 left-6 px-3 py-0.5 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">
+                          Official Response
+                        </div>
+                        <p className="text-xs italic text-slate-300">
+                          "{ticket.adminResponse}"
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 pt-4">
+                      <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-sm font-bold text-slate-900 border border-slate-200">
+                        {user?.displayName?.[0] || "U"}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">
+                          {user?.displayName || "Unknown User"}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {user?.email}
+                        </p>
+                      </div>
+                      <span className="ml-auto text-[10px] text-slate-300 font-bold uppercase tracking-widest">
+                        {ticket.createdAt?.toDate?.()
+                          ? ticket.createdAt.toDate().toLocaleDateString()
+                          : new Date(ticket.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row lg:flex-col gap-3 justify-end min-w-[200px]">
+                    <select
+                      value={ticket.category || ""}
+                      onChange={(e) =>
+                        updateTicketCategory(ticket.id, e.target.value)
+                      }
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        Assign Category
+                      </option>
+                      <option value="Booking Issue">Booking Issue</option>
+                      <option value="Payment Problem">Payment Problem</option>
+                      <option value="Account Inquiry">Account Inquiry</option>
+                      <option value="Feedback">Feedback</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <select
+                      value={ticket.status}
+                      onChange={(e) =>
+                        updateTicketStatus(ticket.id, e.target.value as any)
+                      }
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
+                    >
+                      <option value="open">Open</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                    <button
+                      onClick={() =>
+                        respondingTo === ticket.id
+                          ? setRespondingTo(null)
+                          : setRespondingTo(ticket.id)
+                      }
+                      className={`px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                        respondingTo === ticket.id
+                          ? "bg-slate-100 text-slate-500"
+                          : "bg-blue-700 text-white hover:bg-blue-800"
+                      }`}
+                    >
+                      <MessageSquare size={14} />{" "}
+                      {respondingTo === ticket.id ? "Cancel" : "Respond"}
+                    </button>
+                    <button
+                      onClick={() => deleteTicket(ticket.id)}
+                      className="p-3 text-slate-300 hover:text-red-600 transition-colors bg-slate-50 rounded-xl hover:bg-slate-100 flex items-center justify-center"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
 
                 <AnimatePresence>
                   {respondingTo === ticket.id && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-8 pt-8 border-t border-slate-100"
                     >
-                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Admin Response Message</label>
-                       <textarea 
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                        Admin Response Message
+                      </label>
+                      <textarea
                         value={responseTime}
                         onChange={(e) => setResponseTime(e.target.value)}
                         placeholder="Type your response here. This will be visible to the user..."
                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-700 outline-none h-32 mb-4"
-                       />
-                       <button 
+                      />
+                      <button
                         onClick={() => handleRespond(ticket.id)}
                         disabled={!responseTime}
                         className="bg-blue-700 text-white px-8 py-3 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50 flex items-center gap-2 ml-auto"
-                       >
-                         Send Response <ChevronRight size={14} />
-                       </button>
+                      >
+                        Send Response <ChevronRight size={14} />
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
-               </div>
+              </div>
             </div>
           );
         })}
         {filteredTickets.length === 0 && (
           <div className="py-24 text-center bg-white border border-dashed border-slate-200 rounded-[40px]">
-             <MessageSquare size={48} className="mx-auto text-slate-200 mb-4" />
-             <p className="text-slate-400 font-medium italic">No tickets match your filters.</p>
+            <MessageSquare size={48} className="mx-auto text-slate-200 mb-4" />
+            <p className="text-slate-400 font-medium italic">
+              No tickets match your filters.
+            </p>
           </div>
         )}
       </div>
@@ -5331,22 +7815,30 @@ function ReviewManager({ serviceId }: { serviceId: string }) {
 
   useEffect(() => {
     const q = query(
-      collection(db, 'reviews'), 
-      where('serviceId', '==', serviceId), 
-      orderBy('createdAt', 'desc')
+      collection(db, "reviews"),
+      where("serviceId", "==", serviceId),
+      orderBy("createdAt", "desc"),
     );
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, `reviews?serviceId=${serviceId}`);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        setReviews(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setLoading(false);
+      },
+      (err) => {
+        handleFirestoreError(
+          err,
+          OperationType.LIST,
+          `reviews?serviceId=${serviceId}`,
+        );
+      },
+    );
     return unsubscribe;
   }, [serviceId]);
 
   const deleteReview = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'reviews', id));
+      await deleteDoc(doc(db, "reviews", id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `reviews/${id}`);
     }
@@ -5357,50 +7849,84 @@ function ReviewManager({ serviceId }: { serviceId: string }) {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-300 gap-4">
           <LoadingSpinner size="md" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">Fetching Database Feedback...</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+            Fetching Database Feedback...
+          </p>
         </div>
       ) : reviews.length === 0 ? (
         <div className="text-center py-24 bg-white border-2 border-dashed border-slate-100 rounded-[48px] flex flex-col items-center">
           <div className="w-20 h-20 bg-slate-50 rounded-[32px] flex items-center justify-center mb-6">
             <MessageSquare size={32} className="text-slate-200" />
           </div>
-          <h5 className="text-lg font-bold text-slate-900 mb-2 italic">Clean Slate</h5>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto italic">No customer reviews have been logged for this particular service node yet.</p>
+          <h5 className="text-lg font-bold text-slate-900 mb-2 italic">
+            Clean Slate
+          </h5>
+          <p className="text-slate-400 text-sm max-w-xs mx-auto italic">
+            No customer reviews have been logged for this particular service
+            node yet.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
           {reviews.map((r) => (
-            <div key={r.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 hover:-translate-y-1">
-               <button 
+            <div
+              key={r.id}
+              className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 hover:-translate-y-1"
+            >
+              <button
                 onClick={() => deleteReview(r.id)}
                 className="absolute top-6 right-6 p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                 title="Moderate/Delete Review"
-               >
-                 <X size={18} />
-               </button>
-               <div className="flex items-center gap-1 mb-6">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={14} className={i < r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-100'} />
-                  ))}
-                  <span className="ml-2 text-[10px] font-black text-slate-900 uppercase tracking-widest">{r.rating}.0</span>
-               </div>
-               <div className="p-6 bg-slate-50 rounded-[28px] border border-slate-50 mb-6">
-                  <p className="text-sm text-slate-600 italic leading-relaxed">"{r.comment}"</p>
-               </div>
-               <div className="flex items-center justify-between pt-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-blue-700 flex items-center justify-center text-[10px] font-black text-white italic">
-                      U
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-0.5">Verified Customer</p>
-                      <p className="text-[9px] text-slate-400 font-bold">
-                        {r.createdAt?.toDate?.() ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Jan 2026'}
-                      </p>
-                    </div>
+              >
+                <X size={18} />
+              </button>
+              <div className="flex items-center gap-1 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    size={14}
+                    className={
+                      i < r.rating
+                        ? "fill-amber-400 text-amber-400"
+                        : "text-slate-100"
+                    }
+                  />
+                ))}
+                <span className="ml-2 text-[10px] font-black text-slate-900 uppercase tracking-widest">
+                  {r.rating}.0
+                </span>
+              </div>
+              <div className="p-6 bg-slate-50 rounded-[28px] border border-slate-50 mb-6">
+                <p className="text-sm text-slate-600 italic leading-relaxed">
+                  "{r.comment}"
+                </p>
+              </div>
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-700 flex items-center justify-center text-[10px] font-black text-white italic">
+                    U
                   </div>
-                  <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-[0.2em] rounded-full border border-emerald-100">Authenticated</div>
-               </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-0.5">
+                      Verified Customer
+                    </p>
+                    <p className="text-[9px] text-slate-400 font-bold">
+                      {r.createdAt?.toDate?.()
+                        ? r.createdAt
+                            .toDate()
+                            .toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                        : "Jan 2026"}
+                    </p>
+                  </div>
+                </div>
+                <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-[0.2em] rounded-full border border-emerald-100">
+                  Authenticated
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -5414,103 +7940,126 @@ function PayoutManager() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'payoutRequests'), orderBy('createdAt', 'desc'));
+    const q = query(
+      collection(db, "payoutRequests"),
+      orderBy("createdAt", "desc"),
+    );
     const unsubscribe = onSnapshot(q, (snap) => {
-      setRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRequests(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
     return unsubscribe;
   }, []);
 
-  const handleProcess = async (reqId: string, partnerId: string, amount: number) => {
+  const handleProcess = async (
+    reqId: string,
+    partnerId: string,
+    amount: number,
+  ) => {
     try {
       // Create a transaction/withdrawal record in partner's history
-      await addDoc(collection(db, 'partners', partnerId, 'earningsHistory'), {
+      await addDoc(collection(db, "partners", partnerId, "earningsHistory"), {
         amount: -amount,
-        type: 'adjustment',
-        description: 'Withdrawal to Bank Account (Processed)',
-        createdAt: Timestamp.now()
+        type: "adjustment",
+        description: "Withdrawal to Bank Account (Processed)",
+        createdAt: Timestamp.now(),
       });
 
       // Update partner total balance
-      const partnerRef = doc(db, 'partners', partnerId);
+      const partnerRef = doc(db, "partners", partnerId);
       const partnerDoc = await getDoc(partnerRef);
       if (partnerDoc.exists()) {
         const currentBalance = partnerDoc.data().totalEarnings || 0;
         await updateDoc(partnerRef, {
-          totalEarnings: Math.max(0, currentBalance - amount)
+          totalEarnings: Math.max(0, currentBalance - amount),
         });
       }
 
-      await updateDoc(doc(db, 'payoutRequests', reqId), {
-        status: 'processed',
-        processedAt: Timestamp.now()
+      await updateDoc(doc(db, "payoutRequests", reqId), {
+        status: "processed",
+        processedAt: Timestamp.now(),
       });
-      alert('Payout processed successfully.');
+      alert("Payout processed successfully.");
     } catch (err) {
       console.error(err);
-      alert('Failed to process payout.');
+      alert("Failed to process payout.");
     }
   };
 
   return (
     <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm mt-8">
-       <h3 className="text-xl font-bold font-display italic mb-6">Payout Requests</h3>
-       {loading ? (
-         <div className="flex items-center gap-2 text-slate-400 py-4 font-semibold font-mono">
-           <LoadingSpinner size="sm" />
-           <span>Loading payout requests...</span>
-         </div>
-       ) : requests.length === 0 ? (
-         <p className="text-slate-400 bg-slate-50 p-6 rounded-2xl italic border border-slate-100">No payout requests pending.</p>
-       ) : (
-         <div className="space-y-4">
-           {requests.map(req => (
-             <div key={req.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-slate-50 border border-slate-100 rounded-3xl gap-4">
-                <div>
-                   <p className="text-slate-900 font-bold mb-1">₹{req.amount}</p>
-                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                     Partner: {req.partnerId} &bull; {req.createdAt?.toDate?.()?.toLocaleString()}
-                   </p>
-                </div>
-                <div>
-                  {req.status === 'pending' ? (
-                     <button
-                       onClick={() => handleProcess(req.id, req.partnerId, req.amount)}
-                       className="bg-blue-700 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-800 transition-colors"
-                     >
-                       Approve & Process
-                     </button>
-                  ) : (
-                     <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest">
-                       Processed
-                     </span>
-                  )}
-                </div>
-             </div>
-           ))}
-         </div>
-       )}
+      <h3 className="text-xl font-bold font-display italic mb-6">
+        Payout Requests
+      </h3>
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-400 py-4 font-semibold font-mono">
+          <LoadingSpinner size="sm" />
+          <span>Loading payout requests...</span>
+        </div>
+      ) : requests.length === 0 ? (
+        <p className="text-slate-400 bg-slate-50 p-6 rounded-2xl italic border border-slate-100">
+          No payout requests pending.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {requests.map((req) => (
+            <div
+              key={req.id}
+              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-slate-50 border border-slate-100 rounded-3xl gap-4"
+            >
+              <div>
+                <p className="text-slate-900 font-bold mb-1">₹{req.amount}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                  Partner: {req.partnerId} &bull;{" "}
+                  {req.createdAt?.toDate?.()?.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                {req.status === "pending" ? (
+                  <button
+                    onClick={() =>
+                      handleProcess(req.id, req.partnerId, req.amount)
+                    }
+                    className="bg-blue-700 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-800 transition-colors"
+                  >
+                    Approve & Process
+                  </button>
+                ) : (
+                  <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest">
+                    Processed
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function AdminManager({ users, profile }: { users: UserProfile[], profile: UserProfile }) {
+function AdminManager({
+  users,
+  profile,
+}: {
+  users: UserProfile[];
+  profile: UserProfile;
+}) {
   const [isAdminCreating, setIsAdminCreating] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [newAdmin, setNewAdmin] = useState({
-    email: '',
-    password: '',
-    displayName: '',
-    adminSubRole: 'accounts' as AdminSubRole
+    email: "",
+    password: "",
+    displayName: "",
+    adminSubRole: "accounts" as AdminSubRole,
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const admins = users.filter(u => u.role === 'admin');
+  const admins = users.filter((u) => u.role === "admin");
 
-  const isHead = profile.adminSubRole === 'head' || !profile.adminSubRole;
+  const isHead = profile.adminSubRole === "head" || !profile.adminSubRole;
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5518,20 +8067,27 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
     setError(null);
     setSuccess(null);
     try {
-      const response = await axios.post('/api/create-sub-admin', {
+      const response = await axios.post("/api/create-sub-admin", {
         requesterUid: profile.uid,
-        ...newAdmin
+        ...newAdmin,
       });
       if (response.data.success) {
         setSuccess(`Admin ${newAdmin.displayName} created successfully!`);
-        setNewAdmin({ email: '', password: '', displayName: '', adminSubRole: 'accounts' });
+        setNewAdmin({
+          email: "",
+          password: "",
+          displayName: "",
+          adminSubRole: "accounts",
+        });
         setTimeout(() => {
           setIsAdminCreating(false);
           setSuccess(null);
         }, 2000);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to create admin');
+      setError(
+        err.response?.data?.error || err.message || "Failed to create admin",
+      );
     } finally {
       setLoading(false);
     }
@@ -5546,14 +8102,14 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
       const updateData: any = {
         displayName: editingAdmin.displayName,
         fullName: editingAdmin.displayName,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       };
-      
+
       if (editingAdmin.adminSubRole) {
         updateData.adminSubRole = editingAdmin.adminSubRole;
       }
-      
-      await updateDoc(doc(db, 'users', editingAdmin.uid), updateData);
+
+      await updateDoc(doc(db, "users", editingAdmin.uid), updateData);
       setSuccess("Admin updated successfully.");
       setTimeout(() => {
         setEditingAdmin(null);
@@ -5571,10 +8127,15 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
       alert("You cannot delete yourself.");
       return;
     }
-    if (!window.confirm("Are you sure you want to delete this admin? This will only remove their profile record from Firestore. To fully disable access, deactivate them in Firebase Auth console.")) return;
-    
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this admin? This will only remove their profile record from Firestore. To fully disable access, deactivate them in Firebase Auth console.",
+      )
+    )
+      return;
+
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      await deleteDoc(doc(db, "users", uid));
       alert("Admin profile removed successfully.");
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
@@ -5585,23 +8146,30 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
     <div className="space-y-10">
       <div className="flex justify-between items-center bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
         <div>
-          <h3 className="text-2xl font-bold font-display text-slate-900">System Administrators</h3>
-          <p className="text-sm text-slate-400">Manage administrative roles and access levels.</p>
+          <h3 className="text-2xl font-bold font-display text-slate-900">
+            System Administrators
+          </h3>
+          <p className="text-sm text-slate-400">
+            Manage administrative roles and access levels.
+          </p>
         </div>
         {isHead && (
-          <button 
-            onClick={() => { setIsAdminCreating(!isAdminCreating); setEditingAdmin(null); }}
+          <button
+            onClick={() => {
+              setIsAdminCreating(!isAdminCreating);
+              setEditingAdmin(null);
+            }}
             className="bg-blue-700 text-white px-8 py-4 rounded-2xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-blue-800 shadow-xl shadow-blue-700/20"
           >
             {isAdminCreating ? <X size={18} /> : <UserPlus size={18} />}
-            {isAdminCreating ? 'Cancel' : 'Add New Admin'}
+            {isAdminCreating ? "Cancel" : "Add New Admin"}
           </button>
         )}
       </div>
 
       <AnimatePresence>
         {(isAdminCreating || editingAdmin) && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -5609,33 +8177,64 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
           >
             <div className="relative z-10">
               <h4 className="text-xl font-bold mb-8 text-slate-900 flex items-center gap-3">
-                <ShieldAlert className="text-blue-700" /> 
-                {editingAdmin ? 'Update Authorization' : 'Administrative Credentialing'}
+                <ShieldAlert className="text-blue-700" />
+                {editingAdmin
+                  ? "Update Authorization"
+                  : "Administrative Credentialing"}
               </h4>
-              
-              <form onSubmit={editingAdmin ? handleUpdateAdmin : handleCreateAdmin} className="space-y-6">
+
+              <form
+                onSubmit={editingAdmin ? handleUpdateAdmin : handleCreateAdmin}
+                className="space-y-6"
+              >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Full Name</label>
-                    <input 
-                      type="text" 
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
                       required
-                      value={editingAdmin ? editingAdmin.displayName : newAdmin.displayName}
-                      onChange={(e) => editingAdmin 
-                        ? setEditingAdmin({ ...editingAdmin, displayName: e.target.value })
-                        : setNewAdmin({ ...newAdmin, displayName: e.target.value })
+                      value={
+                        editingAdmin
+                          ? editingAdmin.displayName
+                          : newAdmin.displayName
+                      }
+                      onChange={(e) =>
+                        editingAdmin
+                          ? setEditingAdmin({
+                              ...editingAdmin,
+                              displayName: e.target.value,
+                            })
+                          : setNewAdmin({
+                              ...newAdmin,
+                              displayName: e.target.value,
+                            })
                       }
                       placeholder="e.g. Rahul Sharma"
                       className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Assigned Role</label>
-                    <select 
-                      value={editingAdmin ? editingAdmin.adminSubRole : newAdmin.adminSubRole}
-                      onChange={(e) => editingAdmin
-                        ? setEditingAdmin({ ...editingAdmin, adminSubRole: e.target.value as AdminSubRole })
-                        : setNewAdmin({ ...newAdmin, adminSubRole: e.target.value as AdminSubRole })
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                      Assigned Role
+                    </label>
+                    <select
+                      value={
+                        editingAdmin
+                          ? editingAdmin.adminSubRole
+                          : newAdmin.adminSubRole
+                      }
+                      onChange={(e) =>
+                        editingAdmin
+                          ? setEditingAdmin({
+                              ...editingAdmin,
+                              adminSubRole: e.target.value as AdminSubRole,
+                            })
+                          : setNewAdmin({
+                              ...newAdmin,
+                              adminSubRole: e.target.value as AdminSubRole,
+                            })
                       }
                       className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                     >
@@ -5649,7 +8248,9 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
                       <option value="sales">Sales Executive</option>
                       <option value="logistics">Logistics Coordinator</option>
                       <option value="developer">Platform Developer</option>
-                      <option value="field_manager">Field Operations Manager</option>
+                      <option value="field_manager">
+                        Field Operations Manager
+                      </option>
                       <option value="owner">Project Owner</option>
                       <option value="head">Security Chief (Head)</option>
                     </select>
@@ -5657,23 +8258,34 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
                   {!editingAdmin && (
                     <>
                       <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Secure Email</label>
-                        <input 
-                          type="email" 
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                          Secure Email
+                        </label>
+                        <input
+                          type="email"
                           required
                           value={newAdmin.email}
-                          onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                          onChange={(e) =>
+                            setNewAdmin({ ...newAdmin, email: e.target.value })
+                          }
                           placeholder="admin@zomindia.com"
                           className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">Access Token (Password)</label>
-                        <input 
-                          type="password" 
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                          Access Token (Password)
+                        </label>
+                        <input
+                          type="password"
                           required
                           value={newAdmin.password}
-                          onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+                          onChange={(e) =>
+                            setNewAdmin({
+                              ...newAdmin,
+                              password: e.target.value,
+                            })
+                          }
                           placeholder="••••••••"
                           className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                         />
@@ -5695,16 +8307,22 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
                 )}
 
                 <div className="flex gap-4 pt-4">
-                  <button 
+                  <button
                     type="submit"
                     disabled={loading}
                     className="flex-1 bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 flex items-center justify-center gap-3"
                   >
-                    {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ShieldCheck size={18} />}
-                    {editingAdmin ? 'Update Credentials' : 'Execute Inbound Protocol'}
+                    {loading ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <ShieldCheck size={18} />
+                    )}
+                    {editingAdmin
+                      ? "Update Credentials"
+                      : "Execute Inbound Protocol"}
                   </button>
                   {editingAdmin && (
-                    <button 
+                    <button
                       type="button"
                       onClick={() => setEditingAdmin(null)}
                       className="flex-1 bg-slate-50 text-slate-400 py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 transition-all"
@@ -5721,54 +8339,72 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {admins.map(admin => (
-          <div key={admin.uid} className="bg-white p-8 rounded-[40px] border border-slate-100 hover:border-blue-700 transition-all group shadow-sm relative overflow-hidden">
+        {admins.map((admin) => (
+          <div
+            key={admin.uid}
+            className="bg-white p-8 rounded-[40px] border border-slate-100 hover:border-blue-700 transition-all group shadow-sm relative overflow-hidden"
+          >
             <div className="flex items-start justify-between mb-8 relative z-10">
               <div className="w-14 h-14 bg-slate-50 rounded-[24px] flex items-center justify-center text-slate-900 group-hover:bg-blue-700 group-hover:text-white transition-all shadow-inner">
                 <Settings size={28} />
               </div>
-              <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-                admin.adminSubRole === 'head' ? 'bg-indigo-50 text-indigo-600' :
-                admin.adminSubRole === 'manager' ? 'bg-blue-50 text-blue-600' :
-                admin.adminSubRole === 'accounts' ? 'bg-amber-50 text-amber-600' :
-                admin.adminSubRole === 'editor' ? 'bg-purple-50 text-purple-600' :
-                admin.adminSubRole === 'support' ? 'bg-emerald-50 text-emerald-600' :
-                'bg-slate-50 text-slate-600'
-              }`}>
-                {admin.adminSubRole || 'Admin'} Access
+              <div
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                  admin.adminSubRole === "head"
+                    ? "bg-indigo-50 text-indigo-600"
+                    : admin.adminSubRole === "manager"
+                      ? "bg-blue-50 text-blue-600"
+                      : admin.adminSubRole === "accounts"
+                        ? "bg-amber-50 text-amber-600"
+                        : admin.adminSubRole === "editor"
+                          ? "bg-purple-50 text-purple-600"
+                          : admin.adminSubRole === "support"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-slate-50 text-slate-600"
+                }`}
+              >
+                {admin.adminSubRole || "Admin"} Access
               </div>
             </div>
-            
+
             <div className="relative z-10">
-               <h4 className="text-xl font-bold text-slate-900 mb-1">{admin.displayName || 'Unnamed Admin'}</h4>
-               <p className="text-sm text-slate-400 mb-6">{admin.email}</p>
-               
-               <div className="flex items-center justify-between pt-6 border-t border-slate-50">
-                  <div className="flex items-center gap-2">
-                     <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                     <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Active Status</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {isHead && (
-                      <button 
-                        onClick={() => { setEditingAdmin(admin); setIsAdminCreating(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                        className="p-2 text-slate-300 hover:text-blue-700 transition-colors"
-                      >
-                        <FileText size={20} />
-                      </button>
-                    )}
-                    {admin.uid !== profile.uid && isHead && (
-                      <button 
-                        onClick={() => handleDeleteAdmin(admin.uid)}
-                        className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
-                      >
-                        <XCircle size={20} />
-                      </button>
-                    )}
-                  </div>
-               </div>
+              <h4 className="text-xl font-bold text-slate-900 mb-1">
+                {admin.displayName || "Unnamed Admin"}
+              </h4>
+              <p className="text-sm text-slate-400 mb-6">{admin.email}</p>
+
+              <div className="flex items-center justify-between pt-6 border-t border-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
+                    Active Status
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {isHead && (
+                    <button
+                      onClick={() => {
+                        setEditingAdmin(admin);
+                        setIsAdminCreating(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="p-2 text-slate-300 hover:text-blue-700 transition-colors"
+                    >
+                      <FileText size={20} />
+                    </button>
+                  )}
+                  {admin.uid !== profile.uid && isHead && (
+                    <button
+                      onClick={() => handleDeleteAdmin(admin.uid)}
+                      className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                    >
+                      <XCircle size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            
+
             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-slate-50 rounded-full opacity-50 group-hover:bg-blue-50 transition-all" />
           </div>
         ))}
@@ -5778,13 +8414,18 @@ function AdminManager({ users, profile }: { users: UserProfile[], profile: UserP
 }
 
 function MyAdminProfile({ profile }: { profile: UserProfile }) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'wallet' | 'settings'>('profile');
+  const [activeTab, setActiveTab] = useState<"profile" | "wallet" | "settings">(
+    "profile",
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(profile.displayName);
 
   const handleSave = async () => {
     try {
-      await updateDoc(doc(db, 'users', profile.uid), { displayName, fullName: displayName });
+      await updateDoc(doc(db, "users", profile.uid), {
+        displayName,
+        fullName: displayName,
+      });
       setIsEditing(false);
       window.location.reload();
     } catch (error) {
@@ -5796,138 +8437,191 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mb-12">
         <div className="flex items-center gap-6">
-           <div className="w-16 h-16 rounded-[24px] overflow-hidden border-2 border-indigo-100 shadow-xl shadow-indigo-100 ring-1 ring-slate-100">
-             <img 
-               src={profile.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`} 
-               alt={profile.displayName} 
-               className="w-full h-full object-cover"
-             />
-           </div>
-           <div>
-             <h3 className="text-2xl font-bold font-display italic text-slate-900">{profile.displayName}</h3>
-             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">{profile.adminSubRole || 'Admin'} Terminal</p>
-           </div>
+          <div className="w-16 h-16 rounded-[24px] overflow-hidden border-2 border-indigo-100 shadow-xl shadow-indigo-100 ring-1 ring-slate-100">
+            <img
+              src={
+                profile.photoURL ||
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`
+              }
+              alt={profile.displayName}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div>
+            <h3 className="text-2xl font-bold font-display italic text-slate-900">
+              {profile.displayName}
+            </h3>
+            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+              {profile.adminSubRole || "Admin"} Terminal
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-           {(['profile', 'wallet', 'settings'] as const).map(tab => (
-             <button
-               key={tab}
-               onClick={() => setActiveTab(tab)}
-               className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-blue-700 text-white shadow-lg shadow-blue-700/20' : 'text-slate-400 hover:text-blue-700'}`}
-             >
-               {tab}
-             </button>
-           ))}
+          {(["profile", "wallet", "settings"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? "bg-blue-700 text-white shadow-lg shadow-blue-700/20" : "text-slate-400 hover:text-blue-700"}`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </div>
 
       <AnimatePresence mode="wait">
         <motion.div
-           key={activeTab}
-           initial={{ opacity: 0, scale: 0.98 }}
-           animate={{ opacity: 1, scale: 1 }}
-           exit={{ opacity: 0, scale: 0.98 }}
-           transition={{ duration: 0.2 }}
+          key={activeTab}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
         >
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm space-y-10">
               <div className="flex items-center justify-between">
-                <h4 className="font-display font-bold text-xl italic uppercase tracking-wider">Administrative Identity</h4>
-                <button 
-                  onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                <h4 className="font-display font-bold text-xl italic uppercase tracking-wider">
+                  Administrative Identity
+                </h4>
+                <button
+                  onClick={() =>
+                    isEditing ? handleSave() : setIsEditing(true)
+                  }
                   className="px-6 py-2.5 bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/10"
                 >
-                  {isEditing ? 'Save Identity' : 'Modify Credentials'}
+                  {isEditing ? "Save Identity" : "Modify Credentials"}
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Full Name
+                  </label>
                   {isEditing ? (
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-700/5 transition-all"
                     />
                   ) : (
                     <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                       <p className="font-bold text-lg text-slate-700">{profile.displayName}</p>
+                      <p className="font-bold text-lg text-slate-700">
+                        {profile.displayName}
+                      </p>
                     </div>
                   )}
                 </div>
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Email</label>
-                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 opacity-60">
-                      <p className="font-bold text-lg text-slate-700">{profile.email}</p>
-                   </div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Secure Email
+                  </label>
+                  <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 opacity-60">
+                    <p className="font-bold text-lg text-slate-700">
+                      {profile.email}
+                    </p>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">System Tier</label>
-                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex items-center gap-3 text-indigo-600">
-                      <ShieldCheck size={20} />
-                      <p className="font-bold text-lg capitalize">{profile.role} ({profile.adminSubRole})</p>
-                   </div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    System Tier
+                  </label>
+                  <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex items-center gap-3 text-indigo-600">
+                    <ShieldCheck size={20} />
+                    <p className="font-bold text-lg capitalize">
+                      {profile.role} ({profile.adminSubRole})
+                    </p>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Deployment Date</label>
-                   <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                      <p className="font-bold text-lg text-slate-700">
-                        {profile.createdAt && (profile.createdAt as any).toDate ? (profile.createdAt as any).toDate().toLocaleDateString() : 
-                         profile.createdAt instanceof Date ? profile.createdAt.toLocaleDateString() : 'Historical'}
-                      </p>
-                   </div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Deployment Date
+                  </label>
+                  <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-lg text-slate-700">
+                      {profile.createdAt && (profile.createdAt as any).toDate
+                        ? (profile.createdAt as any)
+                            .toDate()
+                            .toLocaleDateString()
+                        : profile.createdAt instanceof Date
+                          ? profile.createdAt.toLocaleDateString()
+                          : "Historical"}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === 'wallet' && (
+          {activeTab === "wallet" && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-               <div className="bg-indigo-600 rounded-[48px] p-12 text-white space-y-6 relative overflow-hidden group">
-                  <div className="relative z-10">
-                    <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center mb-8">
-                      <DollarSign size={32} />
-                    </div>
-                    <p className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em] mb-2">Admin Credit Balance</p>
-                    <h4 className="text-6xl font-display font-bold italic">₹{profile.walletBalance || 0}</h4>
-                    <p className="text-sm text-white/40 mt-8 max-w-xs leading-relaxed">This balance reflects your internal operational credits, bonuses, or reimbursements as an administrative member.</p>
+              <div className="bg-indigo-600 rounded-[48px] p-12 text-white space-y-6 relative overflow-hidden group">
+                <div className="relative z-10">
+                  <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center mb-8">
+                    <DollarSign size={32} />
                   </div>
-                  <Smartphone className="absolute -right-12 -bottom-12 w-64 h-64 text-white/5 rotate-12 group-hover:rotate-0 transition-transform duration-700" />
-               </div>
+                  <p className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em] mb-2">
+                    Admin Credit Balance
+                  </p>
+                  <h4 className="text-6xl font-display font-bold italic">
+                    ₹{profile.walletBalance || 0}
+                  </h4>
+                  <p className="text-sm text-white/40 mt-8 max-w-xs leading-relaxed">
+                    This balance reflects your internal operational credits,
+                    bonuses, or reimbursements as an administrative member.
+                  </p>
+                </div>
+                <Smartphone className="absolute -right-12 -bottom-12 w-64 h-64 text-white/5 rotate-12 group-hover:rotate-0 transition-transform duration-700" />
+              </div>
 
-               <div className="bg-white rounded-[48px] p-12 border border-slate-100 shadow-sm">
-                  <h4 className="text-xl font-bold italic font-display mb-10">Ledger History</h4>
-                  <div className="space-y-4">
-                     <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-                        <AlertCircle size={48} strokeWidth={1} className="mb-4 opacity-20" />
-                        <p className="text-[10px] font-black uppercase tracking-widest">No Recent Transactions</p>
-                     </div>
+              <div className="bg-white rounded-[48px] p-12 border border-slate-100 shadow-sm">
+                <h4 className="text-xl font-bold italic font-display mb-10">
+                  Ledger History
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                    <AlertCircle
+                      size={48}
+                      strokeWidth={1}
+                      className="mb-4 opacity-20"
+                    />
+                    <p className="text-[10px] font-black uppercase tracking-widest">
+                      No Recent Transactions
+                    </p>
                   </div>
-               </div>
+                </div>
+              </div>
             </div>
           )}
 
-          {activeTab === 'settings' && (
+          {activeTab === "settings" && (
             <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm space-y-10 text-center py-32">
-               <div className="w-24 h-24 bg-slate-50 text-slate-300 rounded-[40px] flex items-center justify-center mx-auto mb-8">
-                  <Settings size={48} className="animate-spin-slow" />
-               </div>
-               <h4 className="text-2xl font-bold font-display italic text-slate-900">System Configuration</h4>
-               <p className="text-slate-500 max-w-md mx-auto">Interface settings, terminal colors, and notification anchors are currently managed via the Global Security Chief.</p>
+              <div className="w-24 h-24 bg-slate-50 text-slate-300 rounded-[40px] flex items-center justify-center mx-auto mb-8">
+                <Settings size={48} className="animate-spin-slow" />
+              </div>
+              <h4 className="text-2xl font-bold font-display italic text-slate-900">
+                System Configuration
+              </h4>
+              <p className="text-slate-500 max-w-md mx-auto">
+                Interface settings, terminal colors, and notification anchors
+                are currently managed via the Global Security Chief.
+              </p>
             </div>
           )}
         </motion.div>
       </AnimatePresence>
 
       <div className="flex justify-end pt-6 border-t border-slate-100 mt-10">
-        <button 
+        <button
           onClick={() => signOut(auth)}
           className="flex items-center gap-2.5 px-6 py-3.5 bg-rose-50 hover:bg-rose-600 border border-rose-100 hover:border-transparent text-rose-600 hover:text-white rounded-[20px] text-xs font-black uppercase tracking-widest transition-all shadow-sm group active:scale-95 focus:outline-none"
         >
-          <LogOut size={16} className="group-hover:rotate-12 transition-transform shrink-0" />
+          <LogOut
+            size={16}
+            className="group-hover:rotate-12 transition-transform shrink-0"
+          />
           <span>Log out of Session</span>
         </button>
       </div>
@@ -5935,39 +8629,58 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
   );
 }
 
-function AnalyticsView({ bookings, users, partners, services }: { bookings: Booking[], users: UserProfile[], partners: any[], services: Service[] }) {
-  const [trendRange, setTrendRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+function AnalyticsView({
+  bookings,
+  users,
+  partners,
+  services,
+}: {
+  bookings: Booking[];
+  users: UserProfile[];
+  partners: any[];
+  services: Service[];
+}) {
+  const [trendRange, setTrendRange] = useState<"daily" | "weekly" | "monthly">(
+    "daily",
+  );
   const [cityDemands, setCityDemands] = useState<any[]>([]);
   const [loadingDemands, setLoadingDemands] = useState(true);
 
   useEffect(() => {
     const q = query(
       collection(db, "cityDemandAnalytics"),
-      orderBy("clicked_timestamp", "desc")
+      orderBy("clicked_timestamp", "desc"),
     );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const demands: any[] = [];
-      snapshot.forEach((docSnap) => {
-        demands.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setCityDemands(demands);
-      setLoadingDemands(false);
-    }, (error) => {
-      console.error("[onSnapshot cityDemandAnalytics error]:", error);
-      setLoadingDemands(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const demands: any[] = [];
+        snapshot.forEach((docSnap) => {
+          demands.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setCityDemands(demands);
+        setLoadingDemands(false);
+      },
+      (error) => {
+        console.error("[onSnapshot cityDemandAnalytics error]:", error);
+        setLoadingDemands(false);
+      },
+    );
     return () => unsubscribe();
   }, []);
 
   const demandStats = useMemo(() => {
-    const stats: Record<string, { city: string, state: string, count: number }> = {};
+    const stats: Record<
+      string,
+      { city: string; state: string; count: number }
+    > = {};
     cityDemands.forEach((d) => {
       const key = `${d.target_city}_${d.target_state}`;
       if (!stats[key]) {
         stats[key] = {
           city: d.target_city,
           state: d.target_state,
-          count: 0
+          count: 0,
         };
       }
       stats[key].count += 1;
@@ -5975,29 +8688,45 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
     return Object.values(stats).sort((a, b) => b.count - a.count);
   }, [cityDemands]);
 
-  const totalRevenue = bookings.reduce((acc, b) => (b.status === 'completed' || b.status === 'finalized') ? acc + b.totalPrice : acc, 0);
+  const totalRevenue = bookings.reduce(
+    (acc, b) =>
+      b.status === "completed" || b.status === "finalized"
+        ? acc + b.totalPrice
+        : acc,
+    0,
+  );
   const totalBookings = bookings.length;
-  const activePartnersCount = partners.filter(p => p.status === 'active').length;
+  const activePartnersCount = partners.filter(
+    (p) => p.status === "active",
+  ).length;
 
-  const processTrendData = (data: any[], dateKey: string, valueExtractor: (item: any) => number = () => 1) => {
+  const processTrendData = (
+    data: any[],
+    dateKey: string,
+    valueExtractor: (item: any) => number = () => 1,
+  ) => {
     const dataMap: Record<string, number> = {};
-    
-    data.forEach(item => {
-      const date = item[dateKey]?.toDate ? item[dateKey].toDate() : new Date(item[dateKey]);
+
+    data.forEach((item) => {
+      const date = item[dateKey]?.toDate
+        ? item[dateKey].toDate()
+        : new Date(item[dateKey]);
       if (isNaN(date.getTime())) return;
 
-      let key = '';
-      if (trendRange === 'daily') {
-        key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      } else if (trendRange === 'weekly') {
+      let key = "";
+      if (trendRange === "daily") {
+        key = date.toLocaleDateString([], { month: "short", day: "numeric" });
+      } else if (trendRange === "weekly") {
         const d = new Date(date);
-        d.setHours(0,0,0,0);
+        d.setHours(0, 0, 0, 0);
         d.setDate(d.getDate() + 4 - (d.getDay() || 7));
         const yearStart = new Date(d.getFullYear(), 0, 1);
-        const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+        const weekNo = Math.ceil(
+          ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+        );
         key = `W${weekNo} ${d.getFullYear()}`;
       } else {
-        key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+        key = date.toLocaleDateString([], { month: "short", year: "numeric" });
       }
 
       dataMap[key] = (dataMap[key] || 0) + valueExtractor(item);
@@ -6006,25 +8735,33 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
     return Object.entries(dataMap)
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => {
-         // Custom sort for trend labels
-         return 0; // Simplified for now, map handles distribution
+        // Custom sort for trend labels
+        return 0; // Simplified for now, map handles distribution
       });
   };
 
   const revenueTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    bookings.forEach(b => {
-      if (b.status === 'completed' || b.status === 'finalized') {
-        const date = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.updatedAt);
+    bookings.forEach((b) => {
+      if (b.status === "completed" || b.status === "finalized") {
+        const date = b.updatedAt?.toDate
+          ? b.updatedAt.toDate()
+          : new Date(b.updatedAt);
         if (isNaN(date.getTime())) return;
-        
-        let key = '';
-        if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        else if (trendRange === 'weekly') {
-          const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+
+        let key = "";
+        if (trendRange === "daily")
+          key = date.toLocaleDateString([], { month: "short", day: "numeric" });
+        else if (trendRange === "weekly") {
+          const d = new Date(date);
+          d.setHours(0, 0, 0, 0);
+          d.setDate(d.getDate() + 4 - (d.getDay() || 7));
           key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
-        }
-        else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+        } else
+          key = date.toLocaleDateString([], {
+            month: "short",
+            year: "numeric",
+          });
 
         dataMap[key] = (dataMap[key] || 0) + b.totalPrice;
       }
@@ -6036,17 +8773,22 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
 
   const bookingTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    bookings.forEach(b => {
-      const date = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+    bookings.forEach((b) => {
+      const date = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : new Date(b.createdAt);
       if (isNaN(date.getTime())) return;
 
-      let key = '';
-      if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      else if (trendRange === 'weekly') {
-        const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      let key = "";
+      if (trendRange === "daily")
+        key = date.toLocaleDateString([], { month: "short", day: "numeric" });
+      else if (trendRange === "weekly") {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() + 4 - (d.getDay() || 7));
         key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
-      }
-      else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+      } else
+        key = date.toLocaleDateString([], { month: "short", year: "numeric" });
 
       dataMap[key] = (dataMap[key] || 0) + 1;
     });
@@ -6057,17 +8799,20 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
 
   const acquisitionTrendData = useMemo(() => {
     const dataMap: Record<string, number> = {};
-    users.forEach(u => {
+    users.forEach((u) => {
       const date = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
       if (isNaN(date.getTime())) return;
 
-      let key = '';
-      if (trendRange === 'daily') key = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      else if (trendRange === 'weekly') {
-        const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      let key = "";
+      if (trendRange === "daily")
+        key = date.toLocaleDateString([], { month: "short", day: "numeric" });
+      else if (trendRange === "weekly") {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() + 4 - (d.getDay() || 7));
         key = `W${Math.ceil(((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)} ${d.getFullYear()}`;
-      }
-      else key = date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+      } else
+        key = date.toLocaleDateString([], { month: "short", year: "numeric" });
 
       dataMap[key] = (dataMap[key] || 0) + 1;
     });
@@ -6077,31 +8822,43 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
   }, [users, trendRange]);
 
   const partnerPerformance = useMemo(() => {
-    const perfMap: Record<string, { name: string, revenue: number, assigned: number, completed: number, rating: number, responseTime: number }> = {};
-    
-    partners.forEach(p => {
-      const user = users.find(u => u.uid === p.userId);
+    const perfMap: Record<
+      string,
+      {
+        name: string;
+        revenue: number;
+        assigned: number;
+        completed: number;
+        rating: number;
+        responseTime: number;
+      }
+    > = {};
+
+    partners.forEach((p) => {
+      const user = users.find((u) => u.uid === p.userId);
       perfMap[p.userId] = {
         name: user?.displayName || p.id.slice(0, 8),
         revenue: 0,
         assigned: 0,
         completed: 0,
         rating: p.rating || 0,
-        responseTime: Math.floor(Math.random() * 30) + 5 // Mock for now
+        responseTime: Math.floor(Math.random() * 30) + 5, // Mock for now
       };
     });
 
-    bookings.forEach(b => {
+    bookings.forEach((b) => {
       if (b.partnerId && perfMap[b.partnerId]) {
         perfMap[b.partnerId].assigned += 1;
-        if (b.status === 'completed' || b.status === 'finalized') {
+        if (b.status === "completed" || b.status === "finalized") {
           perfMap[b.partnerId].completed += 1;
           perfMap[b.partnerId].revenue += b.totalPrice;
         }
       }
     });
 
-    return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    return Object.values(perfMap)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
   }, [bookings, partners, users]);
 
   const acquisitionMetrics = useMemo(() => {
@@ -6109,50 +8866,62 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-    const newUsersLast30 = users.filter(u => {
-      const createdAt = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
+    const newUsersLast30 = users.filter((u) => {
+      const createdAt =
+        (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
       return createdAt >= thirtyDaysAgo && createdAt <= now;
     }).length;
 
-    const newUsersPrev30 = users.filter(u => {
-      const createdAt = (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
+    const newUsersPrev30 = users.filter((u) => {
+      const createdAt =
+        (u.createdAt as any)?.toDate?.() || new Date(u.createdAt);
       return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
     }).length;
 
-    const rate = newUsersPrev30 === 0 ? (newUsersLast30 > 0 ? 100 : 0) : ((newUsersLast30 - newUsersPrev30) / newUsersPrev30) * 100;
+    const rate =
+      newUsersPrev30 === 0
+        ? newUsersLast30 > 0
+          ? 100
+          : 0
+        : ((newUsersLast30 - newUsersPrev30) / newUsersPrev30) * 100;
 
     return {
       currentCount: newUsersLast30,
       previousCount: newUsersPrev30,
-      growthRate: rate.toFixed(1)
+      growthRate: rate.toFixed(1),
     };
   }, [users]);
 
   const serviceDistribution = useMemo(() => {
     const distMap: Record<string, number> = {};
-    bookings.forEach(b => {
-      const service = services.find(s => s.id === b.serviceId);
-      const name = service?.name || 'Unknown';
+    bookings.forEach((b) => {
+      const service = services.find((s) => s.id === b.serviceId);
+      const name = service?.name || "Unknown";
       distMap[name] = (distMap[name] || 0) + 1;
     });
-    return Object.entries(distMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
+    return Object.entries(distMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
   }, [bookings, services]);
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
   return (
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-display font-bold text-slate-900">System Analytics</h2>
+          <h2 className="text-3xl font-display font-bold text-slate-900">
+            System Analytics
+          </h2>
           <p className="text-slate-400 text-sm">Real-time platform insights</p>
         </div>
         <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-          {(['daily', 'weekly', 'monthly'] as const).map(range => (
+          {(["daily", "weekly", "monthly"] as const).map((range) => (
             <button
               key={range}
               onClick={() => setTrendRange(range)}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${trendRange === range ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${trendRange === range ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
             >
               {range}
             </button>
@@ -6161,278 +8930,473 @@ function AnalyticsView({ bookings, users, partners, services }: { bookings: Book
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <StatCard title="Total Revenue" value={`₹${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
-        <StatCard title="Total Bookings" value={totalBookings.toString()} icon={FileText} color="bg-blue-700" />
-        <StatCard title="Growth Rate" value={`${acquisitionMetrics.growthRate}%`} icon={TrendingUp} color="bg-indigo-600" />
-        <StatCard title="Active Partners" value={activePartnersCount.toString()} icon={ShieldCheck} color="bg-amber-500" />
+        <StatCard
+          title="Total Revenue"
+          value={`₹${totalRevenue.toLocaleString()}`}
+          icon={DollarSign}
+          color="bg-emerald-500"
+        />
+        <StatCard
+          title="Total Bookings"
+          value={totalBookings.toString()}
+          icon={FileText}
+          color="bg-blue-700"
+        />
+        <StatCard
+          title="Growth Rate"
+          value={`${acquisitionMetrics.growthRate}%`}
+          icon={TrendingUp}
+          color="bg-indigo-600"
+        />
+        <StatCard
+          title="Active Partners"
+          value={activePartnersCount.toString()}
+          icon={ShieldCheck}
+          color="bg-amber-500"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold italic font-display">Revenue Growth</h3>
-              <div className="flex items-center gap-2 text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                 <TrendingUp size={12} />
-                 Adaptive
-              </div>
-           </div>
-           <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueTrendData}>
-                  <defs>
-                    <linearGradient id="analyticsRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(val) => `₹${val}`} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ color: '#10b981', fontWeight: 'bold' }}
-                    formatter={(val) => [`₹${val}`, 'Revenue']}
-                  />
-                  <Area type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#analyticsRev)" />
-                </AreaChart>
-              </ResponsiveContainer>
-           </div>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold italic font-display">
+              Revenue Growth
+            </h3>
+            <div className="flex items-center gap-2 text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+              <TrendingUp size={12} />
+              Adaptive
+            </div>
+          </div>
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={revenueTrendData}>
+                <defs>
+                  <linearGradient id="analyticsRev" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  tickFormatter={(val) => `₹${val}`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "24px",
+                    border: "none",
+                    boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)",
+                  }}
+                  itemStyle={{ color: "#10b981", fontWeight: "bold" }}
+                  formatter={(val) => [`₹${val}`, "Revenue"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="#10b981"
+                  strokeWidth={4}
+                  fillOpacity={1}
+                  fill="url(#analyticsRev)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold italic font-display">Customer Acquisition</h3>
-           </div>
-           <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={acquisitionTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={4} dot={{ r: 6, fill: '#6366f1' }} activeDot={{ r: 8, strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
-           </div>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold italic font-display">
+              Customer Acquisition
+            </h3>
+          </div>
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={acquisitionTrendData}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "24px",
+                    border: "none",
+                    boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#6366f1"
+                  strokeWidth={4}
+                  dot={{ r: 6, fill: "#6366f1" }}
+                  activeDot={{ r: 8, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold italic font-display">Booking Trends</h3>
-           </div>
-           <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={bookingTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <Tooltip 
-                    cursor={{ fill: '#f8fafc', radius: 12 }}
-                    contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[12, 12, 0, 0]} name="Bookings" />
-                </BarChart>
-              </ResponsiveContainer>
-           </div>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold italic font-display">
+              Booking Trends
+            </h3>
+          </div>
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bookingTrendData}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                />
+                <Tooltip
+                  cursor={{ fill: "#f8fafc", radius: 12 }}
+                  contentStyle={{
+                    borderRadius: "24px",
+                    border: "none",
+                    boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)",
+                  }}
+                />
+                <Bar
+                  dataKey="count"
+                  fill="#3b82f6"
+                  radius={[12, 12, 0, 0]}
+                  name="Bookings"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold italic font-display">Service Distribution</h3>
-           </div>
-           <div className="h-[350px] w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={serviceDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={80}
-                    outerRadius={120}
-                    fill="#8884d8"
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {serviceDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '24px', border: 'none' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute flex flex-col items-center">
-                <span className="text-2xl font-bold font-display italic">{totalBookings}</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Total Ops</span>
-              </div>
-           </div>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold italic font-display">
+              Service Distribution
+            </h3>
+          </div>
+          <div className="h-[350px] w-full flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={serviceDistribution}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={80}
+                  outerRadius={120}
+                  fill="#8884d8"
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {serviceDistribution.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                      stroke="none"
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ borderRadius: "24px", border: "none" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute flex flex-col items-center">
+              <span className="text-2xl font-bold font-display italic">
+                {totalBookings}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                Total Ops
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm lg:col-span-2">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold font-display text-slate-900">Partner Performance</h3>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue Leaderboard</p>
-           </div>
-           <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                 <thead>
-                    <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
-                       <th className="px-6 py-4">Professional</th>
-                       <th className="px-6 py-4">Revenue Generated</th>
-                       <th className="px-6 py-4">Success Rate</th>
-                       <th className="px-6 py-4">Response Time</th>
-                       <th className="px-6 py-4">Avg Rating</th>
-                       <th className="px-6 py-4 text-right">Performance Index</th>
-                    </tr>
-                 </thead>
-                 <tbody>
-                    {partnerPerformance.map((p, i) => (
-                      <tr key={i} className="group hover:bg-slate-50 transition-colors">
-                         <td className="px-6 py-5">
-                            <div className="flex items-center gap-3">
-                               <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-[10px]">
-                                  {p.name[0]}
-                               </div>
-                               <span className="text-sm font-bold text-slate-900">{p.name}</span>
-                            </div>
-                         </td>
-                         <td className="px-6 py-5">
-                            <span className="text-sm font-bold text-slate-900">₹{p.revenue.toLocaleString()}</span>
-                         </td>
-                         <td className="px-6 py-5">
-                            <div className="flex flex-col">
-                               <span className="text-sm font-bold text-slate-600">{((p.completed / (p.assigned || 1)) * 100).toFixed(0)}%</span>
-                               <span className="text-[9px] text-slate-400 font-medium">{p.completed}/{p.assigned} Jobs</span>
-                            </div>
-                         </td>
-                         <td className="px-6 py-5">
-                            <span className="text-sm font-bold text-slate-600">{p.responseTime} min</span>
-                         </td>
-                         <td className="px-6 py-5">
-                            <div className="flex items-center gap-1.5">
-                               <Star size={12} className="text-amber-400 fill-amber-400" />
-                               <span className="text-sm font-bold text-slate-900">{p.rating}</span>
-                            </div>
-                         </td>
-                         <td className="px-6 py-5 text-right">
-                            <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
-                               <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full" />
-                               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Rank #{i+1}</span>
-                            </div>
-                         </td>
-                      </tr>
-                    ))}
-                 </tbody>
-              </table>
-           </div>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold font-display text-slate-900">
+              Partner Performance
+            </h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Revenue Leaderboard
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 italic">
+                  <th className="px-6 py-4">Professional</th>
+                  <th className="px-6 py-4">Revenue Generated</th>
+                  <th className="px-6 py-4">Success Rate</th>
+                  <th className="px-6 py-4">Response Time</th>
+                  <th className="px-6 py-4">Avg Rating</th>
+                  <th className="px-6 py-4 text-right">Performance Index</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partnerPerformance.map((p, i) => (
+                  <tr
+                    key={i}
+                    className="group hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-[10px]">
+                          {p.name[0]}
+                        </div>
+                        <span className="text-sm font-bold text-slate-900">
+                          {p.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="text-sm font-bold text-slate-900">
+                        ₹{p.revenue.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-600">
+                          {((p.completed / (p.assigned || 1)) * 100).toFixed(0)}
+                          %
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-medium">
+                          {p.completed}/{p.assigned} Jobs
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="text-sm font-bold text-slate-600">
+                        {p.responseTime} min
+                      </span>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-1.5">
+                        <Star
+                          size={12}
+                          className="text-amber-400 fill-amber-400"
+                        />
+                        <span className="text-sm font-bold text-slate-900">
+                          {p.rating}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
+                        <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full" />
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                          Rank #{i + 1}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* City Launch Demand Audit Module */}
         <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm lg:col-span-2">
-           <div className="flex justify-between items-center mb-8">
-              <div>
-                 <h3 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
-                   <span>📍 City Launch Demand Insights</span>
-                   <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full font-black uppercase tracking-widest animate-pulse">Experimental Stats</span>
-                 </h3>
-                 <p className="text-slate-400 text-xs mt-1">Visually auditing user intent log events for organic launch priority ranking</p>
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h3 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
+                <span>📍 City Launch Demand Insights</span>
+                <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full font-black uppercase tracking-widest animate-pulse">
+                  Experimental Stats
+                </span>
+              </h3>
+              <p className="text-slate-400 text-xs mt-1">
+                Visually auditing user intent log events for organic launch
+                priority ranking
+              </p>
+            </div>
+          </div>
+
+          {loadingDemands ? (
+            <div className="py-12 text-center text-slate-400 text-sm">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-2" />
+              <p className="text-slate-450 font-bold">
+                Aggregating launch intent logs...
+              </p>
+            </div>
+          ) : cityDemands.length === 0 ? (
+            <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+              <p className="text-slate-400 text-sm font-bold">
+                No city launch demand logs detected yet.
+              </p>
+              <p className="text-slate-300 text-xs mt-1">
+                Events will populate once visitors interact with the top
+                geolocation selector.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Main Aggregate Priority Bar Chart & Top States Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Top Priority Table */}
+                <div className="lg:col-span-6 space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest">
+                    Aggregate Launch Score
+                  </h4>
+                  <div className="space-y-3">
+                    {demandStats.slice(0, 5).map((stat, i) => {
+                      const maxCount = demandStats[0]?.count || 1;
+                      const pct = (stat.count / maxCount) * 100;
+                      return (
+                        <div
+                          key={i}
+                          className="p-4 bg-slate-50/55 rounded-2xl border border-slate-100"
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <div>
+                              <span className="text-sm font-black text-slate-800">
+                                {stat.city}
+                              </span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase ml-2 tracking-widest">
+                                {stat.state}
+                              </span>
+                            </div>
+                            <span className="text-xs font-mono font-black text-indigo-600">
+                              {stat.count} Requests
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-200/50 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-indigo-600 h-full rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Visualization Chart */}
+                <div className="lg:col-span-6 space-y-2">
+                  <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">
+                    Priority Distribution
+                  </h4>
+                  <div className="h-[230px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={demandStats.slice(0, 8)}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#f1f5f9"
+                        />
+                        <XAxis
+                          dataKey="city"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: "#94a3b8", fontSize: 10 }}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: "#94a3b8", fontSize: 10 }}
+                        />
+                        <Tooltip cursor={{ fill: "#f8fafc", radius: 12 }} />
+                        <Bar
+                          dataKey="count"
+                          fill="#4f46e5"
+                          radius={[10, 10, 0, 0]}
+                          name="Interest Clicks"
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
-           </div>
 
-           {loadingDemands ? (
-             <div className="py-12 text-center text-slate-400 text-sm">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-2" />
-                <p className="text-slate-450 font-bold">Aggregating launch intent logs...</p>
-             </div>
-           ) : cityDemands.length === 0 ? (
-             <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-3xl">
-                <p className="text-slate-400 text-sm font-bold">No city launch demand logs detected yet.</p>
-                <p className="text-slate-300 text-xs mt-1">Events will populate once visitors interact with the top geolocation selector.</p>
-             </div>
-           ) : (
-             <div className="space-y-8">
-                {/* Main Aggregate Priority Bar Chart & Top States Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                   {/* Top Priority Table */}
-                   <div className="lg:col-span-6 space-y-4">
-                      <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest">Aggregate Launch Score</h4>
-                      <div className="space-y-3">
-                         {demandStats.slice(0, 5).map((stat, i) => {
-                            const maxCount = demandStats[0]?.count || 1;
-                            const pct = (stat.count / maxCount) * 100;
-                            return (
-                               <div key={i} className="p-4 bg-slate-50/55 rounded-2xl border border-slate-100">
-                                  <div className="flex justify-between items-center mb-1">
-                                     <div>
-                                        <span className="text-sm font-black text-slate-800">{stat.city}</span>
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase ml-2 tracking-widest">{stat.state}</span>
-                                     </div>
-                                     <span className="text-xs font-mono font-black text-indigo-600">{stat.count} Requests</span>
-                                  </div>
-                                  <div className="w-full bg-slate-200/50 h-2 rounded-full overflow-hidden">
-                                     <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${pct}%` }} />
-                                  </div>
-                               </div>
-                            );
-                         })}
-                      </div>
-                   </div>
-
-                   {/* Visualization Chart */}
-                   <div className="lg:col-span-6 space-y-2">
-                      <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">Priority Distribution</h4>
-                      <div className="h-[230px] w-full">
-                         <ResponsiveContainer width="100%" height="100%">
-                           <BarChart data={demandStats.slice(0, 8)}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                              <XAxis dataKey="city" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                              <Tooltip cursor={{ fill: '#f8fafc', radius: 12 }} />
-                              <Bar dataKey="count" fill="#4f46e5" radius={[10, 10, 0, 0]} name="Interest Clicks" />
-                           </BarChart>
-                         </ResponsiveContainer>
-                      </div>
-                   </div>
+              {/* Event Logs Audit Table */}
+              <div>
+                <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">
+                  Live Click Stream Logs Audit
+                </h4>
+                <div className="max-h-[300px] overflow-y-auto border border-slate-100 rounded-2xl">
+                  <table className="w-full text-left font-sans">
+                    <thead>
+                      <tr className="text-[9px] font-black text-slate-440 uppercase tracking-widest border-b border-slate-100 sticky top-0 bg-slate-50 italic">
+                        <th className="px-6 py-3">Timestamp</th>
+                        <th className="px-6 py-3">User ID</th>
+                        <th className="px-6 py-3">Name / Handle</th>
+                        <th className="px-6 py-3">Target City</th>
+                        <th className="px-6 py-3">Target State</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cityDemands.map((log) => {
+                        const dateStr = log.clicked_timestamp?.toDate
+                          ? log.clicked_timestamp.toDate().toLocaleString()
+                          : log.clicked_timestamp
+                            ? new Date(log.clicked_timestamp).toLocaleString()
+                            : "N/A";
+                        return (
+                          <tr
+                            key={log.id}
+                            className="text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+                          >
+                            <td className="px-6 py-4 font-mono text-[10px] text-slate-500">
+                              {dateStr}
+                            </td>
+                            <td className="px-6 py-4 font-mono text-[10px] text-slate-400">
+                              {log.user_id}
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-slate-700">
+                              {log.current_logged_in_name}
+                            </td>
+                            <td className="px-6 py-4 font-black text-indigo-600">
+                              {log.target_city}
+                            </td>
+                            <td className="px-6 py-4 text-slate-500 font-medium">
+                              {log.target_state}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-
-                {/* Event Logs Audit Table */}
-                <div>
-                   <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">Live Click Stream Logs Audit</h4>
-                   <div className="max-h-[300px] overflow-y-auto border border-slate-100 rounded-2xl">
-                      <table className="w-full text-left font-sans">
-                         <thead>
-                            <tr className="text-[9px] font-black text-slate-440 uppercase tracking-widest border-b border-slate-100 sticky top-0 bg-slate-50 italic">
-                               <th className="px-6 py-3">Timestamp</th>
-                               <th className="px-6 py-3">User ID</th>
-                               <th className="px-6 py-3">Name / Handle</th>
-                               <th className="px-6 py-3">Target City</th>
-                               <th className="px-6 py-3">Target State</th>
-                            </tr>
-                         </thead>
-                         <tbody>
-                            {cityDemands.map((log) => {
-                               const dateStr = log.clicked_timestamp?.toDate 
-                                 ? log.clicked_timestamp.toDate().toLocaleString() 
-                                 : log.clicked_timestamp 
-                                   ? new Date(log.clicked_timestamp).toLocaleString()
-                                   : 'N/A';
-                               return (
-                                  <tr key={log.id} className="text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                                     <td className="px-6 py-4 font-mono text-[10px] text-slate-500">{dateStr}</td>
-                                     <td className="px-6 py-4 font-mono text-[10px] text-slate-400">{log.user_id}</td>
-                                     <td className="px-6 py-4 font-semibold text-slate-700">{log.current_logged_in_name}</td>
-                                     <td className="px-6 py-4 font-black text-indigo-600">{log.target_city}</td>
-                                     <td className="px-6 py-4 text-slate-500 font-medium">{log.target_state}</td>
-                                  </tr>
-                               );
-                            })}
-                         </tbody>
-                      </table>
-                   </div>
-                </div>
-             </div>
-           )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -143,7 +143,7 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = data.title || 'Zomindia Internet Technoloy';
+  const title = data.title || 'Zomindia Internet Technologies';
   const options = {
     body: data.message || data.body || 'New update regarding your booking.',
     icon: '/icon-192.png',
@@ -177,5 +177,12 @@ self.addEventListener('notificationclick', (event) => {
         }
       })
   );
+});
+
+// Message handling: support SKIP_WAITING to allow instant updates
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 

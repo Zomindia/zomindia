@@ -35,6 +35,15 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
         console.error('[PWA] Service Worker registration failed:', err);
       });
   });
+
+  // Ensure that any controller change reloads the page to activate the new version
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
 }
 
 // Global listener to capture `beforeinstallprompt` and persist globally

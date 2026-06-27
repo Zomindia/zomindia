@@ -1247,21 +1247,63 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setIsGeocoding(true);
     const GeocoderClass = geocodingLib?.Geocoder || (window as any).google?.maps?.Geocoder;
     if (!GeocoderClass) {
-      console.warn("Google Maps Geocoder is not loaded yet.");
+      console.warn("Google Maps Geocoder not loaded. Falling back to HTTP reverse geocoding...");
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+          headers: { 'Accept-Language': 'en' }
+        });
+        const data = await res.json();
+        if (data && data.display_name) {
+          setAddress(data.display_name);
+        } else {
+          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+      } catch (err) {
+        console.error("Fallback reverse geocoding failed:", err);
+        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
       setIsGeocoding(false);
       return;
     }
 
     try {
       const geocoder = new GeocoderClass();
-      geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+      geocoder.geocode({ location: { lat, lng } }, async (results: any, status: any) => {
         if (status === 'OK' && results && results[0]) {
           setAddress(results[0].formatted_address);
+        } else {
+          console.warn("Google Geocoder failed. Trying Nominatim fallback...");
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+              headers: { 'Accept-Language': 'en' }
+            });
+            const data = await res.json();
+            if (data && data.display_name) {
+              setAddress(data.display_name);
+            } else {
+              setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+            }
+          } catch (fallbackErr) {
+            setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          }
         }
         setIsGeocoding(false);
       });
     } catch (err) {
-      console.error("Clean geocode failed:", err);
+      console.error("Clean geocode failed. Trying Nominatim fallback...", err);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+          headers: { 'Accept-Language': 'en' }
+        });
+        const data = await res.json();
+        if (data && data.display_name) {
+          setAddress(data.display_name);
+        } else {
+          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+      } catch (fallbackErr) {
+        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
       setIsGeocoding(false);
     }
   };
@@ -1447,92 +1489,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
           <div className="p-4 sm:p-8 overflow-y-auto flex-1 no-scrollbar relative min-h-0">
             <AnimatePresence mode="wait">
-              {showSuccessModal && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute inset-0 z-[80] bg-white flex flex-col items-center justify-center p-6 sm:p-10 text-center overflow-y-auto no-scrollbar"
-                >
-                  <button 
-                    onClick={() => {
-                      setShowSuccessModal(false);
-                      onSuccess();
-                    }}
-                    className="absolute top-4 right-4 p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-full transition-colors cursor-pointer"
-                  >
-                    <X size={20} />
-                  </button>
-
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-5 shadow-lg shadow-emerald-100/40 shrink-0 animate-bounce">
-                    <CheckCircle2 size={36} className="stroke-[2.5]" />
-                  </div>
-                  
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 tracking-tight font-display">
-                    Booking Confirmed!
-                  </h3>
-                  <p className="text-slate-400 text-xs font-semibold mb-6 max-w-xs mx-auto">
-                    Your order has been placed successfully. A service professional will reach your location on schedule.
-                  </p>
-                  
-                  <div className="w-full bg-slate-50/85 p-5 sm:p-6 rounded-[24px] border border-slate-150/70 mb-6 text-center space-y-4">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1.5 border-b border-slate-200/50 max-w-[120px] mx-auto">
-                       Order Summary
-                     </p>
-                     
-                     <div className="space-y-1">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
-                        <p className="text-sm font-black text-slate-900 leading-snug">{service.name}</p>
-                     </div>
-
-                     <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-3">
-                       <div className="space-y-0.5 border-r border-slate-100">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
-                          <p className="text-xs font-bold text-slate-900">{date}</p>
-                       </div>
-                       <div className="space-y-0.5">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
-                          <p className="text-xs font-bold text-slate-900">{time}</p>
-                       </div>
-                     </div>
-
-                     <div className="space-y-1">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
-                        <p className="text-xs font-bold text-slate-800 max-w-[280px] mx-auto leading-relaxed truncate">{address}</p>
-                     </div>
-
-                     <div className="pt-3.5 border-t border-slate-200/50 space-y-0.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
-                        <p className="text-xl font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
-                     </div>
-                  </div>
-
-                  <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
-                    {lastBookingId && (
-                      <button 
-                        onClick={() => {
-                          const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
-                          if (link) window.open(link, '_blank');
-                        }}
-                        className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <MessageCircle size={15} className="shrink-0" /> Confirm via WhatsApp
-                      </button>
-                    )}
-                    
-                    <button 
-                      onClick={() => {
-                        setShowSuccessModal(false);
-                        onSuccess();
-                      }} 
-                      className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
-                    >
-                      TRACK MY ORDER
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
               {step === 1 && (
                 <motion.div 
                   key="step1"
@@ -1663,11 +1619,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     )}
                   </div>
 
-                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-3 mt-4 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_16px_rgba(15,23,42,0.02)] flex flex-col pt-3">
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
                     <button 
                       disabled={!date || !time}
                       onClick={() => setStep(2)}
-                      className="w-full bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-[0.12em] hover:bg-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow active:scale-[0.98] cursor-pointer"
+                      className="w-full bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow active:scale-[0.98] cursor-pointer"
                     >
                       Continue
                     </button>
@@ -1776,7 +1732,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         setError(null);
                         if (navigator.geolocation) {
                           navigator.geolocation.getCurrentPosition(
-                            (position) => {
+                            async (position) => {
                               const lat = position.coords.latitude;
                               const lng = position.coords.longitude;
                               
@@ -1784,21 +1740,24 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               setMapCenter({ lat, lng });
 
                               try {
-                                const geocoder = new (window as any).google.maps.Geocoder();
-                                geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-                                  if (status === 'OK' && results && results[0]) {
-                                    setAddress(results[0].formatted_address);
-                                  }
-                                  setIsFetchingGps(false);
-                                });
+                                await reverseGeocodeNativeGoogle(lat, lng);
                               } catch (geocoderErr) {
-                                console.error("Geocoder initialization failed:", geocoderErr);
-                                setIsFetchingGps(false);
+                                console.error("Geocoder failed:", geocoderErr);
                               }
+                              setIsFetchingGps(false);
                             },
-                            (err) => {
+                            async (err) => {
                               console.warn("GPS retrieval error / blocked hardware:", err);
-                              // Sandbox fallback assurance: clear states and keep empty/editable
+                              // Fallback Indore default
+                              const lat = 22.7196;
+                              const lng = 75.8577;
+                              setLocation({ lat, lng });
+                              setMapCenter({ lat, lng });
+                              try {
+                                await reverseGeocodeNativeGoogle(lat, lng);
+                              } catch (geocoderErr) {
+                                console.error("Geocoder fallback failed:", geocoderErr);
+                              }
                               setIsFetchingGps(false);
                             },
                             { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
@@ -1838,16 +1797,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           if (coords) {
                             setLocation(coords);
                             setMapCenter(coords);
-                            try {
-                              const geocoder = new (window as any).google.maps.Geocoder();
-                              geocoder.geocode({ location: coords }, (results: any, status: any) => {
-                                if (status === 'OK' && results && results[0]) {
-                                  setAddress(results[0].formatted_address);
-                                }
-                              });
-                            } catch (err) {
-                              console.error("Geocoder failed on map click:", err);
-                            }
+                            reverseGeocodeNativeGoogle(coords.lat, coords.lng);
                           }
                         }}
                       >
@@ -1860,16 +1810,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               if (coords) {
                                 setLocation(coords);
                                 setMapCenter(coords);
-                                try {
-                                  const geocoder = new (window as any).google.maps.Geocoder();
-                                  geocoder.geocode({ location: coords }, (results: any, status: any) => {
-                                    if (status === 'OK' && results && results[0]) {
-                                      setAddress(results[0].formatted_address);
-                                    }
-                                  });
-                                } catch (err) {
-                                  console.error("Geocoder failed on mark drag:", err);
-                                }
+                                reverseGeocodeNativeGoogle(coords.lat, coords.lng);
                               }
                             }}
                           >
@@ -1897,7 +1838,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   </div>
 
                   {/* Sticky billing & checkout footer */}
-                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-3 mt-4 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col">
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
                     <button 
                       disabled={!address || !address.trim()}
                       onClick={() => setStep(3)}
@@ -2317,7 +2258,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
                   </div>
 
-                  <div className="sticky bottom-0 bg-white border-t border-slate-100 p-3 mt-4 -mx-4 sm:-mx-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col pt-3">
+                  <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
                     <button 
                       disabled={loading}
                       onClick={handleConfirmServiceClick}
@@ -2587,6 +2528,66 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       }
 
                       setPopupError(null);
+                      setLoading(true);
+
+                      // CROSS-VALIDATION DATABASE LOGIC (Prevent Hijacking/Duplicates)
+                      const targetUid = auth.currentUser?.uid || profile?.uid;
+                      const emailLower = emailTrimmed.toLowerCase();
+
+                      try {
+                        if (phoneDigits) {
+                          const checkPhoneQ1 = query(collection(db, 'users'), where('phoneNumber', '==', `+91${phoneDigits}`));
+                          const checkPhoneQ2 = query(collection(db, 'users'), where('mobile', '==', `+91${phoneDigits}`));
+                          const checkPhoneQ3 = query(collection(db, 'users'), where('phoneNumber', '==', phoneDigits));
+                          const checkPhoneQ4 = query(collection(db, 'users'), where('mobile', '==', phoneDigits));
+
+                          const [pSnap1, pSnap2, pSnap3, pSnap4] = await Promise.all([
+                            getDocs(checkPhoneQ1),
+                            getDocs(checkPhoneQ2),
+                            getDocs(checkPhoneQ3),
+                            getDocs(checkPhoneQ4)
+                          ]);
+
+                          const mergedPhoneDocs = [...pSnap1.docs, ...pSnap2.docs, ...pSnap3.docs, ...pSnap4.docs];
+                          for (const docSnap of mergedPhoneDocs) {
+                            if (targetUid && docSnap.id !== targetUid) {
+                              const docEmail = (docSnap.data().email || '').trim().toLowerCase();
+                              if (docEmail && docEmail !== emailLower) {
+                                setPopupError("This mobile number is already linked to another email.");
+                                setLoading(false);
+                                return;
+                              }
+                            }
+                          }
+                        }
+
+                        if (emailLower) {
+                          const checkEmailQ1 = query(collection(db, 'users'), where('email', '==', emailTrimmed));
+                          const checkEmailQ2 = query(collection(db, 'users'), where('email', '==', emailLower));
+
+                          const [eSnap1, eSnap2] = await Promise.all([
+                            getDocs(checkEmailQ1),
+                            getDocs(checkEmailQ2)
+                          ]);
+
+                          const mergedEmailDocs = [...eSnap1.docs, ...eSnap2.docs];
+                          for (const docSnap of mergedEmailDocs) {
+                            if (targetUid && docSnap.id !== targetUid) {
+                              const data = docSnap.data();
+                              const docPhone = (data.phoneNumber || data.mobile || '').replace(/\D/g, '');
+                              if (docPhone && docPhone !== phoneDigits) {
+                                setPopupError("This email is already associated with another mobile number.");
+                                setLoading(false);
+                                return;
+                              }
+                            }
+                          }
+                        }
+                      } catch (err: any) {
+                        setPopupError(err.message || "Failed to cross-validate contact information.");
+                        setLoading(false);
+                        return;
+                      }
                       
                       // Save back to main states
                       setContactEmail(emailTrimmed);
@@ -2600,6 +2601,111 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     {loading ? 'Processing...' : 'Verify & Book'}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showSuccessModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  onSuccess();
+                  onClose();
+                }}
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                className="relative bg-white w-full max-w-md rounded-[32px] sm:rounded-[40px] shadow-2xl p-6 sm:p-8 text-center max-h-[90vh] overflow-y-auto no-scrollbar z-10 flex flex-col items-center justify-center border border-slate-100"
+              >
+                <button 
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    onSuccess();
+                    onClose();
+                  }}
+                  className="absolute top-4 right-4 p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-full transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <X size={20} />
+                </button>
+
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-5 shadow-lg shadow-emerald-100/40 shrink-0 animate-bounce">
+                  <CheckCircle2 size={36} className="stroke-[2.5]" />
+                </div>
+                
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 tracking-tight font-display">
+                  Booking Confirmed!
+                </h3>
+                <p className="text-slate-400 text-xs font-semibold mb-6 max-w-xs mx-auto">
+                  Your order has been placed successfully. A service professional will reach your location on schedule.
+                </p>
+                
+                <div className="w-full bg-slate-50/85 p-5 sm:p-6 rounded-[24px] border border-slate-150/70 mb-6 text-center space-y-4">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1.5 border-b border-slate-200/50 max-w-[120px] mx-auto">
+                     Order Summary
+                   </p>
+                   
+                   <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
+                      <p className="text-sm font-black text-slate-900 leading-snug">{service.name}</p>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-3">
+                     <div className="space-y-0.5 border-r border-slate-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
+                        <p className="text-xs font-bold text-slate-900">{date}</p>
+                     </div>
+                     <div className="space-y-0.5">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
+                        <p className="text-xs font-bold text-slate-900">{time}</p>
+                     </div>
+                   </div>
+
+                   <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
+                      <p className="text-xs font-bold text-slate-800 max-w-[280px] mx-auto leading-relaxed truncate">{address}</p>
+                   </div>
+
+                   <div className="pt-3.5 border-t border-slate-200/50 space-y-0.5">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
+                      <p className="text-xl font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
+                   </div>
+                </div>
+
+                <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
+                  {lastBookingId && (
+                    <button 
+                      onClick={() => {
+                        const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
+                        if (link) window.open(link, '_blank');
+                      }}
+                      className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <MessageCircle size={15} className="shrink-0" /> Confirm via WhatsApp
+                    </button>
+                  )}
+                  
+                  <button 
+                    onClick={() => {
+                      setShowSuccessModal(false);
+                      onSuccess();
+                      onClose();
+                    }} 
+                    className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
+                  >
+                    TRACK MY ORDER
                   </button>
                 </div>
               </motion.div>

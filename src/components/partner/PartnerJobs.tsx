@@ -41,6 +41,7 @@ import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { useLocationTracking } from '../../hooks/useLocationTracking';
 import { QRScanner } from './QRScanner';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
+import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from '../../lib/telephony';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -609,19 +610,21 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     setCallTimer(30);
     setShowSecondaryEscalation(false);
     if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+      (window as any).__showToast(`Routing secure masked landline bridge call...`);
     }
-    window.location.href = "tel:+918005865966";
     const currentUid = auth.currentUser?.uid || profile?.uid || '';
     const currentName = auth.currentUser?.displayName || profile?.displayName || 'Partner';
+    const customer = customers[booking.customerId];
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        activeCall: {
-          callerId: currentUid,
-          callerName: currentName,
-          status: 'ringing',
-          timestamp: Timestamp.now()
-        }
+      await triggerTelephonyBridge({
+        bookingId: booking.id,
+        callerId: currentUid,
+        callerName: currentName,
+        callerRole: 'partner',
+        callerPhone: profile?.phoneNumber || '',
+        calleeId: booking.customerId,
+        calleeName: customer?.displayName || 'Customer',
+        calleePhone: customer?.phoneNumber || ''
       });
     } catch (err) {
       console.error("Error initiating firestore call: ", err);
@@ -1931,25 +1934,17 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             </div>
 
             <div className="text-center space-y-1">
-              <h3 className="text-xl font-black italic uppercase tracking-tight">Protected Customer</h3>
-              <p className="text-xs text-emerald-400 font-mono font-black">{getMaskedPhoneNumber(customers[activeCoordinatedCallBooking.customerId]?.phoneNumber)}</p>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Your Identity is shown as "Zomindia Expert" to the customer</p>
+              <h3 className="text-xl font-black italic uppercase tracking-tight">Enterprise Routing Active</h3>
+              <p className="text-lg text-emerald-400 font-mono font-black">{CORPORATE_LANDLINE_GATEWAY}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">CENTRAL COMPANY LANDLINE NODE</p>
+              <p className="text-[10px] text-slate-500 font-medium">Both parties are bridged through this central landline to protect complete privacy.</p>
             </div>
 
             {/* Live WebRTC Connecting Info */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 max-w-xs text-center space-y-2">
-              <p className="text-[11px] text-slate-305 leading-relaxed font-sans">
-                "Connecting securely via Zomindia Private Bridge... Your personal number and customer number are fully protected."
+              <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                "Connecting securely via the Zomindia Landline Forwarding Router... Your personal number remains completely hidden."
               </p>
-              <button 
-                onClick={() => {
-                  window.location.href = 'tel:+919424456606';
-                  setEscalationToast("Triggering backup cellular dialer via +919424456606...");
-                }}
-                className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer mt-1"
-              >
-                📞 Dial Via Hardware Support (+919424456606)
-              </button>
             </div>
           </div>
 

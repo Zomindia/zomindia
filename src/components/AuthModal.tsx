@@ -399,6 +399,56 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       const userSnap = await getDoc(userRef);
 
       const targetPhone = formattedPhone.trim();
+      
+      // Enforce unique dual-field tracking (Email + Mobile) and prevent cross-account data conflicts
+      const emailLower = email.trim().toLowerCase();
+      const phoneDigits = targetPhone.replace(/\D/g, '');
+
+      if (phoneDigits) {
+        const checkPhoneQ1 = query(collection(db, 'users'), where('phoneNumber', '==', `+91${phoneDigits}`));
+        const checkPhoneQ2 = query(collection(db, 'users'), where('mobile', '==', `+91${phoneDigits}`));
+        const checkPhoneQ3 = query(collection(db, 'users'), where('phoneNumber', '==', phoneDigits));
+        const checkPhoneQ4 = query(collection(db, 'users'), where('mobile', '==', phoneDigits));
+
+        const [pSnap1, pSnap2, pSnap3, pSnap4] = await Promise.all([
+          getDocs(checkPhoneQ1),
+          getDocs(checkPhoneQ2),
+          getDocs(checkPhoneQ3),
+          getDocs(checkPhoneQ4)
+        ]);
+
+        const mergedPhoneDocs = [...pSnap1.docs, ...pSnap2.docs, ...pSnap3.docs, ...pSnap4.docs];
+        for (const docSnap of mergedPhoneDocs) {
+          if (docSnap.id !== activeUid) {
+            const docEmail = (docSnap.data().email || '').trim().toLowerCase();
+            if (docEmail && docEmail !== emailLower) {
+              throw new Error("This mobile number is already linked to another email.");
+            }
+          }
+        }
+      }
+
+      if (emailLower) {
+        const checkEmailQ1 = query(collection(db, 'users'), where('email', '==', email.trim()));
+        const checkEmailQ2 = query(collection(db, 'users'), where('email', '==', emailLower));
+
+        const [eSnap1, eSnap2] = await Promise.all([
+          getDocs(checkEmailQ1),
+          getDocs(checkEmailQ2)
+        ]);
+
+        const mergedEmailDocs = [...eSnap1.docs, ...eSnap2.docs];
+        for (const docSnap of mergedEmailDocs) {
+          if (docSnap.id !== activeUid) {
+            const data = docSnap.data();
+            const docPhone = (data.phoneNumber || data.mobile || '').replace(/\D/g, '');
+            if (docPhone && docPhone !== phoneDigits) {
+              throw new Error("This email is already associated with another mobile number.");
+            }
+          }
+        }
+      }
+
       let existingUserDoc: any = null;
 
       if (targetPhone) {
@@ -419,6 +469,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           fullName: displayName.trim(),
           email: email.trim(),
           phoneNumber: targetPhone,
+          mobile: targetPhone,
           onboardingComplete: true,
           updatedAt: Timestamp.now()
         };
@@ -431,6 +482,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             fullName: displayName.trim(),
             email: email.trim(),
             phoneNumber: targetPhone,
+            mobile: targetPhone,
             onboardingComplete: true,
             updatedAt: Timestamp.now()
           })
@@ -443,6 +495,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           fullName: displayName.trim(),
           email: email.trim(),
           phoneNumber: formattedPhone || existingData?.phoneNumber || '',
+          mobile: formattedPhone || existingData?.mobile || existingData?.phoneNumber || '',
           onboardingComplete: true,
           updatedAt: Timestamp.now()
         };
@@ -463,6 +516,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           fullName: displayName.trim(),
           email: email.trim(),
           phoneNumber: formattedPhone,
+          mobile: formattedPhone,
           role: isSarthakEmail ? 'admin' : 'customer',
           createdAt: Timestamp.now(),
           referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,

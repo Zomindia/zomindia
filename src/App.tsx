@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
-import { UserProfile, UserRole, Booking, Service, Category } from './types';
+import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME } from './types';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { seedDatabase } from './lib/seed';
@@ -46,7 +46,6 @@ import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
-import PWAUpdateRegister from './components/PWAUpdateRegister';
 import { CitySelector } from './components/CitySelector';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
@@ -65,6 +64,8 @@ const SupportTicketsView = lazy(() => import('./components/SupportTicketsView'))
 const AiSupportChat = lazy(() => import('./components/AiSupportChat'));
 const WalletView = lazy(() => import('./components/WalletView'));
 const ReferralsView = lazy(() => import('./components/ReferralsView'));
+
+import ElitePartnerModal from './components/ElitePartnerModal';
 
 import { useTranslation } from './lib/i18n';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
@@ -188,6 +189,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => getTabFromUrl());
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -207,6 +209,13 @@ export default function App() {
     if (!localStorage.getItem('app_version')) {
       localStorage.setItem('app_version', '1.0.0');
     }
+  }, []);
+
+  // Elite Partner Modal Custom Event Listener
+  useEffect(() => {
+    const handleOpenPartnerModal = () => setIsPartnerModalOpen(true);
+    window.addEventListener('open-partner-modal', handleOpenPartnerModal);
+    return () => window.removeEventListener('open-partner-modal', handleOpenPartnerModal);
   }, []);
 
   // Dropdown reference and outside click handler
@@ -571,6 +580,8 @@ export default function App() {
                 ...existingData,
                 uid: u.uid, // Core session link
                 email: u.email || existingData.email || '',
+                phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
+                mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
                 displayName: u.displayName || existingData.displayName || 'User',
                 fullName: u.displayName || existingData.fullName || 'User',
                 onboardingComplete: true,
@@ -585,6 +596,7 @@ export default function App() {
                 fullName: u.displayName || 'User',
                 email: u.email || '',
                 phoneNumber: u.phoneNumber || '',
+                mobile: u.phoneNumber || '',
                 role: isAdminUser ? 'admin' : 'customer',
                 photoURL: u.photoURL || '',
                 referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
@@ -791,7 +803,7 @@ export default function App() {
     { id: 'profile', label: 'Settings', roles: ['customer', 'partner', 'admin'] as UserRole[] },
     { id: 'partner', label: 'Partner Dashboard', roles: ['partner', 'admin'] as UserRole[] },
     { id: 'admin', label: 'Admin Panel', roles: ['admin'] as UserRole[] },
-    { id: 'partner-signup', label: 'Become Partner', roles: ['customer', 'admin'] as UserRole[] },
+
   ];
 
   const renderNavigation = () => {
@@ -836,12 +848,12 @@ export default function App() {
         return (
           <StaticPage
             title="About us"
-            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as Zomindia Internet Technoloy, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
+            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as ${COMPANY_NAME}, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
 
 Our brand, Zomindia, is built upon a simple promise: providing absolute trust, high-quality work, and complete safety with instant, secure OTP-based logins. We recognize that your home or business is sacred, which is why we meticulously train, verify, and monitor every service partner. No compromises, no hidden charges, and absolute on-time execution every single day.
 
 Our Mission
-At Zomindia Internet Technoloy, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
+At ${COMPANY_NAME}, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
 
 Why Choose Us?
 • 100% Safe & Trusted: Every helper is background-checked and professionally trained. All logins and bookings are secured with instant mobile OTPs.
@@ -1022,7 +1034,7 @@ Why Choose Us?
                 <div className="space-y-5 w-full mt-auto">
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Parent Entity</span>
-                    <span className="text-slate-900 text-base font-black">Zomindia Internet Technoloy</span>
+                    <span className="text-slate-900 text-base font-black">{COMPANY_NAME}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">HQ Location</span>
@@ -1048,7 +1060,7 @@ How do I book a service?
 Just pick a service on our home page, select what you need, verify your phone number with a quick OTP, and choose a time. We'll match you with a certified nearby expert right away!
 
 How do you make sure the partner is safe to enter my home?
-Your safety is our top priority. Every single service partner on Zomindia Internet Technoloy goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
+Your safety is our top priority. Every single service partner on ${COMPANY_NAME} goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
 
 What if I am not happy with the service?
 We offer a 100% Satisfaction Guarantee! If the work isn't done correctly, let us know via the "My Support Tickets" chat or call +91 9424456606 within 24 hours. We will investigate and send a professional to redo the job completely free of charge.
@@ -1064,7 +1076,7 @@ Yes, absolutely! You can cancel or reschedule any booking up to 4 hours before t
         return (
           <StaticPage
             title="Terms & Conditions"
-            content={`Welcome to Zomindia Internet Technoloy! By using our website or app, you agree to these simple and transparent rules. Please read them below—it takes less than 2 minutes!
+            content={`Welcome to ${COMPANY_NAME}! By using our website or app, you agree to these simple and transparent rules. Please read them below—it takes less than 2 minutes!
 
 1. Your Account & OTP Security
 We keep your login simple and secure using a quick mobile OTP. You are responsible for any bookings made using your phone number, so please keep your phone secure and active.
@@ -1086,7 +1098,7 @@ You agree to pay the prices shown on your booking screen, which include basic lo
         return (
           <StaticPage
             title="Privacy Policy"
-            content={`At Zomindia Internet Technoloy (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
+            content={`At ${COMPANY_NAME} (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
 
 1. What Info We Collect & Why
 • Name, Email, and Phone: We use your phone number to log you in securely with a quick OTP. Your email is used for sending plain invoices and receipts.
@@ -1110,7 +1122,7 @@ You have full control over your details. You can view, update, or ask us to dele
         return (
           <StaticPage
             title="Cancellation & Refund"
-            content={`At Zomindia Internet Technoloy, we believe in a simple and fair approach to booking changes. This policy explains our easy cancellation and refund rules in simple terms:
+            content={`At ${COMPANY_NAME}, we believe in a simple and fair approach to booking changes. This policy explains our easy cancellation and refund rules in simple terms:
 
 1. Free Cancellations & Scheduling
 • Before 4 Hours: You can change or cancel any booking for free up to 4 hours before your scheduled time. No fees, no questions asked!
@@ -1246,7 +1258,12 @@ If you have any billing questions, or if your refund is delayed, please email us
           transition={{ duration: 0.2, ease: "easeInOut" }}
           className="w-full"
         >
-          <ProfileSettings profile={profile} onUpdate={(updated) => setProfile(updated)} setActiveTab={setActiveTab} />
+          <ProfileSettings
+            profile={profile}
+            onUpdate={(updated) => setProfile(updated)}
+            setActiveTab={setActiveTab}
+            setIsPartnerModalOpen={setIsPartnerModalOpen}
+          />
         </motion.div>
       );
     }
@@ -1321,7 +1338,6 @@ If you have any billing questions, or if your refund is delayed, please email us
             {renderContent()}
           </Suspense>
           <OfflineSyncIndicator />
-          <PWAUpdateRegister />
         </div>
       </APIProvider>
     );
@@ -1386,7 +1402,6 @@ If you have any billing questions, or if your refund is delayed, please email us
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                         <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end text-[#22c55e]" id="portal-header-greeter">
-                          <span>•</span>
                           <span>नमस्ते, VIKASS</span>
                         </span>
                         {/* IMMUTABLE GREETER BLOCK END */}
@@ -1491,13 +1506,13 @@ If you have any billing questions, or if your refund is delayed, please email us
                             Refer & Earn
                           </button>
 
-                          {profile.role !== 'partner' && (
+                          {false && profile.role !== 'partner' && (
                             <button
                               onClick={() => { setActiveTab('partner-signup'); setIsUserMenuOpen(false); }}
                               className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 rounded-xl transition-all"
                             >
                               <svg xmlns="http://www.w3.org/2005/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-                              Become Partner
+                              {/* Deleted Become Partner */}
                             </button>
                           )}
 
@@ -1531,7 +1546,6 @@ If you have any billing questions, or if your refund is delayed, please email us
                   <div className="flex md:hidden items-center gap-2 select-none">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                     <span className="text-[10px] font-black text-[#22c55e] bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
-                      <span>•</span>
                       <span>नमस्ते, VIKASS</span>
                     </span>
                     {/* IMMUTABLE GREETER BLOCK END */}
@@ -1680,7 +1694,6 @@ If you have any billing questions, or if your refund is delayed, please email us
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                       <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
-                        <span>•</span>
                         <span>नमस्ते, VIKASS</span>
                       </p>
                       {/* IMMUTABLE GREETER BLOCK END */}
@@ -1795,7 +1808,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                     <span>Referrals & Rewards</span>
                   </button>
 
-                  {profile.role !== 'partner' && (
+                  {false && profile.role !== 'partner' && (
                     <button
                       onClick={() => { setActiveTab('partner-signup'); setIsMenuOpen(false); }}
                       className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
@@ -1956,12 +1969,21 @@ If you have any billing questions, or if your refund is delayed, please email us
                   <li key={tabKey}>
                     <button
                       onClick={() => setActiveTab(tabKey as any)}
-                      className="hover:text-blue-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-bold"
+                      className="hover:text-blue-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-bold cursor-pointer"
                     >
                       {tabKey === 'about' ? 'About Us' : tabKey === 'contact' ? 'Contact Support' : 'Exclusive Offers'}
                     </button>
                   </li>
                 ))}
+                <li>
+                  <button
+                    onClick={() => setIsPartnerModalOpen(true)}
+                    className="text-emerald-600 hover:text-emerald-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-extrabold cursor-pointer"
+                    id="footer-join-partner-link"
+                  >
+                    Join as Elite Partner
+                  </button>
+                </li>
               </ul>
             </div>
 
@@ -1983,7 +2005,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           </div>
 
           <div className="border-t border-slate-100 pt-10 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-bold text-slate-400">© 2026 Zomindia Internet Technoloy. All rights reserved.</p>
+            <p className="text-xs font-bold text-slate-400">© 2026 {COMPANY_NAME}. All rights reserved.</p>
             <div className="flex gap-6">
               {/* Optional footer social link decoration */}
             </div>
@@ -1991,7 +2013,6 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       </motion.footer>
       <OfflineSyncIndicator />
-      <PWAUpdateRegister />
 
 
 
@@ -2115,6 +2136,13 @@ If you have any billing questions, or if your refund is delayed, please email us
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ElitePartnerModal
+        isOpen={isPartnerModalOpen}
+        onClose={() => setIsPartnerModalOpen(false)}
+        initialFullName={profile?.fullName || profile?.displayName || ''}
+        initialPhone={profile?.phoneNumber || ''}
+      />
     </div>
     </APIProvider>
   );

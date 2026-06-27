@@ -1,13 +1,41 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Map, AdvancedMarker, Pin, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
-import PartnerIdentityMarker from './PartnerIdentityMarker';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { PartnerProfile, UserProfile } from '../types';
-import { MapPin, Navigation, Smartphone, Star, Phone, RefreshCw, Compass, Plus, Minus, Info, Clock, Maximize2, Minimize2, Globe, Layers, Search, X, Radio, Battery, BatteryCharging } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useEffect, useState, useRef } from "react";
+import {
+  Map,
+  AdvancedMarker,
+  Pin,
+  useMap,
+  useMapsLibrary,
+} from "@vis.gl/react-google-maps";
+import PartnerIdentityMarker from "./PartnerIdentityMarker";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
+import { PartnerProfile, UserProfile } from "../types";
+import {
+  MapPin,
+  Navigation,
+  Smartphone,
+  Star,
+  Phone,
+  RefreshCw,
+  Compass,
+  Plus,
+  Minus,
+  Info,
+  Clock,
+  Maximize2,
+  Minimize2,
+  Globe,
+  Layers,
+  Search,
+  X,
+  Radio,
+  Battery,
+  BatteryCharging,
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
-import { handleMapsError } from '../lib/maps-errors';
+import { handleMapsError } from "../lib/maps-errors";
 
 interface PartnerTrackingMapProps {
   partnerId: string;
@@ -21,16 +49,19 @@ export interface SimulatedPro {
   name: string;
   lat: number;
   lng: number;
-  status: 'Available' | 'On Job' | 'In Transit';
+  status: "Available" | "On Job" | "In Transit";
   serviceType: string;
   rating: number;
   heading: number;
   speed: number;
 }
 
-const generateSimulatedPros = (center: { lat: number; lng: number }): SimulatedPro[] => {
+const generateSimulatedPros = (center: {
+  lat: number;
+  lng: number;
+}): SimulatedPro[] => {
   const pros: SimulatedPro[] = [];
-  
+
   const names = [
     // Available pros (6 specialists)
     { name: "Arjun Verma", type: "AC Technician" },
@@ -39,36 +70,40 @@ const generateSimulatedPros = (center: { lat: number; lng: number }): SimulatedP
     { name: "Deepak Gupta", type: "Professional Electrician" },
     { name: "Karan Singh", type: "RO Water Specialist" },
     { name: "Amit Mishra", type: "Chimney Cleaning Pro" },
-    
+
     // On Job pros (4 busy specialists)
     { name: "Rajesh Patel", type: "Home Appliance Repair" },
     { name: "Manoj Yadav", type: "AC Deep Cleaner" },
     { name: "Vikram Rathore", type: "Smart TV Setup Specialist" },
     { name: "Sanjay Rao", type: "Geyser Installation Expert" },
-    
+
     // Moving pros (3 active transit specialists)
     { name: "Rohan Malhotra", type: "Emergency Repair Lead" },
     { name: "Kunal Sen", type: "Premium Cleaning Supervisor" },
-    { name: "Anil Joshi", type: "Senior Electrician" }
+    { name: "Anil Joshi", type: "Senior Electrician" },
   ];
 
   names.forEach((item, idx) => {
-    let status: 'Available' | 'On Job' | 'In Transit';
+    let status: "Available" | "On Job" | "In Transit";
     if (idx < 6) {
-      status = 'Available';
+      status = "Available";
     } else if (idx < 10) {
-      status = 'On Job';
+      status = "On Job";
     } else {
-      status = 'In Transit';
+      status = "In Transit";
     }
 
     // Generate random distance (600m to 2500m) around coordinates
     const distanceMeters = 600 + Math.random() * 1900;
     const angle = Math.random() * 2 * Math.PI;
     const earthRadius = 6371000;
-    
-    const dLat = (distanceMeters * Math.cos(angle)) / earthRadius * (180 / Math.PI);
-    const dLng = (distanceMeters * Math.sin(angle)) / (earthRadius * Math.cos((center.lat * Math.PI) / 180)) * (180 / Math.PI);
+
+    const dLat =
+      ((distanceMeters * Math.cos(angle)) / earthRadius) * (180 / Math.PI);
+    const dLng =
+      ((distanceMeters * Math.sin(angle)) /
+        (earthRadius * Math.cos((center.lat * Math.PI) / 180))) *
+      (180 / Math.PI);
 
     pros.push({
       id: `sim_pro_${idx}`,
@@ -86,29 +121,35 @@ const generateSimulatedPros = (center: { lat: number; lng: number }): SimulatedP
   return pros;
 };
 
-const getHaversineDistance = (p1: {lat: number, lng: number}, p2: {lat: number, lng: number}) => {
+const getHaversineDistance = (
+  p1: { lat: number; lng: number },
+  p2: { lat: number; lng: number },
+) => {
   const R = 6371e3; // meters
-  const dLat = (p2.lat - p1.lat) * Math.PI / 180;
-  const dLng = (p2.lng - p1.lng) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
-            Math.sin(dLng/2) * Math.sin(dLng/2);
+  const dLat = ((p2.lat - p1.lat) * Math.PI) / 180;
+  const dLng = ((p2.lng - p1.lng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((p1.lat * Math.PI) / 180) *
+      Math.cos((p2.lat * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
 
-function SimulatedProsLayer({ 
-  simulatedPros, 
-  onProSelect, 
+function SimulatedProsLayer({
+  simulatedPros,
+  onProSelect,
   selectedSimProId,
   closestSimProIds,
-  referenceCenter
-}: { 
-  simulatedPros: SimulatedPro[], 
-  onProSelect: (pro: SimulatedPro) => void,
-  selectedSimProId?: string,
-  closestSimProIds: string[],
-  referenceCenter: { lat: number; lng: number }
+  referenceCenter,
+}: {
+  simulatedPros: SimulatedPro[];
+  onProSelect: (pro: SimulatedPro) => void;
+  selectedSimProId?: string;
+  closestSimProIds: string[];
+  referenceCenter: { lat: number; lng: number };
 }) {
   const map = useMap();
 
@@ -118,10 +159,10 @@ function SimulatedProsLayer({
         const isSelected = selectedSimProId === pro.id;
         const closestIndex = closestSimProIds.indexOf(pro.id);
         const isClosest = closestIndex !== -1;
-        
+
         return (
-          <AdvancedMarker 
-            key={pro.id} 
+          <AdvancedMarker
+            key={pro.id}
             position={{ lat: pro.lat, lng: pro.lng }}
             onClick={(e) => {
               if (e) e.domEvent?.stopPropagation();
@@ -134,7 +175,10 @@ function SimulatedProsLayer({
             <div className="relative">
               {/* Highlight Rank Badge on top of closest simulated pros */}
               {isClosest && (
-                <div className="absolute -top-11 left-1/2 -translate-x-1/2 bg-yellow-400 border border-white text-slate-900 font-extrabold text-[7px] tracking-wider uppercase px-1.5 py-0.5 rounded-full shadow-lg z-30 select-none whitespace-nowrap animate-bounce" style={{ animationDuration: '2s' }}>
+                <div
+                  className="absolute -top-11 left-1/2 -translate-x-1/2 bg-yellow-400 border border-white text-slate-900 font-extrabold text-[7px] tracking-wider uppercase px-1.5 py-0.5 rounded-full shadow-lg z-30 select-none whitespace-nowrap animate-bounce"
+                  style={{ animationDuration: "2s" }}
+                >
                   #{closestIndex + 1} NEAR
                 </div>
               )}
@@ -144,7 +188,11 @@ function SimulatedProsLayer({
                 isClosest={isClosest}
                 isSelected={isSelected}
                 name={pro.name}
-                distanceText={isClosest ? `${(getHaversineDistance(pro, referenceCenter) / 1000).toFixed(1)}km` : undefined}
+                distanceText={
+                  isClosest
+                    ? `${(getHaversineDistance(pro, referenceCenter) / 1000).toFixed(1)}km`
+                    : undefined
+                }
               />
             </div>
           </AdvancedMarker>
@@ -154,48 +202,53 @@ function SimulatedProsLayer({
   );
 }
 
-function MapLogic({ 
-  partnerLocation, 
-  rawPartnerLocation, 
-  bookingLocation, 
-  destinationAddress, 
-  onRouteUpdate, 
-  refreshTrigger, 
-  userInfo, 
-  partnerInfo, 
-  onPartnerClick, 
-  pulseEnabled, 
+function MapLogic({
+  partnerLocation,
+  rawPartnerLocation,
+  bookingLocation,
+  destinationAddress,
+  onRouteUpdate,
+  refreshTrigger,
+  userInfo,
+  partnerInfo,
+  onPartnerClick,
+  pulseEnabled,
   historicalPath,
   autoZoomToFit,
   eta,
-  autoRefreshEnabled
-}: { 
-  partnerLocation: { lat: number; lng: number }, 
-  rawPartnerLocation: { lat: number; lng: number } | null,
-  bookingLocation?: { lat: number; lng: number },
-  destinationAddress?: string,
-  onRouteUpdate?: (eta: string, distance: string) => void,
-  refreshTrigger: number,
-  userInfo: UserProfile | null,
-  partnerInfo: PartnerProfile | null,
-  onPartnerClick?: () => void,
-  pulseEnabled: boolean,
-  historicalPath: { lat: number; lng: number }[],
-  autoZoomToFit: boolean,
-  eta: string,
-  autoRefreshEnabled: boolean
+  autoRefreshEnabled,
+}: {
+  partnerLocation: { lat: number; lng: number };
+  rawPartnerLocation: { lat: number; lng: number } | null;
+  bookingLocation?: { lat: number; lng: number };
+  destinationAddress?: string;
+  onRouteUpdate?: (eta: string, distance: string) => void;
+  refreshTrigger: number;
+  userInfo: UserProfile | null;
+  partnerInfo: PartnerProfile | null;
+  onPartnerClick?: () => void;
+  pulseEnabled: boolean;
+  historicalPath: { lat: number; lng: number }[];
+  autoZoomToFit: boolean;
+  eta: string;
+  autoRefreshEnabled: boolean;
 }) {
   const map = useMap();
-  const mapsLib = useMapsLibrary('maps');
-  const routesLib = useMapsLibrary('routes');
-  const [destCoords, setDestCoords] = useState<{lat: number, lng: number} | null>(bookingLocation || null);
+  const mapsLib = useMapsLibrary("maps");
+  const routesLib = useMapsLibrary("routes");
+  const [destCoords, setDestCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(bookingLocation || null);
   const [routePath, setRoutePath] = useState<string[]>([]);
   const [showTooltip, setShowTooltip] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [speed, setSpeed] = useState<number>(24.2);
   const [battery, setBattery] = useState<number>(84);
 
-  const [animatedHistoricalPath, setAnimatedHistoricalPath] = useState<{ lat: number; lng: number }[]>([]);
+  const [animatedHistoricalPath, setAnimatedHistoricalPath] = useState<
+    { lat: number; lng: number }[]
+  >([]);
 
   useEffect(() => {
     if (!historicalPath || historicalPath.length === 0) {
@@ -205,10 +258,13 @@ function MapLogic({
 
     let currentIndex = 0;
     const totalDuration = 1500; // 1.5 seconds animation window
-    const stepDuration = Math.max(25, Math.min(250, totalDuration / historicalPath.length));
-    
+    const stepDuration = Math.max(
+      25,
+      Math.min(250, totalDuration / historicalPath.length),
+    );
+
     setAnimatedHistoricalPath([historicalPath[0]]);
-    
+
     const timer = setInterval(() => {
       currentIndex++;
       if (currentIndex >= historicalPath.length) {
@@ -224,7 +280,7 @@ function MapLogic({
 
   // Dynamic automatic zoom-to-fit effect as live coordinates update
   useEffect(() => {
-    if (!map || typeof google === 'undefined' || !autoZoomToFit) return;
+    if (!map || typeof google === "undefined" || !autoZoomToFit) return;
     const calcLoc = rawPartnerLocation || partnerLocation;
     if (calcLoc && destCoords) {
       const bounds = new google.maps.LatLngBounds();
@@ -239,14 +295,14 @@ function MapLogic({
 
   // 5km visual circle radius overlay around partner location
   useEffect(() => {
-    if (!map || typeof google === 'undefined') return;
+    if (!map || typeof google === "undefined") return;
 
     const circle = new google.maps.Circle({
       map,
       radius: 5000, // 5km radius scope
-      fillColor: '#3b82f6',
+      fillColor: "#3b82f6",
       fillOpacity: 0.08,
-      strokeColor: '#3b82f6',
+      strokeColor: "#3b82f6",
       strokeOpacity: 0.25,
       strokeWeight: 1.2,
     });
@@ -271,20 +327,31 @@ function MapLogic({
       setDestCoords(bookingLocation);
     } else if (destinationAddress) {
       const resolveDestination = async () => {
-        let resolvedCoords: { lat: number, lng: number } | null = null;
-        
+        let resolvedCoords: { lat: number; lng: number } | null = null;
+
         // 1. Try Nominatim search FIRST
         try {
           const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destinationAddress)}&limit=1`;
-          const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+          const res = await fetch(url, {
+            headers: {
+              "Accept-Language": "en",
+              "User-Agent": "zomindia-app-preview",
+            },
+          });
           if (res.ok) {
             const data = await res.json();
             if (data?.[0]) {
-              resolvedCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+              resolvedCoords = {
+                lat: parseFloat(data[0].lat),
+                lng: parseFloat(data[0].lon),
+              };
             }
           }
         } catch (e) {
-          console.warn("Nominatim address search failed for destination in PartnerTrackingMap:", e);
+          console.warn(
+            "Nominatim address search failed for destination in PartnerTrackingMap:",
+            e,
+          );
         }
 
         // 2. Fallback to Google Geocoder bypassed to avoid API authorization logs.
@@ -301,11 +368,11 @@ function MapLogic({
   // Generate realistic, organic telemetry details (simulated speed & battery metrics)
   useEffect(() => {
     if (!partnerLocation) return;
-    
+
     // Smoothly fluctuating speed profile
     const latFactor = Math.floor(partnerLocation.lat * 100000);
     const lngFactor = Math.floor(partnerLocation.lng * 100000);
-    
+
     // Simulate real vehicle speeds (0 km/h if static or stable, otherwise average commute speeds)
     const baseSpeed = 18 + (latFactor % 14); // 18-32 km/h
     setSpeed(Number(baseSpeed.toFixed(1)));
@@ -326,17 +393,20 @@ function MapLogic({
         const { routes } = await routesLib.Route.computeRoutes({
           origin: calcLocation,
           destination: destCoords,
-          travelMode: 'DRIVE',
-          polylineQuality: 'OVERVIEW',
-          fields: ['polyline', 'durationMillis', 'distanceMeters'],
+          travelMode: "DRIVE",
+          polylineQuality: "OVERVIEW",
+          fields: ["polyline", "durationMillis", "distanceMeters"],
         } as any);
 
         if (routes?.[0]) {
           const route = routes[0] as any;
-          if (route.polyline?.encodedPolyline) setRoutePath([route.polyline.encodedPolyline]);
-          
+          if (route.polyline?.encodedPolyline)
+            setRoutePath([route.polyline.encodedPolyline]);
+
           if (onRouteUpdate) {
-            const minutes = Math.ceil(Number(route.durationMillis || 0) / 60000);
+            const minutes = Math.ceil(
+              Number(route.durationMillis || 0) / 60000,
+            );
             const km = (Number(route.distanceMeters) || 0) / 1000;
             onRouteUpdate(`${minutes} min`, `${km.toFixed(1)} km`);
           }
@@ -349,21 +419,37 @@ function MapLogic({
     calculateRoute(true);
     const interval = setInterval(() => calculateRoute(false), 30000);
     return () => clearInterval(interval);
-  }, [calcLocation, destCoords, routesLib, onRouteUpdate, refreshTrigger, autoRefreshEnabled]);
+  }, [
+    calcLocation,
+    destCoords,
+    routesLib,
+    onRouteUpdate,
+    refreshTrigger,
+    autoRefreshEnabled,
+  ]);
 
   useEffect(() => {
-    if (!map || !routePath || routePath.length === 0 || typeof google === 'undefined') return;
+    if (
+      !map ||
+      !routePath ||
+      routePath.length === 0 ||
+      typeof google === "undefined"
+    )
+      return;
 
-    const polylines = routePath.map(path => new google.maps.Polyline({
-      path: google.maps.geometry.encoding.decodePath(path),
-      geodesic: true,
-      strokeColor: '#3b82f6',
-      strokeOpacity: 0.8,
-      strokeWeight: 4,
-    }));
+    const polylines = routePath.map(
+      (path) =>
+        new google.maps.Polyline({
+          path: google.maps.geometry.encoding.decodePath(path),
+          geodesic: true,
+          strokeColor: "#3b82f6",
+          strokeOpacity: 0.8,
+          strokeWeight: 4,
+        }),
+    );
 
-    polylines.forEach(p => p.setMap(map));
-    
+    polylines.forEach((p) => p.setMap(map));
+
     if (calcLocation && destCoords) {
       const bounds = new google.maps.LatLngBounds();
       bounds.extend(calcLocation);
@@ -371,12 +457,18 @@ function MapLogic({
       map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
     }
 
-    return () => polylines.forEach(p => p.setMap(null));
+    return () => polylines.forEach((p) => p.setMap(null));
   }, [map, routePath, calcLocation, destCoords]);
 
   // Draw historical shift route path (sleek double-layered route trailing) with progressive 'drawing' animation
   useEffect(() => {
-    if (!map || !animatedHistoricalPath || animatedHistoricalPath.length === 0 || typeof google === "undefined") return;
+    if (
+      !map ||
+      !animatedHistoricalPath ||
+      animatedHistoricalPath.length === 0 ||
+      typeof google === "undefined"
+    )
+      return;
 
     // Glowing border line
     const glowLine = new google.maps.Polyline({
@@ -405,29 +497,34 @@ function MapLogic({
     };
   }, [map, animatedHistoricalPath]);
 
-  const partnerName = userInfo?.displayName || 'Expert Agent';
-  const partnerRating = partnerInfo?.rating ? Number(partnerInfo.rating).toFixed(1) : '4.9';
+  const partnerName = userInfo?.displayName || "Expert Agent";
+  const partnerRating = partnerInfo?.rating
+    ? Number(partnerInfo.rating).toFixed(1)
+    : "4.9";
   const partnerReviews = partnerInfo?.reviewCount || 18;
-  const partnerPhone = userInfo?.phoneNumber || '555-0199';
+  const partnerPhone = userInfo?.phoneNumber || "555-0199";
 
   const { isWithinProximity, pulseDuration } = (() => {
     if (!partnerLocation || !destCoords) {
-      return { isWithinProximity: false, pulseDuration: '1.5s' };
+      return { isWithinProximity: false, pulseDuration: "1.5s" };
     }
     const R = 6371e3; // Earth's radius in meters
     const phi1 = (partnerLocation.lat * Math.PI) / 180;
     const phi2 = (destCoords.lat * Math.PI) / 180;
     const deltaPhi = ((destCoords.lat - partnerLocation.lat) * Math.PI) / 180;
-    const deltaLambda = ((destCoords.lng - partnerLocation.lng) * Math.PI) / 180;
+    const deltaLambda =
+      ((destCoords.lng - partnerLocation.lng) * Math.PI) / 180;
 
     const a =
       Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-      Math.cos(phi1) * Math.cos(phi2) *
-      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      Math.cos(phi1) *
+        Math.cos(phi2) *
+        Math.sin(deltaLambda / 2) *
+        Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     const dist = R * c;
-    
+
     const maxReferenceDist = 1500;
     const clampedDist = Math.max(50, Math.min(dist, maxReferenceDist));
     const ratio = (clampedDist - 50) / (maxReferenceDist - 50); // scales from 0 (at 50m) to 1 (at 1500m)
@@ -435,15 +532,15 @@ function MapLogic({
 
     return {
       isWithinProximity: dist <= 500,
-      pulseDuration: `${dur.toFixed(2)}s`
+      pulseDuration: `${dur.toFixed(2)}s`,
     };
   })();
 
   return (
     <>
       {partnerLocation && (
-        <AdvancedMarker 
-          position={partnerLocation} 
+        <AdvancedMarker
+          position={partnerLocation}
           onClick={(e) => {
             if (e) {
               // Ensure we stop default behavior and toggle tooltip
@@ -455,69 +552,81 @@ function MapLogic({
             }
           }}
         >
-          <div 
+          <div
             className="relative cursor-pointer select-none"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            {pulseEnabled && (
-              isWithinProximity ? (
+            {pulseEnabled &&
+              (isWithinProximity ? (
                 <>
-                  <div 
+                  <div
                     className="absolute -inset-6 bg-emerald-500/30 rounded-full animate-ping"
                     style={{ animationDuration: pulseDuration }}
                   ></div>
-                  <div 
+                  <div
                     className="absolute -inset-4 bg-emerald-500/20 rounded-full animate-pulse border border-emerald-500/40"
                     style={{ animationDuration: pulseDuration }}
                   ></div>
                 </>
               ) : (
-                <div 
+                <div
                   className="absolute -inset-4 bg-blue-500/20 rounded-full animate-ping"
                   style={{ animationDuration: pulseDuration }}
                 ></div>
-              )
-            )}
+              ))}
             {/* Permanent small ETA badge above the pin */}
             <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-blue-600 border border-white text-white font-extrabold text-[8px] tracking-[0.12em] uppercase px-2 py-0.5 rounded-full shadow-lg z-25 select-none whitespace-nowrap leading-none flex items-center justify-center gap-1.5 animate-pulse">
               <Clock size={8} className="stroke-[3.5]" />
-              {eta}  
+              {eta}
             </div>
 
-            <div className={`w-10 h-10 ${isWithinProximity && pulseEnabled ? 'bg-emerald-600 shadow-lg shadow-emerald-500/40 animate-pulse ring-4 ring-emerald-500/35 border-emerald-300' : 'bg-blue-700 shadow-blue-700/30'} rounded-2xl flex items-center justify-center text-white shadow-xl border-2 border-white relative z-10 transition-transform hover:scale-110 active:scale-95 duration-150`}>
+            <div
+              className={`w-10 h-10 ${isWithinProximity && pulseEnabled ? "bg-emerald-600 shadow-lg shadow-emerald-500/40 animate-pulse ring-4 ring-emerald-500/35 border-emerald-300" : "bg-blue-700 shadow-blue-700/30"} rounded-2xl flex items-center justify-center text-white shadow-xl border-2 border-white relative z-10 transition-transform hover:scale-110 active:scale-95 duration-150`}
+            >
               <Navigation size={20} className="rotate-45" />
             </div>
 
             {/* Speach Bubble Tooltip with partner name, rating and click-to-call */}
             {showTooltip && (
-              <div 
+              <div
                 className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white rounded-2xl p-3 shadow-2xl border border-slate-800 min-w-[190px] text-center flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Speech Bubble Tail */}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-slate-800"></div>
-                
-                <p className="text-xs font-black tracking-tight leading-none text-white whitespace-nowrap">{partnerName}</p>
-                
+
+                <p className="text-xs font-black tracking-tight leading-none text-white whitespace-nowrap">
+                  {partnerName}
+                </p>
+
                 <div className="flex items-center gap-1">
                   <Star size={10} className="fill-amber-400 stroke-amber-400" />
-                  <span className="text-[10px] font-bold text-amber-400">{partnerRating}</span>
-                  <span className="text-[9px] text-slate-400">({partnerReviews} reviews)</span>
+                  <span className="text-[10px] font-bold text-amber-400">
+                    {partnerRating}
+                  </span>
+                  <span className="text-[9px] text-slate-400">
+                    ({partnerReviews} reviews)
+                  </span>
                 </div>
 
-                <a 
-                  href="tel:+918005865966"
+                <button
                   onClick={(e) => {
-                    if (typeof (window as any).__showToast === 'function') {
-                      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                    if (typeof (window as any).__showToast === "function") {
+                      (window as any).__showToast(
+                        `Bridging secure call via Central Landline Gateway: ${CORPORATE_LANDLINE_GATEWAY}...`,
+                      );
+                    } else {
+                      alert(
+                        `[Zomindia Telephony Bridge]\nConnecting you to partner securely.\nCaller ID: ${CORPORATE_LANDLINE_GATEWAY}\nNo private phone numbers are exposed.`
+                      );
                     }
                   }}
-                  className="mt-1 w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white py-1.5 px-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md border border-blue-500 hover:scale-102 active:scale-98"
+                  className="mt-1 w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white py-1.5 px-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md border border-blue-500 hover:scale-102 active:scale-98 cursor-pointer"
                 >
                   <Phone size={10} className="fill-white" />
                   Call Partner
-                </a>
+                </button>
               </div>
             )}
 
@@ -533,30 +642,44 @@ function MapLogic({
                 >
                   {/* Miniature Bubble Tail */}
                   <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-slate-950 rotate-45 border-r border-b border-slate-800/90"></div>
-                  
+
                   <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1 mb-1.5">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-violet-400">Telemetry Feed</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest text-violet-400">
+                      Telemetry Feed
+                    </span>
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                     </span>
                   </div>
-                  
+
                   <div className="space-y-1.5 text-[9px] font-bold">
                     <div className="flex items-center justify-between gap-2 text-slate-350">
-                      <span className="font-semibold text-slate-400">Current Speed</span>
-                      <span className="font-extrabold text-white">{speed} km/h</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-slate-350">
-                      <span className="font-semibold text-slate-400">Mobile Battery</span>
-                      <span className="font-extrabold text-white flex items-center gap-1">
-                        {battery}%
-                        <span className={`w-1.5 h-1.5 rounded-full ${battery > 30 ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                      <span className="font-semibold text-slate-400">
+                        Current Speed
+                      </span>
+                      <span className="font-extrabold text-white">
+                        {speed} km/h
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 text-slate-350">
-                      <span className="font-semibold text-slate-400">Signal (GPS)</span>
-                      <span className="text-[8px] text-emerald-400 font-extrabold tracking-wider">EXCELLENT</span>
+                      <span className="font-semibold text-slate-400">
+                        Mobile Battery
+                      </span>
+                      <span className="font-extrabold text-white flex items-center gap-1">
+                        {battery}%
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${battery > 30 ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`}
+                        />
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-slate-350">
+                      <span className="font-semibold text-slate-400">
+                        Signal (GPS)
+                      </span>
+                      <span className="text-[8px] text-emerald-400 font-extrabold tracking-wider">
+                        EXCELLENT
+                      </span>
                     </div>
                   </div>
                 </motion.div>
@@ -577,35 +700,49 @@ function MapLogic({
 
 function MapSearchBar() {
   const map = useMap();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [searchedLabel, setSearchedLabel] = useState('');
-  const [searchedCoords, setSearchedCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [searchedLabel, setSearchedLabel] = useState("");
+  const [searchedCoords, setSearchedCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!query.trim() || !map) return;
 
     setSearching(true);
-    setErrorMsg('');
-    
-    let resolvedCoords: { lat: number, lng: number } | null = null;
-    let resolvedLabel = '';
+    setErrorMsg("");
+
+    let resolvedCoords: { lat: number; lng: number } | null = null;
+    let resolvedLabel = "";
 
     // 1. Try Nominatim FIRST
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+      const res = await fetch(url, {
+        headers: {
+          "Accept-Language": "en",
+          "User-Agent": "zomindia-app-preview",
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data?.[0]) {
-          resolvedCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+          resolvedCoords = {
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon),
+          };
           resolvedLabel = data[0].display_name || query;
         }
       }
     } catch (e) {
-      console.warn("Nominatim search failed in PartnerTrackingMap, trying Google backup:", e);
+      console.warn(
+        "Nominatim search failed in PartnerTrackingMap, trying Google backup:",
+        e,
+      );
     }
 
     // 2. Cascade fallback to Google Maps Geocoder bypassed to avoid API authorization logs.
@@ -617,27 +754,30 @@ function MapSearchBar() {
       map.panTo(resolvedCoords);
       map.setZoom(15);
     } else {
-      setErrorMsg('No results found.');
-      setTimeout(() => setErrorMsg(''), 3000);
+      setErrorMsg("No results found.");
+      setTimeout(() => setErrorMsg(""), 3000);
     }
   };
 
   const handleClear = () => {
-    setQuery('');
+    setQuery("");
     setSearchedCoords(null);
-    setSearchedLabel('');
+    setSearchedLabel("");
   };
 
   return (
     <>
-      <div 
+      <div
         className="absolute top-4 left-16 right-16 sm:right-auto sm:max-w-xs md:max-w-sm w-[calc(100%-128px)] sm:w-auto min-w-0 z-20 pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSearch} className="relative flex items-center bg-white rounded-2xl border border-slate-100/85 shadow-lg overflow-hidden group">
+        <form
+          onSubmit={handleSearch}
+          className="relative flex items-center bg-white rounded-2xl border border-slate-100/85 shadow-lg overflow-hidden group"
+        >
           <input
             type="text"
             inputMode="text"
@@ -649,7 +789,7 @@ function MapSearchBar() {
           />
           <div className="absolute right-2 flex items-center gap-1">
             {query && (
-              <button 
+              <button
                 type="button"
                 onClick={handleClear}
                 className="w-6 h-6 rounded-lg bg-slate-50 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors"
@@ -664,7 +804,7 @@ function MapSearchBar() {
               className="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
               title="Search Location"
             >
-              <Search size={14} className={searching ? 'animate-pulse' : ''} />
+              <Search size={14} className={searching ? "animate-pulse" : ""} />
             </button>
           </div>
         </form>
@@ -675,8 +815,10 @@ function MapSearchBar() {
         )}
         {searchedCoords && searchedLabel && (
           <div className="absolute top-full mt-1.5 left-0 right-0 bg-slate-900 border border-slate-800 text-white font-bold text-[10px] px-3 py-1.5 rounded-xl shadow-md flex items-center justify-between gap-2 max-h-16 overflow-hidden animate-in fade-in slide-in-from-top-1">
-            <span className="truncate leading-tight">Centered on: {searchedLabel}</span>
-            <button 
+            <span className="truncate leading-tight">
+              Centered on: {searchedLabel}
+            </span>
+            <button
               onClick={handleClear}
               className="text-slate-400 hover:text-white shrink-0 font-black"
             >
@@ -700,7 +842,13 @@ function MapSearchBar() {
   );
 }
 
-function CenterToPartnerButton({ partnerLocation, setZoom }: { partnerLocation: { lat: number; lng: number } | null, setZoom: React.Dispatch<React.SetStateAction<number>> }) {
+function CenterToPartnerButton({
+  partnerLocation,
+  setZoom,
+}: {
+  partnerLocation: { lat: number; lng: number } | null;
+  setZoom: React.Dispatch<React.SetStateAction<number>>;
+}) {
   const map = useMap();
   const handleCenter = () => {
     if (map && partnerLocation) {
@@ -726,21 +874,28 @@ function CenterToPartnerButton({ partnerLocation, setZoom }: { partnerLocation: 
   );
 }
 
-
-const generateHistoricalPoints = (current: { lat: number; lng: number }): { lat: number; lng: number }[] => {
+const generateHistoricalPoints = (current: {
+  lat: number;
+  lng: number;
+}): { lat: number; lng: number }[] => {
   const points: { lat: number; lng: number }[] = [];
   const numPoints = 8;
   const startAngle = Math.random() * 2 * Math.PI;
   const totalOffsetMeters = 1500; // start 1.5 km away
   const earthRadius = 6371000;
-  
+
   // Starting point of the shift
-  const startDLat = (totalOffsetMeters * Math.cos(startAngle)) / earthRadius * (180 / Math.PI);
-  const startDLng = (totalOffsetMeters * Math.sin(startAngle)) / (earthRadius * Math.cos((current.lat * Math.PI) / 180)) * (180 / Math.PI);
-  
+  const startDLat =
+    ((totalOffsetMeters * Math.cos(startAngle)) / earthRadius) *
+    (180 / Math.PI);
+  const startDLng =
+    ((totalOffsetMeters * Math.sin(startAngle)) /
+      (earthRadius * Math.cos((current.lat * Math.PI) / 180))) *
+    (180 / Math.PI);
+
   const startPoint = {
     lat: current.lat + startDLat,
-    lng: current.lng + startDLng
+    lng: current.lng + startDLng,
   };
 
   // Interpolate with some realistic noise (simulating following a street grid)
@@ -749,72 +904,102 @@ const generateHistoricalPoints = (current: { lat: number; lng: number }): { lat:
     // Add sinusoidal curve noise for realism
     const noiseMeters = 80 * Math.sin(fraction * Math.PI);
     const noiseAngle = startAngle + Math.PI / 2; // perpendicular
-    
-    const noiseLat = (noiseMeters * Math.cos(noiseAngle)) / earthRadius * (180 / Math.PI);
-    const noiseLng = (noiseMeters * Math.sin(noiseAngle)) / (earthRadius * Math.cos((current.lat * Math.PI) / 180)) * (180 / Math.PI);
+
+    const noiseLat =
+      ((noiseMeters * Math.cos(noiseAngle)) / earthRadius) * (180 / Math.PI);
+    const noiseLng =
+      ((noiseMeters * Math.sin(noiseAngle)) /
+        (earthRadius * Math.cos((current.lat * Math.PI) / 180))) *
+      (180 / Math.PI);
 
     const baseLat = startPoint.lat + (current.lat - startPoint.lat) * fraction;
     const baseLng = startPoint.lng + (current.lng - startPoint.lng) * fraction;
 
     points.push({
       lat: baseLat + noiseLat,
-      lng: baseLng + noiseLng
+      lng: baseLng + noiseLng,
     });
   }
   return points;
 };
 
-
-export default function PartnerTrackingMap({ partnerId, bookingLocation, destinationAddress, onClose }: PartnerTrackingMapProps) {
-  const [partnerLocation, setPartnerLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [historicalPath, setHistoricalPath] = useState<{ lat: number; lng: number }[]>([]);
-  const [animatedLocation, setAnimatedLocation] = useState<{ lat: number; lng: number } | null>(null);
+export default function PartnerTrackingMap({
+  partnerId,
+  bookingLocation,
+  destinationAddress,
+  onClose,
+}: PartnerTrackingMapProps) {
+  const [partnerLocation, setPartnerLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [historicalPath, setHistoricalPath] = useState<
+    { lat: number; lng: number }[]
+  >([]);
+  const [animatedLocation, setAnimatedLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [partnerInfo, setPartnerInfo] = useState<PartnerProfile | null>(null);
   const [userInfo, setUserInfo] = useState<UserProfile | null>(null);
-  const [eta, setEta] = useState<string>('~12 min');
-  const [distance, setDistance] = useState<string>('');
+  const [eta, setEta] = useState<string>("~12 min");
+  const [distance, setDistance] = useState<string>("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [autoZoomToFit, setAutoZoomToFit] = useState<boolean>(true);
   const [zoom, setZoom] = useState<number>(13);
   const [showDetailCard, setShowDetailCard] = useState<boolean>(false);
-  const [mapType, setMapType] = useState<'roadmap' | 'satellite' | 'terrain'>('terrain');
+  const [mapType, setMapType] = useState<"roadmap" | "satellite" | "terrain">(
+    "terrain",
+  );
 
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [pulseEnabled, setPulseEnabled] = useState<boolean>(true);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(true);
 
   const [simulatedPros, setSimulatedPros] = useState<SimulatedPro[]>([]);
-  const [selectedSimPro, setSelectedSimPro] = useState<SimulatedPro | null>(null);
+  const [selectedSimPro, setSelectedSimPro] = useState<SimulatedPro | null>(
+    null,
+  );
 
-  const [prevLocation, setPrevLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [lastShift, setLastShift] = useState<{ meters: number; feet: number } | null>(null);
+  const [prevLocation, setPrevLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [lastShift, setLastShift] = useState<{
+    meters: number;
+    feet: number;
+  } | null>(null);
   const [recenteringActive, setRecenteringActive] = useState<boolean>(false);
 
   const [countdown, setCountdown] = useState(30);
 
   const referenceCenter = React.useMemo(() => {
-    return bookingLocation || partnerLocation || animatedLocation || { lat: 28.6139, lng: 77.2090 };
+    return (
+      bookingLocation ||
+      partnerLocation ||
+      animatedLocation || { lat: 28.6139, lng: 77.209 }
+    );
   }, [bookingLocation, partnerLocation, animatedLocation]);
 
   const closestSimProIds = React.useMemo(() => {
     if (!referenceCenter) return [];
     return [...simulatedPros]
-      .map(pro => ({
+      .map((pro) => ({
         id: pro.id,
-        distance: getHaversineDistance(pro, referenceCenter)
+        distance: getHaversineDistance(pro, referenceCenter),
       }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 3)
-      .map(item => item.id);
+      .map((item) => item.id);
   }, [simulatedPros, referenceCenter]);
 
   useEffect(() => {
     if (!autoRefreshEnabled) return;
     const timer = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev <= 1) {
-          setRefreshTrigger(t => t + 1);
+          setRefreshTrigger((t) => t + 1);
           return 30;
         }
         return prev - 1;
@@ -828,43 +1013,59 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
     if (center && simulatedPros.length === 0) {
       setSimulatedPros(generateSimulatedPros(center));
     }
-  }, [bookingLocation, partnerLocation, animatedLocation, simulatedPros.length]);
+  }, [
+    bookingLocation,
+    partnerLocation,
+    animatedLocation,
+    simulatedPros.length,
+  ]);
 
   useEffect(() => {
     if (simulatedPros.length === 0) return;
 
     const interval = setInterval(() => {
-      setSimulatedPros(prev => prev.map(pro => {
-        if (pro.status === 'In Transit') {
-          const center = bookingLocation || partnerLocation || animatedLocation;
-          let nextLat = pro.lat;
-          let nextLng = pro.lng;
+      setSimulatedPros((prev) =>
+        prev.map((pro) => {
+          if (pro.status === "In Transit") {
+            const center =
+              bookingLocation || partnerLocation || animatedLocation;
+            let nextLat = pro.lat;
+            let nextLng = pro.lng;
 
-          if (center) {
-            const dy = center.lat - pro.lat;
-            const dx = (center.lng - pro.lng) * Math.cos((center.lat * Math.PI) / 180);
-            const angle = Math.atan2(dy, dx);
-            
-            const speed = 0.000015;
-            nextLat += Math.sin(angle) * speed;
-            nextLng += Math.cos(angle) * speed / Math.cos((center.lat * Math.PI) / 180);
+            if (center) {
+              const dy = center.lat - pro.lat;
+              const dx =
+                (center.lng - pro.lng) * Math.cos((center.lat * Math.PI) / 180);
+              const angle = Math.atan2(dy, dx);
+
+              const speed = 0.000015;
+              nextLat += Math.sin(angle) * speed;
+              nextLng +=
+                (Math.cos(angle) * speed) /
+                Math.cos((center.lat * Math.PI) / 180);
+            }
+            return {
+              ...pro,
+              lat: nextLat,
+              lng: nextLng,
+            };
           }
-          return {
-            ...pro,
-            lat: nextLat,
-            lng: nextLng
-          };
-        }
-        return pro;
-      }));
+          return pro;
+        }),
+      );
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [simulatedPros.length, bookingLocation, partnerLocation, animatedLocation]);
+  }, [
+    simulatedPros.length,
+    bookingLocation,
+    partnerLocation,
+    animatedLocation,
+  ]);
 
   useEffect(() => {
     if (!partnerLocation) return;
-    
+
     // If it's the first time/initial point, set previous location to partnerLocation
     if (!prevLocation) {
       setPrevLocation(partnerLocation);
@@ -873,7 +1074,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
 
     const latDiff = Math.abs(partnerLocation.lat - prevLocation.lat);
     const lngDiff = Math.abs(partnerLocation.lng - prevLocation.lng);
-    
+
     // Only count as shift if it is a real coordinate update (e.g. > 0.000001)
     if (latDiff > 0.000001 || lngDiff > 0.000001) {
       const R = 6371000; // Earth's radius in meters
@@ -901,8 +1102,8 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
 
   useEffect(() => {
     if (!partnerLocation) return;
-    
-    setHistoricalPath(prev => {
+
+    setHistoricalPath((prev) => {
       if (prev.length === 0) {
         // Seed initial points when partnerLocation arrives
         return generateHistoricalPoints(partnerLocation);
@@ -925,13 +1126,17 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
     const direction = Math.random() * 2 * Math.PI;
     const distanceMeters = 5 + Math.random() * 25; // 5 - 30m
     const earthRadius = 6371000;
-    
-    const dLat = (distanceMeters * Math.cos(direction)) / earthRadius * (180 / Math.PI);
-    const dLng = (distanceMeters * Math.sin(direction)) / (earthRadius * Math.cos((partnerLocation.lat * Math.PI) / 180)) * (180 / Math.PI);
-    
+
+    const dLat =
+      ((distanceMeters * Math.cos(direction)) / earthRadius) * (180 / Math.PI);
+    const dLng =
+      ((distanceMeters * Math.sin(direction)) /
+        (earthRadius * Math.cos((partnerLocation.lat * Math.PI) / 180))) *
+      (180 / Math.PI);
+
     setPartnerLocation({
       lat: partnerLocation.lat + dLat,
-      lng: partnerLocation.lng + dLng
+      lng: partnerLocation.lng + dLng,
     });
   };
 
@@ -939,7 +1144,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
     if (!partnerId) return;
     if (!autoRefreshEnabled) return; // disable snapshot listeners to conserve battery
 
-    const unsubPartner = onSnapshot(doc(db, 'partners', partnerId), (snap) => {
+    const unsubPartner = onSnapshot(doc(db, "partners", partnerId), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as PartnerProfile;
         if (data.lat && data.lng) {
@@ -949,7 +1154,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
       }
     });
 
-    const unsubUser = onSnapshot(doc(db, 'users', partnerId), (snap) => {
+    const unsubUser = onSnapshot(doc(db, "users", partnerId), (snap) => {
       if (snap.exists()) {
         setUserInfo(snap.data() as UserProfile);
       }
@@ -987,10 +1192,12 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
       if (!start) start = timestamp;
       const progress = Math.min((timestamp - start) / duration, 1);
       const eased = easeOutQuad(progress);
-      
-      const nextLat = startLocation.lat + (partnerLocation.lat - startLocation.lat) * eased;
-      const nextLng = startLocation.lng + (partnerLocation.lng - startLocation.lng) * eased;
-      
+
+      const nextLat =
+        startLocation.lat + (partnerLocation.lat - startLocation.lat) * eased;
+      const nextLng =
+        startLocation.lng + (partnerLocation.lng - startLocation.lng) * eased;
+
       setAnimatedLocation({ lat: nextLat, lng: nextLng });
 
       if (progress < 1) {
@@ -1007,7 +1214,7 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
     setIsRefreshing(true);
     setCountdown(30);
     try {
-      const partnerSnap = await getDoc(doc(db, 'partners', partnerId));
+      const partnerSnap = await getDoc(doc(db, "partners", partnerId));
       if (partnerSnap.exists()) {
         const data = partnerSnap.data() as PartnerProfile;
         if (data.lat && data.lng) {
@@ -1015,11 +1222,11 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         }
         setPartnerInfo(data);
       }
-      const userSnap = await getDoc(doc(db, 'users', partnerId));
+      const userSnap = await getDoc(doc(db, "users", partnerId));
       if (userSnap.exists()) {
         setUserInfo(userSnap.data() as UserProfile);
       }
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error("Error manually refreshing partner location:", err);
     } finally {
@@ -1029,13 +1236,13 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
 
   // Helper to parse and calculate relative last updated time of partner GPS
   const getFormattedLastUpdated = () => {
-    if (!partnerInfo) return 'Just now';
-    
+    if (!partnerInfo) return "Just now";
+
     let dateObj: Date | null = null;
     try {
       const ts = partnerInfo.updatedAt || partnerInfo.createdAt;
       if (ts) {
-        if (typeof ts.toDate === 'function') {
+        if (typeof ts.toDate === "function") {
           dateObj = ts.toDate();
         } else if (ts.seconds) {
           dateObj = new Date(ts.seconds * 1000);
@@ -1048,18 +1255,21 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
     }
 
     if (!dateObj || isNaN(dateObj.getTime())) {
-      return 'Just now';
+      return "Just now";
     }
 
     const diffMs = Date.now() - dateObj.getTime();
     const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffSecs / 60);
 
-    if (diffSecs < 15) return 'Just now';
+    if (diffSecs < 15) return "Just now";
     if (diffSecs < 60) return `${diffSecs}s ago`;
     if (diffMins < 60) return `${diffMins}m ago`;
-    
-    return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return dateObj.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   if (!animatedLocation) {
@@ -1068,27 +1278,35 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 mb-4 shadow-sm">
           <MapPin size={24} className="animate-bounce" />
         </div>
-        <p className="text-sm font-bold text-slate-400">Waiting for professional's signal...</p>
-        <p className="text-[10px] text-slate-300 mt-1 uppercase tracking-widest font-black">Connecting Securely</p>
+        <p className="text-sm font-bold text-slate-400">
+          Waiting for professional's signal...
+        </p>
+        <p className="text-[10px] text-slate-300 mt-1 uppercase tracking-widest font-black">
+          Connecting Securely
+        </p>
       </div>
     );
   }
 
-  const partnerContactStatus = partnerInfo?.availabilityStatus || 'Available';
-  const partnerPhone = userInfo?.phoneNumber || '555-0199';
+  const partnerContactStatus = partnerInfo?.availabilityStatus || "Available";
+  const partnerPhone = userInfo?.phoneNumber || "555-0199";
 
   const isCloseToDest = (() => {
     if (!animatedLocation || !bookingLocation) return false;
     const R = 6371e3; // Earth's radius in meters
     const phi1 = (animatedLocation.lat * Math.PI) / 180;
     const phi2 = (bookingLocation.lat * Math.PI) / 180;
-    const deltaPhi = ((bookingLocation.lat - animatedLocation.lat) * Math.PI) / 180;
-    const deltaLambda = ((bookingLocation.lng - animatedLocation.lng) * Math.PI) / 180;
+    const deltaPhi =
+      ((bookingLocation.lat - animatedLocation.lat) * Math.PI) / 180;
+    const deltaLambda =
+      ((bookingLocation.lng - animatedLocation.lng) * Math.PI) / 180;
 
     const a =
       Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-      Math.cos(phi1) * Math.cos(phi2) *
-      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      Math.cos(phi1) *
+        Math.cos(phi2) *
+        Math.sin(deltaLambda / 2) *
+        Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     const dist = R * c;
@@ -1096,14 +1314,21 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
   })();
 
   return (
-    <div id="partner-tracking-container" className={`partner-tracking-map-container ${isFullscreen ? 'fixed inset-0 z-[9999] bg-slate-900/95 backdrop-blur-xl p-4 md:p-6 flex flex-col justify-between gap-4 animate-in fade-in duration-300' : 'space-y-4'} ${isCloseToDest ? 'ring-4 ring-emerald-500/20 border-emerald-500/30 transition-all duration-500' : ''}`}>
+    <div
+      id="partner-tracking-container"
+      className={`partner-tracking-map-container ${isFullscreen ? "fixed inset-0 z-[9999] bg-slate-900/95 backdrop-blur-xl p-4 md:p-6 flex flex-col justify-between gap-4 animate-in fade-in duration-300" : "space-y-4"} ${isCloseToDest ? "ring-4 ring-emerald-500/20 border-emerald-500/30 transition-all duration-500" : ""}`}
+    >
       {isFullscreen && (
         <div className="flex items-center justify-between pb-2 border-b border-white/10">
           <div>
-            <h3 className="text-base font-black text-white tracking-tight">Immersive Tracking Dashboard</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Real-time GPS Monitoring & Signal Feed</p>
+            <h3 className="text-base font-black text-white tracking-tight">
+              Immersive Tracking Dashboard
+            </h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+              Real-time GPS Monitoring & Signal Feed
+            </p>
           </div>
-          <button 
+          <button
             onClick={() => setIsFullscreen(false)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-widest transition-all shadow-md active:scale-95 pb-[1px]"
           >
@@ -1120,36 +1345,49 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             <Radio size={18} className="animate-pulse" />
           </div>
           <div>
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Real-Time Distance</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">
+              Real-Time Distance
+            </span>
             <h4 className="text-lg font-black italic mt-0.5 tracking-tight text-white flex items-center gap-2">
-              {distance ? `${distance} Remaining` : 'Calculating distance...'}
+              {distance ? `${distance} Remaining` : "Calculating distance..."}
             </h4>
           </div>
         </div>
         <div className="text-right">
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 font-bold">Estimated Arrival</span>
-          <p className="text-lg font-black italic mt-0.5 text-emerald-400 tracking-tight">{eta || 'Estimating...'}</p>
+          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 font-bold">
+            Estimated Arrival
+          </span>
+          <p className="text-lg font-black italic mt-0.5 text-emerald-400 tracking-tight">
+            {eta || "Estimating..."}
+          </p>
         </div>
       </div>
 
       {/* RECENTERING MOVEMENT METRICS PANEL */}
       <div className="bg-white border border-slate-100/90 rounded-[24px] p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-500 relative overflow-hidden">
         {recenteringActive && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: [0.08, 0.22, 0.08] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
             className="absolute inset-0 bg-blue-505/10 bg-blue-50 pointer-events-none"
           />
         )}
-        
+
         <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${recenteringActive ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-100 text-slate-500'}`}>
-            <RefreshCw size={15} className={recenteringActive ? 'animate-spin' : ''} />
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${recenteringActive ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" : "bg-slate-100 text-slate-500"}`}
+          >
+            <RefreshCw
+              size={15}
+              className={recenteringActive ? "animate-spin" : ""}
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Recentering Indicator</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Recentering Indicator
+              </span>
               {recenteringActive ? (
                 <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse">
                   Device Moved
@@ -1163,10 +1401,20 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             <h5 className="font-bold text-xs sm:text-sm text-slate-700 tracking-tight mt-0.5">
               {lastShift ? (
                 <>
-                  Professional recently moved <span className="text-blue-600 font-extrabold">{lastShift.meters.toFixed(1)} meters</span> <span className="text-slate-400">({lastShift.feet.toFixed(0)} ft)</span> since the last GPS ping
+                  Professional recently moved{" "}
+                  <span className="text-blue-600 font-extrabold">
+                    {lastShift.meters.toFixed(1)} meters
+                  </span>{" "}
+                  <span className="text-slate-400">
+                    ({lastShift.feet.toFixed(0)} ft)
+                  </span>{" "}
+                  since the last GPS ping
                 </>
               ) : (
-                <span className="text-slate-400 font-medium">Listening for coordinate updates / shifts to compute distance...</span>
+                <span className="text-slate-400 font-medium">
+                  Listening for coordinate updates / shifts to compute
+                  distance...
+                </span>
               )}
             </h5>
           </div>
@@ -1181,7 +1429,9 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         </button>
       </div>
 
-      <div className={`relative w-full rounded-[40px] overflow-hidden border border-slate-150 shadow-2xl transition-all duration-300 group ${isFullscreen ? 'flex-grow' : 'h-[50vh] sm:h-64'}`}>
+      <div
+        className={`relative w-full rounded-[40px] overflow-hidden border border-slate-150 shadow-2xl transition-all duration-300 group ${isFullscreen ? "flex-grow" : "h-[50vh] sm:h-64"}`}
+      >
         <Map
           defaultCenter={animatedLocation}
           center={autoZoomToFit ? undefined : animatedLocation}
@@ -1196,18 +1446,24 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
           gestureHandling="auto"
           disableDefaultUI
           className="w-full h-full"
-          internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+          internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
         >
-          <MapLogic 
-            partnerLocation={animatedLocation} 
-            rawPartnerLocation={partnerLocation} 
-            bookingLocation={bookingLocation} 
-            destinationAddress={destinationAddress} 
-            onRouteUpdate={(e, d) => { setEta(e); setDistance(d); }}
+          <MapLogic
+            partnerLocation={animatedLocation}
+            rawPartnerLocation={partnerLocation}
+            bookingLocation={bookingLocation}
+            destinationAddress={destinationAddress}
+            onRouteUpdate={(e, d) => {
+              setEta(e);
+              setDistance(d);
+            }}
             refreshTrigger={refreshTrigger}
             userInfo={userInfo}
             partnerInfo={partnerInfo}
-            onPartnerClick={() => { setSelectedSimPro(null); setShowDetailCard(true); }}
+            onPartnerClick={() => {
+              setSelectedSimPro(null);
+              setShowDetailCard(true);
+            }}
             pulseEnabled={pulseEnabled}
             historicalPath={historicalPath}
             autoZoomToFit={autoZoomToFit}
@@ -1215,10 +1471,13 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             autoRefreshEnabled={autoRefreshEnabled}
           />
           <MapSearchBar />
-          <CenterToPartnerButton partnerLocation={animatedLocation} setZoom={setZoom} />
-          <SimulatedProsLayer 
-            simulatedPros={simulatedPros} 
-            selectedSimProId={selectedSimPro?.id} 
+          <CenterToPartnerButton
+            partnerLocation={animatedLocation}
+            setZoom={setZoom}
+          />
+          <SimulatedProsLayer
+            simulatedPros={simulatedPros}
+            selectedSimProId={selectedSimPro?.id}
             onProSelect={(pro) => {
               setSelectedSimPro(pro);
               setShowDetailCard(true);
@@ -1230,9 +1489,15 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             <AdvancedMarker position={historicalPath[0]}>
               <div className="relative cursor-pointer select-none">
                 <div className="absolute -inset-1.5 bg-violet-500/30 rounded-full animate-ping"></div>
-                <div className={`w-9 h-9 rounded-2xl bg-slate-900 border-2 border-violet-500 flex flex-col items-center justify-center text-white relative z-10 shadow-lg hover:scale-105 active:scale-95 transition-transform`}>
-                  <span className="text-[7.5px] font-black tracking-tighter text-violet-400">SHIFT</span>
-                  <span className="text-[8px] font-black leading-none -mt-0.5">START</span>
+                <div
+                  className={`w-9 h-9 rounded-2xl bg-slate-900 border-2 border-violet-500 flex flex-col items-center justify-center text-white relative z-10 shadow-lg hover:scale-105 active:scale-95 transition-transform`}
+                >
+                  <span className="text-[7.5px] font-black tracking-tighter text-violet-400">
+                    SHIFT
+                  </span>
+                  <span className="text-[8px] font-black leading-none -mt-0.5">
+                    START
+                  </span>
                 </div>
               </div>
             </AdvancedMarker>
@@ -1240,8 +1505,8 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         </Map>
 
         {/* Dynamic High Contrast ETA Overlay with 30s Countdown loader */}
-        <div 
-          id="dynamic-eta-overlay" 
+        <div
+          id="dynamic-eta-overlay"
           className="absolute top-18 sm:top-4 left-1/2 -translate-x-1/2 z-25 bg-slate-950/95 backdrop-blur-md text-white px-4 py-2.5 rounded-[22px] shadow-2xl border border-slate-800/90 flex items-center gap-3.5 select-none animate-in fade-in slide-in-from-top-3 duration-300 pointer-events-auto"
         >
           <div className="relative flex items-center justify-center">
@@ -1252,31 +1517,48 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-400 shrink-0">Assigned Pro ETA:</span>
-            <span className="text-xs sm:text-sm font-black italic tracking-tight text-white">{eta}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-400 shrink-0">
+              Assigned Pro ETA:
+            </span>
+            <span className="text-xs sm:text-sm font-black italic tracking-tight text-white">
+              {eta}
+            </span>
           </div>
           <div className="h-4 w-[1px] bg-slate-800" />
           <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400">
-            <Clock size={11} className={`text-slate-500 ${autoRefreshEnabled ? 'animate-pulse' : ''}`} />
+            <Clock
+              size={11}
+              className={`text-slate-500 ${autoRefreshEnabled ? "animate-pulse" : ""}`}
+            />
             {autoRefreshEnabled ? (
-              <span>Updates in <span className="text-emerald-400 font-extrabold font-mono text-[10px]">{countdown}s</span></span>
+              <span>
+                Updates in{" "}
+                <span className="text-emerald-400 font-extrabold font-mono text-[10px]">
+                  {countdown}s
+                </span>
+              </span>
             ) : (
-              <span className="text-orange-400 font-black tracking-wide uppercase text-[8px]">Sync Paused</span>
+              <span className="text-orange-400 font-black tracking-wide uppercase text-[8px]">
+                Sync Paused
+              </span>
             )}
           </div>
         </div>
 
         {/* Custom Zoom +/- Controls */}
-        <div id="map-zoom-controls" className="absolute top-4 left-4 flex flex-col gap-1.5 z-10 pointer-events-auto">
+        <div
+          id="map-zoom-controls"
+          className="absolute top-4 left-4 flex flex-col gap-1.5 z-10 pointer-events-auto"
+        >
           <button
-            onClick={() => setZoom(prev => Math.min(prev + 1, 21))}
+            onClick={() => setZoom((prev) => Math.min(prev + 1, 21))}
             className="bg-white hover:bg-slate-50 transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100/80 text-slate-700 font-bold hover:scale-105 active:scale-95"
             title="Zoom In"
           >
             <Plus size={16} />
           </button>
           <button
-            onClick={() => setZoom(prev => Math.max(prev - 1, 1))}
+            onClick={() => setZoom((prev) => Math.max(prev - 1, 1))}
             className="bg-white hover:bg-slate-50 transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100/80 text-slate-700 font-bold hover:scale-105 active:scale-95"
             title="Zoom Out"
           >
@@ -1285,46 +1567,60 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         </div>
 
         {/* Consolidated Floating Controls Top-Right */}
-        <div id="map-action-controls" className="absolute top-4 right-4 flex flex-col gap-1.5 z-10 pointer-events-auto">
+        <div
+          id="map-action-controls"
+          className="absolute top-4 right-4 flex flex-col gap-1.5 z-10 pointer-events-auto"
+        >
           {/* Automatic Zoom-to-Fit Toggle */}
-          <button 
+          <button
             onClick={() => {
-              setAutoZoomToFit(p => !p);
+              setAutoZoomToFit((p) => !p);
               if (!autoZoomToFit) {
                 // Instantly trigger re-focus trigger if enabling
-                setRefreshTrigger(prev => prev + 1);
+                setRefreshTrigger((prev) => prev + 1);
               }
             }}
             className={`transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border hover:scale-105 active:scale-95 relative ${
-              autoZoomToFit 
-                ? 'bg-blue-600 border-blue-700 text-white shadow-md shadow-blue-500/20' 
-                : 'bg-white border-slate-100/80 text-slate-700 hover:bg-slate-50'
+              autoZoomToFit
+                ? "bg-blue-600 border-blue-700 text-white shadow-md shadow-blue-500/20"
+                : "bg-white border-slate-100/80 text-slate-700 hover:bg-slate-50"
             }`}
-            title={autoZoomToFit ? "Disable Auto Zoom-To-Fit (Both Pro & Dest)" : "Enable Auto Zoom-To-Fit (Both Pro & Dest)"}
+            title={
+              autoZoomToFit
+                ? "Disable Auto Zoom-To-Fit (Both Pro & Dest)"
+                : "Enable Auto Zoom-To-Fit (Both Pro & Dest)"
+            }
           >
-            <Compass size={16} className={autoZoomToFit ? 'animate-pulse' : ''} />
+            <Compass
+              size={16}
+              className={autoZoomToFit ? "animate-pulse" : ""}
+            />
             {autoZoomToFit && (
               <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 border border-white animate-pulse" />
             )}
           </button>
 
           {/* Automatic Auto-Refresh/Battery Sync Toggle Button */}
-          <button 
+          <button
             type="button"
             onClick={() => {
-              setAutoRefreshEnabled(p => !p);
+              setAutoRefreshEnabled((p) => !p);
               if (!autoRefreshEnabled) {
                 // If turning auto-sync back on, run immediate manual refresh to catch up
-                setRefreshTrigger(prev => prev + 1);
+                setRefreshTrigger((prev) => prev + 1);
                 setCountdown(30);
               }
             }}
             className={`transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border hover:scale-105 active:scale-95 relative ${
-              autoRefreshEnabled 
-                ? 'bg-emerald-600 border-emerald-700 text-white shadow-md shadow-emerald-500/15' 
-                : 'bg-white border-slate-100/80 text-orange-500 hover:bg-orange-50'
+              autoRefreshEnabled
+                ? "bg-emerald-600 border-emerald-700 text-white shadow-md shadow-emerald-500/15"
+                : "bg-white border-slate-100/80 text-orange-500 hover:bg-orange-50"
             }`}
-            title={autoRefreshEnabled ? "Disable Auto-Refresh (Conserve Battery)" : "Enable Auto-Refresh (Battery Saver Off)"}
+            title={
+              autoRefreshEnabled
+                ? "Disable Auto-Refresh (Conserve Battery)"
+                : "Enable Auto-Refresh (Battery Saver Off)"
+            }
           >
             {autoRefreshEnabled ? (
               <BatteryCharging size={16} className="animate-pulse" />
@@ -1337,30 +1633,37 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
           </button>
 
           {/* Manual Refresh Button */}
-          <button 
+          <button
             onClick={handleManualRefresh}
             className="bg-white hover:bg-slate-50 transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100/80 hover:scale-105 active:scale-95 text-slate-600 disabled:opacity-50"
             title="Refresh partner live signal"
             disabled={isRefreshing}
           >
-            <RefreshCw size={16} className={`text-slate-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              size={16}
+              className={`text-slate-600 ${isRefreshing ? "animate-spin" : ""}`}
+            />
           </button>
 
           {/* Map Type Switch Panel (Satellite View <-> Terrain View) */}
-          <button 
-            onClick={() => setMapType(prev => prev === 'terrain' ? 'satellite' : 'terrain')}
+          <button
+            onClick={() =>
+              setMapType((prev) =>
+                prev === "terrain" ? "satellite" : "terrain",
+              )
+            }
             className={`transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border hover:scale-105 active:scale-95 ${
-              mapType === 'satellite' 
-                ? 'bg-blue-700 border-blue-800 text-white hover:bg-blue-600' 
-                : 'bg-white border-slate-100/80 text-slate-700 hover:bg-slate-50'
+              mapType === "satellite"
+                ? "bg-blue-700 border-blue-800 text-white hover:bg-blue-600"
+                : "bg-white border-slate-100/80 text-slate-700 hover:bg-slate-50"
             }`}
-            title={`Switch to ${mapType === 'terrain' ? 'Satellite' : 'Terrain'} View`}
+            title={`Switch to ${mapType === "terrain" ? "Satellite" : "Terrain"} View`}
           >
-            {mapType === 'terrain' ? <Layers size={16} /> : <Globe size={16} />}
+            {mapType === "terrain" ? <Layers size={16} /> : <Globe size={16} />}
           </button>
 
           {/* Fullscreen Map Toggle Switch */}
-          <button 
+          <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="bg-white hover:bg-slate-50 transition-all w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100/80 text-slate-700 hover:scale-105 active:scale-95"
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Tracking Map"}
@@ -1372,41 +1675,53 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
         {/* Nearby fleet monitoring indicator legend */}
         <div className="absolute bottom-[80px] right-4 bg-slate-900/90 backdrop-blur-md rounded-2xl p-3 border border-slate-800 shadow-xl text-white select-none pointer-events-auto z-10 max-w-[200px] text-xs font-medium">
           <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5 mb-1.5">
-            <span className="text-[8px] font-black uppercase tracking-wider text-blue-400">Hub Fleet live</span>
+            <span className="text-[8px] font-black uppercase tracking-wider text-blue-400">
+              Hub Fleet live
+            </span>
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
             </span>
           </div>
-          <p className="text-[9.5px] font-bold text-slate-400 mb-2 uppercase tracking-wide">Pro Visibility</p>
+          <p className="text-[9.5px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
+            Pro Visibility
+          </p>
           <div className="space-y-1.5 text-[9px] font-bold">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block border border-white/20" />
                 <span className="text-slate-300">Available</span>
               </div>
-              <span className="text-emerald-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none">6 Pros</span>
+              <span className="text-emerald-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none">
+                6 Pros
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block border border-white/20" />
                 <span className="text-slate-300">On Active Job</span>
               </div>
-              <span className="text-slate-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none">4 Pros</span>
+              <span className="text-slate-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none">
+                4 Pros
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3 font-semibold">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block border border-white/20 animate-pulse" />
                 <span className="text-slate-300">In-Transit</span>
               </div>
-              <span className="text-amber-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none animate-pulse">3 Pros</span>
+              <span className="text-amber-400 font-extrabold bg-slate-800/80 px-1.5 py-0.5 rounded leading-none animate-pulse">
+                3 Pros
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-1.5 mt-1.5 font-bold">
               <div className="flex items-center gap-1.5">
                 <span className="w-4 h-1 rounded-full bg-violet-500 inline-block shadow shadow-violet-500/50" />
                 <span className="text-slate-300">Route History</span>
               </div>
-              <span className="text-[7px] font-black tracking-widest text-violet-400 uppercase leading-none">Shift Path</span>
+              <span className="text-[7px] font-black tracking-widest text-violet-400 uppercase leading-none">
+                Shift Path
+              </span>
             </div>
           </div>
         </div>
@@ -1417,11 +1732,22 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
             <div className="bg-white w-full rounded-3xl p-5 shadow-2xl border border-slate-100 flex flex-col gap-4 animate-in slide-in-from-bottom duration-300 pointer-events-auto">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-sm font-black text-slate-800 tracking-tight">{selectedSimPro ? selectedSimPro.name : (userInfo?.displayName || 'Partner Specialist')}</h4>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{selectedSimPro ? selectedSimPro.serviceType : 'Live GPS Connection'}</p>
+                  <h4 className="text-sm font-black text-slate-800 tracking-tight">
+                    {selectedSimPro
+                      ? selectedSimPro.name
+                      : userInfo?.displayName || "Partner Specialist"}
+                  </h4>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    {selectedSimPro
+                      ? selectedSimPro.serviceType
+                      : "Live GPS Connection"}
+                  </p>
                 </div>
-                <button 
-                  onClick={() => { setShowDetailCard(false); setSelectedSimPro(null); }}
+                <button
+                  onClick={() => {
+                    setShowDetailCard(false);
+                    setSelectedSimPro(null);
+                  }}
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-black flex items-center justify-center transition-colors shadow-sm"
                 >
                   ✕
@@ -1430,21 +1756,35 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-col justify-center">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Status</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                    Status
+                  </span>
                   <div className="flex items-center gap-1.5">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
-                    <span className="text-xs font-black text-slate-800">{selectedSimPro ? (selectedSimPro.status === 'In Transit' ? 'In Transit to Job' : selectedSimPro.status) : partnerContactStatus}</span>
+                    <span className="text-xs font-black text-slate-800">
+                      {selectedSimPro
+                        ? selectedSimPro.status === "In Transit"
+                          ? "In Transit to Job"
+                          : selectedSimPro.status
+                        : partnerContactStatus}
+                    </span>
                   </div>
                 </div>
 
                 <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-col justify-center">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Last Update</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                    Last Update
+                  </span>
                   <div className="flex items-center gap-1.5 text-slate-800">
                     <Clock size={12} className="text-slate-400" />
-                    <span className="text-xs font-black">{selectedSimPro ? 'Live GPS signal feed' : getFormattedLastUpdated()}</span>
+                    <span className="text-xs font-black">
+                      {selectedSimPro
+                        ? "Live GPS signal feed"
+                        : getFormattedLastUpdated()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1452,95 +1792,142 @@ export default function PartnerTrackingMap({ partnerId, bookingLocation, destina
               <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                 <div className="flex items-center gap-1.5">
                   <Star size={14} className="fill-amber-400 stroke-amber-400" />
-                  <span className="text-xs font-black text-slate-800">{selectedSimPro ? selectedSimPro.rating : (partnerInfo?.rating ? Number(partnerInfo.rating).toFixed(1) : '4.9')}</span>
-                  <span className="text-[10px] text-slate-400">({selectedSimPro ? Math.floor(selectedSimPro.rating * 12) : (partnerInfo?.reviewCount || 18)} reviews)</span>
+                  <span className="text-xs font-black text-slate-800">
+                    {selectedSimPro
+                      ? selectedSimPro.rating
+                      : partnerInfo?.rating
+                        ? Number(partnerInfo.rating).toFixed(1)
+                        : "4.9"}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    (
+                    {selectedSimPro
+                      ? Math.floor(selectedSimPro.rating * 12)
+                      : partnerInfo?.reviewCount || 18}{" "}
+                    reviews)
+                  </span>
                 </div>
 
-                <a 
-                  href="tel:+918005865966"
+                <button
                   onClick={(e) => {
-                    if (typeof (window as any).__showToast === 'function') {
-                      (window as any).__showToast("Routing secure call via Zomindia Privacy Shield...");
+                    if (typeof (window as any).__showToast === "function") {
+                      (window as any).__showToast(
+                        `Bridging secure call via Central Landline Gateway: ${CORPORATE_LANDLINE_GATEWAY}...`,
+                      );
+                    } else {
+                      alert(
+                        `[Zomindia Telephony Bridge]\nConnecting you securely.\nCaller ID: ${CORPORATE_LANDLINE_GATEWAY}\nNo private phone numbers are exposed.`
+                      );
                     }
                   }}
-                  className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black py-2.5 px-4 rounded-2xl text-[10px] uppercase tracking-wider transition-all shadow-md border border-blue-500"
+                  className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black py-2.5 px-4 rounded-2xl text-[10px] uppercase tracking-wider transition-all shadow-md border border-blue-500 cursor-pointer"
                 >
                   <Phone size={11} className="fill-white" />
                   Call Professional
-                </a>
+                </button>
               </div>
             </div>
           </div>
         )}
 
         {/* Proximity Pulse Settings Overlay */}
-        <div id="partner-proximity-settings" className="absolute bottom-24 left-4 bg-white/95 backdrop-blur-md rounded-2xl px-3 py-2 shadow-lg border border-slate-100 flex items-center gap-2 z-10 pointer-events-auto hover:bg-white transition-all">
+        <div
+          id="partner-proximity-settings"
+          className="absolute bottom-24 left-4 bg-white/95 backdrop-blur-md rounded-2xl px-3 py-2 shadow-lg border border-slate-100 flex items-center gap-2 z-10 pointer-events-auto hover:bg-white transition-all"
+        >
           <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input 
-              type="checkbox" 
-              checked={pulseEnabled} 
-              onChange={() => setPulseEnabled(p => !p)} 
+            <input
+              type="checkbox"
+              checked={pulseEnabled}
+              onChange={() => setPulseEnabled((p) => !p)}
               className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
-            <div className={`p-1 rounded-lg ${pulseEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'} flex items-center justify-center`}>
-              <Radio size={12} className={pulseEnabled ? 'animate-pulse' : ''} />
+            <div
+              className={`p-1 rounded-lg ${pulseEnabled ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"} flex items-center justify-center`}
+            >
+              <Radio
+                size={12}
+                className={pulseEnabled ? "animate-pulse" : ""}
+              />
             </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Pulse Proximity</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
+              Pulse Proximity
+            </span>
           </label>
         </div>
 
         {/* Floating Info Overlay for distance and Estimated Time of Arrival (ETA) to destination */}
-        <div className={`absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border flex items-center justify-between gap-4 pointer-events-none transition-all z-10 ${isCloseToDest ? 'border-emerald-400/40 ring-4 ring-emerald-500/10' : 'border-white'}`}>
+        <div
+          className={`absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border flex items-center justify-between gap-4 pointer-events-none transition-all z-10 ${isCloseToDest ? "border-emerald-400/40 ring-4 ring-emerald-500/10" : "border-white"}`}
+        >
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCloseToDest ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-700'}`}>
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCloseToDest ? "bg-emerald-50 text-emerald-600" : "bg-blue-50 text-blue-700"}`}
+            >
               <Compass className="animate-pulse" size={18} />
             </div>
             <div>
-              <p className={`text-[9px] font-black uppercase tracking-widest leading-none ${isCloseToDest ? 'text-emerald-650' : 'text-slate-400'}`}>
-                {isCloseToDest ? '🌟 Arriving Now' : 'Live Route'}
+              <p
+                className={`text-[9px] font-black uppercase tracking-widest leading-none ${isCloseToDest ? "text-emerald-650" : "text-slate-400"}`}
+              >
+                {isCloseToDest ? "🌟 Arriving Now" : "Live Route"}
               </p>
-              <p className={`text-[11px] font-bold mt-1 ${isCloseToDest ? 'text-emerald-800 animate-pulse' : 'text-slate-500'}`}>
-                {isCloseToDest ? 'Pro is within 500m of you!' : 'On the way to you'}
+              <p
+                className={`text-[11px] font-bold mt-1 ${isCloseToDest ? "text-emerald-800 animate-pulse" : "text-slate-500"}`}
+              >
+                {isCloseToDest
+                  ? "Pro is within 500m of you!"
+                  : "On the way to you"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-5 pointer-events-auto">
             {distance && (
               <div className="text-right">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Distance</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">
+                  Distance
+                </p>
                 <p className="text-xs font-black text-slate-800">{distance}</p>
               </div>
             )}
             <div className="text-right border-l border-slate-100 pl-4">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">ETA</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">
+                ETA
+              </p>
               <p className="text-xs font-black text-blue-700">{eta}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div 
-        onClick={() => { setSelectedSimPro(null); setShowDetailCard(true); }}
+      <div
+        onClick={() => {
+          setSelectedSimPro(null);
+          setShowDetailCard(true);
+        }}
         className="flex items-center justify-between p-6 bg-slate-50 hover:bg-slate-100/80 transition-all rounded-[32px] border border-slate-100 cursor-pointer group"
       >
-         <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white rounded-2xl border border-slate-200 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-               <Navigation size={20} className="text-blue-700" />
-            </div>
-            <div>
-               <h5 className="text-sm font-black italic">{userInfo?.displayName || 'Expert Agent'}</h5>
-               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                 Live Signal Active
-                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-               </p>
-            </div>
-         </div>
-         <div className="text-right">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">CURRENT ETA</p>
-            <p className="text-lg font-black text-slate-900 italic">{eta}</p>
-         </div>
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-white rounded-2xl border border-slate-200 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+            <Navigation size={20} className="text-blue-700" />
+          </div>
+          <div>
+            <h5 className="text-sm font-black italic">
+              {userInfo?.displayName || "Expert Agent"}
+            </h5>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+              Live Signal Active
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+            CURRENT ETA
+          </p>
+          <p className="text-lg font-black text-slate-900 italic">{eta}</p>
+        </div>
       </div>
     </div>
   );
 }
-

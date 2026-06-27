@@ -279,3 +279,15 @@ export interface AMC {
   createdAt: any;
   updatedAt: any;
 }
+
+export interface PartnerApplication {
+  id?: string;
+  fullName: string;
+  phone: string;
+  serviceType: string;
+  area: string;
+  createdAt: any;
+}
+
+export const COMPANY_NAME = "Zomindia Internet Technology" as const;
+

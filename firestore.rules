@@ -584,5 +584,18 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    function isValidPartnerApplication(data) {
+      return data.keys().hasAll(['fullName', 'phone', 'serviceType', 'area', 'createdAt']) &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.phone is string && data.phone.size() > 0 &&
+             data.serviceType is string && data.serviceType.size() > 0 &&
+             data.area is string && data.area.size() > 0;
+    }
+
+    match /partner_applications/{applicationId} {
+      allow read, list, update, delete: if isAdmin();
+      allow create: if isValidPartnerApplication(incoming());
+    }
   }
 }
