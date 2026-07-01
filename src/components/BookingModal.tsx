@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc, writeBatch, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDoc, updateDoc, setDoc, writeBatch, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus, AMC } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -842,8 +842,106 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setLoading(true);
     setError(null);
 
+    const activeMode = profile?.currentMode || (localStorage.getItem('zomindia_current_mode') as 'customer' | 'partner') || 'customer';
+    if (activeMode === 'partner') {
+      setError("Bookings can only be created while operating in Customer Mode. Please switch to Customer Mode from your profile menu to book.");
+      setLoading(false);
+      return;
+    }
+
     const emailToUse = (overrideEmail || contactEmail).trim();
     const phoneToUse = (overridePhone || contactPhone).trim();
+
+    const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
+    const cleanPhone = phoneToUse.replace(/\D/g, "");
+    const formattedPrimaryPhone = `+91${cleanPhone}`;
+    const emailLower = emailToUse.toLowerCase();
+
+    // INTERCEPT PAYLOAD WITH A SECURE FIRESTORE TRANSACTION FOR DUAL-FIELD CROSS-VALIDATION
+    try {
+      const phoneQ1 = query(collection(db, "users"), where("phoneNumber", "==", formattedPrimaryPhone));
+      const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPrimaryPhone));
+      const phoneQ3 = query(collection(db, "users"), where("phoneNumber", "==", cleanPhone));
+      const phoneQ4 = query(collection(db, "users"), where("mobile", "==", cleanPhone));
+      const emailQ1 = query(collection(db, "users"), where("email", "==", emailToUse));
+      const emailQ2 = query(collection(db, "users"), where("email", "==", emailLower));
+
+      const [pSnap1, pSnap2, pSnap3, pSnap4, eSnap1, eSnap2] = await Promise.all([
+        getDocs(phoneQ1),
+        getDocs(phoneQ2),
+        getDocs(phoneQ3),
+        getDocs(phoneQ4),
+        getDocs(emailQ1),
+        getDocs(emailQ2)
+      ]);
+
+      const phoneDocIds = Array.from(new Set([
+        ...pSnap1.docs.map(d => d.id),
+        ...pSnap2.docs.map(d => d.id),
+        ...pSnap3.docs.map(d => d.id),
+        ...pSnap4.docs.map(d => d.id)
+      ].filter(id => id !== activeUid)));
+
+      const emailDocIds = Array.from(new Set([
+        ...eSnap1.docs.map(d => d.id),
+        ...eSnap2.docs.map(d => d.id)
+      ].filter(id => id !== activeUid)));
+
+      await runTransaction(db, async (transaction) => {
+        // Read and validate phone conflicts
+        for (const docId of phoneDocIds) {
+          const docRef = doc(db, "users", docId);
+          const snap = await transaction.get(docRef);
+          if (snap.exists()) {
+            const docEmail = (snap.data().email || "").trim().toLowerCase();
+            if (docEmail && docEmail !== emailLower) {
+              throw new Error("This mobile number is already linked to another account.");
+            }
+          }
+        }
+
+        // Read and validate email conflicts
+        for (const docId of emailDocIds) {
+          const docRef = doc(db, "users", docId);
+          const snap = await transaction.get(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
+            if (docPhone && docPhone !== cleanPhone) {
+              throw new Error("This email is already associated with another mobile number.");
+            }
+          }
+        }
+
+        const userRef = doc(db, "users", activeUid);
+        const userSnap = await transaction.get(userRef);
+
+        const updateData = {
+          email: emailToUse,
+          phoneNumber: formattedPrimaryPhone,
+          mobile: formattedPrimaryPhone,
+          updatedAt: Timestamp.now()
+        };
+
+        if (userSnap.exists()) {
+          transaction.update(userRef, updateData);
+        } else {
+          transaction.set(userRef, {
+            uid: activeUid,
+            displayName: profile?.displayName || "VIKASS CHOPRA",
+            fullName: profile?.fullName || "VIKASS CHOPRA",
+            role: "customer",
+            ...updateData,
+            createdAt: Timestamp.now()
+          }, { merge: true });
+        }
+      });
+    } catch (transErr: any) {
+      console.error("Firestore Transaction Cross-Validation Aborted:", transErr);
+      setError(transErr.message || "Failed dual-field validation");
+      setLoading(false);
+      return;
+    }
 
     // Bypassing Broken Platform Auth & Verification Checks as Senior Architect
     const bookingPath = 'bookings';
@@ -1057,7 +1155,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
 
-      const activeUid = profile?.uid || auth.currentUser?.uid || "live_customer_indore";
+      const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
 
       // Structure secure booking payload with relational userId matching active customer uid
       const bookingPayload = {

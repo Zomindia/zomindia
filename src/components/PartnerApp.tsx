@@ -20,7 +20,7 @@ import {
   Zap,
   TicketPercent
 } from 'lucide-react';
-import { UserProfile, PartnerProfile, Booking, Service } from '../types';
+import { UserProfile, PartnerProfile, Booking, Service, PartnerApplication } from '../types';
 import { auth, db } from '../lib/firebase';
 import PartnerHome from './partner/PartnerHome';
 import PartnerJobs from './partner/PartnerJobs';
@@ -48,30 +48,9 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [services, setServices] = useState<Service[]>([
-    {
-      id: "refrigerator_service_repair",
-      categoryId: "Appliance Repair",
-      name: "Refrigerator Service & Repair",
-      description: "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
-      basePrice: 499,
-      duration: "1.5 Hours",
-      rating: 4.9,
-      reviewCount: 395,
-      predefinedTasks: ["Compressor assessment", "Thermostat check", "Gas level detection", "Electrical wiring insulation"]
-    }
-  ]);
-  const [users, setUsers] = useState<UserProfile[]>([
-    {
-      uid: "mock_customer_id",
-      displayName: "VIKASS CHOPRA",
-      email: "vikas.chopra.applet@zomindia.com",
-      role: "customer",
-      phoneNumber: "9876543210",
-      city: "Indore",
-      createdAt: new Date().toISOString()
-    }
-  ]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [application, setApplication] = useState<PartnerApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -131,7 +110,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         };
 
         const unsubMy = onSnapshot(qMy, (snap) => {
-          myBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+          // Sync all assigned tasks with active or assigned status
+          const activeOrAssignedStatuses = ['pending_acceptance', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'];
+          myBookings = snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Booking))
+            .filter(b => activeOrAssignedStatuses.includes(b.status || ''));
           updateAllBookings(myBookings, poolBookings);
         });
 
@@ -158,18 +141,40 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       });
     };
 
+    const fetchApplication = () => {
+      return onSnapshot(collection(db, 'partner_applications'), (snap) => {
+        const apps = snap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerApplication));
+        const myApp = apps.find(a => 
+          a.phone === profile.phoneNumber || 
+          a.phone === profile.mobile || 
+          a.fullName?.toLowerCase() === profile.displayName?.toLowerCase() ||
+          a.fullName?.toLowerCase() === profile.fullName?.toLowerCase()
+        );
+        setApplication(myApp || null);
+      });
+    };
+
     const unsubPartner = fetchPartner();
     const unsubBookings = fetchBookings();
     const unsubServices = fetchServices();
     const unsubUsers = fetchUsers();
+    const unsubApplication = fetchApplication();
     
     return () => {
       unsubPartner();
       unsubBookings();
       unsubServices();
       unsubUsers();
+      unsubApplication();
     };
   }, [profile.uid]);
+
+  // Lock active screen to home if partner application is pending review
+  useEffect(() => {
+    if (!partner && application) {
+      setActiveScreen('home');
+    }
+  }, [partner, application]);
 
   const updateStatus = async (status: 'Available' | 'Busy' | 'Offline') => {
     if (!partner) return;
@@ -194,7 +199,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
+        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
       case 'jobs':
         return (
           <PartnerJobs 
@@ -217,7 +222,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'offers':
         return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} context="partner" />;
       default:
-        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} />;
+        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
     }
   };
 
@@ -227,7 +232,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     (b.partnerPriority === 'high' || b.isPriority === true)
   );
 
-  const navItems = [
+  const navItems = (!partner && application) ? [] : [
     { id: 'home', icon: BarChart3, label: 'Stats' },
     { id: 'jobs', icon: Briefcase, label: 'Jobs' },
     { id: 'amc-leads', icon: Zap, label: 'AMC Leads' },
@@ -332,65 +337,67 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       </main>
 
       {/* Bottom Tab Bar - Floating/Aligned across platform */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 px-6 pb-8 pointer-events-none max-w-md mx-auto safe-area-bottom">
-        <div className="bg-white/95 backdrop-blur-3xl border border-slate-200/60 rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.2)] flex items-center justify-around p-2 pointer-events-auto">
-          {navItems.map((tab) => {
-            const isActive = activeScreen === tab.id;
-            const Icon = tab.icon;
-            
-            return (
-              <button
-                key={tab.id}
-                onClick={() => navigateWithTarget(tab.id as any)}
-                className="relative flex flex-col items-center justify-center pt-2 pb-1.5 px-1 transition-all flex-1"
-              >
-                <div className={`relative p-2 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/30 scale-110' : 'text-slate-400 active:scale-90 hover:text-slate-600'}`}>
-                  {tab.id === 'jobs' && hasUrgentPoolRequest && !isActive && (
-                    <>
-                      <motion.span
-                        className="absolute inset-0 rounded-2xl bg-amber-500/30 pointer-events-none"
-                        animate={{
-                          scale: [1, 2.4],
-                          opacity: [0.7, 0],
-                        }}
-                        transition={{
-                          repeat: Infinity,
-                          duration: 2,
-                          ease: "easeOut",
-                        }}
-                      />
-                      <motion.span
-                        className="absolute inset-0 rounded-2xl bg-amber-500/20 pointer-events-none"
-                        animate={{
-                          scale: [1, 1.7],
-                          opacity: [0.5, 0],
-                        }}
-                        transition={{
-                          repeat: Infinity,
-                          duration: 2,
-                          delay: 0.6,
-                          ease: "easeOut",
-                        }}
-                      />
-                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />
-                    </>
+      {!(!partner && application) && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 px-6 pb-8 pointer-events-none max-w-md mx-auto safe-area-bottom">
+          <div className="bg-white/95 backdrop-blur-3xl border border-slate-200/60 rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.2)] flex items-center justify-around p-2 pointer-events-auto">
+            {navItems.map((tab) => {
+              const isActive = activeScreen === tab.id;
+              const Icon = tab.icon;
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navigateWithTarget(tab.id as any)}
+                  className="relative flex flex-col items-center justify-center pt-2 pb-1.5 px-1 transition-all flex-1"
+                >
+                  <div className={`relative p-2 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/30 scale-110' : 'text-slate-400 active:scale-90 hover:text-slate-600'}`}>
+                    {tab.id === 'jobs' && hasUrgentPoolRequest && !isActive && (
+                      <>
+                        <motion.span
+                          className="absolute inset-0 rounded-2xl bg-amber-500/30 pointer-events-none"
+                          animate={{
+                            scale: [1, 2.4],
+                            opacity: [0.7, 0],
+                          }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 2,
+                            ease: "easeOut",
+                          }}
+                        />
+                        <motion.span
+                          className="absolute inset-0 rounded-2xl bg-amber-500/20 pointer-events-none"
+                          animate={{
+                            scale: [1, 1.7],
+                            opacity: [0.5, 0],
+                          }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 2,
+                            delay: 0.6,
+                            ease: "easeOut",
+                          }}
+                        />
+                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />
+                      </>
+                    )}
+                    <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
+                  </div>
+                  <span className={`text-[8px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-slate-900 opacity-100 transform translate-y-0' : 'text-slate-400 opacity-60 translate-y-0.5'}`}>
+                    {tab.label}
+                  </span>
+                  {isActive && (
+                    <motion.span 
+                      layoutId="partner-nav-indicator"
+                      className="absolute -bottom-1.5 w-6 h-1 bg-blue-700 rounded-full" 
+                    />
                   )}
-                  <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
-                </div>
-                <span className={`text-[8px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-slate-900 opacity-100 transform translate-y-0' : 'text-slate-400 opacity-60 translate-y-0.5'}`}>
-                  {tab.label}
-                </span>
-                {isActive && (
-                  <motion.span 
-                    layoutId="partner-nav-indicator"
-                    className="absolute -bottom-1.5 w-6 h-1 bg-blue-700 rounded-full" 
-                  />
-                )}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Status Picker Modal */}
       <AnimatePresence>

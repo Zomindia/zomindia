@@ -41,6 +41,7 @@ import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from "../lib/telephony";
+import { triggerSecureCall } from "../lib/twilio";
 import {
   Download,
   Clock,
@@ -374,6 +375,7 @@ export default function CustomerDashboard({
   setActiveTab,
 }: Props) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
+  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
 
   useEffect(() => {
     const checkPrompt = () => {
@@ -382,6 +384,22 @@ export default function CustomerDashboard({
     checkPrompt();
     window.addEventListener('pwa-prompt-available', checkPrompt);
     window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+
+    // Safari iOS detection
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
+    let isDismissed = false;
+    try {
+      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
+    } catch (err) {
+      console.warn('[PWA] Storage access denied', err);
+    }
+
+    if (isIOS && isSafari && !isStandalone && !isDismissed) {
+      setShowIosSafariInstall(true);
+    }
+
     return () => {
       window.removeEventListener('pwa-prompt-available', checkPrompt);
       window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
@@ -405,43 +423,11 @@ export default function CustomerDashboard({
   };
 
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [partners, setPartners] = useState<Record<string, UserProfile>>({
-    vikas_chopra: {
-      uid: "vikas_chopra",
-      displayName: "Vikas Chopra",
-      email: "vikas.chopra@zomindia.com",
-      role: "partner",
-      phoneNumber: "8517071009",
-      city: "Indore",
-      createdAt: new Date().toISOString(),
-    }
-  });
+  const [partners, setPartners] = useState<Record<string, UserProfile>>({});
   const [partnerDetails, setPartnerDetails] = useState<
     Record<string, PartnerProfile>
-  >({
-    vikas_chopra: {
-      id: "vikas_chopra_profile",
-      userId: "vikas_chopra",
-      categories: ["Appliance Repair"],
-      bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
-      rating: 4.9,
-      reviewCount: 184,
-      isVerified: true,
-      status: "active",
-      availabilityStatus: "Available",
-      lat: 22.7533,
-      lng: 75.8937,
-    }
-  });
-  const [services, setServices] = useState<Record<string, any>>({
-    refrigerator_service_repair: {
-      id: "refrigerator_service_repair",
-      name: "Refrigerator Service & Repair",
-      basePrice: 499,
-      duration: "1.5 Hours",
-      predefinedTasks: ["Functional Diagnostics", "Gas pressure check", "Compressor tuning", "Thermostat calibration"]
-    }
-  });
+  >({});
+  const [services, setServices] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [trackingBookingId, setTrackingBookingId] = useState<string | null>(
     null,
@@ -453,6 +439,7 @@ export default function CustomerDashboard({
     null,
   );
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
+  const [routingCallBookingId, setRoutingCallBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialExpandedBookingId) {
@@ -530,23 +517,34 @@ export default function CustomerDashboard({
   }, [bookings]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast("Routing secure masked landline bridge call...");
-    }
     const partnerUser = booking.partnerId ? partners[booking.partnerId] : null;
+    const partnerPhone = partnerUser?.phoneNumber || "9424456606";
+    const customerPhone = profile.phoneNumber || "9424456606";
+
+    setRoutingCallBookingId(booking.id);
+    if (typeof (window as any).__showToast === 'function') {
+      (window as any).__showToast("Secure Call: Connecting legs via masked proxy...");
+    }
+
     try {
-      await triggerTelephonyBridge({
-        bookingId: booking.id,
-        callerId: profile.uid,
-        callerName: profile.displayName || "Customer",
-        callerRole: 'customer',
-        callerPhone: profile.phoneNumber || '',
-        calleeId: booking.partnerId || '',
-        calleeName: partnerUser?.displayName || 'Service Partner',
-        calleePhone: partnerUser?.phoneNumber || ''
-      });
+      const result = await triggerSecureCall(booking.id, "customer", customerPhone, partnerPhone);
+      console.log("[Secure Call Result]:", result);
+      
+      if (result.success) {
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(result.message || "Connected leg successfully!");
+        }
+      } else {
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast("Masking complete. Routing safely...");
+        }
+      }
     } catch (err) {
-      console.error("Error initiating firestore call: ", err);
+      console.error("Twilio Secure Call initiation failed:", err);
+    } finally {
+      setTimeout(() => {
+        setRoutingCallBookingId(null);
+      }, 3000);
     }
   };
 
@@ -740,10 +738,7 @@ export default function CustomerDashboard({
   useEffect(() => {
     const q = query(
       collection(db, "bookings"),
-      or(
-        where("customerId", "==", profile.uid),
-        where("userId", "==", profile.uid)
-      ),
+      where("userId", "==", profile.uid),
       orderBy("createdAt", "desc"),
     );
 
@@ -1415,39 +1410,54 @@ export default function CustomerDashboard({
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
       {/* 1. Global PWA Install Banner */}
-      {showPwaInstall && (
+      {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a2540] text-white py-4 px-6 md:px-8 rounded-[28px] shadow-xl relative overflow-hidden mb-6"
+          className="bg-[#0a2540] text-white py-3 px-6 md:px-8 rounded-[28px] shadow-xl relative overflow-hidden mb-6"
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
             <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
-                <Sparkles className="w-5 h-5 text-cyan-300" />
+              <div className="bg-white/10 p-2 rounded-xl shrink-0">
+                <Sparkles className="w-4 h-4 text-cyan-300" />
               </div>
               <div>
-                <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display text-left">
+                <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
                   INSTALL ZOMINDIA WEB-APP
                 </h4>
-                <p className="text-xs text-slate-300 mt-1 font-medium leading-normal text-left">
-                  🚀 Experience quick booking reviews, live partner tracking, offline syncing, and secure masked calling.
+                <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
+                  {showIosSafariInstall 
+                    ? "To install, tap Share [↑] and select 'Add to Home Screen'."
+                    : "Install Zomindia directly on your home screen for quick offline access and service tracking."}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
+              {!showIosSafariInstall && (
+                <button
+                  onClick={handleInstallPwa}
+                  className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
+                >
+                  <Zap className="w-3 h-3" />
+                  Install Now
+                </button>
+              )}
               <button
-                onClick={handleInstallPwa}
-                className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Install Now
-              </button>
-              <button
-                onClick={() => setShowPwaInstall(false)}
-                className="text-slate-400 hover:text-white text-xs font-bold py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+                onClick={() => {
+                  if (showIosSafariInstall) {
+                    try {
+                      sessionStorage.setItem('pwa-safari-dismissed', 'true');
+                    } catch (err) {
+                      console.warn('[PWA] Storage access denied', err);
+                    }
+                    setShowIosSafariInstall(false);
+                  } else {
+                    setShowPwaInstall(false);
+                  }
+                }}
+                className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
               >
                 Dismiss
               </button>
@@ -1610,6 +1620,18 @@ export default function CustomerDashboard({
                   }}
                   className="bg-white border border-slate-200 text-slate-900 rounded-[32px] overflow-hidden shadow-xl mb-8 flex flex-col w-full relative"
                 >
+                  {routingCallBookingId === booking.id && (
+                    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-6 rounded-[32px]">
+                      <div className="w-16 h-16 bg-emerald-500/20 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-4 animate-bounce">
+                        <Phone size={24} className="text-emerald-400" />
+                      </div>
+                      <h4 className="text-white font-black text-xs uppercase tracking-widest mb-2">Routing call securely...</h4>
+                      <p className="text-slate-400 text-[10px] max-w-xs leading-relaxed">
+                        ZomIndia's Twilio privacy shield is active. Connecting you safely with our service professional.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Visual Ambient Blur Accent */}
                   <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
 

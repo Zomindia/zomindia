@@ -153,7 +153,12 @@ export default function OffersView({
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
     if (isIOS && isSafari && !isStandalone) {
-      const dismissed = sessionStorage.getItem('ios-pwa-prompt-dismissed');
+      let dismissed = false;
+      try {
+        dismissed = sessionStorage.getItem('ios-pwa-prompt-dismissed') === 'true';
+      } catch (err) {
+        console.warn('[PWA] Storage access denied', err);
+      }
       if (!dismissed) {
         setShowIOSPrompt(true);
       }
@@ -680,7 +685,11 @@ export default function OffersView({
               <button
                 onClick={() => {
                   setShowIOSPrompt(false);
-                  sessionStorage.setItem('ios-pwa-prompt-dismissed', 'true');
+                  try {
+                    sessionStorage.setItem('ios-pwa-prompt-dismissed', 'true');
+                  } catch (err) {
+                    console.warn('[PWA] Storage access denied', err);
+                  }
                 }}
                 className="p-1 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors cursor-pointer"
                 title="Dismiss Guide"

@@ -7,10 +7,11 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
-import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME } from './types';
+import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { seedDatabase } from './lib/seed';
+import { buildDualPersonaUserDoc } from './lib/user-schema';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import {
   Building2,
@@ -161,6 +162,8 @@ export default function App() {
   useKeyboardFriendlyInputs();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [partnerApplication, setPartnerApplication] = useState<PartnerApplication | null>(null);
+  const [showPartnerStatusPopup, setShowPartnerStatusPopup] = useState(true);
   const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false);
   const [selectedCity, setSelectedCityState] = useState<string>(() => {
     return localStorage.getItem('selectedCity') || 'Indore';
@@ -203,6 +206,41 @@ export default function App() {
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateStep, setUpdateStep] = useState<string>('');
   const [allCategories, setAllCategories] = useState<Category[]>([]);
+
+  const [currentMode, setCurrentModeState] = useState<'customer' | 'partner'>(
+    () => (localStorage.getItem('zomindia_current_mode') as 'customer' | 'partner') || 'customer'
+  );
+
+  useEffect(() => {
+    if (profile) {
+      const mode = profile.currentMode || (profile.role === 'partner' ? 'partner' : 'customer');
+      setCurrentModeState(mode);
+    } else {
+      setCurrentModeState('customer');
+    }
+  }, [profile?.uid, profile?.currentMode, profile?.role]);
+
+  const handleSwitchMode = async (newMode: 'customer' | 'partner') => {
+    if (!profile) return;
+    
+    // Switch requires a partner role, admin role, or valid partnerId
+    if (newMode === 'partner' && profile.role !== 'partner' && profile.role !== 'admin' && !profile.partnerId) {
+      alert("Only registered partners can switch to Partner Mode.");
+      return;
+    }
+    
+    setCurrentModeState(newMode);
+    localStorage.setItem('zomindia_current_mode', newMode);
+    
+    try {
+      await updateDoc(doc(db, "users", profile.uid), {
+        currentMode: newMode,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error("Error switching mode in Firestore:", err);
+    }
+  };
 
   // Initialize app version cache on start
   useEffect(() => {
@@ -543,13 +581,26 @@ export default function App() {
     seedDatabase();
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
+    let unsubscribePartnerApp = () => {};
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       unsubscribeProfile();
       unsubscribeBookings();
+      unsubscribePartnerApp();
 
       if (u) {
+        // Real-time listener for partner applications
+        unsubscribePartnerApp = onSnapshot(doc(db, 'partner_applications', u.uid), (snapApp) => {
+          if (snapApp.exists()) {
+            setPartnerApplication({ id: snapApp.id, ...snapApp.data() } as PartnerApplication);
+          } else {
+            setPartnerApplication(null);
+          }
+        }, (err) => {
+          console.error("Error subscribing to partner application:", err);
+        });
+
         // Native Push Registration trigger
         try {
           const { registerPushNotifications } = await import('./lib/push-notifications');
@@ -558,39 +609,76 @@ export default function App() {
           console.error("Push registration trigger failed:", e);
         }
 
-        const userDocRef = doc(db, 'users', u.uid);
-        unsubscribeProfile = onSnapshot(userDocRef, async (snap) => {
-          let currentProfile = snap.data() as UserProfile;
-          if (!snap.exists()) {
-            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-            const targetPhone = u.phoneNumber || '';
-            let existingUserDoc: any = null;
-
-            if (targetPhone) {
-              const q1 = query(collection(db, 'users'), where('phoneNumber', '==', targetPhone));
-              const q2 = query(collection(db, 'users'), where('mobile', '==', targetPhone));
+        // Dynamic Mobile-Number Based Profile Resolution & Merge
+        const resolveAndSubscribeProfile = async () => {
+          let resolvedUid = u.uid;
+          let targetPhone = u.phoneNumber || '';
+          
+          // Helper to find document by phone number
+          const findProfileByPhone = async (phone: string) => {
+            if (!phone) return null;
+            const clean = phone.replace(/\D/g, '');
+            const last10 = clean.slice(-10);
+            if (last10.length !== 10) return null;
+            const formats = [`+91${last10}`, last10];
+            for (const fmt of formats) {
+              const q1 = query(collection(db, 'users'), where('phoneNumber', '==', fmt));
+              const q2 = query(collection(db, 'users'), where('mobile', '==', fmt));
               const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-              if (!snap1.empty) existingUserDoc = snap1.docs[0];
-              else if (!snap2.empty) existingUserDoc = snap2.docs[0];
+              if (!snap1.empty) return snap1.docs[0];
+              if (!snap2.empty) return snap2.docs[0];
             }
+            return null;
+          };
 
-            if (existingUserDoc) {
-              const existingData = existingUserDoc.data();
-              const mergedProfile: any = {
-                ...existingData,
-                uid: u.uid, // Core session link
-                email: u.email || existingData.email || '',
-                phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
-                mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
-                displayName: u.displayName || existingData.displayName || 'User',
-                fullName: u.displayName || existingData.fullName || 'User',
-                onboardingComplete: true,
+          // 1. Check if there's an existing document by phone number
+          let existingDoc = await findProfileByPhone(targetPhone);
+          
+          // 2. If not found by phone, but email exists, search by email
+          if (!existingDoc && u.email) {
+            const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
+            const snap3 = await getDocs(q3);
+            if (!snap3.empty) {
+              existingDoc = snap3.docs[0];
+            }
+          }
+
+          if (existingDoc) {
+            resolvedUid = existingDoc.id;
+            console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
+            
+            // Merge Google / new Auth info directly into existing master document
+            const existingData = existingDoc.data();
+            const mergedPayload: any = buildDualPersonaUserDoc({
+              ...existingData,
+              uid: resolvedUid,
+              email: u.email || existingData.email || '',
+              phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
+              mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
+              displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
+              fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
+              onboardingComplete: true,
+              updatedAt: Timestamp.now()
+            });
+
+            await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
+
+            // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
+            if (u.uid !== resolvedUid) {
+              await setDoc(doc(db, 'users', u.uid), {
+                uid: u.uid,
+                mergedInto: resolvedUid,
+                onboardingComplete: false,
                 updatedAt: Timestamp.now()
-              };
-              await setDoc(userDocRef, mergedProfile);
-              currentProfile = mergedProfile;
-            } else {
-              const newProfile: any = {
+              }, { merge: true });
+            }
+          } else {
+            // New user, create the document under u.uid
+            const userDocRef = doc(db, 'users', u.uid);
+            const userSnap = await getDoc(userDocRef);
+            if (!userSnap.exists()) {
+              const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+              const newProfile: any = buildDualPersonaUserDoc({
                 uid: u.uid,
                 displayName: u.displayName || 'User',
                 fullName: u.displayName || 'User',
@@ -606,62 +694,91 @@ export default function App() {
                   promotionalMessages: true
                 },
                 createdAt: Timestamp.now() as any,
-              };
+              });
               if (isAdminUser) {
                 newProfile.adminSubRole = 'head';
               }
               await setDoc(userDocRef, newProfile);
-              currentProfile = newProfile;
             }
           }
 
-          const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
-                              currentProfile?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+          // Subscribe to the resolved master UID!
+          const masterDocRef = doc(db, 'users', resolvedUid);
+          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
+            if (!snap.exists()) return;
+            let currentProfile = snap.data() as UserProfile;
 
-          let userRole: UserRole = currentProfile?.role || 'customer';
+            // Follow mergedInto pointer if any
+            if (currentProfile.mergedInto && currentProfile.mergedInto !== resolvedUid) {
+              console.log(`[Auth Resolution Snapshot] Redirecting to merged master: ${currentProfile.mergedInto}`);
+              unsubscribeProfile();
+              // Re-subscribe to merged master
+              const mergedDocRef = doc(db, 'users', currentProfile.mergedInto);
+              unsubscribeProfile = onSnapshot(mergedDocRef, (mergedSnap) => {
+                if (mergedSnap.exists()) {
+                  const p = mergedSnap.data() as UserProfile;
+                  setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
+                }
+              });
+              return;
+            }
 
-          if (isAdminUser && (userRole !== 'admin' || currentProfile?.adminSubRole !== 'head')) {
-            userRole = 'admin';
-            updateDoc(userDocRef, { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
-          }
+            // Normalise the profile to contain both customerData and partnerData
+            if (!currentProfile.customerData || !currentProfile.partnerData || !currentProfile.currentMode) {
+              const normalized = buildDualPersonaUserDoc(currentProfile);
+              updateDoc(masterDocRef, normalized).catch(e => console.error("Error normalizing user profile:", e));
+              currentProfile = normalized as UserProfile;
+            }
 
-          const profileUpdate: any = {
-            ...currentProfile,
-            uid: u.uid,
-            role: userRole
-          };
-          if (isAdminUser || currentProfile?.adminSubRole) {
-            profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
-          }
-          setProfile(profileUpdate as UserProfile);
+            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
+                                currentProfile?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
-          // Forced redirection for admin / partner
-          const currentHash = window.location.hash.replace('#', '');
-          if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
-            setActiveTab('admin');
-          } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
-            setActiveTab('partner');
-          }
+            let userRole: UserRole = currentProfile?.role || 'customer';
 
-          // Global Active Booking Listener
-          unsubscribeBookings();
-          const q = query(
-            collection(db, 'bookings'),
-            where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
-            where('status', 'in', ['confirmed', 'assigned', 'ASSIGNED', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
-          );
-          unsubscribeBookings = onSnapshot(q, (snapB) => {
-            setHasActiveArrival(!snapB.empty);
-          }, (err) => {
-            console.error("Error subscribing to active bookings:", err);
+            if (isAdminUser && (userRole !== 'admin' || currentProfile?.adminSubRole !== 'head')) {
+              userRole = 'admin';
+              updateDoc(masterDocRef, { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
+            }
+
+            const profileUpdate: any = {
+              ...currentProfile,
+              uid: resolvedUid,
+              role: userRole
+            };
+            if (isAdminUser || currentProfile?.adminSubRole) {
+              profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
+            }
+            setProfile(profileUpdate as UserProfile);
+
+            // Forced redirection for admin / partner
+            const currentHash = window.location.hash.replace('#', '');
+            if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
+              setActiveTab('admin');
+            } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
+              setActiveTab('partner');
+            }
+
+            // Global Active Booking Listener
+            unsubscribeBookings();
+            const q = query(
+              collection(db, 'bookings'),
+              where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', resolvedUid),
+              where('status', 'in', ['confirmed', 'assigned', 'ASSIGNED', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
+            );
+            unsubscribeBookings = onSnapshot(q, (snapB) => {
+              setHasActiveArrival(!snapB.empty);
+            }, (err) => {
+              console.error("Error subscribing to active bookings:", err);
+            });
           });
-        }, (err) => {
-          console.error("Error subscribing to user profile:", err);
-        });
+        };
+
+        resolveAndSubscribeProfile().catch(e => console.error("Error in resolveAndSubscribeProfile:", e));
 
       } else {
         setProfile(null);
         setHasActiveArrival(false);
+        setPartnerApplication(null);
       }
       setLoading(false);
     });
@@ -670,6 +787,7 @@ export default function App() {
       unsubscribeAuth();
       unsubscribeBookings();
       unsubscribeProfile();
+      unsubscribePartnerApp();
     };
   }, []);
 
@@ -836,7 +954,155 @@ export default function App() {
     );
   };
 
+  const renderPartnerNotificationBanner = () => {
+    if (!profile || currentMode !== 'customer') return null;
+
+    // 1. Pending Banner
+    if (partnerApplication && partnerApplication.status === 'pending') {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-[#F8FAFC] border-l-4 border-[#C5A021] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-start gap-3 text-left">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-[#C5A021]/20 flex items-center justify-center shrink-0 text-[#C5A021] mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">Elite Partner Application</h4>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-50 text-[#C5A021] border border-[#C5A021]/10">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#C5A021] animate-pulse" />
+                    Pending Review
+                  </span>
+                </div>
+                <p className="text-xs text-[#334155] mt-1">
+                  Hi {partnerApplication.fullName || 'there'}, your onboarding profile for {partnerApplication.serviceType} is being verified by our Indore admin panel.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowPartnerStatusPopup(true)}
+                className="px-4 py-2 bg-[#1B4D3E]/10 hover:bg-[#1B4D3E]/20 text-[#1B4D3E] text-[10px] font-black uppercase tracking-wider rounded-xl transition-all"
+              >
+                Track Live Status
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      );
+    }
+
+    // 2. Approved Banner
+    if (profile.partnerApplicationStatus === 'approved') {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-[#F8FAFC] border-l-4 border-emerald-500 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-start gap-3 text-left">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-600 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138z" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">Elite Partner Approved</h4>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">
+                    Approved
+                  </span>
+                </div>
+                <p className="text-xs text-[#334155] mt-1">
+                  Congratulations! Your application has been approved. Switch to Partner Mode to view your jobs and settings.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, "users", profile.uid), {
+                      partnerApplicationStatus: 'acknowledged_approved'
+                    });
+                  } catch (e) {
+                    console.error("Error acknowledging approval:", e);
+                  }
+                  handleSwitchMode('partner');
+                }}
+                className="px-4 py-2 bg-[#1B4D3E] hover:bg-[#12362b] text-[#F8FAFC] text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-[#1B4D3E]/15"
+              >
+                Switch to Partner Mode
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      );
+    }
+
+    // 3. Rejected Banner
+    if (profile.partnerApplicationStatus === 'rejected') {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-[#F8FAFC] border-l-4 border-rose-500 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-start gap-3 text-left">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0 text-rose-600 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">Elite Partner Onboarding</h4>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-50 text-rose-600 border border-rose-200">
+                    Not Approved
+                  </span>
+                </div>
+                <p className="text-xs text-[#334155] mt-1">
+                  Your Elite Partner application was not approved. For appeal requests, please call 9424456606.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, "users", profile.uid), {
+                      partnerApplicationStatus: 'acknowledged_rejected'
+                    });
+                  } catch (e) {
+                    console.error("Error acknowledging rejection:", e);
+                  }
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderContent = () => {
+    if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
+      return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
+    }
+
     const handleServiceSelect = (id: string) => {
       setSelectedServiceId(id);
       setActiveTab('service-details');
@@ -1402,7 +1668,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                         <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end text-[#22c55e]" id="portal-header-greeter">
-                          <span>नमस्ते, VIKASS</span>
+                          <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
                         </span>
                         {/* IMMUTABLE GREETER BLOCK END */}
                         <span 
@@ -1449,6 +1715,24 @@ If you have any billing questions, or if your refund is delayed, please email us
                             <UserIcon size={14} />
                             Profile Settings
                           </button>
+
+                          {/* Urban Company-Style Dual Persona Switcher */}
+                          {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
+                            <button
+                              onClick={() => {
+                                handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
+                                setIsUserMenuOpen(false);
+                              }}
+                              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-black text-slate-700 bg-slate-50 hover:bg-slate-100/80 hover:text-indigo-700 rounded-xl transition-all border border-dashed border-slate-200/80 hover:border-indigo-300/80 mt-1 mb-1"
+                              id="dropdown-mode-switcher"
+                            >
+                              <div className="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 animate-pulse"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
+                                <span>{currentMode === 'customer' ? 'Switch to Partner' : 'Switch to Customer'}</span>
+                              </div>
+                              <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider scale-90">LIVE</span>
+                            </button>
+                          )}
 
                           {/* Desktop Hook: Partner Dashboard for Partner & Admin roles */}
                           {(profile.role === 'partner' || profile.role === 'admin') && (
@@ -1546,7 +1830,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                   <div className="flex md:hidden items-center gap-2 select-none">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                     <span className="text-[10px] font-black text-[#22c55e] bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
-                      <span>नमस्ते, VIKASS</span>
+                      <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
                     </span>
                     {/* IMMUTABLE GREETER BLOCK END */}
                     <button
@@ -1694,7 +1978,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                       <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
-                        <span>नमस्ते, VIKASS</span>
+                        <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
                       </p>
                       {/* IMMUTABLE GREETER BLOCK END */}
                       <p 
@@ -1733,6 +2017,23 @@ If you have any billing questions, or if your refund is delayed, please email us
               {profile && (
                 <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-left">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 px-3 py-1">Profile & Adjustments</span>
+                  
+                  {/* Urban Company-Style Dual Persona Switcher for Mobile */}
+                  {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
+                    <button
+                      onClick={() => {
+                        handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
+                        setIsMenuOpen(false);
+                      }}
+                      className="mx-3 my-1 px-4 py-3 bg-indigo-50 hover:bg-indigo-100/80 rounded-2xl border border-indigo-100 text-left flex items-center justify-between transition-all"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 animate-pulse"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
+                        <span className="text-xs font-black text-slate-800">{currentMode === 'customer' ? 'Switch to Partner Mode' : 'Switch to Customer Mode'}</span>
+                      </span>
+                      <span className="text-[8px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-black tracking-widest">TAP</span>
+                    </button>
+                  )}
                   
                   {/* Notifications with Unread Badge */}
                   <button
@@ -1863,7 +2164,77 @@ If you have any billing questions, or if your refund is delayed, please email us
         onSelectCity={handleSelectCity}
       />
 
+      {/* Real-time Partner Application Status Alert Popup */}
+      <AnimatePresence>
+        {profile && currentMode === 'customer' && partnerApplication && partnerApplication.status === 'pending' && showPartnerStatusPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="bg-[#F8FAFC] border-2 border-[#1B4D3E]/20 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative"
+            >
+              {/* Premium Gold & Forest Green Header Decor */}
+              <div className="bg-[#1B4D3E] p-6 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#C5A021]/10 rounded-full blur-2xl transform translate-x-12 -translate-y-12" />
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#C5A021]/15 border border-[#C5A021]/30 flex items-center justify-center shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#C5A021]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-black tracking-tight text-[#F8FAFC]">Zomindia Elite Partner</h3>
+                    <p className="text-[10px] text-white/70 uppercase tracking-widest font-semibold mt-0.5">Real-time status monitor</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Popup Content */}
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="flex items-center justify-between bg-white border border-[#1B4D3E]/10 p-4 rounded-2xl">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Onboarding Status</span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-[#C5A021] border border-[#C5A021]/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#C5A021] animate-pulse" />
+                    Pending Review
+                  </span>
+                </div>
+
+                <div className="space-y-3 text-left">
+                  <h4 className="text-sm font-bold text-slate-800">Your application is undergoing verification</h4>
+                  <p className="text-xs text-[#334155] leading-relaxed">
+                    Welcome, <span className="font-semibold text-slate-900">{partnerApplication.fullName}</span>! We have successfully received your request to join Zomindia as an Elite Service Partner for <span className="font-semibold text-[#1B4D3E]">{partnerApplication.serviceType}</span>. Our local Indore support team is currently verifying your coordinates and service listings.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Indore Verification Helpdesk</p>
+                  <p className="text-xs font-bold text-slate-700">Phone: <span className="text-[#1B4D3E]">+91 9424456606</span></p>
+                  <p className="text-[10px] text-slate-500 font-medium">Email: support@zomindia.com</p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+                  <button
+                    onClick={() => setShowPartnerStatusPopup(false)}
+                    className="w-full py-3 px-6 bg-[#1B4D3E] hover:bg-[#12362b] active:scale-[0.98] text-[#F8FAFC] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-[#1B4D3E]/20"
+                  >
+                    Skip & Continue to Hub
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Content */}
+      {renderPartnerNotificationBanner()}
       <main className="pb-24 md:pb-0 relative min-h-[500px]">
         <AnimatePresence mode="wait">
           <motion.div

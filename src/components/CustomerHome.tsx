@@ -356,6 +356,7 @@ export default function CustomerHome({
   initialCategoryId,
 }: Props) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
+  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
 
   useEffect(() => {
     const checkPrompt = () => {
@@ -364,6 +365,22 @@ export default function CustomerHome({
     checkPrompt();
     window.addEventListener('pwa-prompt-available', checkPrompt);
     window.addEventListener('pwa-prompt-dismissed', checkPrompt);
+
+    // Safari iOS detection
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
+    let isDismissed = false;
+    try {
+      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
+    } catch (err) {
+      console.warn('[PWA] Storage access denied', err);
+    }
+
+    if (isIOS && isSafari && !isStandalone && !isDismissed) {
+      setShowIosSafariInstall(true);
+    }
+
     return () => {
       window.removeEventListener('pwa-prompt-available', checkPrompt);
       window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
@@ -731,7 +748,7 @@ export default function CustomerHome({
     }
     const q = query(
       collection(db, "bookings"),
-      where("customerId", "==", profile.uid),
+      where("userId", "==", profile.uid),
       where("status", "in", [
         "pending",
         "confirmed",
@@ -773,7 +790,7 @@ export default function CustomerHome({
     }
     const q = query(
       collection(db, "bookings"),
-      where("customerId", "==", profile.uid)
+      where("userId", "==", profile.uid)
     );
     const unsubscribe = onSnapshot(q, (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
@@ -1502,39 +1519,54 @@ export default function CustomerHome({
   return (
     <div className="space-y-10 sm:space-y-20">
       {/* 1. Global PWA Install Banner */}
-      {showPwaInstall && (
+      {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          className="bg-[#0a2540] text-white py-4 px-6 md:px-8 shadow-xl relative overflow-hidden"
+          className="bg-[#0a2540] text-white py-3 px-6 md:px-8 shadow-xl relative overflow-hidden"
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
             <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
-                <Sparkles className="w-5 h-5 text-cyan-300" />
+              <div className="bg-white/10 p-2 rounded-xl shrink-0">
+                <Sparkles className="w-4 h-4 text-cyan-300" />
               </div>
               <div>
-                <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display">
+                <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
                   INSTALL ZOMINDIA WEB-APP
                 </h4>
-                <p className="text-xs text-slate-300 mt-1 font-medium leading-normal max-w-xl">
-                  🚀 Experience lightning-fast bookings, automated offline syncing, and ZOMINI AI secure masked gateway features directly from your home screen.
+                <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
+                  {showIosSafariInstall 
+                    ? "To install, tap Share [↑] and select 'Add to Home Screen'."
+                    : "Install Zomindia directly on your home screen for quick offline access and service tracking."}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
+              {!showIosSafariInstall && (
+                <button
+                  onClick={handleInstallPwa}
+                  className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
+                >
+                  <Zap className="w-3 h-3" />
+                  Install Now
+                </button>
+              )}
               <button
-                onClick={handleInstallPwa}
-                className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2.5 px-6 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Install Now
-              </button>
-              <button
-                onClick={() => setShowPwaInstall(false)}
-                className="text-slate-400 hover:text-white text-xs font-bold py-2.5 px-4 rounded-xl hover:bg-white/10 transition cursor-pointer"
+                onClick={() => {
+                  if (showIosSafariInstall) {
+                    try {
+                      sessionStorage.setItem('pwa-safari-dismissed', 'true');
+                    } catch (err) {
+                      console.warn('[PWA] Storage access denied', err);
+                    }
+                    setShowIosSafariInstall(false);
+                  } else {
+                    setShowPwaInstall(false);
+                  }
+                }}
+                className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
               >
                 Dismiss
               </button>
@@ -2297,7 +2329,11 @@ export default function CustomerHome({
                           damping: 25,
                           layout: { duration: 0.3 },
                         }}
-                        whileHover={{ scale: 1.03 }}
+                        whileHover={{ 
+                          scale: 1.08,
+                          y: -6,
+                          transition: { type: "spring", stiffness: 400, damping: 15 }
+                        }}
                         whileTap={{ scale: 0.95 }}
                         onClick={(e) => {
                           setSelectedCategory(cat);
@@ -2310,7 +2346,7 @@ export default function CustomerHome({
                       >
                         {/* The Inner Card Container */}
                         <div
-                          className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border ${theme.borderClass} group-hover:-translate-y-1.5 ${theme.bgClass} group-hover:border-transparent ${theme.shadowClass} relative overflow-hidden`}
+                          className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border ${theme.borderClass} ${theme.bgClass} group-hover:border-transparent ${theme.shadowClass} relative overflow-hidden`}
                         >
                           {/* Interactive Colorful Glow Backing */}
                           <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -2412,7 +2448,11 @@ export default function CustomerHome({
                   layout
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ scale: 1.03 }}
+                  whileHover={{ 
+                    scale: 1.08,
+                    y: -6,
+                    transition: { type: "spring", stiffness: 400, damping: 15 }
+                  }}
                   whileTap={{ scale: 0.95 }}
                   className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none"
                   onClick={() => {
@@ -2427,7 +2467,7 @@ export default function CustomerHome({
                     }
                   }}
                 >
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border border-slate-100/80 group-hover:-translate-y-1.5 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)] relative overflow-hidden">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border border-slate-100/80 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)] relative overflow-hidden">
                     <div className="w-12 h-12 sm:w-15 sm:h-15 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10">
                       <div className="flex gap-1 items-center justify-center">
                         <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />

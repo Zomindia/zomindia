@@ -30,6 +30,24 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
       .then((reg) => {
         console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
+
+        // Aggressively check for updates and skip waiting instantly
+        if (reg.waiting) {
+          console.log('[PWA] Service Worker waiting detected, posting SKIP_WAITING...');
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+
+        reg.addEventListener('updatefound', () => {
+          const installingWorker = reg.installing;
+          if (installingWorker) {
+            installingWorker.addEventListener('statechange', () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[PWA] New service worker installed, posting SKIP_WAITING...');
+                installingWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          }
+        });
       })
       .catch((err) => {
         console.error('[PWA] Service Worker registration failed:', err);
@@ -46,12 +64,28 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   });
 }
 
-// Global listener to capture `beforeinstallprompt` and persist globally
+// Global listener with memory lock to capture `beforeinstallprompt` and persist globally
 if (typeof window !== 'undefined') {
+  let activePrompt: any = (window as any).deferredPrompt || null;
+
+  Object.defineProperty(window, 'deferredPrompt', {
+    get() {
+      return activePrompt;
+    },
+    set(val) {
+      // Keep state locked in memory and don't allow it to be stripped unless explicitly reset to null
+      if (val === null || val) {
+        activePrompt = val;
+      }
+    },
+    configurable: true,
+    enumerable: true
+  });
+
   window.addEventListener('beforeinstallprompt', (e: any) => {
     // Prevent default browser prompt bar from showing
     e.preventDefault();
-    console.log('[PWA] beforeinstallprompt event captured and persisted globally.');
+    console.log('[PWA] beforeinstallprompt event captured and locked in memory.');
     (window as any).deferredPrompt = e;
     
     // Dispatch a custom event so React components are notified instantly across pages/views

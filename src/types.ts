@@ -8,6 +8,7 @@ export interface UserProfile {
   email: string;
   role: 'customer' | 'partner' | 'admin'; // Keep strictly roles for profile
   adminSubRole?: AdminSubRole;
+  partnerId?: string;
   phoneNumber?: string;
   mobile?: string; // unmasked registered mobile
   phoneNumberVerified?: boolean;
@@ -22,6 +23,9 @@ export interface UserProfile {
   referralCreditPending?: boolean;
   isPremium?: boolean;
   subscriptionExpiry?: any;
+  partnerApplicationStatus?: 'pending' | 'approved' | 'rejected' | 'acknowledged_approved' | 'acknowledged_rejected';
+  onboardingComplete?: boolean;
+  mergedInto?: string;
   notificationPreferences?: {
     bookingUpdates: boolean;
     promotionalMessages: boolean;
@@ -33,6 +37,32 @@ export interface UserProfile {
   preferredTimeSlot?: string;
   secondaryPhone?: string;
   createdAt: any;
+  updatedAt?: any;
+  currentMode?: 'customer' | 'partner';
+  customerData?: {
+    fullName?: string;
+    email?: string;
+    phoneNumber?: string;
+    mobile?: string;
+    walletBalance?: number;
+    address?: string;
+    gender?: string;
+    languagePreference?: string;
+    houseType?: string;
+    bhkSize?: string;
+    preferredTimeSlot?: string;
+    secondaryPhone?: string;
+    referralCode?: string;
+  };
+  partnerData?: {
+    partnerId?: string;
+    bio?: string;
+    status?: string;
+    rating?: number;
+    reviewCount?: number;
+    isVerified?: boolean;
+    kycStatus?: string;
+  };
 }
 
 export interface Category {
@@ -98,6 +128,30 @@ export interface PartnerProfile {
   updatedAt?: any;
   locationDisconnected?: boolean;
   disconnectReason?: string;
+  onboardingCompleted?: boolean;
+  onboardingData?: {
+    profileImage?: string;
+    governmentIdDoc?: string;
+    educationalCertificates?: string;
+    verificationCertificates?: string;
+    workExperienceYears?: string;
+    previousSalary?: string;
+    bankAccountHolderName?: string;
+    bankAccountNumber?: string;
+    bankIfscCode?: string;
+  };
+  profilePhoto?: string;
+  photoURL?: string;
+  govtId?: string;
+  experience?: number;
+  previousSalary?: string;
+  bankDetails?: {
+    accountHolder?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+  };
+  educationalCertificates?: string;
+  verificationCertificates?: string;
 }
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -284,8 +338,10 @@ export interface PartnerApplication {
   id?: string;
   fullName: string;
   phone: string;
+  email?: string;
   serviceType: string;
   area: string;
+  status?: 'pending' | 'approved' | 'rejected';
   createdAt: any;
 }
 

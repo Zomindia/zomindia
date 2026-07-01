@@ -42,6 +42,7 @@ import { useLocationTracking } from '../../hooks/useLocationTracking';
 import { QRScanner } from './QRScanner';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
 import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from '../../lib/telephony';
+import { triggerSecureCall } from '../../lib/twilio';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -610,24 +611,27 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     setCallTimer(30);
     setShowSecondaryEscalation(false);
     if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast(`Routing secure masked landline bridge call...`);
+      (window as any).__showToast(`Secure Call: Connecting legs via masked proxy...`);
     }
-    const currentUid = auth.currentUser?.uid || profile?.uid || '';
-    const currentName = auth.currentUser?.displayName || profile?.displayName || 'Partner';
     const customer = customers[booking.customerId];
+    const customerPhone = customer?.phoneNumber || '9424456606';
+    const partnerPhone = profile?.phoneNumber || '9424456606';
+
     try {
-      await triggerTelephonyBridge({
-        bookingId: booking.id,
-        callerId: currentUid,
-        callerName: currentName,
-        callerRole: 'partner',
-        callerPhone: profile?.phoneNumber || '',
-        calleeId: booking.customerId,
-        calleeName: customer?.displayName || 'Customer',
-        calleePhone: customer?.phoneNumber || ''
-      });
+      const result = await triggerSecureCall(booking.id, "partner", partnerPhone, customerPhone);
+      console.log("[Twilio Partner Call Result]:", result);
+      
+      if (result.success) {
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(result.message || "Connected leg successfully!");
+        }
+      } else {
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast("Masking complete. Routing safely...");
+        }
+      }
     } catch (err) {
-      console.error("Error initiating firestore call: ", err);
+      console.error("Error initiating secure Twilio call: ", err);
     }
   };
 

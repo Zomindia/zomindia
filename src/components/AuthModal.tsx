@@ -8,7 +8,8 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
+import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import LogoIcon from '../assets/logo-icon.png';
@@ -56,6 +57,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
   const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
 
+  // Zomato-Style Onboarding verification and interactive conflict resolution state
+  const [isOnboardingVerification, setIsOnboardingVerification] = useState(false);
+  const [shouldMergeConflictOnSuccess, setShouldMergeConflictOnSuccess] = useState(false);
+  const [conflictUid, setConflictUid] = useState<string | null>(null);
+  const [showConflictOptions, setShowConflictOptions] = useState(false);
+
   const recaptchaRef = useRef<any>(null);
 
   useEffect(() => {
@@ -101,6 +108,57 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     return () => clearInterval(interval);
   }, [timer]);
 
+  // Secure Web-OTP API auto-detection hook for Sign-Up / Login
+  useEffect(() => {
+    if (view !== 'otp-entry') return;
+
+    if (typeof window !== "undefined" && "OTPCredential" in window) {
+      const ac = new AbortController();
+      navigator.credentials
+        .get({
+          otp: { transport: ["sms"] },
+          signal: ac.signal,
+        } as any)
+        .then((otpVal: any) => {
+          if (otpVal && otpVal.code) {
+            const codeDigits = otpVal.code.replace(/\D/g, "").slice(0, 6);
+            if (codeDigits.length === 6) {
+              console.log(
+                "[WebOTP] Auto-detected OTP in AuthModal:",
+                codeDigits
+              );
+              setOtpValues(codeDigits.split(''));
+
+              // Allow user a fraction of a second to visually confirm, then auto-submit the OTP
+              setTimeout(() => {
+                handleVerifyOTP(undefined, codeDigits);
+              }, 600);
+            }
+          }
+        })
+        .catch((err) => {
+          if (
+            err.name !== "AbortError" &&
+            err.name !== "SecurityError" &&
+            !err.message?.toLowerCase().includes("otp-credentials")
+          ) {
+            console.error(
+              "[WebOTP API] AuthModal error auto-detecting OTP:",
+              err
+            );
+          } else {
+            console.log(
+              "[WebOTP API] AuthModal auto-detection bypassed or aborted."
+            );
+          }
+        });
+
+      return () => {
+        ac.abort();
+      };
+    }
+  }, [view]);
+
   // Clean form state upon open or close
   const resetForm = () => {
     setView('login-selection');
@@ -111,6 +169,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setError(null);
     setConfirmationResult(null);
     setVerifiedUid(null);
+    setIsOnboardingVerification(false);
+    setShouldMergeConflictOnSuccess(false);
+    setConflictUid(null);
+    setShowConflictOptions(false);
   };
 
   useEffect(() => {
@@ -301,9 +363,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   };
 
   // Verify OTP submission
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = otpValues.join('');
+  const handleVerifyOTP = async (e?: React.FormEvent, directOtpCode?: string) => {
+    if (e) e.preventDefault();
+    const code = directOtpCode || otpValues.join('');
     if (code.length !== 6) {
       setError('Please enter the full 6-digit verification code');
       return;
@@ -320,9 +382,97 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         userObj = credential.user;
         setVerifiedUid(userObj.uid);
 
-        // Check Firestore
-        const profileSnap = await getDoc(doc(db, 'users', userObj.uid));
-        if (profileSnap.exists()) {
+        if (isOnboardingVerification) {
+          const activeUid = auth.currentUser?.uid || userObj.uid;
+          const cleanPhone = phoneNumber.replace(/\D/g, '');
+          const formattedPhone = `+91${cleanPhone}`;
+          const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+
+          // Safe transactional pre-write merge/link
+          await runTransaction(db, async (transaction) => {
+            const activeUserRef = doc(db, 'users', activeUid);
+            const activeUserSnap = await transaction.get(activeUserRef);
+
+            let walletVal = walletJoiningBonus;
+            let existingData: any = {};
+
+            if (activeUserSnap.exists()) {
+              existingData = activeUserSnap.data();
+              if (existingData.walletBalance !== undefined) {
+                walletVal = existingData.walletBalance;
+              }
+            }
+
+            const masterUid = conflictUid || activeUid;
+            const masterRef = doc(db, 'users', masterUid);
+
+            if (shouldMergeConflictOnSuccess && conflictUid) {
+              const conflictSnap = await transaction.get(masterRef);
+              if (conflictSnap.exists()) {
+                const conflictData = conflictSnap.data();
+                if (conflictData.walletBalance !== undefined) {
+                  walletVal += conflictData.walletBalance;
+                }
+                existingData = {
+                  ...conflictData,
+                  ...existingData,
+                };
+              }
+            }
+
+            const profilePayload = buildDualPersonaUserDoc({
+              ...existingData,
+              uid: masterUid,
+              displayName: displayName.trim(),
+              fullName: displayName.trim(),
+              email: email.trim(),
+              phoneNumber: formattedPhone,
+              mobile: formattedPhone,
+              onboardingComplete: true,
+              walletBalance: walletVal,
+              updatedAt: Timestamp.now()
+            });
+
+            if (isSarthakEmail) {
+              profilePayload.role = 'admin';
+              profilePayload.adminSubRole = 'head';
+            } else if (!profilePayload.role) {
+              profilePayload.role = 'customer';
+            }
+
+            transaction.set(masterRef, profilePayload, { merge: true });
+
+            // Write a small pointer to activeUid if they are different, preventing any split/ghost records
+            if (activeUid !== masterUid) {
+              transaction.set(activeUserRef, {
+                uid: activeUid,
+                mergedInto: masterUid,
+                onboardingComplete: false,
+                updatedAt: Timestamp.now()
+              }, { merge: true });
+            }
+          });
+
+          // Move any bookings/history in Firestore if needed (though resolvedUid ensures they access their bookings seamlessly)
+          if (shouldMergeConflictOnSuccess && conflictUid) {
+            try {
+              const bookingsQ1 = query(collection(db, 'bookings'), where('userId', '==', activeUid));
+              const bookingsQ2 = query(collection(db, 'bookings'), where('customerId', '==', activeUid));
+              const [bSnap1, bSnap2] = await Promise.all([getDocs(bookingsQ1), getDocs(bookingsQ2)]);
+
+              const batch = writeBatch(db);
+              bSnap1.docs.forEach((d) => {
+                batch.update(doc(db, 'bookings', d.id), { userId: conflictUid });
+              });
+              bSnap2.docs.forEach((d) => {
+                batch.update(doc(db, 'bookings', d.id), { customerId: conflictUid });
+              });
+              await batch.commit();
+            } catch (migrateErr) {
+              console.error("Non-blocking bookings migration error:", migrateErr);
+            }
+          }
+
           setView('success-transition');
           setTimeout(() => {
             onSuccess();
@@ -330,7 +480,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             resetForm();
           }, 1500);
         } else {
-          setView('profile-setup');
+          // Check Firestore
+          const profileSnap = await getDoc(doc(db, 'users', userObj.uid));
+          if (profileSnap.exists()) {
+            setView('success-transition');
+            setTimeout(() => {
+              onSuccess();
+              onClose();
+              resetForm();
+            }, 1500);
+          } else {
+            setView('profile-setup');
+          }
         }
       } else {
         throw new Error('No active verification session detected. Please request a new code.');
@@ -462,9 +623,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       if (existingUserDoc) {
         // Enforce strict merge session cleanly into the existing account record to prevent database pollution
         const existingData = existingUserDoc.data();
-        const mergedPayload: any = {
+        const mergedPayload: any = buildDualPersonaUserDoc({
           ...existingData,
-          uid: activeUid, // Core session link
+          uid: existingUserDoc.id, // Keep the existing document ID as the master UID
           displayName: displayName.trim(),
           fullName: displayName.trim(),
           email: email.trim(),
@@ -472,20 +633,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           mobile: targetPhone,
           onboardingComplete: true,
           updatedAt: Timestamp.now()
-        };
-        // Update both the old profile location and the activeUid doc destination
+        });
+
+        if (isSarthakEmail) {
+          mergedPayload.role = 'admin';
+          mergedPayload.adminSubRole = 'head';
+        }
+
+        // Update both the old profile location and write a small pointer to activeUid if they are different
         await Promise.all([
-          setDoc(userRef, mergedPayload),
-          updateDoc(doc(db, 'users', existingUserDoc.id), {
+          setDoc(doc(db, 'users', existingUserDoc.id), mergedPayload, { merge: true }),
+          activeUid !== existingUserDoc.id ? setDoc(userRef, {
             uid: activeUid,
-            displayName: displayName.trim(),
-            fullName: displayName.trim(),
-            email: email.trim(),
-            phoneNumber: targetPhone,
-            mobile: targetPhone,
-            onboardingComplete: true,
+            mergedInto: existingUserDoc.id,
+            onboardingComplete: false,
             updatedAt: Timestamp.now()
-          })
+          }, { merge: true }) : Promise.resolve()
         ]);
       } else if (userSnap.exists()) {
         const existingData = userSnap.data();
@@ -586,9 +749,55 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  // Setup mobile number for Google Signed-In Users (Saving directly to Firestore, bypassing Auth Email update errors entirely)
+  // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA
+  const sendOnboardingOTP = async (formattedPhone: string) => {
+    // Cleanup existing recaptcha verifier and its DOM anchor
+    if (recaptchaRef.current) {
+      try {
+        recaptchaRef.current.clear();
+      } catch (e) {
+        console.warn("Existing recaptcha clear error bypassed:", e);
+      }
+      recaptchaRef.current = null;
+    }
+
+    const existingAnchor = document.getElementById('recaptcha-anchor-dynamic');
+    if (existingAnchor) {
+      try {
+        existingAnchor.remove();
+      } catch (e) {
+        console.warn("Existing dynamic recaptcha anchor removal error bypassed:", e);
+      }
+    }
+
+    // Create a fresh, isolated anchor directly appended to body to ensure it exists in the DOM
+    const freshAnchor = document.createElement('div');
+    freshAnchor.id = 'recaptcha-anchor-dynamic';
+    document.body.appendChild(freshAnchor);
+
+    // Initialize Recaptcha Verifier
+    const verifier = new RecaptchaVerifier(auth, 'recaptcha-anchor-dynamic', {
+      size: 'invisible',
+      callback: () => {}
+    });
+    await verifier.render();
+    recaptchaRef.current = verifier;
+    (window as any).recaptchaVerifier = verifier;
+
+    const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+    setConfirmationResult(result);
+    setIsOnboardingVerification(true);
+    setView('otp-entry');
+    setTimer(30);
+  };
+
+  // Setup mobile number for Google Signed-In Users with strict verification OTP barrier and transactional pre-write checks
   const handleGooglePhoneRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!displayName.trim()) {
+      setError('Name is required');
+      return;
+    }
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       setError('Please enter a valid 10-digit mobile number');
@@ -603,46 +812,35 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
     setLoading(true);
     setError(null);
+    setConflictUid(null);
+    setShowConflictOptions(false);
+    setShouldMergeConflictOnSuccess(false);
 
     try {
       const formattedPhone = `+91${cleanPhone}`;
-      const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-      const userRef = doc(db, 'users', activeUid);
-      const userSnap = await getDoc(userRef);
 
-      const profilePayload: any = {
-        uid: activeUid,
-        displayName: displayName.trim() || 'User',
-        fullName: displayName.trim() || 'User',
-        email: email.trim(),
-        phoneNumber: formattedPhone,
-        onboardingComplete: true,
-        role: isSarthakEmail ? 'admin' : (userSnap.exists() && userSnap.data()?.role ? userSnap.data()?.role : 'customer'),
-        createdAt: userSnap.exists() && userSnap.data()?.createdAt ? userSnap.data()?.createdAt : Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        referralCode: userSnap.exists() && userSnap.data()?.referralCode ? userSnap.data()?.referralCode : `ZOM${activeUid.slice(0, 6).toUpperCase()}`,
-        walletBalance: userSnap.exists() && userSnap.data()?.walletBalance !== undefined ? userSnap.data()?.walletBalance : walletJoiningBonus,
-        notificationPreferences: userSnap.exists() && userSnap.data()?.notificationPreferences ? userSnap.data()?.notificationPreferences : {
-          bookingUpdates: true,
-          promotionalMessages: true
-        }
-      };
+      // CROSS-VALIDATION Conflict Check BEFORE dispatching OTP
+      const phoneQ1 = query(collection(db, "users"), where("phoneNumber", "==", formattedPhone));
+      const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPhone));
+      const [snap1, snap2] = await Promise.all([getDocs(phoneQ1), getDocs(phoneQ2)]);
 
-      if (isSarthakEmail) {
-        profilePayload.adminSubRole = 'head';
+      let existingUserDoc: any = null;
+      if (!snap1.empty) existingUserDoc = snap1.docs[0];
+      else if (!snap2.empty) existingUserDoc = snap2.docs[0];
+
+      if (existingUserDoc && existingUserDoc.id !== activeUid) {
+        // Enforce Zomato-Style Conflict Options
+        setConflictUid(existingUserDoc.id);
+        setShowConflictOptions(true);
+        setLoading(false);
+        return;
       }
 
-      await setDoc(userRef, profilePayload, { merge: true });
-
-      setView('success-transition');
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-        resetForm();
-      }, 1500);
+      // No conflict, send the OTP!
+      await sendOnboardingOTP(formattedPhone);
     } catch (err: any) {
-      console.error("Google phone setup failed:", err);
-      setError('Failed to setup mobile details in profile: ' + (err.message || 'Error occurred'));
+      console.error("Conflict checking or SMS dispatch failed:", err);
+      setError(err.message || 'SMS dispatch failed. Please check connection.');
     } finally {
       setLoading(false);
     }
@@ -839,114 +1037,191 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                   By continuing, you agree to zomindia's <span className="text-neutral-700 font-semibold underline cursor-pointer">Terms & Privacy Policy</span>.
                 </p>
               </motion.div>
-            )}
-
-            {/* VIEW: Google Phone Setup (For missing mobile number in Google login) */}
+            )}            {/* VIEW: Google Phone Setup (For missing mobile number in Google login) */}
             {view === 'google-phone-setup' && (
-              <motion.div
-                key="google-phone-setup"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div>
-                  <button 
-                    type="button"
-                    onClick={() => setView('login-selection')}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-[#050CA6] uppercase tracking-wider hover:underline"
-                  >
-                    <ChevronLeft size={12} />
-                    <span>Back</span>
-                  </button>
-                  <h2 className="text-lg font-bold text-neutral-900 mt-2">
-                    Almost there! 🎉
-                  </h2>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Just a quick step to set up your profile.
-                  </p>
-                </div>
-
-                <form onSubmit={handleGooglePhoneRegister} className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                      Full Name
-                    </label>
-                    <input 
-                      type="text"
-                      required
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Jane Doe"
-                      className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                    />
+              showConflictOptions ? (
+                <motion.div
+                  key="conflict-resolution"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.05 }}
+                  className="space-y-6 text-center"
+                >
+                  <div className="mx-auto w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 border border-amber-100 animate-pulse">
+                    <AlertCircle size={32} />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-extrabold text-neutral-900">
+                      Conflict Detected ⚠️
+                    </h3>
+                    <p className="text-sm text-amber-600 font-semibold px-4">
+                      This verified number is already linked to another account.
+                    </p>
+                    <p className="text-xs text-neutral-500 px-6 leading-relaxed">
+                      You can either merge all history, bookings, and wallet balance into your current active Google session, or switch and login directly using this mobile number.
+                    </p>
                   </div>
 
+                  <div className="space-y-3 px-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setLoading(true);
+                        setError(null);
+                        try {
+                          setShouldMergeConflictOnSuccess(true);
+                          const cleanPhone = phoneNumber.replace(/\D/g, '');
+                          const formattedPhone = `+91${cleanPhone}`;
+                          await sendOnboardingOTP(formattedPhone);
+                        } catch (err: any) {
+                          setError(err.message || "Failed to send OTP");
+                          setShouldMergeConflictOnSuccess(false);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading}
+                      className="w-full bg-[#050CA6] text-white py-3.5 px-4 rounded-2xl font-bold hover:bg-[#040980] transition-all text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    >
+                      {loading ? <BrandedButtonSpinner className="w-4 h-4" /> : "Continue & Link to This Account"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setLoading(true);
+                        try {
+                          setView('phone-entry');
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3.5 px-4 rounded-2xl font-bold transition-all text-xs cursor-pointer"
+                    >
+                      Switch Account
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowConflictOptions(false);
+                        setConflictUid(null);
+                        setShouldMergeConflictOnSuccess(false);
+                      }}
+                      className="w-full text-neutral-500 hover:text-neutral-700 text-xs font-semibold hover:underline cursor-pointer"
+                    >
+                      Go Back
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="google-phone-setup"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-6"
+                >
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                      Email Address
-                    </label>
-                    <input 
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="jane@example.com"
-                      className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                    />
+                    <button 
+                      type="button"
+                      onClick={() => setView('login-selection')}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-[#050CA6] uppercase tracking-wider hover:underline"
+                    >
+                      <ChevronLeft size={12} />
+                      <span>Back</span>
+                    </button>
+                    <h2 className="text-lg font-bold text-neutral-900 mt-2">
+                      Almost there! 🎉
+                    </h2>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Just a quick step to set up your profile.
+                    </p>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                      Mobile Number
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pr-3 border-r border-neutral-100">
-                        <img src="https://flagcdn.com/w20/in.png" alt="India flag" className="w-4 rounded-sm" />
-                        <span className="text-xs font-bold text-neutral-800">+91</span>
-                      </div>
+                  <form onSubmit={handleGooglePhoneRegister} className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                        Full Name
+                      </label>
                       <input 
-                        type="tel"
+                        type="text"
                         required
-                        autoFocus
-                        value={phoneNumber}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setPhoneNumber(val);
-                        }}
-                        placeholder="98765 43210"
-                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white pl-[84px] pr-4 py-3.5 rounded-2xl outline-none transition-all font-semibold text-sm tracking-widest text-neutral-900"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Jane Doe"
+                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
                       />
                     </div>
-                  </div>
 
-                  <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
-                    <div className="space-y-0.5">
-                      <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
-                      <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
+                    <div>
+                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                        Email Address
+                      </label>
+                      <input 
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="jane@example.com"
+                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
+                      />
                     </div>
-                  </div>
 
-                  {error && (
-                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
-                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                      <span>{error}</span>
+                    <div>
+                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                        Mobile Number
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pr-3 border-r border-neutral-100">
+                          <img src="https://flagcdn.com/w20/in.png" alt="India flag" className="w-4 rounded-sm" />
+                          <span className="text-xs font-bold text-neutral-800">+91</span>
+                        </div>
+                        <input 
+                          type="tel"
+                          required
+                          autoFocus
+                          value={phoneNumber}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setPhoneNumber(val);
+                          }}
+                          placeholder="98765 43210"
+                          className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white pl-[84px] pr-4 py-3.5 rounded-2xl outline-none transition-all font-semibold text-sm tracking-widest text-neutral-900"
+                        />
+                      </div>
                     </div>
-                  )}
 
-                  <button
-                    type="submit"
-                    disabled={loading || phoneNumber.length < 10 || !displayName.trim()}
-                    className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md"
-                  >
-                    {loading ? (
-                      <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
-                    ) : (
-                      "Get Started"
+                    <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
+                        <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                        <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                        <span>{error}</span>
+                      </div>
                     )}
-                  </button>
-                </form>
-              </motion.div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || phoneNumber.length < 10 || !displayName.trim()}
+                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md"
+                    >
+                      {loading ? (
+                        <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
+                      ) : (
+                        "Get Started"
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              )
             )}
 
             {/* VIEW 2: OTP Entry state (Clean verification blocks) */}

@@ -11,6 +11,7 @@ import {
   onSnapshot,
   orderBy,
   limit,
+  runTransaction,
 } from "firebase/firestore";
 import {
   signOut,
@@ -22,8 +23,10 @@ import {
   ConfirmationResult,
 } from "firebase/auth";
 import { db, auth } from "../lib/firebase";
+import { offlineSyncEngine } from "../lib/offlineQueue";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { UserProfile } from "../types";
+import { buildDualPersonaUserDoc } from "../lib/user-schema";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
 import { motion, AnimatePresence } from "motion/react";
@@ -223,45 +226,122 @@ export default function ProfileSettings({
     </div>
   );
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchUserData = async () => {
+    try {
+      const [bSnap, aSnap] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, "bookings"),
+            where("customerId", "==", profile.uid),
+          ),
+        ),
+        getDocs(
+          query(
+            collection(db, "amcs"),
+            where("customerId", "==", profile.uid),
+            where("status", "==", "active"),
+          ),
+        ),
+      ]);
+
+      const totalB = bSnap.size;
+      const activeA = aSnap.size;
+      setStats({
+        totalBookings: totalB,
+        activeAmcs: activeA,
+        moneySaved: 150 + totalB * 80,
+      });
+    } catch (err) {
+      console.warn("Unable to fetch user metrics: ", err);
+    }
+  };
+
   // Fetch true stats from firestore on load
   useEffect(() => {
-    let active = true;
-    const fetchUserData = async () => {
-      try {
-        const [bSnap, aSnap] = await Promise.all([
-          getDocs(
-            query(
-              collection(db, "bookings"),
-              where("customerId", "==", profile.uid),
-            ),
-          ),
-          getDocs(
-            query(
-              collection(db, "amcs"),
-              where("customerId", "==", profile.uid),
-              where("status", "==", "active"),
-            ),
-          ),
-        ]);
-
-        if (active) {
-          const totalB = bSnap.size;
-          const activeA = aSnap.size;
-          setStats({
-            totalBookings: totalB,
-            activeAmcs: activeA,
-            moneySaved: 150 + totalB * 80,
-          });
-        }
-      } catch (err) {
-        console.warn("Unable to fetch user metrics: ", err);
-      }
-    };
     fetchUserData();
-    return () => {
-      active = false;
-    };
   }, [profile.uid]);
+
+  const handleRefreshData = async () => {
+    setRefreshing(true);
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("System Hard-Sync: Clearing local caches & syncing with server...");
+    }
+
+    try {
+      // 1. Clear Caches API
+      if ('caches' in window) {
+        try {
+          const cacheNames = await window.caches.keys();
+          await Promise.all(cacheNames.map(name => window.caches.delete(name)));
+          console.log("[Refresh Data] Caches API cleared.");
+        } catch (e) {
+          console.error("Caches API clear failed:", e);
+        }
+      }
+
+      // 2. Clear or update service worker registrations
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(async (reg) => {
+            await reg.update();
+            console.log("[Refresh Data] Service Worker updated.");
+          }));
+        } catch (e) {
+          console.error("Service worker update failed:", e);
+        }
+      }
+
+      // 3. Clear transient local storage items to avoid stale data
+      const keysToClear = [
+        "faq_feedback",
+        "zomindia_last_active_tab",
+        "zomindia_last_selected_category_id",
+        "zomindia_last_target_booking_id",
+        "zomindia_last_selected_service_id"
+      ];
+      keysToClear.forEach(k => {
+        try {
+          localStorage.removeItem(k);
+        } catch (e) {}
+      });
+
+      // Clear all dismissed ticker tags
+      try {
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith("dismissed_ticker_") || key.startsWith("referral_notified_")) {
+            localStorage.removeItem(key);
+          }
+        });
+      } catch (e) {}
+
+      // 4. Force offlineSyncEngine to sync any pending offline items
+      if (offlineSyncEngine) {
+        try {
+          await offlineSyncEngine.syncPendingActions();
+          console.log("[Refresh Data] Offline Sync completed.");
+        } catch (e) {
+          console.error("Offline sync trigger failed:", e);
+        }
+      }
+
+      // 5. Trigger a soft refresh by re-fetching profile and user stats dynamically!
+      await fetchUserData();
+
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Ecosystem Sync Complete: App is up to date!");
+      }
+    } catch (err) {
+      console.error("Refresh Data failed:", err);
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Sync encountered errors, please try again.");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Sync state if profile changes
   useEffect(() => {
@@ -469,83 +549,52 @@ export default function ProfileSettings({
     try {
       const targetUid = auth.currentUser?.uid || profile.uid;
 
-      // CROSS-VALIDATION LOOKUPS:
-      if (cleanPhone) {
-        const checkPhoneQ1 = query(
-          collection(db, "users"),
-          where("phoneNumber", "==", formattedPrimaryPhone),
-        );
-        const checkPhoneQ2 = query(
-          collection(db, "users"),
-          where("mobile", "==", formattedPrimaryPhone),
-        );
-        const checkPhoneQ3 = query(
-          collection(db, "users"),
-          where("phoneNumber", "==", cleanPhone),
-        );
-        const checkPhoneQ4 = query(
-          collection(db, "users"),
-          where("mobile", "==", cleanPhone),
-        );
+      // INTERCEPT PAYLOAD WITH A SECURE FIRESTORE TRANSACTION FOR DUAL-FIELD CROSS-VALIDATION
+      const phoneQ1 = query(
+        collection(db, "users"),
+        where("phoneNumber", "==", formattedPrimaryPhone),
+      );
+      const phoneQ2 = query(
+        collection(db, "users"),
+        where("mobile", "==", formattedPrimaryPhone),
+      );
+      const phoneQ3 = query(
+        collection(db, "users"),
+        where("phoneNumber", "==", cleanPhone),
+      );
+      const phoneQ4 = query(
+        collection(db, "users"),
+        where("mobile", "==", cleanPhone),
+      );
+      const emailQ1 = query(
+        collection(db, "users"),
+        where("email", "==", newEmail.trim()),
+      );
+      const emailQ2 = query(
+        collection(db, "users"),
+        where("email", "==", emailLower),
+      );
 
-        const [pSnap1, pSnap2, pSnap3, pSnap4] = await Promise.all([
-          getDocs(checkPhoneQ1),
-          getDocs(checkPhoneQ2),
-          getDocs(checkPhoneQ3),
-          getDocs(checkPhoneQ4),
-        ]);
+      const [pSnap1, pSnap2, pSnap3, pSnap4, eSnap1, eSnap2] = await Promise.all([
+        getDocs(phoneQ1),
+        getDocs(phoneQ2),
+        getDocs(phoneQ3),
+        getDocs(phoneQ4),
+        getDocs(emailQ1),
+        getDocs(emailQ2)
+      ]);
 
-        const mergedPhoneDocs = [
-          ...pSnap1.docs,
-          ...pSnap2.docs,
-          ...pSnap3.docs,
-          ...pSnap4.docs,
-        ];
-        for (const docSnap of mergedPhoneDocs) {
-          if (docSnap.id !== targetUid) {
-            const docEmail = (docSnap.data().email || "").trim().toLowerCase();
-            if (docEmail && docEmail !== emailLower) {
-              alert("This mobile number is already linked to another email.");
-              setLoading(false);
-              return;
-            }
-          }
-        }
-      }
+      const phoneDocIds = Array.from(new Set([
+        ...pSnap1.docs.map(d => d.id),
+        ...pSnap2.docs.map(d => d.id),
+        ...pSnap3.docs.map(d => d.id),
+        ...pSnap4.docs.map(d => d.id)
+      ].filter(id => id !== targetUid)));
 
-      if (emailLower) {
-        const checkEmailQ1 = query(
-          collection(db, "users"),
-          where("email", "==", newEmail.trim()),
-        );
-        const checkEmailQ2 = query(
-          collection(db, "users"),
-          where("email", "==", emailLower),
-        );
-
-        const [eSnap1, eSnap2] = await Promise.all([
-          getDocs(checkEmailQ1),
-          getDocs(checkEmailQ2),
-        ]);
-
-        const mergedEmailDocs = [...eSnap1.docs, ...eSnap2.docs];
-        for (const docSnap of mergedEmailDocs) {
-          if (docSnap.id !== targetUid) {
-            const data = docSnap.data();
-            const docPhone = (data.phoneNumber || data.mobile || "").replace(
-              /\D/g,
-              "",
-            );
-            if (docPhone && docPhone !== cleanPhone) {
-              alert(
-                "This email is already associated with another mobile number.",
-              );
-              setLoading(false);
-              return;
-            }
-          }
-        }
-      }
+      const emailDocIds = Array.from(new Set([
+        ...eSnap1.docs.map(d => d.id),
+        ...eSnap2.docs.map(d => d.id)
+      ].filter(id => id !== targetUid)));
 
       const mergedFields = {
         displayName: displayName.trim(),
@@ -566,19 +615,53 @@ export default function ProfileSettings({
         ...overrides,
       };
 
-      await setDoc(
-        doc(db, "users", targetUid),
-        {
-          ...mergedFields,
-          updatedAt: Timestamp.now(),
-        },
-        { merge: true },
-      );
-
-      onUpdate({
+      const payload = buildDualPersonaUserDoc({
+        uid: targetUid,
         ...profile,
         ...mergedFields,
+        updatedAt: Timestamp.now(),
       });
+
+      await runTransaction(db, async (transaction) => {
+        // Read and validate phone conflicts
+        for (const docId of phoneDocIds) {
+          const docRef = doc(db, "users", docId);
+          const snap = await transaction.get(docRef);
+          if (snap.exists()) {
+            const docEmail = (snap.data().email || "").trim().toLowerCase();
+            if (docEmail && docEmail !== emailLower) {
+              throw new Error("This mobile number is already linked to another account.");
+            }
+          }
+        }
+
+        // Read and validate email conflicts
+        for (const docId of emailDocIds) {
+          const docRef = doc(db, "users", docId);
+          const snap = await transaction.get(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
+            if (docPhone && docPhone !== cleanPhone) {
+              throw new Error("This email is already associated with another mobile number.");
+            }
+          }
+        }
+
+        const userRef = doc(db, "users", targetUid);
+        const userSnap = await transaction.get(userRef);
+
+        if (userSnap.exists()) {
+          transaction.update(userRef, payload);
+        } else {
+          transaction.set(userRef, {
+            ...payload,
+            createdAt: Timestamp.now()
+          }, { merge: true });
+        }
+      });
+
+      onUpdate(payload as any);
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2500);
@@ -1162,8 +1245,10 @@ export default function ProfileSettings({
           <span className="text-cyan-400 font-extrabold text-sm animate-pulse">
             •
           </span>
-          <span>नमस्ते{auth.currentUser ? ", " : ""}</span>
-          {auth.currentUser && <span className="text-white">VIKASS</span>}
+          <span>नमस्ते{profile?.displayName || profile?.fullName || auth.currentUser?.displayName ? ", " : ""}</span>
+          {(profile?.displayName || profile?.fullName || auth.currentUser?.displayName) && (
+            <span className="text-white">{profile.displayName || profile.fullName || auth.currentUser?.displayName}</span>
+          )}
         </span>
       </div>
 
@@ -1666,6 +1751,25 @@ export default function ProfileSettings({
                   activeSub === "faq" ? "text-white" : "text-neutral-400"
                 }
               />
+            </button>
+
+            <button
+              onClick={handleRefreshData}
+              disabled={refreshing}
+              className="w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all text-indigo-600 hover:bg-indigo-50/50 active:scale-98 disabled:opacity-75"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 ${refreshing ? "animate-spin" : ""}`}>
+                  <RefreshCw size={15} />
+                </div>
+                <div>
+                  <p className="font-extrabold text-sm">Refresh Data</p>
+                  <p className="text-[10px] mt-0.5 font-medium text-indigo-400">
+                    {refreshing ? "Clearing caches & syncing..." : "Clear local caches & sync data"}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight size={14} className="text-indigo-400" />
             </button>
 
             <button

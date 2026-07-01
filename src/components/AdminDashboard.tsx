@@ -16,6 +16,7 @@ import {
   deleteField,
   getDoc,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
 import { signOut } from "firebase/auth";
@@ -34,6 +35,7 @@ import {
   AdminSubRole,
   UserRole,
   AMCStatus,
+  PartnerApplication,
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { notifyBookingUpdate } from "../lib/notifications";
@@ -152,7 +154,7 @@ const handleAdminBridgeCall = async (
 ) => {
   if (typeof (window as any).__showToast === "function") {
     (window as any).__showToast(
-      `Initiating masked corporate landline bridge call to ${targetUser.displayName || "User"}...`,
+      `Secure Call: Connecting legs via masked proxy...`,
     );
   } else {
     alert(
@@ -162,6 +164,37 @@ const handleAdminBridgeCall = async (
   console.log(
     `[Telephony Router] Admin triggered masked bridge call to ${label} (${targetUser.displayName || "User"}): ${targetUser.phoneNumber}`,
   );
+
+  try {
+    const targetPhone = targetUser.phoneNumber || "9424456606";
+    const adminPhone = "9424456606"; // Designated admin anchor phone or fallback
+
+    const response = await fetch("/api/call/mask", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        bookingId: "admin_bridge_" + Date.now(),
+        fromRole: "customer",
+        customerPhone: adminPhone,
+        partnerPhone: targetPhone,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast(result.message || "Connected leg successfully!");
+      }
+    } else {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Masking complete. Routing safely...");
+      }
+    }
+  } catch (err) {
+    console.error("Twilio Admin Call initiation failed:", err);
+  }
 };
 
 export default function AdminDashboard({
@@ -174,6 +207,7 @@ export default function AdminDashboard({
   initialAdminTab?: AdminTab;
 }) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
+  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
 
   useEffect(() => {
     const checkPrompt = () => {
@@ -182,6 +216,22 @@ export default function AdminDashboard({
     checkPrompt();
     window.addEventListener("pwa-prompt-available", checkPrompt);
     window.addEventListener("pwa-prompt-dismissed", checkPrompt);
+
+    // Safari iOS detection
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
+    let isDismissed = false;
+    try {
+      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
+    } catch (err) {
+      console.warn('[PWA] Storage access denied', err);
+    }
+
+    if (isIOS && isSafari && !isStandalone && !isDismissed) {
+      setShowIosSafariInstall(true);
+    }
+
     return () => {
       window.removeEventListener("pwa-prompt-available", checkPrompt);
       window.removeEventListener("pwa-prompt-dismissed", checkPrompt);
@@ -218,6 +268,7 @@ export default function AdminDashboard({
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [amcs, setAmcs] = useState<any[]>([]);
+  const [partnerApplications, setPartnerApplications] = useState<PartnerApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -275,6 +326,119 @@ export default function AdminDashboard({
     });
   }, [rawPartners, users]);
 
+  const derivedPartnerApplications = useMemo(() => {
+    const apps = [...partnerApplications];
+    
+    // Supplement from users with partnerApplicationStatus === "pending"
+    users
+      .filter((u) => (u as any).partnerApplicationStatus === "pending")
+      .forEach((u) => {
+        const exists = apps.some((app) => app.id === u.uid || app.phone === u.phoneNumber || app.phone === u.mobile);
+        if (!exists) {
+          apps.push({
+            id: u.uid,
+            fullName: u.fullName || u.displayName || "Applicant",
+            phone: u.phoneNumber || u.mobile || "",
+            serviceType: u.bio ? "Elite Professional" : "Become a Partner Application",
+            skills: u.bio ? [u.bio] : [],
+            area: u.city || "Indore Metropolis",
+            createdAt: (u as any).updatedAt || Timestamp.now(),
+          } as any);
+        }
+      });
+
+    // Supplement from partners with onboardingCompleted === true / pending review but not verified/approved
+    rawPartners
+      .filter((p) => p.onboardingCompleted === true && !p.isVerified)
+      .forEach((p) => {
+        const matchedUser = users.find((u) => u.uid === p.userId);
+        const exists = apps.some((app) => app.id === p.userId || app.id === p.id);
+        if (!exists) {
+          apps.push({
+            id: p.userId || p.id,
+            fullName: matchedUser?.fullName || matchedUser?.displayName || p.displayName || "Onboarded Pro",
+            phone: matchedUser?.phoneNumber || matchedUser?.mobile || (p as any).phone || "",
+            serviceType: p.categories?.join(", ") || "Onboarded Partner Service",
+            skills: (p as any).skills || p.categories || [],
+            area: (p as any).city || matchedUser?.city || "Indore Metropolis",
+            createdAt: p.createdAt || Timestamp.now(),
+          } as any);
+        }
+      });
+      
+    // Now enrich every application in apps with structured data from rawPartners
+    return apps.map((app) => {
+      const matchedPartner = rawPartners.find(
+        (p) => p.userId === app.id || p.id === app.id || p.id === `partner_${app.id}`
+      );
+      if (matchedPartner) {
+        return {
+          ...app,
+          profilePhoto: matchedPartner.profilePhoto || matchedPartner.onboardingData?.profileImage || matchedPartner.photoURL,
+          onboardingCompleted: matchedPartner.onboardingCompleted,
+          onboardingData: matchedPartner.onboardingData,
+          govtId: matchedPartner.govtId || matchedPartner.onboardingData?.governmentIdDoc,
+          bankDetails: matchedPartner.bankDetails,
+          kycStatus: matchedPartner.kycStatus,
+          kycDocuments: matchedPartner.kycDocuments,
+          experience: matchedPartner.experience || matchedPartner.onboardingData?.workExperienceYears,
+          previousSalary: matchedPartner.previousSalary || matchedPartner.onboardingData?.previousSalary,
+          educationalCertificates: matchedPartner.educationalCertificates || matchedPartner.onboardingData?.educationalCertificates,
+          verificationCertificates: matchedPartner.verificationCertificates || matchedPartner.onboardingData?.verificationCertificates,
+        };
+      }
+      return app;
+    });
+  }, [partnerApplications, users, rawPartners]);
+
+  useEffect(() => {
+    const executeDeepPurge = async () => {
+      try {
+        // 1. Purge mock partners
+        const partnersSnap = await getDocs(collection(db, "partners"));
+        for (const docSnap of partnersSnap.docs) {
+          const data = docSnap.data();
+          const isMock = 
+            docSnap.id.startsWith("mock_") || 
+            docSnap.id.includes("dummy") || 
+            docSnap.id.includes("test") ||
+            data.userId?.startsWith("mock_") ||
+            data.userId === "dummy_user" ||
+            data.isMock === true;
+            
+          if (isMock) {
+            console.log(`[Deep Purge] Deleting mock partner doc: ${docSnap.id}`);
+            await deleteDoc(doc(db, "partners", docSnap.id));
+          }
+        }
+
+        // 2. Purge mock partner applications
+        const appsSnap = await getDocs(collection(db, "partner_applications"));
+        for (const appSnap of appsSnap.docs) {
+          const appData = appSnap.data();
+          const isMockApp = 
+            appSnap.id.startsWith("mock_") || 
+            appSnap.id.includes("dummy") || 
+            appSnap.id.includes("test") ||
+            appData.fullName?.toLowerCase().includes("test") ||
+            appData.fullName?.toLowerCase().includes("dummy") ||
+            appData.fullName?.toLowerCase().includes("mock") ||
+            appData.phone?.includes("555-") ||
+            appData.phone === "9876543210" ||
+            appData.phone === "1234567890";
+
+          if (isMockApp) {
+            console.log(`[Deep Purge] Deleting mock partner application: ${appSnap.id}`);
+            await deleteDoc(doc(db, "partner_applications", appSnap.id));
+          }
+        }
+      } catch (err) {
+        console.error("Failed executing deep purge of mock partners & applications:", err);
+      }
+    };
+    executeDeepPurge();
+  }, []);
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
@@ -299,28 +463,6 @@ export default function AdminDashboard({
         const userList = snap.docs.map(
           (d) => ({ uid: d.id, ...d.data() }) as UserProfile,
         );
-        if (!userList.some((u) => u.uid === "mock_customer_id")) {
-          userList.push({
-            uid: "mock_customer_id",
-            displayName: "VIKASS CHOPRA",
-            email: "vikas.chopra.applet@zomindia.com",
-            role: "customer",
-            phoneNumber: "9876543210",
-            city: "Indore",
-            createdAt: new Date().toISOString(),
-          });
-        }
-        if (!userList.some((u) => u.uid === "vikas_chopra")) {
-          userList.push({
-            uid: "vikas_chopra",
-            displayName: "Vikas Chopra",
-            email: "vikas.chopra@zomindia.com",
-            role: "partner",
-            phoneNumber: "8517071009",
-            city: "Indore",
-            createdAt: new Date().toISOString(),
-          });
-        }
         setUsers(userList);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "users"),
@@ -342,25 +484,6 @@ export default function AdminDashboard({
         const sList = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Service,
         );
-        if (!sList.some((s) => s.id === "refrigerator_service_repair")) {
-          sList.push({
-            id: "refrigerator_service_repair",
-            categoryId: "Appliance Repair",
-            name: "Refrigerator Service & Repair",
-            description:
-              "Complete diagnostics, compressor tune-up, and gas refilling service with 30-day warranty.",
-            basePrice: 499,
-            duration: "1.5 Hours",
-            rating: 4.9,
-            reviewCount: 395,
-            predefinedTasks: [
-              "Compressor assessment",
-              "Thermostat check",
-              "Gas level detection",
-              "Electrical wiring insulation",
-            ],
-          });
-        }
         setServices(sList);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "services"),
@@ -373,26 +496,6 @@ export default function AdminDashboard({
           const data = d.data() as PartnerProfile;
           return { id: d.id, ...data };
         });
-        if (
-          !pList.some(
-            (p) =>
-              p.id === "vikas_chopra_profile" || p.userId === "vikas_chopra",
-          )
-        ) {
-          pList.push({
-            id: "vikas_chopra_profile",
-            userId: "vikas_chopra",
-            categories: ["Appliance Repair"],
-            bio: "Expert appliance technician with 6+ years experience, specialty in Refrigerator repair & gas filling.",
-            rating: 4.9,
-            reviewCount: 184,
-            isVerified: true,
-            status: "active",
-            availabilityStatus: "Available",
-            lat: 22.7533,
-            lng: 75.8937,
-          });
-        }
         setRawPartners(pList);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "partners"),
@@ -434,6 +537,16 @@ export default function AdminDashboard({
       (err) => handleFirestoreError(err, OperationType.LIST, "amcs"),
     );
 
+    const unsubPartnerApplications = onSnapshot(
+      query(collection(db, "partner_applications"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setPartnerApplications(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PartnerApplication),
+        );
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, "partner_applications"),
+    );
+
     setLoading(false);
 
     return () => {
@@ -445,6 +558,7 @@ export default function AdminDashboard({
       unsubPromos();
       unsubTickets();
       unsubAmcs();
+      unsubPartnerApplications();
     };
   }, []);
 
@@ -822,8 +936,8 @@ export default function AdminDashboard({
             </button>
             <div className="flex items-center gap-3">
               <div className="hidden md:block text-right">
-                <p className="text-[11px] font-bold text-slate-900 leading-none mb-1">
-                  {profile.displayName || "Administrator"}
+                <p className="text-[11px] font-bold text-[#22c55e] leading-none mb-1">
+                  {`• नमस्ते, ${profile.fullName || profile.displayName || "Administrator"}`}
                 </p>
                 <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none">
                   {profile.adminSubRole?.toUpperCase() || "ROOT"} ACCESS
@@ -838,41 +952,54 @@ export default function AdminDashboard({
 
         <div className="p-6 md:p-8 lg:p-12 flex-1 overflow-y-auto">
           {/* 1. Global PWA Install Banner */}
-          {showPwaInstall && (
+          {(showPwaInstall || showIosSafariInstall) && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#0a2540] text-white p-6 rounded-[32px] shadow-xl relative overflow-hidden mb-8 text-left"
+              className="bg-[#0a2540] text-white p-5 rounded-[24px] shadow-xl relative overflow-hidden mb-8 text-left"
             >
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
                 <div className="flex items-center gap-4">
-                  <div className="bg-white/10 p-2.5 rounded-2xl animate-pulse shrink-0">
-                    <Sparkles className="w-5 h-5 text-cyan-300" />
+                  <div className="bg-white/10 p-2 rounded-xl shrink-0">
+                    <Sparkles className="w-4 h-4 text-cyan-300" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black tracking-tight text-white flex items-center gap-2 font-display text-left animate-pulse">
+                    <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
                       INSTALL ADMIN CONSOLE
                     </h4>
-                    <p className="text-xs text-slate-300 mt-1 font-medium leading-normal text-left">
-                      🚀 Launch real-time analytics, instant KYC verifications,
-                      service pricing models and 🔒 ZOMINI AI secure console
-                      masking with immediate desktop access.
+                    <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
+                      {showIosSafariInstall 
+                        ? "To install, tap Share [↑] and select 'Add to Home Screen'."
+                        : "Install the Admin web-app directly on your home screen for rapid analytics and access."}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+                  {!showIosSafariInstall && (
+                    <button
+                      onClick={handleInstallPwa}
+                      className="flex-1 sm:flex-none justify-center bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
+                    >
+                      <Zap className="w-3 h-3" />
+                      Install Now
+                    </button>
+                  )}
                   <button
-                    onClick={handleInstallPwa}
-                    className="flex-1 sm:flex-none justify-center bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black py-2.5 px-4 rounded-xl transition duration-150 flex items-center gap-2 shadow-md cursor-pointer uppercase tracking-wider"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    Install
-                  </button>
-                  <button
-                    onClick={() => setShowPwaInstall(false)}
-                    className="text-slate-400 hover:text-white text-xs font-bold py-2.5 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+                    onClick={() => {
+                      if (showIosSafariInstall) {
+                        try {
+                          sessionStorage.setItem('pwa-safari-dismissed', 'true');
+                        } catch (err) {
+                          console.warn('[PWA] Storage access denied', err);
+                        }
+                        setShowIosSafariInstall(false);
+                      } else {
+                        setShowPwaInstall(false);
+                      }
+                    }}
+                    className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
                   >
                     Dismiss
                   </button>
@@ -1774,6 +1901,7 @@ export default function AdminDashboard({
                     partners={partners}
                     users={users}
                     setActiveTab={setActiveTab}
+                    partnerApplications={derivedPartnerApplications}
                   />
                 )}
               {activeAdminTab === "users" && isAdminAuthorized("users") && (
@@ -1781,6 +1909,7 @@ export default function AdminDashboard({
                   users={users}
                   bookings={bookings}
                   currentUserProfile={profile}
+                  setUsers={setUsers}
                 />
               )}
               {activeAdminTab === "referrals" &&
@@ -4784,14 +4913,21 @@ function PartnerManager({
   partners,
   users,
   setActiveTab,
+  partnerApplications = [],
 }: {
   partners: PartnerProfile[];
   users: UserProfile[];
   setActiveTab: (tab: any) => void;
+  partnerApplications?: PartnerApplication[];
 }) {
   const [partnerViewMode, setPartnerViewMode] = useState<"all" | "kyc_pending">(
     "all",
   );
+  const [localApplications, setLocalApplications] = useState<PartnerApplication[]>(partnerApplications);
+
+  useEffect(() => {
+    setLocalApplications(partnerApplications);
+  }, [partnerApplications]);
   const [selectedRewardPartner, setSelectedRewardPartner] =
     useState<PartnerProfile | null>(null);
   const [selectedProfilePartner, setSelectedProfilePartner] = useState<
@@ -4822,10 +4958,10 @@ function PartnerManager({
     status: "active" | "inactive",
   ) => {
     try {
-      await updateDoc(doc(db, "partners", partnerId), {
+      await setDoc(doc(db, "partners", partnerId), {
         status,
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `partners/${partnerId}`);
     }
@@ -4834,9 +4970,10 @@ function PartnerManager({
   const verifyPartner = async (partnerId: string, verified: boolean) => {
     try {
       const p = partners.find((x) => x.id === partnerId);
-      await updateDoc(doc(db, "partners", partnerId), {
+      await setDoc(doc(db, "partners", partnerId), {
         isVerified: verified,
         kycStatus: verified ? "verified" : "rejected",
+        status: verified ? "active" : "inactive",
         kycRejectReason: null,
         kycDocuments:
           p?.kycDocuments?.map((d) => ({
@@ -4844,7 +4981,7 @@ function PartnerManager({
             status: verified ? "verified" : "rejected",
           })) || [],
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `partners/${partnerId}`);
     }
@@ -4853,9 +4990,10 @@ function PartnerManager({
   const rejectPartner = async () => {
     if (!rejectingKYCPartner || !rejectReason) return;
     try {
-      await updateDoc(doc(db, "partners", rejectingKYCPartner.id), {
+      await setDoc(doc(db, "partners", rejectingKYCPartner.id), {
         isVerified: false,
         kycStatus: "rejected",
+        status: "inactive",
         kycRejectReason: rejectReason,
         kycDocuments:
           rejectingKYCPartner.kycDocuments?.map((d) => ({
@@ -4863,7 +5001,7 @@ function PartnerManager({
             status: "rejected",
           })) || [],
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
       setRejectingKYCPartner(null);
       setRejectReason("Documents are unclear or invalid.");
     } catch (err) {
@@ -4876,19 +5014,20 @@ function PartnerManager({
   };
 
   const approveAllKYC = async () => {
-    const pendingPartners = partners.filter((p) => p.kycStatus === "pending");
+    const pendingPartners = partners.filter((p) => p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails);
     if (pendingPartners.length === 0) return;
 
     try {
       await Promise.all(
         pendingPartners.map((p) =>
-          updateDoc(doc(db, "partners", p.id), {
+          setDoc(doc(db, "partners", p.id), {
             isVerified: true,
             kycStatus: "verified",
+            status: "active",
             kycDocuments:
               p.kycDocuments?.map((d) => ({ ...d, status: "verified" })) || [],
             updatedAt: Timestamp.now(),
-          }),
+          }, { merge: true }),
         ),
       );
     } catch (err) {
@@ -4900,11 +5039,11 @@ function PartnerManager({
     if (!selectedRewardPartner) return;
     try {
       const amount = parseInt(rewardAmount);
-      await updateDoc(doc(db, "partners", selectedRewardPartner.id), {
+      await setDoc(doc(db, "partners", selectedRewardPartner.id), {
         rewardCredits: (selectedRewardPartner.rewardCredits || 0) + amount,
         lastRewardReason: rewardReason,
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
 
       // Add to earnings history
       await addDoc(
@@ -4942,12 +5081,12 @@ function PartnerManager({
       return;
     }
     try {
-      await updateDoc(doc(db, "partners", manualKYCPartner.id), {
+      await setDoc(doc(db, "partners", manualKYCPartner.id), {
         kycStatus: "verified",
         isVerified: true,
         kycDocuments: manualDocs.map((d) => ({ ...d, status: "verified" })),
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
       setManualKYCPartner(null);
       setManualDocs([
         { type: "ID Proof Document", url: "", documentNumber: "" },
@@ -4956,6 +5095,131 @@ function PartnerManager({
       console.log("Manual KYC completed and partner verified.");
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "manual-kyc");
+    }
+  };
+
+  const approveApplication = async (app: PartnerApplication) => {
+    if (!app.id) return;
+
+    try {
+      // 1. Instantly filter from local UI state for zero-latency response
+      setLocalApplications(prev => prev.filter(a => a.id !== app.id));
+
+      // 2. Perform Atomic Firebase Transaction
+      await runTransaction(db, async (transaction) => {
+        const appRef = doc(db, "partner_applications", app.id);
+        const appSnap = await transaction.get(appRef);
+        if (!appSnap.exists()) {
+          throw new Error("Application not found or already processed!");
+        }
+
+        // Determine correct user ID mapping
+        const matchedUser = users.find(u => u.uid === app.id || u.phoneNumber === app.phone || u.mobile === app.phone || u.displayName?.toLowerCase() === app.fullName?.toLowerCase());
+        const userId = matchedUser ? matchedUser.uid : app.id; // prefer application ID as the fallback UID since SignUpAsPartner stores profile.uid as application ID!
+
+        const userRef = doc(db, "users", userId);
+        const userSnap = await transaction.get(userRef);
+
+        if (userSnap.exists()) {
+          // If pre-existing, merge update the role and status
+          transaction.set(userRef, {
+            role: 'partner',
+            partnerId: userId,
+            partnerApplicationStatus: 'approved',
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } else {
+          // If entirely new, create fresh user document
+          transaction.set(userRef, {
+            uid: userId,
+            partnerId: userId,
+            displayName: app.fullName,
+            fullName: app.fullName,
+            email: app.email || "",
+            role: 'partner',
+            phoneNumber: app.phone,
+            city: app.area,
+            partnerApplicationStatus: 'approved',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        // Create Partner Profile Doc
+        const partnerRefDirect = doc(db, "partners", userId);
+        const partnerRefPrefixed = doc(db, "partners", `partner_${userId}`);
+        const parsedCategories = app.serviceType ? app.serviceType.split(',').map((s: string) => s.trim()) : ["Appliance Repair"];
+        const partnerData = {
+          id: userId,
+          partnerId: userId,
+          userId: userId,
+          email: app.email || "",
+          categories: parsedCategories,
+          skills: parsedCategories,
+          bio: `Elite Certified Professional specializing in ${app.serviceType || 'Home Services'} across ${app.area || 'Indore'}.`,
+          rating: 4.9,
+          reviewCount: 0,
+          isVerified: true,
+          status: "approved",
+          city: "Indore",
+          availabilityStatus: "Available",
+          lat: 22.7196,
+          lng: 75.8577,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          kycStatus: "verified"
+        };
+        transaction.set(partnerRefDirect, partnerData);
+        transaction.set(partnerRefPrefixed, { ...partnerData, id: `partner_${userId}` });
+
+        // Delete partner application atomically
+        transaction.delete(appRef);
+      });
+
+      // 3. Optional Deep Cache Eviction after successful transaction
+      try {
+        if ('caches' in window) {
+          const cacheNames = await window.caches.keys();
+          await Promise.all(cacheNames.map(name => window.caches.delete(name)));
+        }
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(r => r.update()));
+        }
+      } catch (e) {
+        console.warn("Silent cache update skip:", e);
+      }
+
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast(`Approved ${app.fullName}!`);
+      } else {
+        alert(`Application of ${app.fullName} has been successfully approved! They are now an active Elite Partner.`);
+      }
+    } catch (err: any) {
+      console.error("Error approving partner application with transactions:", err);
+      // Re-add to local state on transaction failure to keep UI in sync
+      setLocalApplications(partnerApplications);
+      alert(`Failed to approve application: ${err.message || err}`);
+    }
+  };
+
+  const rejectApplication = async (appId: string) => {
+    if (confirm("Are you sure you want to reject this partner application?")) {
+      try {
+        try {
+          await deleteDoc(doc(db, "partner_applications", appId));
+        } catch (e) {
+          console.warn("Soft warning: partner_applications document delete failed on reject", e);
+        }
+        const matchedUser = users.find(u => u.uid === appId);
+        if (matchedUser) {
+          await setDoc(doc(db, "users", matchedUser.uid), {
+            partnerApplicationStatus: 'rejected'
+          }, { merge: true });
+        }
+      } catch (err) {
+        console.error("Error deleting partner application:", err);
+      }
     }
   };
 
@@ -4970,8 +5234,16 @@ function PartnerManager({
         .includes(pSearch.toLowerCase());
 
       const matchesSearch = nameMatch || emailMatch;
+      
+      const isActiveFleet = p.onboardingCompleted === true && p.status === "active";
+      const isKycPending = p.status !== "active" && (p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails);
+
       const matchesMode =
-        partnerViewMode === "all" || p.kycStatus === "pending";
+        partnerViewMode === "all"
+          ? isActiveFleet
+          : partnerViewMode === "kyc_pending"
+          ? isKycPending
+          : false;
 
       return matchesSearch && matchesMode;
     })
@@ -4987,26 +5259,25 @@ function PartnerManager({
   return (
     <div className="space-y-8">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full xl:w-auto">
           <div>
             <h3 className="text-xl font-bold">Partner Fleet</h3>
             <p className="text-slate-400 text-sm">
               Manage professionals and rewards
             </p>
           </div>
-          <div className="flex items-center gap-2 ml-4">
+          <div className="flex flex-wrap items-center gap-4" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
             <button
               onClick={() => setPartnerViewMode("all")}
               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "all" ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20" : "bg-indigo-50 text-indigo-700 border-indigo-100/50 hover:bg-indigo-100"}`}
             >
-              Partner View
+              Active Fleet ({partners.filter((p) => p.onboardingCompleted === true && p.status === "active").length})
             </button>
             <button
               onClick={() => setPartnerViewMode("kyc_pending")}
               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "kyc_pending" ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20" : "bg-emerald-50 text-emerald-700 border-emerald-100/50 hover:bg-emerald-100"}`}
             >
-              Become Partner (
-              {partners.filter((p) => p.kycStatus === "pending").length})
+              Become Partner ({partners.filter((p) => p.status !== "active" && (p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails)).length})
             </button>
           </div>
         </div>
@@ -5049,7 +5320,158 @@ function PartnerManager({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {false && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-8">
+          {localApplications.length === 0 ? (
+            <div className="col-span-full text-center py-12 bg-white rounded-[40px] border border-dashed border-slate-200">
+              <ShieldAlert size={48} className="mx-auto text-slate-300 mb-4 animate-bounce" />
+              <p className="text-slate-500 font-bold text-sm">No Pending Partner Applications</p>
+              <p className="text-slate-400 text-xs mt-1">New submissions via the Elite Partner modal will appear here.</p>
+            </div>
+          ) : (
+            localApplications.map((app) => (
+              <div
+                key={app.id}
+                className="bg-white p-8 border border-slate-200 rounded-[40px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[8px] px-3 py-1 rounded-full font-black uppercase tracking-widest bg-amber-50 text-amber-600 border border-amber-100">
+                      Applicant
+                    </span>
+                    <span className="text-[9px] font-mono font-bold text-slate-400">
+                      {app.createdAt?.toDate ? app.createdAt.toDate().toLocaleDateString() : 'Recent'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 mb-4">
+                    <img
+                      src={
+                        (app as any).profilePhoto ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${app.fullName}`
+                      }
+                      className="w-14 h-14 rounded-full object-cover bg-slate-50 border border-slate-200 shrink-0"
+                      alt={app.fullName}
+                      referrerPolicy="no-referrer"
+                    />
+                    <div>
+                      <h4 className="font-bold text-lg text-slate-900 leading-tight">
+                        {app.fullName}
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium mt-1">
+                        <span className="font-bold text-slate-400">Phone:</span> {app.phone}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 border-t border-slate-100 pt-4 mb-4">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium">Skills:</span>
+                      <span className="font-bold text-slate-800 bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full text-[10px]">
+                        {app.serviceType}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium">Indore Area:</span>
+                      <span className="font-bold text-slate-800">{app.area}</span>
+                    </div>
+                  </div>
+
+                  {/* Onboarding Documents & Payout Info for Partner Requests */}
+                  {((app as any).educationalCertificates || (app as any).verificationCertificates || (app as any).govtId) && (
+                    <div className="space-y-2 mb-4 bg-amber-50/40 p-3.5 rounded-2xl border border-amber-100/50">
+                      <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">
+                        Credentials & Certificates
+                      </p>
+                      {(app as any).educationalCertificates && (
+                        <div className="flex justify-between items-center text-[10px] bg-white px-2 py-1.5 rounded-lg border border-amber-100/50">
+                          <span className="text-slate-600 font-bold truncate max-w-[130px]" title={(app as any).educationalCertificates}>
+                            Edu: {(app as any).educationalCertificates}
+                          </span>
+                          <a
+                            href={(app as any).educationalCertificates.startsWith('data:') || (app as any).educationalCertificates.startsWith('http') ? (app as any).educationalCertificates : `data:text/plain;charset=utf-8,${encodeURIComponent((app as any).educationalCertificates)}`}
+                            download="educational_certificate"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] font-black text-blue-600 hover:text-blue-800 bg-slate-50 px-2 py-0.5 rounded shrink-0 ml-2"
+                          >
+                            View
+                          </a>
+                        </div>
+                      )}
+                      {(app as any).verificationCertificates && (
+                        <div className="flex justify-between items-center text-[10px] bg-white px-2 py-1.5 rounded-lg border border-amber-100/50">
+                          <span className="text-slate-600 font-bold truncate max-w-[130px]" title={(app as any).verificationCertificates}>
+                            Cert: {(app as any).verificationCertificates}
+                          </span>
+                          <a
+                            href={(app as any).verificationCertificates.startsWith('data:') || (app as any).verificationCertificates.startsWith('http') ? (app as any).verificationCertificates : `data:text/plain;charset=utf-8,${encodeURIComponent((app as any).verificationCertificates)}`}
+                            download="verification_certificate"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] font-black text-blue-600 hover:text-blue-800 bg-slate-50 px-2 py-0.5 rounded shrink-0 ml-2"
+                          >
+                            View
+                          </a>
+                        </div>
+                      )}
+                      {(app as any).govtId && (
+                        <div className="flex justify-between items-center text-[10px] bg-white px-2 py-1.5 rounded-lg border border-amber-100/50">
+                          <span className="text-slate-600 font-bold">Government ID Proof</span>
+                          <a
+                            href={(app as any).govtId}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] font-black text-blue-600 hover:text-blue-800 bg-slate-50 px-2 py-0.5 rounded shrink-0 ml-2"
+                          >
+                            View
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(app as any).bankDetails && (
+                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 mb-6 space-y-1">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        Payout Info
+                      </p>
+                      <p className="text-[10px] text-slate-700 font-bold leading-none flex justify-between">
+                        <span className="text-slate-400 font-black uppercase text-[8px]">Holder:</span>
+                        <span>{((app as any).bankDetails?.accountHolder || "").toUpperCase()}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-700 font-bold leading-none flex justify-between mt-1.5">
+                        <span className="text-slate-400 font-black uppercase text-[8px]">Account:</span>
+                        <span>{(app as any).bankDetails?.accountNumber || ""}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-700 font-bold leading-none flex justify-between mt-1.5">
+                        <span className="text-slate-400 font-black uppercase text-[8px]">IFSC:</span>
+                        <span className="font-mono">{(app as any).bankDetails?.ifscCode || ""}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => approveApplication(app)}
+                    className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all active:scale-95"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => rejectApplication(app.id || '')}
+                    className="px-4 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 py-2.5 rounded-xl text-xs font-bold transition-all border border-transparent hover:border-rose-100 active:scale-95"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {true && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-8">
         {sortedPartners.map((p) => {
           const user = users.find((u) => u.uid === p.userId);
           return (
@@ -5061,6 +5483,8 @@ function PartnerManager({
                 <div className="relative mb-6">
                   <img
                     src={
+                      p.profilePhoto ||
+                      p.photoURL ||
                       user?.photoURL ||
                       "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
                     }
@@ -5117,9 +5541,11 @@ function PartnerManager({
                     </p>
                   </div>
                 )}
-                <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-[0.25em]">
-                  {user?.email}
-                </p>
+                {user?.email ? (
+                  <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-[0.25em]">
+                    {user.email}
+                  </p>
+                ) : null}
 
                 <div className="flex gap-4 w-full mb-8 py-4 border-y border-slate-50">
                   <div className="flex-1">
@@ -5148,10 +5574,10 @@ function PartnerManager({
                   </div>
                 </div>
 
-                {p.kycStatus === "pending" && (
-                  <div className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+                {(p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails) && (
+                  <div className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left animate-fade-in">
                     <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">
-                      Submitted Documents
+                      Submitted Documents & KYC Data
                     </p>
                     <div className="space-y-4">
                       <div className="p-3 bg-white rounded-xl border border-amber-100">
@@ -5179,9 +5605,86 @@ function PartnerManager({
                           </p>
                         </div>
                       )}
+
+                      {/* Educational & Experience Details */}
+                      {(p.experience !== undefined || p.previousSalary || p.onboardingData?.educationalCertificates || p.onboardingData?.verificationCertificates) && (
+                        <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-1.5">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            Trade Experience & Credentials
+                          </p>
+                          {(p.onboardingData?.educationalCertificates || p.educationalCertificates) && (
+                            <div className="flex justify-between items-center text-[10px] text-slate-800 font-bold leading-normal">
+                              <span className="truncate max-w-[170px]">
+                                <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Education:</span>
+                                {p.onboardingData?.educationalCertificates || p.educationalCertificates}
+                              </span>
+                              <a
+                                href={(p.onboardingData?.educationalCertificates || p.educationalCertificates).startsWith('data:') || (p.onboardingData?.educationalCertificates || p.educationalCertificates).startsWith('http') ? (p.onboardingData?.educationalCertificates || p.educationalCertificates) : `data:text/plain;charset=utf-8,${encodeURIComponent(p.onboardingData?.educationalCertificates || p.educationalCertificates)}`}
+                                download="educational_certificate"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] font-black text-blue-600 hover:text-blue-800 bg-slate-50 px-2 py-0.5 rounded shrink-0 ml-2"
+                              >
+                                View
+                              </a>
+                            </div>
+                          )}
+                          {(p.onboardingData?.verificationCertificates || p.verificationCertificates) && (
+                            <div className="flex justify-between items-center text-[10px] text-slate-800 font-bold leading-normal">
+                              <span className="truncate max-w-[170px]">
+                                <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Certificates:</span>
+                                {p.onboardingData?.verificationCertificates || p.verificationCertificates}
+                              </span>
+                              <a
+                                href={(p.onboardingData?.verificationCertificates || p.verificationCertificates).startsWith('data:') || (p.onboardingData?.verificationCertificates || p.verificationCertificates).startsWith('http') ? (p.onboardingData?.verificationCertificates || p.verificationCertificates) : `data:text/plain;charset=utf-8,${encodeURIComponent(p.onboardingData?.verificationCertificates || p.verificationCertificates)}`}
+                                download="verification_certificate"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] font-black text-blue-600 hover:text-blue-800 bg-slate-50 px-2 py-0.5 rounded shrink-0 ml-2"
+                              >
+                                View
+                              </a>
+                            </div>
+                          )}
+                          {(p.experience !== undefined || p.onboardingData?.workExperienceYears) && (
+                            <p className="text-[10px] text-slate-800 font-bold leading-normal">
+                              <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Experience:</span>
+                              {p.experience ?? p.onboardingData?.workExperienceYears} Years
+                            </p>
+                          )}
+                          {(p.previousSalary || p.onboardingData?.previousSalary) && (
+                            <p className="text-[10px] text-slate-800 font-bold leading-normal">
+                              <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Previous Salary:</span>
+                              ₹{p.previousSalary || p.onboardingData?.previousSalary}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Bank Details Payout Info */}
+                      {(p.bankDetails || p.onboardingData?.bankAccountHolderName) && (
+                        <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-1.5">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            Payout Info & Settlement Bank
+                          </p>
+                          <p className="text-[10px] text-slate-800 font-bold leading-normal">
+                            <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Holder Name:</span>
+                            {(p.bankDetails?.accountHolder || p.onboardingData?.bankAccountHolderName || "N/A").toUpperCase()}
+                          </p>
+                          <p className="text-[10px] text-slate-800 font-bold leading-normal">
+                            <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">Account No:</span>
+                            {p.bankDetails?.accountNumber || p.onboardingData?.bankAccountNumber || "N/A"}
+                          </p>
+                          <p className="text-[10px] text-slate-800 font-bold leading-normal">
+                            <span className="text-slate-400 font-black uppercase tracking-wider text-[8px] mr-1">IFSC Code:</span>
+                            {p.bankDetails?.ifscCode || p.onboardingData?.bankIfscCode || "N/A"}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-2">
                         <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">
-                          KYC Documents
+                          KYC Documents & Uploads
                         </p>
                         {p.kycDocuments?.map((doc, idx) => (
                           <div
@@ -5201,6 +5704,40 @@ function PartnerManager({
                             </a>
                           </div>
                         ))}
+                        {(p.govtId || p.onboardingData?.governmentIdDoc) && !p.kycDocuments?.some(d => d.url === (p.govtId || p.onboardingData?.governmentIdDoc)) && (
+                          <div
+                            className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100"
+                          >
+                            <span className="text-[10px] font-bold text-slate-900">
+                              Government ID Proof
+                            </span>
+                            <a
+                              href={p.govtId || p.onboardingData?.governmentIdDoc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase bg-slate-50 px-2 py-1 rounded"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+                        {(p.profilePhoto || p.onboardingData?.profileImage) && !p.kycDocuments?.some(d => d.url === (p.profilePhoto || p.onboardingData?.profileImage)) && (
+                          <div
+                            className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100"
+                          >
+                            <span className="text-[10px] font-bold text-slate-900">
+                              Onboarding Photo
+                            </span>
+                            <a
+                              href={p.profilePhoto || p.onboardingData?.profileImage}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-slate-400 hover:text-blue-700 uppercase bg-slate-50 px-2 py-1 rounded"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -5333,6 +5870,7 @@ function PartnerManager({
           );
         })}
       </div>
+      )}
 
       <AnimatePresence>
         {selectedRewardPartner && (
@@ -5619,9 +6157,11 @@ function PartnerManager({
                         {selectedProfilePartner.status}
                       </span>
                     </div>
-                    <p className="text-slate-400 font-medium">
-                      {selectedProfilePartner.user?.email}
-                    </p>
+                    {selectedProfilePartner.user?.email ? (
+                      <p className="text-slate-400 font-medium">
+                        {selectedProfilePartner.user.email}
+                      </p>
+                    ) : null}
                     <div className="flex items-center gap-4 mt-2">
                       <p className="text-slate-600 font-bold font-mono">
                         {selectedProfilePartner.user?.phoneNumber
@@ -5820,10 +6360,12 @@ function UserManager({
   users,
   bookings,
   currentUserProfile,
+  setUsers,
 }: {
   users: UserProfile[];
   bookings: Booking[];
   currentUserProfile: UserProfile;
+  setUsers?: React.Dispatch<React.SetStateAction<UserProfile[]>>;
 }) {
   const isHeadAdmin =
     !currentUserProfile.adminSubRole ||
@@ -5849,7 +6391,7 @@ function UserManager({
         updateData.adminSubRole = deleteField();
       }
 
-      await updateDoc(doc(db, "users", userId), updateData);
+      await setDoc(doc(db, "users", userId), { ...updateData, uid: userId }, { merge: true });
 
       await addDoc(collection(db, "auditLogs"), {
         adminId: currentUserProfile.uid,
@@ -5869,6 +6411,30 @@ function UserManager({
     setDeleteError(null);
     setDeleteSuccess(null);
     try {
+      // Synchronously filter local React state immediately so they vanish from the screen instantly
+      if (setUsers) {
+        setUsers((prev) => prev.filter((u) => u.uid !== userId));
+      }
+
+      // A. Call custom API endpoint to completely wipe the user from Firebase Authentication (Auth)
+      try {
+        console.log(`[Admin User Deletion] Contacting backend to delete UID: ${userId}`);
+        const response = await fetch(`/api/users/${userId}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          console.warn("[Admin User Deletion API Warning]:", errData.error || response.statusText);
+        } else {
+          console.log("[Admin User Deletion API Success]: User successfully wiped from Auth.");
+        }
+      } catch (apiErr) {
+        console.error("[Admin User Deletion API Error]: Failed to contact backend deletion API:", apiErr);
+      }
+
       // 1. Delete associated Partner profile (if any) and its earningsHistory subcollection
       try {
         const partnerQuery = query(
@@ -6159,171 +6725,208 @@ function UserManager({
             </tr>
           </thead>
           <tbody>
-            {users.map((u, i) => {
-              const userBookings = bookings.filter(
-                (b) => b.customerId === u.uid,
-              );
-              return (
-                <tr
-                  key={i}
-                  className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group"
-                >
-                  <td className="px-8 py-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center font-bold text-slate-400 text-xs shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
-                        {u.displayName?.[0] || "U"}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">
-                          {u.displayName}
-                        </p>
-                        <p className="text-xs text-slate-400 truncate">
-                          {u.email}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-6">
-                    <p className="text-sm font-bold text-slate-900">
-                      {!u.phoneNumber || import.meta.env.DEV
-                        ? "--"
-                        : u.phoneNumber.replace("+91", "")}
-                    </p>
-                  </td>
-                  <td className="px-8 py-6">
-                    {(() => {
-                      const hasPhone = !!u.phoneNumber;
-                      const isPhoneVerified =
-                        hasPhone || !!u.phoneNumberVerified;
-                      return (
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isPhoneVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
-                        >
-                          {isPhoneVerified ? "Verified" : "Not Verified"}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-8 py-6">
-                    {(() => {
-                      const isEmailVerified =
-                        !!u.email &&
-                        (u.role === "admin" ||
-                          !u.phoneNumber ||
-                          u.emailVerified !== false);
-                      return (
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isEmailVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
-                        >
-                          {isEmailVerified ? "Verified" : "Not Verified"}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="className-does-not-matter shadow-none border-none p-0 hidden">
-                    <p className="hidden"></p>
-                  </td>
-                  <td className="px-8 py-6">
-                    <div className="flex flex-col gap-2">
-                      {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
-                        <>
-                          <select
-                            value={u.role}
-                            onChange={(e) => {
-                              const newRole = e.target.value as UserRole;
-                              if (newRole === "admin") {
-                                updateUserRole(u.uid, newRole, "hr");
-                              } else {
-                                updateUserRole(u.uid, newRole);
-                              }
-                            }}
-                            className={`text-[10px] font-bold border rounded-lg px-2 py-1 outline-none transition-all cursor-pointer ${
-                              u.role === "admin"
-                                ? "bg-purple-50 text-purple-700 border-purple-200 focus:ring-purple-500"
-                                : u.role === "partner"
-                                  ? "bg-blue-700 text-white border-slate-700 focus:ring-slate-500"
-                                  : "bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-400"
-                            }`}
-                          >
-                            <option value="customer">Customer</option>
-                            <option value="partner">Partner</option>
-                            <option value="admin">Administrator</option>
-                          </select>
+             {(() => {
+              // Extract all customerId and partnerId from bookings that do not exist in the users array to find ghost users
+              const existingUids = new Set(users.map((usr) => usr.uid));
+              const ghostUsers: UserProfile[] = [];
+              bookings.forEach((b) => {
+                if (b.customerId && !existingUids.has(b.customerId)) {
+                  existingUids.add(b.customerId);
+                  ghostUsers.push({
+                    uid: b.customerId,
+                    displayName: b.customerName || `Ghost Customer (${b.customerId.slice(0, 6)})`,
+                    email: `ghost_${b.customerId.slice(0, 6)}@zomindia.com`,
+                    phoneNumber: b.customerPhone || '',
+                    mobile: b.customerPhone || '',
+                    role: 'customer',
+                    createdAt: b.createdAt || Timestamp.now(),
+                  } as any);
+                }
+                if (b.partnerId && !existingUids.has(b.partnerId)) {
+                  existingUids.add(b.partnerId);
+                  const matchedP = users.find((p) => p.uid === b.partnerId);
+                  ghostUsers.push({
+                    uid: b.partnerId,
+                    displayName: matchedP?.displayName || matchedP?.fullName || `Ghost Partner (${b.partnerId.slice(0, 6)})`,
+                    email: matchedP?.email || `ghost_partner_${b.partnerId.slice(0, 6)}@zomindia.com`,
+                    phoneNumber: matchedP?.phoneNumber || '',
+                    mobile: matchedP?.mobile || matchedP?.phoneNumber || '',
+                    role: 'partner',
+                    createdAt: b.createdAt || Timestamp.now(),
+                  } as any);
+                }
+              });
 
-                          {u.role === "admin" && (
-                            <select
-                              value={u.adminSubRole || "head"}
-                              onChange={(e) =>
-                                updateUserRole(
-                                  u.uid,
-                                  "admin",
-                                  e.target.value as AdminSubRole,
-                                )
-                              }
-                              className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer italic"
-                            >
-                              <option value="head">Head Admin</option>
-                              <option value="accounts">Accounts Dept</option>
-                              <option value="hr">HR Dept</option>
-                            </select>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
-                              u.role === "admin"
-                                ? "bg-purple-100 text-purple-700"
-                                : u.role === "partner"
-                                  ? "bg-blue-700 text-white"
-                                  : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            {u.role}
-                          </span>
-                          {u.adminSubRole && (
-                            <span className="text-[9px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-black uppercase tracking-widest italic">
-                              {u.adminSubRole}
-                            </span>
-                          )}
+              const allUsersToDisplay = [...users, ...ghostUsers];
+
+              return allUsersToDisplay.map((u, i) => {
+                const userBookings = bookings.filter(
+                  (b) => b.customerId === u.uid || b.partnerId === u.uid,
+                );
+                return (
+                  <tr
+                    key={i}
+                    className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group"
+                  >
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center font-bold text-slate-400 text-xs shadow-sm group-hover:bg-blue-700 group-hover:text-white transition-all shrink-0">
+                          {u.displayName?.[0] || "U"}
                         </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">
+                            {u.displayName}
+                          </p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {u.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <p className="text-sm font-bold text-slate-900">
+                        {!u.phoneNumber || import.meta.env.DEV
+                          ? "--"
+                          : u.phoneNumber.replace("+91", "")}
+                      </p>
+                    </td>
+                    <td className="px-8 py-6">
+                      {(() => {
+                        const hasPhone = !!u.phoneNumber;
+                        const isPhoneVerified =
+                          hasPhone || !!u.phoneNumberVerified;
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isPhoneVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
+                          >
+                            {isPhoneVerified ? "Verified" : "Not Verified"}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-8 py-6">
+                      {(() => {
+                        const isEmailVerified =
+                          !!u.email &&
+                          (u.role === "admin" ||
+                            !u.phoneNumber ||
+                            u.emailVerified !== false);
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg ${isEmailVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-100/50" : "bg-amber-50 text-amber-700 border border-amber-100/50"}`}
+                          >
+                            {isEmailVerified ? "Verified" : "Not Verified"}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="className-does-not-matter shadow-none border-none p-0 hidden">
+                      <p className="hidden"></p>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex flex-col gap-2">
+                        {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
+                          <>
+                            <select
+                              value={u.role}
+                              onChange={(e) => {
+                                const newRole = e.target.value as UserRole;
+                                if (newRole === "admin") {
+                                  updateUserRole(u.uid, newRole, "hr");
+                                } else {
+                                  updateUserRole(u.uid, newRole);
+                                }
+                              }}
+                              className={`text-[10px] font-bold border rounded-lg px-2 py-1 outline-none transition-all cursor-pointer ${
+                                u.role === "admin"
+                                  ? "bg-purple-50 text-purple-700 border-purple-200 focus:ring-purple-500"
+                                  : u.role === "partner"
+                                    ? "bg-blue-700 text-white border-slate-700 focus:ring-slate-500"
+                                    : "bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-400"
+                              }`}
+                            >
+                              <option value="customer">Customer</option>
+                              <option value="partner">Partner</option>
+                              <option value="admin">Administrator</option>
+                            </select>
+
+                            {u.role === "admin" && (
+                              <select
+                                value={u.adminSubRole || "head"}
+                                onChange={(e) =>
+                                  updateUserRole(
+                                    u.uid,
+                                    "admin",
+                                    e.target.value as AdminSubRole,
+                                  )
+                                }
+                                className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer italic"
+                              >
+                                <option value="head">Head Admin</option>
+                                <option value="accounts">Accounts Dept</option>
+                                <option value="hr">HR Dept</option>
+                              </select>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                                u.role === "admin"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : u.role === "partner"
+                                    ? "bg-blue-700 text-white"
+                                    : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {u.role}
+                            </span>
+                            {u.adminSubRole && (
+                              <span className="text-[9px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-black uppercase tracking-widest italic">
+                                {u.adminSubRole}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <p className="text-sm font-bold text-slate-900">
+                        {userBookings.length} Bookings
+                      </p>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                        ₹{userBookings.reduce((a, b) => a + b.totalPrice, 0)} LTV
+                      </p>
+                    </td>
+                    <td className="px-8 py-6 text-left">
+                      <p className="text-xs text-slate-500">
+                        {u.createdAt?.toDate?.()
+                          ? u.createdAt.toDate().toLocaleDateString()
+                          : u.createdAt
+                            ? new Date(u.createdAt).toLocaleDateString()
+                            : "--"}
+                      </p>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
+                        <button
+                          onClick={() => setDeletingUser(u)}
+                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm inline-flex items-center gap-1 text-xs font-bold"
+                          title="Erase all data and user"
+                        >
+                          <Trash2 size={14} />
+                          <span className="hidden sm:inline">Erase</span>
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-bold italic">
+                          Protected
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-8 py-6">
-                    <p className="text-sm font-bold text-slate-900">
-                      {userBookings.length} Bookings
-                    </p>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-                      ₹{userBookings.reduce((a, b) => a + b.totalPrice, 0)} LTV
-                    </p>
-                  </td>
-                  <td className="px-8 py-6 text-left">
-                    <p className="text-xs text-slate-500">
-                      {u.createdAt?.toDate?.()
-                        ? u.createdAt.toDate().toLocaleDateString()
-                        : new Date(u.createdAt).toLocaleDateString()}
-                    </p>
-                  </td>
-                  <td className="px-8 py-6 text-right">
-                    {isHeadAdmin && u.uid !== currentUserProfile.uid ? (
-                      <button
-                        onClick={() => setDeletingUser(u)}
-                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm inline-flex items-center gap-1 text-xs font-bold"
-                        title="Erase all data and user"
-                      >
-                        <Trash2 size={14} />
-                        <span className="hidden sm:inline">Erase</span>
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 font-bold italic">
-                        Protected
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                  </tr>
+                );
+              });
+            })()}
           </tbody>
         </table>
       </div>

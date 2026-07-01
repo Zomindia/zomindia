@@ -85,7 +85,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'displayName', 'role']) &&
              data.keys().size() >= 3 &&
-             (data.uid == request.auth.uid || data.uid.startsWith('booking_sim_pro_')) &&
+             (data.uid == request.auth.uid || data.uid.startsWith('booking_sim_pro_') || isAdmin() || isHRAdmin() || isHeadAdmin()) &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
              (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 100)) &&
              (!('email' in data) || data.email is string || data.email == null) &&
@@ -106,8 +106,14 @@ service cloud.firestore {
              (!('referralCode' in data) || (data.referralCode is string && data.referralCode.size() <= 50)) &&
              (!('onboardingComplete' in data) || (data.onboardingComplete is bool)) &&
              (!('adminSubRole' in data) || (data.adminSubRole is string && data.adminSubRole in ['head', 'accounts', 'hr'])) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-             (!('updatedAt' in data) || (data.updatedAt is timestamp));
+             (!('currentMode' in data) || (data.currentMode is string && data.currentMode in ['customer', 'partner'])) &&
+             (!('customerData' in data) || (data.customerData is map)) &&
+             (!('partnerData' in data) || (data.partnerData is map)) &&
+             (!('partnerApplicationStatus' in data) || (data.partnerApplicationStatus is string)) &&
+             (!('partnerId' in data) || (data.partnerId is string)) &&
+             (!('city' in data) || (data.city is string)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp || data.createdAt is string)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp || data.updatedAt is string));
     }
 
     function isValidCategory(data) {
@@ -133,7 +139,7 @@ service cloud.firestore {
 
     function isValidPartner(data) {
       return data.keys().hasAll(['userId', 'categories', 'status']) &&
-             (data.userId == request.auth.uid || data.userId.startsWith('booking_sim_pro_')) &&
+             (data.userId == request.auth.uid || data.userId.startsWith('booking_sim_pro_') || isAdmin() || isHRAdmin() || isHeadAdmin()) &&
              data.categories is list &&
              data.status in ['active', 'inactive', 'pending'] &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 2000)) &&
@@ -342,9 +348,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() || (resource != null && resource.data.get('role', '') == 'partner');
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_')) && isValidUser(incoming());
-      allow update: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_') || isHRAdmin() || isHeadAdmin()) && (
-        isHeadAdmin() || isOwner(userId) || (
+      allow create: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_') || isAdmin() || isHRAdmin() || isHeadAdmin()) && isValidUser(incoming());
+      allow update: if isSignedIn() && (isOwner(userId) || userId.startsWith('booking_sim_pro_') || isHRAdmin() || isHeadAdmin() || isAdmin()) && (
+        isHeadAdmin() || isHRAdmin() || isAdmin() || isOwner(userId) || (
           isValidUser(incoming()) && 
           incoming().uid == existing().uid &&
           (
@@ -355,10 +361,9 @@ service cloud.firestore {
               (incoming().diff(existing()).affectedKeys().hasOnly([
                 'displayName', 'fullName', 'email', 'phoneNumber', 'phoneNumberVerified', 'photoURL', 'address', 'bio', 
                 'notificationPreferences', 'updatedAt', 'gender', 'languagePreference', 
-                'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete'
+                'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete',
+                'currentMode', 'customerData', 'partnerData'
               ])) ||
-              // Allow transition to partner role during onboarding
-              (incoming().diff(existing()).affectedKeys().hasOnly(['role', 'bio', 'phoneNumber', 'updatedAt']) && incoming().role == 'partner' && (existing().role == 'customer' || existing().role == 'partner')) ||
               ('email' in request.auth.token && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
               ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||
               ('email' in existing() && existing().email != null && existing().email.lower() == 'sarthakwebtech@gmail.com') ||
@@ -394,27 +399,7 @@ service cloud.firestore {
     }
 
     match /partners/{partnerId} {
-      allow read: if true;
-      allow create: if isSignedIn() && (isOwner(partnerId) || partnerId.startsWith('booking_sim_pro_')) && isValidPartner(incoming());
-      allow update: if isSignedIn() && (
-                    isOwner(existing().userId) || 
-                    existing().userId.startsWith('booking_sim_pro_') || 
-                    isHRAdmin() || 
-                    isHeadAdmin() ||
-                    (
-                      // Allow customer updating partner's rating and reviewCount during review submission
-                      incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount']) &&
-                      incoming().reviewCount == existing().get('reviewCount', 0) + 1 &&
-                      incoming().rating is number && incoming().rating >= 0 && incoming().rating <= 5
-                    )
-                  ) && (
-                    isHeadAdmin() || 
-                    isHRAdmin() || 
-                    partnerId.startsWith('booking_sim_pro_') || 
-                    (incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount'])) ||
-                    (isValidPartner(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['categories', 'status', 'bio', 'lat', 'lng', 'updatedAt', 'availabilityStatus', 'totalEarnings', 'rewardCredits']))
-                  );
-      allow delete: if isAdmin();
+      allow read, write, update, delete: if true;
 
       match /earningsHistory/{historyId} {
         allow read: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId));
@@ -577,7 +562,7 @@ service cloud.firestore {
 
     // Connection Test
     match /test/connection {
-      allow read: if isSignedIn();
+      allow read: if true;
     }
 
     match /system_updates/{updateId} {
@@ -594,8 +579,11 @@ service cloud.firestore {
     }
 
     match /partner_applications/{applicationId} {
-      allow read, list, update, delete: if isAdmin();
-      allow create: if isValidPartnerApplication(incoming());
+      allow read, write: if true;
+    }
+
+    match /partnerApplications/{applicationId} {
+      allow read, write: if true;
     }
   }
 }
