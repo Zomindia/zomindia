@@ -495,8 +495,67 @@ export default function AdminDashboard({
         const pList: any[] = [];
         snap.docs.forEach((d) => {
           const u = d.data();
-          if (u.isPartner === true && u.partnerData?.kycStatus !== undefined) {
+          const rawDirectKyc = String(u.kycStatus || "").toLowerCase().trim();
+          const rawNestedKyc = String(u.partnerData?.kycStatus || "").toLowerCase().trim();
+          const rawDirectRole = String(u.role || "").toLowerCase().trim();
+          const rawDirectStatus = String(u.status || "").toLowerCase().trim();
+          const rawNestedStatus = String(u.partnerData?.status || "").toLowerCase().trim();
+
+          const isPartnerUser =
+            u.isPartner === true ||
+            rawDirectRole === "partner" ||
+            !!u.partnerId ||
+            (u.partnerData && Object.keys(u.partnerData).length > 0) ||
+            rawDirectKyc === "approved" ||
+            rawDirectKyc === "verified" ||
+            rawNestedKyc === "approved" ||
+            rawNestedKyc === "verified" ||
+            rawDirectStatus === "approved" ||
+            rawDirectStatus === "verified" ||
+            rawDirectStatus === "active" ||
+            rawNestedStatus === "approved" ||
+            rawNestedStatus === "verified" ||
+            rawNestedStatus === "active" ||
+            u.isVerified === true ||
+            u.partnerData?.isVerified === true;
+
+          if (isPartnerUser) {
             const pData = u.partnerData || {};
+            
+            // Safe KYC / status check in both locations (direct and nested) and support case-insensitive "approved" or "verified"
+            let finalKycStatus = "pending";
+            
+            if (
+              rawDirectKyc === "approved" ||
+              rawDirectKyc === "verified" ||
+              rawNestedKyc === "approved" ||
+              rawNestedKyc === "verified" ||
+              rawDirectStatus === "approved" ||
+              rawDirectStatus === "verified" ||
+              rawNestedStatus === "approved" ||
+              rawNestedStatus === "verified"
+            ) {
+              finalKycStatus = "approved";
+            } else if (
+              rawDirectKyc === "rejected" ||
+              rawNestedKyc === "rejected" ||
+              rawDirectStatus === "rejected" ||
+              rawNestedStatus === "rejected"
+            ) {
+              finalKycStatus = "rejected";
+            } else {
+              const combined = `${rawDirectKyc} ${rawNestedKyc} ${rawDirectStatus} ${rawNestedStatus}`;
+              if (combined.includes("approve") || combined.includes("verif") || combined.includes("active")) {
+                finalKycStatus = "approved";
+              } else if (combined.includes("reject")) {
+                finalKycStatus = "rejected";
+              } else {
+                finalKycStatus = "pending";
+              }
+            }
+
+            const isVerifiedUser = finalKycStatus === "approved" || pData.isVerified === true || u.isVerified === true || rawDirectRole === "partner";
+
             pList.push({
               id: d.id,
               userId: d.id,
@@ -506,10 +565,10 @@ export default function AdminDashboard({
               bio: pData.bio || u.bio || `Elite Certified Professional`,
               rating: pData.rating !== undefined ? pData.rating : 4.9,
               reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
-              isVerified: pData.isVerified !== undefined ? pData.isVerified : (pData.kycStatus === "verified" || u.role === "partner"),
-              status: pData.status || (u.role === "partner" ? "active" : "pending"),
+              isVerified: isVerifiedUser,
+              status: pData.status || (isVerifiedUser ? "active" : "pending"),
               availabilityStatus: pData.availabilityStatus || "Offline",
-              kycStatus: pData.kycStatus || "pending",
+              kycStatus: finalKycStatus,
               lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
               lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
               createdAt: u.createdAt || pData.createdAt || Timestamp.now(),
@@ -2418,7 +2477,52 @@ function BookingManager({
     }
   };
 
-  // Sort partners to show 'Available' ones first
+  // Filter and sort ALL partners where role is partner and KYC status or status is approved/verified/active
+  const sortedAllocationPartners = useMemo(() => {
+    const allocationPartners = partners.filter((p) => {
+      const u = users.find((user) => user.uid === p.userId) as any;
+      
+      // 2. Role Mapping: Check both `role === 'partner'` and `isPartner === true` on user or partner safely
+      const isPartnerRole =
+        (p as any).isPartner === true ||
+        u?.isPartner === true ||
+        (p as any).role === "partner" ||
+        u?.role === "partner" ||
+        p.isVerified === true ||
+        p.status === "active";
+
+      // 1. Loose Status Check: Include any partner whose status or kycStatus is either "approved" or "verified" (case-insensitive)
+      const pKyc = String(p.kycStatus || "").toLowerCase().trim();
+      const uKyc = String(u?.kycStatus || "").toLowerCase().trim();
+      const uNestedKyc = String(u?.partnerData?.kycStatus || "").toLowerCase().trim();
+      const pStatus = String(p.status || "").toLowerCase().trim();
+      const uStatus = String(u?.status || "").toLowerCase().trim();
+      const uNestedStatus = String(u?.partnerData?.status || "").toLowerCase().trim();
+
+      const isApproved =
+        pKyc === "approved" || pKyc === "verified" || pKyc === "active" ||
+        uKyc === "approved" || uKyc === "verified" || uKyc === "active" ||
+        uNestedKyc === "approved" || uNestedKyc === "verified" || uNestedKyc === "active" ||
+        pStatus === "approved" || pStatus === "verified" || pStatus === "active" ||
+        uStatus === "approved" || uStatus === "verified" || uStatus === "active" ||
+        uNestedStatus === "approved" || uNestedStatus === "verified" || uNestedStatus === "active" ||
+        p.isVerified === true ||
+        u?.partnerData?.isVerified === true;
+
+      return isPartnerRole && isApproved;
+    });
+
+    // 3. Ignore Availability Filter: We return all approved partners, regardless of online/offline status, sorting Available first
+    return [...allocationPartners].sort((a, b) => {
+      const aOnline = a.availabilityStatus === "Available";
+      const bOnline = b.availabilityStatus === "Available";
+      if (aOnline && !bOnline) return -1;
+      if (!aOnline && bOnline) return 1;
+      return 0;
+    });
+  }, [partners, users]);
+
+  // Sort partners to show 'Available' ones first for fallback references
   const sortedPartners = [...partners].sort((a, b) => {
     if (
       a.availabilityStatus === "Available" &&
@@ -2933,12 +3037,36 @@ function BookingManager({
                     className="w-full bg-white border border-slate-200 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm font-bold focus:ring-4 focus:ring-blue-700/5 transition-all outline-none"
                   >
                     <option value="">No Agent Assigned</option>
-                    {sortedPartners.map((p) => (
-                      <option key={p.id} value={p.userId}>
-                        {p.displayName || p.id.slice(0, 8).toUpperCase()} (
-                        {p.availabilityStatus})
-                      </option>
-                    ))}
+                    {sortedAllocationPartners.map((p) => {
+                      const isOnline = p.availabilityStatus === "Available";
+                      const onlineLabel = isOnline ? "Online" : "Offline";
+                      const u = users.find((user) => user.uid === p.userId);
+                      
+                      // Safety checks for phone digits extraction
+                      const phoneRaw = String(
+                        u?.phoneNumber || 
+                        u?.mobile || 
+                        (p as any).phone || 
+                        (p as any).mobile || 
+                        (p as any).phoneNumber || 
+                        p.phone || 
+                        ""
+                      ).trim();
+                      
+                      const digits = phoneRaw.replace(/\D/g, "");
+                      let phoneSuffix = "";
+                      if (digits.length >= 6) {
+                        phoneSuffix = ` (..${digits.slice(-6)})`;
+                      } else if (digits.length > 0) {
+                        phoneSuffix = ` (..${digits})`;
+                      }
+
+                      return (
+                        <option key={p.id} value={p.userId}>
+                          {p.displayName || p.id.slice(0, 8).toUpperCase()}{phoneSuffix} - {onlineLabel}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -5121,16 +5249,34 @@ function PartnerManager({
 
     try {
       await Promise.all(
-        pendingPartners.map((p) =>
+        pendingPartners.flatMap((p) => [
           setDoc(doc(db, "partners", p.id), {
             isVerified: true,
-            kycStatus: "verified",
+            kycStatus: "approved",
             status: "active",
             kycDocuments:
-              p.kycDocuments?.map((d) => ({ ...d, status: "verified" })) || [],
+              p.kycDocuments?.map((d) => ({ ...d, status: "approved" })) || [],
             updatedAt: Timestamp.now(),
           }, { merge: true }),
-        ),
+          updateDoc(doc(db, "users", p.id), {
+            isPartner: true,
+            "partnerData.kycStatus": "approved",
+            "partnerData.status": "active",
+            "partnerData.isVerified": true,
+            updatedAt: Timestamp.now()
+          }).catch((err) => {
+            console.warn(`Failed to updateDoc for user ${p.id}, trying setDoc instead:`, err);
+            return setDoc(doc(db, "users", p.id), {
+              isPartner: true,
+              partnerData: {
+                kycStatus: "approved",
+                status: "active",
+                isVerified: true,
+              },
+              updatedAt: Timestamp.now()
+            }, { merge: true });
+          })
+        ])
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "bulk-kyc");

@@ -57,7 +57,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [toastMessage, setToastMessage] = useState('');
   
   // Real-time kycStatus and onboarding modal states as instructed
-  const [kycStatus, setKycStatus] = useState<string>(() => profile?.partnerData?.kycStatus || 'pending');
+  const [kycStatus, setKycStatus] = useState<string>(() => {
+    const direct = (profile as any)?.kycStatus;
+    const nested = (profile as any)?.partnerData?.kycStatus;
+    return String(direct || nested || 'pending').toLowerCase().trim();
+  });
   const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
   const [showPendingAlert, setShowPendingAlert] = useState<boolean>(false);
 
@@ -71,9 +75,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     }
   }, [initialTargetId]);
 
-  // Sync to open congratulations onboarding modal on approved state change
+  // Sync to open congratulations onboarding modal and clear pending alerts on approved state change
   useEffect(() => {
-    if (kycStatus === 'approved') {
+    const statusLower = String(kycStatus || '').toLowerCase().trim();
+    if (statusLower === 'approved' || statusLower === 'verified') {
+      setShowPendingAlert(false); // instantly clear any pending alert popup
       const dismissed = sessionStorage.getItem('congrats_dismissed_' + profile.uid);
       if (!dismissed) {
         setShowOnboardingModal(true);
@@ -105,50 +111,52 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       });
     };
 
-    // Real-time Firestore listener tracking the logged-in partner's /users/{uid} document
+    // Real-time Firestore listener tracking the logged-in partner's /users/{auth.currentUser.uid} document
     const fetchUserDocRealtime = () => {
-      return onSnapshot(doc(db, 'users', profile.uid), (snap) => {
+      const activeUid = auth.currentUser?.uid || profile.uid;
+      if (!activeUid) return () => {};
+
+      return onSnapshot(doc(db, 'users', activeUid), (snap) => {
         if (snap.exists()) {
           const uData = snap.data();
-          if (uData && uData.partnerData) {
-            const pData = uData.partnerData;
-            const liveKyc = pData.kycStatus || 'pending';
-            setKycStatus(liveKyc);
+          const pData = uData?.partnerData || {};
+          const liveKyc = String(uData?.kycStatus || pData.kycStatus || 'pending').toLowerCase().trim();
+          
+          setKycStatus(liveKyc);
 
-            if (liveKyc === "approved") {
-              console.log("[PartnerApp Realtime] KYC approval detected live!");
-              setPartner(prev => {
-                const updated: PartnerProfile = {
-                  id: profile.uid,
-                  userId: profile.uid,
-                  isVerified: true,
-                  kycStatus: "approved",
-                  status: (pData.status || "active") as any,
-                  availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
-                  bio: pData.bio || prev?.bio || "",
-                  categories: pData.categories || prev?.categories || [],
-                  skills: pData.skills || prev?.skills || [],
-                  city: pData.city || prev?.city || "Indore",
-                  phone: pData.phone || prev?.phone || "",
-                  email: pData.email || prev?.email || "",
-                  fullName: pData.fullName || prev?.fullName || "",
-                  rating: pData.rating || prev?.rating || 4.9,
-                  reviewCount: pData.reviewCount || prev?.reviewCount || 0,
-                  onboardingCompleted: true,
-                  createdAt: pData.createdAt || prev?.createdAt,
-                  updatedAt: pData.updatedAt || prev?.updatedAt,
-                };
-                return updated;
-              });
-            } else {
-              setPartner(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  ...pData
-                };
-              });
-            }
+          if (liveKyc === "approved" || liveKyc === "verified") {
+            console.log("[PartnerApp Realtime] KYC approval/verification detected live!");
+            setPartner(prev => {
+              const updated: PartnerProfile = {
+                id: activeUid,
+                userId: activeUid,
+                isVerified: true,
+                kycStatus: "approved",
+                status: (pData.status || "active") as any,
+                availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
+                bio: pData.bio || prev?.bio || "",
+                categories: pData.categories || prev?.categories || [],
+                skills: pData.skills || prev?.skills || [],
+                city: pData.city || prev?.city || "Indore",
+                phone: pData.phone || prev?.phone || "",
+                email: pData.email || prev?.email || "",
+                fullName: pData.fullName || prev?.fullName || "",
+                rating: pData.rating !== undefined ? pData.rating : (prev?.rating || 4.9),
+                reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : (prev?.reviewCount || 0),
+                onboardingCompleted: true,
+                createdAt: pData.createdAt || prev?.createdAt,
+                updatedAt: pData.updatedAt || prev?.updatedAt,
+              };
+              return updated;
+            });
+          } else {
+            setPartner(prev => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                ...pData
+              };
+            });
           }
         }
       }, (err) => {
@@ -310,7 +318,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   }
 
   // SCENARIO A (Pending): Clean screen with "Track Application Status" button
-  if (kycStatus === 'pending') {
+  const isKycApproved = kycStatus === 'approved' || kycStatus === 'verified';
+  if (!isKycApproved) {
     return (
       <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
         <header className="flex justify-between items-center py-4 select-none shrink-0">

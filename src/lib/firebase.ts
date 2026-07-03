@@ -2,7 +2,19 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
 import { offlineSyncEngine } from './offlineQueue';
-import firebaseConfig from '../../firebase-applet-config.json';
+import fallbackConfig from '../../firebase-applet-config.json';
+
+// Construct firebase configuration with dynamic Vite environment variables, falling back to JSON configuration
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || fallbackConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || fallbackConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || fallbackConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || fallbackConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || fallbackConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || fallbackConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || fallbackConfig.measurementId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (fallbackConfig as any).firestoreDatabaseId || '(default)'
+};
 
 const app = initializeApp(firebaseConfig);
 
@@ -12,7 +24,7 @@ export const db = initializeFirestore(app, {
     tabManager: persistentMultipleTabManager()
   }),
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId || '(default)');
+}, firebaseConfig.firestoreDatabaseId);
 
 offlineSyncEngine.setDb(db);
 

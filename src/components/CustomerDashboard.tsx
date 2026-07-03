@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   query,
@@ -716,41 +717,61 @@ export default function CustomerDashboard({
   }, []);
 
   useEffect(() => {
-    let unsubscribe = () => {};
     const uid = auth.currentUser?.uid || profile?.uid;
     if (!uid) {
-      setLoading(false);
+      // Do not clear state or stop loading if we don't have auth yet, 
+      // just keep the loading screen active.
       return;
     }
+
+    let isMounted = true;
+    let unsubscribeSnapshot = () => {};
+
     try {
+      // Query Firestore with both 'customerUid' and 'userId' using or()
       const q = query(
         collection(db, "bookings"),
-        where("customerUid", "==", auth.currentUser?.uid || uid)
+        or(
+          where("customerUid", "==", uid),
+          where("userId", "==", uid)
+        )
       );
-      unsubscribe = onSnapshot(
+
+      unsubscribeSnapshot = onSnapshot(
         q,
         (snap) => {
-          const dbBookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Booking);
+          if (!isMounted) return;
+          const dbBookings = snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as Booking
+          );
+
+          // Gracefully sort client-side in memory to bypass any Firestore composite indexing requirements
           dbBookings.sort((a, b) => {
             const timeA = a.createdAt?.seconds || 0;
             const timeB = b.createdAt?.seconds || 0;
             return timeB - timeA;
           });
+
           setBookings(dbBookings);
           setLoading(false);
         },
         (err) => {
-          console.error("onSnapshot error on customerUid:", err);
-          setBookings([]);
+          if (!isMounted) return;
+          console.error("onSnapshot error on bookings query:", err);
+          // Maintain existing bookings on transient network disconnects to prevent wipeout
           setLoading(false);
         }
       );
     } catch (e) {
+      if (!isMounted) return;
       console.error("Failed to set up Customer bookings snapshot listener:", e);
-      setBookings([]);
       setLoading(false);
     }
-    return () => unsubscribe();
+
+    return () => {
+      isMounted = false;
+      unsubscribeSnapshot();
+    };
   }, [profile?.uid, auth.currentUser?.uid]);
 
   // Fetch partner profiles (UserProfile) for bookings
