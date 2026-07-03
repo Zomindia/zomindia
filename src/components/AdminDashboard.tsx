@@ -836,8 +836,72 @@ export default function AdminDashboard({
     window.location.reload();
   };
 
-  if (loading)
-    return <LoadingScreen message="Initializing ZomIndia Admin Panel..." />;
+  const renderAdminSkeleton = () => {
+    return (
+      <div className="space-y-8 animate-pulse select-none">
+        {/* Overview Stats Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white border border-slate-100 p-6 rounded-[24px] space-y-4 shadow-sm">
+              <div className="flex justify-between items-center">
+                <div className="w-10 h-10 rounded-xl bg-slate-100" />
+                <div className="w-16 h-4 rounded bg-slate-100" />
+              </div>
+              <div className="space-y-2">
+                <div className="w-24 h-8 rounded-lg bg-slate-100" />
+                <div className="w-32 h-4 rounded bg-slate-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Large Grid section mimicking two-column charts or tables */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main large list/table mimicking box */}
+          <div className="lg:col-span-2 bg-white border border-slate-100 p-6 rounded-[24px] space-y-6 shadow-sm">
+            <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+              <div className="w-48 h-6 rounded bg-slate-100" />
+              <div className="w-24 h-8 rounded-xl bg-slate-100" />
+            </div>
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-slate-100" />
+                    <div className="space-y-1.5">
+                      <div className="w-36 h-4 rounded bg-slate-100" />
+                      <div className="w-24 h-3 rounded bg-slate-100" />
+                    </div>
+                  </div>
+                  <div className="w-20 h-6 rounded-full bg-slate-100" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sidebar helper/analytics card */}
+          <div className="bg-white border border-slate-100 p-6 rounded-[24px] space-y-6 shadow-sm">
+            <div className="pb-4 border-b border-slate-50">
+              <div className="w-32 h-6 rounded bg-slate-100" />
+            </div>
+            <div className="flex justify-center py-6">
+              <div className="w-40 h-40 rounded-full border-[16px] border-slate-100 animate-spin" style={{ animationDuration: '3s' }} />
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <div className="w-20 h-4 rounded bg-slate-100" />
+                <div className="w-8 h-4 rounded bg-slate-100" />
+              </div>
+              <div className="flex justify-between">
+                <div className="w-24 h-4 rounded bg-slate-100" />
+                <div className="w-8 h-4 rounded bg-slate-100" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative overflow-x-hidden">
@@ -1035,8 +1099,12 @@ export default function AdminDashboard({
         </header>
 
         <div className="p-6 md:p-8 lg:p-12 flex-1 overflow-y-auto">
-          {/* 1. Global PWA Install Banner */}
-          {(showPwaInstall || showIosSafariInstall) && (
+          {loading ? (
+            renderAdminSkeleton()
+          ) : (
+            <>
+              {/* 1. Global PWA Install Banner */}
+              {(showPwaInstall || showIosSafariInstall) && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -2046,6 +2114,8 @@ export default function AdminDashboard({
               )}
             </motion.div>
           </AnimatePresence>
+          </>
+          )}
         </div>
       </main>
 

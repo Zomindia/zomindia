@@ -70,8 +70,6 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
     // Logic for deletion if requested.
   };
 
-  if (loading) return <LoadingScreen message="Loading your notifications..." />;
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-16 relative">
       <div className="absolute top-0 right-0 w-96 h-96 bg-blue-700/5 rounded-full blur-[100px] pointer-events-none" />
@@ -93,7 +91,21 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
       </div>
 
       <div className="space-y-4">
-        {notifications.length === 0 ? (
+        {loading ? (
+          [1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse bg-white p-10 rounded-[48px] border border-slate-50 flex gap-8 select-none">
+              <div className="w-16 h-16 rounded-[28px] bg-slate-100 shrink-0" />
+              <div className="flex-1 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="w-1/3 h-5 bg-slate-100 rounded" />
+                  <div className="w-16 h-4 bg-slate-100 rounded" />
+                </div>
+                <div className="w-3/4 h-4 bg-slate-100 rounded" />
+                <div className="w-1/2 h-3.5 bg-slate-100 rounded" />
+              </div>
+            </div>
+          ))
+        ) : notifications.length === 0 ? (
           <div className="bg-white p-16 rounded-[48px] border border-slate-100 text-center">
              <Bell size={48} className="mx-auto text-slate-100 mb-6" />
              <p className="text-slate-400 font-medium italic">Your inbox is empty.</p>

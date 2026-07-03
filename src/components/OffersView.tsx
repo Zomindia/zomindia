@@ -312,7 +312,7 @@ export default function OffersView({
     return fallbacks[idx % fallbacks.length];
   };
 
-  if (loading) return <LoadingScreen message="Unlocking exclusive partner & customer rewards..." />;
+  // Removed full-screen loading check for beautiful inline skeletons
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-12 pb-14 sm:pb-24 overflow-x-hidden" id="offers-view-container">
@@ -394,7 +394,31 @@ export default function OffersView({
 
       {/* Grid of Redesigned Offers using Vibrant Gradients & Glassmorphism */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 justify-center">
-        {filteredPromotions.map((promo, i) => {
+        {loading ? (
+          [1, 2, 3].map((idx) => (
+            <div key={idx} className="animate-pulse bg-white border border-slate-100 rounded-[32px] p-8 flex flex-col min-h-[380px] sm:min-h-[430px] justify-between shadow-sm select-none">
+              <div className="space-y-6">
+                <div className="flex justify-between items-start">
+                  <div className="w-14 h-14 bg-slate-100 rounded-2xl" />
+                  <div className="w-20 h-6 bg-slate-100 rounded-full" />
+                </div>
+                <div className="space-y-3">
+                  <div className="w-1/3 h-4.5 bg-slate-100 rounded" />
+                  <div className="w-full h-8 bg-slate-100 rounded-xl" />
+                  <div className="w-5/6 h-4 bg-slate-100 rounded" />
+                </div>
+              </div>
+              <div className="space-y-4 pt-6 border-t border-slate-50">
+                <div className="flex justify-between items-center">
+                  <div className="w-24 h-4 bg-slate-100 rounded" />
+                  <div className="w-16 h-4 bg-slate-100 rounded" />
+                </div>
+                <div className="w-full h-12 bg-slate-100 rounded-2xl" />
+              </div>
+            </div>
+          ))
+        ) : (
+          filteredPromotions.map((promo, i) => {
           const redeemed = isRedeemed(promo.id);
           const theme = getPromoTheme(promo, i);
           const IconComponent = PROMO_ICONS[promo.code] || ICON_MAP[promo.applicableCategories?.[0]] || Gift;
@@ -503,7 +527,8 @@ export default function OffersView({
               </div>
             </motion.div>
           );
-        })}
+        })
+        )}
       </div>
 
       {visiblePromotions.length === 0 ? (
