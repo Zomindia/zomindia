@@ -660,7 +660,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           phoneNumber: formattedPhone || existingData?.phoneNumber || '',
           mobile: formattedPhone || existingData?.mobile || existingData?.phoneNumber || '',
           onboardingComplete: true,
-          updatedAt: Timestamp.now()
+          updatedAt: Timestamp.now(),
+          isPartner: false
         };
         if (existingData?.walletBalance === undefined) {
           updatePayload.walletBalance = walletJoiningBonus;
@@ -681,6 +682,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           phoneNumber: formattedPhone,
           mobile: formattedPhone,
           role: isSarthakEmail ? 'admin' : 'customer',
+          isPartner: false,
           createdAt: Timestamp.now(),
           referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,
           walletBalance: walletJoiningBonus, // Dynamic Onboarding welcome credit!

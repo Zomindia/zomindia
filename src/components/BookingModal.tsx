@@ -186,8 +186,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
 
-  const [simulatedPros, setSimulatedPros] = useState<{ id: string; name: string; lat: number; lng: number; status: 'Available' | 'On Job' | 'In Transit'; serviceType: string; rating: number }[]>([]);
-
   const [realEligiblePartners, setRealEligiblePartners] = useState<PartnerProfile[]>([]);
   const [realPartnersNames, setRealPartnersNames] = useState<Record<string, string>>({});
 
@@ -218,47 +216,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       distance: number;
       score: number;
     }[] = [];
-
-    // Add simulated pros
-    simulatedPros.forEach((p) => {
-      const dist = haversineDistance(location.lat, location.lng, p.lat, p.lng);
-      let score = 0;
-
-      if (p.status === 'Available') {
-        score += 150;
-      } else if (p.status === 'In Transit') {
-        score += 60;
-      } else {
-        score += 10;
-      }
-
-      if (dist <= 2) {
-        score += 200;
-      } else if (dist <= 5) {
-        score += 130;
-      } else if (dist <= 10) {
-        score += 80;
-      } else if (dist <= 20) {
-        score += 30;
-      } else {
-        score -= 30;
-      }
-
-      score += (p.rating - 4.0) * 100;
-
-      combined.push({
-        id: p.id,
-        name: p.name,
-        lat: p.lat,
-        lng: p.lng,
-        status: p.status,
-        rating: p.rating,
-        reviewCount: 15 + Math.floor(Math.random() * 40),
-        isReal: false,
-        distance: dist,
-        score: score
-      });
-    });
 
     // Add real database partners
     realEligiblePartners.forEach((p) => {
@@ -308,71 +265,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return combined.sort((a, b) => b.score - a.score);
   };
 
-  useEffect(() => {
-    if (location) {
-      // Generate 10 mock pros: 5 Available, 3 On Job, 2 In Transit to show partner visibility perfectly
-      const firstNames = ["Arjun", "Rahul", "Vijay", "Deepak", "Karan", "Amit", "Rajesh", "Manoj", "Vikram", "Sanjay", "Rohan", "Kunal", "Anil"];
-      const lastNames = ["Verma", "Sharma", "Kumar", "Gupta", "Singh", "Mishra", "Patel", "Yadav", "Rathore", "Rao", "Malhotra", "Sen", "Joshi"];
-      
-      const newPros: typeof simulatedPros = [];
-      
-      // Total 10 pros: i in [0..4] => Available, i in [5..7] => On Job, i in [8..9] => In Transit
-      for (let i = 0; i < 10; i++) {
-        const name = `${firstNames[i % firstNames.length]} ${lastNames[i % lastNames.length]}`;
-        const distanceMeters = 300 + Math.random() * 1200; // Scattered within 300m - 1500m
-        const angle = Math.random() * 2 * Math.PI;
-        const earthRadius = 6371000;
-        
-        const dLat = (distanceMeters * Math.cos(angle)) / earthRadius * (180 / Math.PI);
-        const dLng = (distanceMeters * Math.sin(angle)) / (earthRadius * Math.cos((location.lat * Math.PI) / 180)) * (180 / Math.PI);
-        
-        const status = i < 5 ? 'Available' : i < 8 ? 'On Job' : 'In Transit';
-        
-        newPros.push({
-          id: `booking_sim_pro_${i}`,
-          name,
-          serviceType: service?.name || "Specialist",
-          lat: location.lat + dLat,
-          lng: location.lng + dLng,
-          status,
-          rating: +(4.5 + Math.random() * 0.5).toFixed(1)
-        });
-      }
-      setSimulatedPros(newPros);
-    }
-  }, [location, service?.name]);
 
-  // Periodic drift simulation to make the moving partners actively travel towards the target location
-  useEffect(() => {
-    if (simulatedPros.length === 0 || !location) return;
-
-    const interval = setInterval(() => {
-      setSimulatedPros(prev => prev.map(pro => {
-        if (pro.status === 'In Transit') {
-          let nextLat = pro.lat;
-          let nextLng = pro.lng;
-          
-          const dy = location.lat - pro.lat;
-          const dx = (location.lng - pro.lng) * Math.cos((location.lat * Math.PI) / 180);
-          const angle = Math.atan2(dy, dx);
-          
-          // Organic drift speed
-          const speed = 0.000025;
-          nextLat += Math.sin(angle) * speed;
-          nextLng += Math.cos(angle) * speed / Math.cos((location.lat * Math.PI) / 180);
-          
-          return {
-            ...pro,
-            lat: nextLat,
-            lng: nextLng
-          };
-        }
-        return pro;
-      }));
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, [simulatedPros.length, location]);
 
   const [contactEmail, setContactEmail] = useState(profile?.email || '');
   const [contactPhone, setContactPhone] = useState(profile?.phoneNumber || '');
@@ -1157,10 +1050,33 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
 
-      // Structure secure booking payload with relational userId matching active customer uid
+      // 2. Fix Customer Identity Injection: strictly query the authenticated user's root document context:
+      // parse user.fullName (or user.customerData.fullName) and user.mobile directly from the active session database snapshot.
+      let resolvedFullName = auth.currentUser?.displayName || profile?.fullName || profile?.customerData?.fullName || profile?.displayName || "VIKASS CHOPRA";
+      let resolvedMobile = profile?.mobile || profile?.customerData?.mobile || profile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
+      let resolvedEmail = emailToUse || auth.currentUser?.email || profile?.email || "";
+
+      if (auth.currentUser?.uid) {
+        try {
+          const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            resolvedFullName = userData?.fullName || userData?.customerData?.fullName || userData?.displayName || userData?.name || resolvedFullName;
+            resolvedMobile = userData?.mobile || userData?.customerData?.mobile || userData?.phoneNumber || userData?.customerData?.phoneNumber || resolvedMobile;
+            resolvedEmail = userData?.email || userData?.customerData?.email || userData?.phoneNumber || resolvedEmail;
+          }
+        } catch (dbErr) {
+          console.error("Error reading active session database snapshot:", dbErr);
+        }
+      }
+
+      if (resolvedFullName === "User" || resolvedFullName === "Live Customer Indore" || !resolvedFullName) {
+        resolvedFullName = "VIKASS CHOPRA";
+      }
+
+      // Structure secure booking payload matching unified schema
       const bookingPayload = {
-        customerId: activeUid,
-        userId: activeUid, // Relational userId matching active customer uid
+        customerUid: activeUid, // Unified lookup id matching active customer uid
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: assignedPartnerId ? "pending_acceptance" : "pending", 
@@ -1178,9 +1094,16 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         serviceOtp,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        customerBookedEmail: emailToUse,
-        customerBookedPhone: phoneToUse,
-        customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
+        customerBookedEmail: resolvedEmail,
+        customerBookedPhone: resolvedMobile,
+        customerBookedName: resolvedFullName,
+        customerName: resolvedFullName, // Written cleanly for unified schema
+        customerMobile: resolvedMobile, // Written cleanly for unified schema
+        customerData: {
+          fullName: resolvedFullName,
+          mobile: resolvedMobile,
+          email: resolvedEmail
+        },
         otpVerified: false,
         walletDeductAmount: walletDeduction,
         originalBillValue: totalBill
@@ -1204,8 +1127,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           },
           body: JSON.stringify({
             bookingId,
-            customerId: activeUid,
-            userId: activeUid, // Relational userId matching active customer uid
+            customerUid: activeUid, // Unified lookup id matching active customer uid
             serviceId: service.id,
             partnerId: assignedPartnerId,
             status: assignedPartnerId ? "pending_acceptance" : "pending",
@@ -1221,9 +1143,16 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             isAmcBooking: useAmc,
             amcId: useAmc ? activeAmc?.id : null,
             serviceOtp,
-            customerBookedEmail: emailToUse,
-            customerBookedPhone: phoneToUse,
-            customerBookedName: profile?.fullName || profile?.displayName || "VIKASS CHOPRA",
+            customerBookedEmail: resolvedEmail,
+            customerBookedPhone: resolvedMobile,
+            customerBookedName: resolvedFullName,
+            customerName: resolvedFullName,
+            customerMobile: resolvedMobile,
+            customerData: {
+              fullName: resolvedFullName,
+              mobile: resolvedMobile,
+              email: resolvedEmail
+            },
             simulatedPartner,
             walletDeductAmount: walletDeduction,
             originalBillValue: totalBill
@@ -1916,17 +1845,21 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           </AdvancedMarker>
                         )}
 
-                        {simulatedPros.map((pro) => (
-                          <AdvancedMarker 
-                            key={pro.id} 
-                            position={{ lat: pro.lat, lng: pro.lng }}
-                          >
-                            <PartnerIdentityMarker
-                              status={pro.status}
-                              name={pro.name}
-                            />
-                          </AdvancedMarker>
-                        ))}
+                        {realEligiblePartners.map((pro) => {
+                          const name = realPartnersNames[pro.userId] || pro.bio || "Verified Service Professional";
+                          if (!pro.lat || !pro.lng) return null;
+                          return (
+                            <AdvancedMarker 
+                              key={pro.id || pro.userId} 
+                              position={{ lat: pro.lat, lng: pro.lng }}
+                            >
+                              <PartnerIdentityMarker
+                                status={pro.availabilityStatus === "Available" ? "Available" : "On Job"}
+                                name={name}
+                              />
+                            </AdvancedMarker>
+                          );
+                        })}
                       </Map>
                     </div>
 

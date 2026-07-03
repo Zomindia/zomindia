@@ -17,20 +17,34 @@ export function buildDualPersonaUserDoc(profile: Partial<UserProfile> & { uid: s
     referralCode: profile.referralCode || `ZOM${profile.uid.slice(0, 6).toUpperCase()}`
   };
 
-  const partnerData = {
-    partnerId: profile.partnerId || profile.uid || "",
-    bio: profile.bio || "",
-    status: profile.role === 'partner' ? 'active' : 'inactive',
-    rating: 4.9,
-    reviewCount: 0,
-    isVerified: profile.role === 'partner' || false,
-    kycStatus: profile.role === 'partner' ? 'verified' : 'pending'
-  };
+  const isPartner = profile.isPartner === true || profile.role === 'partner';
 
-  return {
-    ...profile,
-    currentMode: profile.currentMode || (profile.role === 'partner' ? 'partner' : 'customer'),
-    customerData,
-    partnerData
-  };
+  if (isPartner) {
+    const partnerData = {
+      partnerId: profile.partnerId || profile.uid || "",
+      bio: profile.bio || "",
+      status: profile.role === 'partner' ? 'active' : 'inactive',
+      rating: 4.9,
+      reviewCount: 0,
+      isVerified: profile.role === 'partner' || false,
+      kycStatus: profile.partnerData?.kycStatus || (profile.role === 'partner' ? 'verified' : 'pending'),
+      ...profile.partnerData
+    };
+
+    return {
+      ...profile,
+      isPartner: true,
+      currentMode: profile.currentMode || 'partner',
+      customerData,
+      partnerData
+    };
+  } else {
+    const { partnerData, ...rest } = profile;
+    return {
+      ...rest,
+      isPartner: false,
+      currentMode: profile.currentMode || 'customer',
+      customerData
+    };
+  }
 }

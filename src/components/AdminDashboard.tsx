@@ -490,15 +490,40 @@ export default function AdminDashboard({
     );
 
     const unsubPartners = onSnapshot(
-      collection(db, "partners"),
+      collection(db, "users"),
       (snap) => {
-        const pList = snap.docs.map((d) => {
-          const data = d.data() as PartnerProfile;
-          return { id: d.id, ...data };
+        const pList: any[] = [];
+        snap.docs.forEach((d) => {
+          const u = d.data();
+          if (u.isPartner === true && u.partnerData?.kycStatus !== undefined) {
+            const pData = u.partnerData || {};
+            pList.push({
+              id: d.id,
+              userId: d.id,
+              displayName: u.displayName || u.fullName || pData.displayName || "Partner",
+              categories: pData.categories || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
+              skills: pData.skills || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
+              bio: pData.bio || u.bio || `Elite Certified Professional`,
+              rating: pData.rating !== undefined ? pData.rating : 4.9,
+              reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
+              isVerified: pData.isVerified !== undefined ? pData.isVerified : (pData.kycStatus === "verified" || u.role === "partner"),
+              status: pData.status || (u.role === "partner" ? "active" : "pending"),
+              availabilityStatus: pData.availabilityStatus || "Offline",
+              kycStatus: pData.kycStatus || "pending",
+              lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
+              lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
+              createdAt: u.createdAt || pData.createdAt || Timestamp.now(),
+              updatedAt: u.updatedAt || pData.updatedAt || Timestamp.now(),
+              profilePhoto: u.profilePhoto || pData.profilePhoto || u.photoURL,
+              onboardingCompleted: pData.onboardingCompleted !== undefined ? pData.onboardingCompleted : true,
+              govtId: pData.govtId || u.govtId,
+              bankDetails: pData.bankDetails || u.bankDetails
+            });
+          }
         });
         setRawPartners(pList);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, "partners"),
+      (err) => handleFirestoreError(err, OperationType.LIST, "users"),
     );
 
     const unsubPromos = onSnapshot(
@@ -1138,10 +1163,10 @@ export default function AdminDashboard({
                                   <span className="text-slate-400 font-medium">
                                     Customer:
                                   </span>{" "}
-                                  {customer?.fullName ||
+                                  {b.customerName ||
+                                    customer?.fullName ||
                                     customer?.displayName ||
                                     b.customerBookedName ||
-                                    b.customerName ||
                                     "Client"}
                                 </p>
                                 <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1 italic truncate">
@@ -1603,14 +1628,12 @@ export default function AdminDashboard({
                                   {b.status.replace("_", " ")}
                                 </span>
                               </div>
-                              <div className="flex justify-between">
+                              <div className="flex flex-col gap-1 pt-1 border-t border-slate-100/55">
                                 <span className="text-slate-400 font-semibold">
-                                  Coordinates:
+                                  Formatted Address:
                                 </span>
-                                <span className="font-mono text-slate-600 text-[10px]">
-                                  {Number(b.lat || 22.7434).toFixed(4)},{" "}
-                                  {Number(b.lng || 75.8996).toFixed(4)} (Vijay
-                                  Nagar Area)
+                                <span className="font-extrabold text-slate-800 text-[11px] leading-relaxed break-words text-left">
+                                  {b.address || "Vijay Nagar Area, Indore, MP"}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -1690,12 +1713,12 @@ export default function AdminDashboard({
                                   Name:
                                 </span>
                                 <span className="font-black text-slate-800">
-                                  {modalCustomer?.fullName ||
+                                  {b.customerName ||
+                                    b.customerBookedName ||
+                                    modalCustomer?.fullName ||
                                     modalCustomer?.displayName ||
                                     customer?.fullName ||
                                     customer?.displayName ||
-                                    b.customerBookedName ||
-                                    b.customerName ||
                                     "VIKASS CHOPRA"}
                                 </span>
                               </div>
@@ -1704,11 +1727,12 @@ export default function AdminDashboard({
                                   Phone:
                                 </span>
                                 <span className="font-mono text-slate-800">
-                                  {modalCustomer?.phoneNumber ||
+                                  {b.customerMobile ||
+                                    b.customerBookedPhone ||
+                                    modalCustomer?.phoneNumber ||
                                     modalCustomer?.mobile ||
                                     customer?.phoneNumber ||
                                     customer?.mobile ||
-                                    b.customerBookedPhone ||
                                     b.customerPhone ||
                                     "+91 9424456606"}
                                 </span>
@@ -1817,15 +1841,16 @@ export default function AdminDashboard({
                               WhatsApp Chat
                             </a>
                             <button
+                              id="admin-secure-call-overview-btn"
                               onClick={() => {
-                                setSelectedOverviewBooking(null);
-                                triggerToast(
-                                  "Calling partner securely... Your phone is fully protected by Zomindia Security Shield.",
-                                );
+                                triggerToast("Initiating secure call... Your privacy is protected.");
+                                setTimeout(() => {
+                                  window.location.href = 'tel:+19862490231';
+                                }, 1500);
                               }}
-                              className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95 shadow-sm"
+                              className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              🔒 Secure Call
+                              <Phone size={12} /> Call (Secure)
                             </button>
                           </div>
                         </div>
@@ -1902,6 +1927,7 @@ export default function AdminDashboard({
                     users={users}
                     setActiveTab={setActiveTab}
                     partnerApplications={derivedPartnerApplications}
+                    setRawPartners={setRawPartners}
                   />
                 )}
               {activeAdminTab === "users" && isAdminAuthorized("users") && (
@@ -2967,19 +2993,19 @@ function BookingManager({
                     </label>
                     <div className="flex gap-2">
                       <button
-                        onClick={() =>
-                          setShowCall({
-                            type: "customer",
-                            id: bookings.find(
-                              (b) => b.id === managingStatusBookingId,
-                            )?.customerId!,
-                            bookingId: managingStatusBookingId!,
-                          })
-                        }
-                        className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
+                        id="admin-connect-customer-call-btn"
+                        onClick={() => {
+                          if (typeof (window as any).__showToast === "function") {
+                            (window as any).__showToast("Initiating secure call... Your privacy is protected.");
+                          }
+                          setTimeout(() => {
+                            window.location.href = 'tel:+19862490231';
+                          }, 1500);
+                        }}
+                        className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 cursor-pointer"
                       >
                         <Phone size={14} />{" "}
-                        <span className="text-[10px] font-bold">Call</span>
+                        <span className="text-[10px] font-bold">Call (Secure)</span>
                       </button>
                       <button
                         onClick={() =>
@@ -3007,19 +3033,19 @@ function BookingManager({
                       ?.partnerId ? (
                       <div className="flex gap-2">
                         <button
-                          onClick={() =>
-                            setShowCall({
-                              type: "partner",
-                              id: bookings.find(
-                                (b) => b.id === managingStatusBookingId,
-                              )?.partnerId!,
-                              bookingId: managingStatusBookingId!,
-                            })
-                          }
-                          className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
+                          id="admin-connect-agent-call-btn"
+                          onClick={() => {
+                            if (typeof (window as any).__showToast === "function") {
+                              (window as any).__showToast("Initiating secure call... Your privacy is protected.");
+                            }
+                            setTimeout(() => {
+                              window.location.href = 'tel:+19862490231';
+                            }, 1500);
+                          }}
+                          className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 cursor-pointer"
                         >
                           <Phone size={14} />{" "}
-                          <span className="text-[10px] font-bold">Call</span>
+                          <span className="text-[10px] font-bold">Call (Secure)</span>
                         </button>
                         <button
                           onClick={() =>
@@ -3382,16 +3408,19 @@ function BookingRow({
                 </div>
                 <div>
                   <p className="text-xs font-black text-slate-900 italic leading-none mb-1">
-                    {user?.fullName ||
-                      user?.displayName ||
+                    {booking.customerName ||
                       booking.customerBookedName ||
-                      "Anonymous"}
+                      user?.fullName ||
+                      user?.displayName ||
+                      "VIKASS CHOPRA"}
                   </p>
                   <p className="text-[10px] text-slate-400 font-bold">
-                    {booking.customerBookedPhone ||
+                    {booking.customerMobile ||
+                      booking.customerBookedPhone ||
                       (booking as any).customerPhone ||
                       user?.phoneNumber ||
-                      "No Phone"}
+                      user?.mobile ||
+                      "+91 9424456606"}
                   </p>
                 </div>
               </div>
@@ -4914,11 +4943,13 @@ function PartnerManager({
   users,
   setActiveTab,
   partnerApplications = [],
+  setRawPartners,
 }: {
   partners: PartnerProfile[];
   users: UserProfile[];
   setActiveTab: (tab: any) => void;
   partnerApplications?: PartnerApplication[];
+  setRawPartners?: React.Dispatch<React.SetStateAction<any[]>>;
 }) {
   const [partnerViewMode, setPartnerViewMode] = useState<"all" | "kyc_pending">(
     "all",
@@ -4970,20 +5001,91 @@ function PartnerManager({
   const verifyPartner = async (partnerId: string, verified: boolean) => {
     try {
       const p = partners.find((x) => x.id === partnerId);
+      const targetKycStatus = verified ? "approved" : "rejected";
+      const targetStatus = verified ? "active" : "inactive";
+
+      // 1. Update the 'users' document where the partner's actual data resides
+      const userRef = doc(db, "users", partnerId);
+      await updateDoc(userRef, {
+        isPartner: true,
+        "partnerData.kycStatus": targetKycStatus,
+        "partnerData.status": targetStatus,
+        "partnerData.isVerified": verified,
+        updatedAt: Timestamp.now()
+      });
+
+      // 2. Keep 'partners' document synced for any legacy queries
       await setDoc(doc(db, "partners", partnerId), {
         isVerified: verified,
-        kycStatus: verified ? "verified" : "rejected",
-        status: verified ? "active" : "inactive",
+        kycStatus: targetKycStatus,
+        status: targetStatus,
         kycRejectReason: null,
         kycDocuments:
           p?.kycDocuments?.map((d) => ({
             ...d,
-            status: verified ? "verified" : "rejected",
+            status: targetKycStatus,
           })) || [],
         updatedAt: Timestamp.now(),
       }, { merge: true });
+
+      // 3. Force local state update instantly so it is ultra-responsive
+      setRawPartners?.((prev) =>
+        prev.map((item) => {
+          if (item.id === partnerId) {
+            return {
+              ...item,
+              isVerified: verified,
+              kycStatus: targetKycStatus,
+              status: targetStatus,
+            };
+          }
+          return item;
+        })
+      );
+
+      // 4. Trigger FCM push notification if partner is approved
+      if (verified && targetKycStatus === "approved") {
+        try {
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const token = userData?.fcmToken || userData?.partnerData?.fcmToken || (userData?.fcmTokens && userData.fcmTokens[0]);
+            if (token) {
+              console.log(`[KYC Approval] Found fcmToken for partner ${partnerId}. Triggering FCM push notification...`);
+              fetch("/api/send-push-notification", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  userId: partnerId,
+                  title: "Account Approved! 🚀",
+                  message: "Welcome to Zomindia! Your partner profile is now live and ready to accept bookings."
+                })
+              })
+              .then(res => res.json())
+              .then(data => console.log("[KYC Approval] Push notification response:", data))
+              .catch(err => console.error("[KYC Approval] Push notification trigger failed:", err));
+            } else {
+              console.log(`[KYC Approval] No fcmToken found for partner ${partnerId} on user document.`);
+            }
+          }
+        } catch (fetchErr) {
+          console.error("[KYC Approval] Failed to retrieve user document for fcmToken lookup:", fetchErr);
+        }
+
+        // Also add to notification list for consistency so they see it in their app inbox
+        try {
+          await sendNotification(
+            partnerId,
+            "Account Approved! 🚀",
+            "Welcome to Zomindia! Your partner profile is now live and ready to accept bookings.",
+            "promotional"
+          );
+        } catch (notifErr) {
+          console.error("[KYC Approval] Failed to send system notification:", notifErr);
+        }
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `partners/${partnerId}`);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${partnerId}`);
     }
   };
 
@@ -5120,32 +5222,6 @@ function PartnerManager({
         const userRef = doc(db, "users", userId);
         const userSnap = await transaction.get(userRef);
 
-        if (userSnap.exists()) {
-          // If pre-existing, merge update the role and status
-          transaction.set(userRef, {
-            role: 'partner',
-            partnerId: userId,
-            partnerApplicationStatus: 'approved',
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        } else {
-          // If entirely new, create fresh user document
-          transaction.set(userRef, {
-            uid: userId,
-            partnerId: userId,
-            displayName: app.fullName,
-            fullName: app.fullName,
-            email: app.email || "",
-            role: 'partner',
-            phoneNumber: app.phone,
-            city: app.area,
-            partnerApplicationStatus: 'approved',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-        }
-
-        // Create Partner Profile Doc
         const partnerRefDirect = doc(db, "partners", userId);
         const partnerRefPrefixed = doc(db, "partners", `partner_${userId}`);
         const parsedCategories = app.serviceType ? app.serviceType.split(',').map((s: string) => s.trim()) : ["Appliance Repair"];
@@ -5169,6 +5245,36 @@ function PartnerManager({
           updatedAt: Timestamp.now(),
           kycStatus: "verified"
         };
+
+        if (userSnap.exists()) {
+          // If pre-existing, merge update the role and status
+          transaction.set(userRef, {
+            role: 'partner',
+            partnerId: userId,
+            partnerApplicationStatus: 'approved',
+            isPartner: true,
+            partnerData: partnerData,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } else {
+          // If entirely new, create fresh user document
+          transaction.set(userRef, {
+            uid: userId,
+            partnerId: userId,
+            displayName: app.fullName,
+            fullName: app.fullName,
+            email: app.email || "",
+            role: 'partner',
+            phoneNumber: app.phone,
+            city: app.area,
+            partnerApplicationStatus: 'approved',
+            isPartner: true,
+            partnerData: partnerData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+
         transaction.set(partnerRefDirect, partnerData);
         transaction.set(partnerRefPrefixed, { ...partnerData, id: `partner_${userId}` });
 
@@ -5235,8 +5341,8 @@ function PartnerManager({
 
       const matchesSearch = nameMatch || emailMatch;
       
-      const isActiveFleet = p.onboardingCompleted === true && p.status === "active";
-      const isKycPending = p.status !== "active" && (p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails);
+      const isActiveFleet = (p.kycStatus as string) === "verified" || (p.kycStatus as string) === "approved" || p.status === "active";
+      const isKycPending = (p.kycStatus as string) !== "verified" && (p.kycStatus as string) !== "approved" && p.status !== "active";
 
       const matchesMode =
         partnerViewMode === "all"
@@ -5271,13 +5377,13 @@ function PartnerManager({
               onClick={() => setPartnerViewMode("all")}
               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "all" ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20" : "bg-indigo-50 text-indigo-700 border-indigo-100/50 hover:bg-indigo-100"}`}
             >
-              Active Fleet ({partners.filter((p) => p.onboardingCompleted === true && p.status === "active").length})
+              Active Fleet ({partners.filter((p) => (p.kycStatus as string) === "verified" || (p.kycStatus as string) === "approved" || p.status === "active").length})
             </button>
             <button
               onClick={() => setPartnerViewMode("kyc_pending")}
               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${partnerViewMode === "kyc_pending" ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20" : "bg-emerald-50 text-emerald-700 border-emerald-100/50 hover:bg-emerald-100"}`}
             >
-              Become Partner ({partners.filter((p) => p.status !== "active" && (p.kycStatus === "pending" || p.onboardingCompleted === true || p.profilePhoto || p.govtId || p.bankDetails)).length})
+              Pending KYC ({partners.filter((p) => (p.kycStatus as string) !== "verified" && (p.kycStatus as string) !== "approved" && p.status !== "active").length})
             </button>
           </div>
         </div>
@@ -5518,7 +5624,7 @@ function PartnerManager({
                   </span>
                 </div>
                 <h4 className="font-bold text-xl mb-1">
-                  {user?.displayName || "Unknown Pro"}
+                  {(user?.partnerData as any)?.fullName || user?.fullName || user?.customerData?.fullName || (p as any).displayName || (p as any).fullName || "Partner"}
                 </h4>
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <div
@@ -5582,7 +5688,7 @@ function PartnerManager({
                     <div className="space-y-4">
                       <div className="p-3 bg-white rounded-xl border border-amber-100">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          Target Categories
+                          Registered Services
                         </p>
                         <div className="flex flex-wrap gap-1">
                           {p.categories?.map((c) => (
@@ -5598,7 +5704,7 @@ function PartnerManager({
                       {p.bio && (
                         <div className="p-3 bg-white rounded-xl border border-amber-100">
                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                            Pro Bio
+                            Professional Bio
                           </p>
                           <p className="text-[10px] text-slate-600 italic line-clamp-3">
                             {p.bio}
@@ -5684,7 +5790,7 @@ function PartnerManager({
 
                       <div className="space-y-2">
                         <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">
-                          KYC Documents & Uploads
+                          Verified Documents
                         </p>
                         {p.kycDocuments?.map((doc, idx) => (
                           <div
@@ -5754,13 +5860,20 @@ function PartnerManager({
                       </span>
                     </div>
                     <button
-                      onClick={() => handleAdminBridgeCall(user, "User")}
-                      className="bg-blue-700 px-4 py-2 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md flex items-center gap-2 shrink-0 group cursor-pointer"
-                      title="Route masked call via corporate landline gateway"
+                      id="admin-secure-call-partner-btn"
+                      onClick={() => {
+                        if (typeof (window as any).__showToast === "function") {
+                          (window as any).__showToast("Initiating secure call... Your privacy is protected.");
+                        }
+                        setTimeout(() => {
+                          window.location.href = 'tel:+19862490231';
+                        }, 1500);
+                      }}
+                      className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
                     >
-                      <Phone size={12} className="group-hover:animate-bounce" />
+                      <Phone size={12} />
                       <span className="text-[10px] font-black uppercase tracking-widest">
-                        Route Bridge Call
+                        Call (Secure)
                       </span>
                     </button>
                   </div>
@@ -6172,15 +6285,18 @@ function PartnerManager({
                       </p>
                       {selectedProfilePartner.user?.phoneNumber && (
                         <button
-                          onClick={() =>
-                            handleAdminBridgeCall(
-                              selectedProfilePartner.user,
-                              "Agent",
-                            )
-                          }
-                          className="bg-blue-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-800 transition-all flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
+                          id="admin-secure-call-agent-btn"
+                          onClick={() => {
+                            if (typeof (window as any).__showToast === "function") {
+                              (window as any).__showToast("Initiating secure call... Your privacy is protected.");
+                            }
+                            setTimeout(() => {
+                              window.location.href = 'tel:+19862490231';
+                            }, 1500);
+                          }}
+                          className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
                         >
-                          <Phone size={12} /> Call Agent (Masked Bridge)
+                          <Phone size={12} /> Call (Secure)
                         </button>
                       )}
                     </div>
@@ -6757,7 +6873,9 @@ function UserManager({
                 }
               });
 
-              const allUsersToDisplay = [...users, ...ghostUsers];
+              const allUsersToDisplay = [...users, ...ghostUsers].filter(
+                (u) => u.isPartner !== true && u.role !== "partner"
+              );
 
               return allUsersToDisplay.map((u, i) => {
                 const userBookings = bookings.filter(

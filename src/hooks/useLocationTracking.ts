@@ -28,7 +28,9 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       return navigator.geolocation.watchPosition(
         async (position) => {
           const now = Date.now();
-          const interval = hasActiveJob ? UPDATE_INTERVAL : BACKGROUND_INTERVAL;
+          const activeOnTheWay = bookings.filter(b => b.status === 'on_the_way');
+          const isOnTheWay = activeOnTheWay.length > 0;
+          const interval = isOnTheWay ? 10000 : (hasActiveJob ? UPDATE_INTERVAL : BACKGROUND_INTERVAL);
 
           if (now - lastUpdateRef.current < interval) {
             return;
@@ -42,6 +44,18 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
               lng: longitude,
               updatedAt: Timestamp.now()
             });
+
+            // Securely write coordinates to the active booking document
+            for (const activeB of activeOnTheWay) {
+              await updateDoc(doc(db, 'bookings', activeB.id), {
+                partnerLocation: { lat: latitude, lng: longitude },
+                lat: latitude,
+                lng: longitude,
+                updatedAt: Timestamp.now()
+              });
+              console.log(`[Geo Sync] Synced location to active on-the-way booking ${activeB.id}`);
+            }
+
             lastUpdateRef.current = now;
             setLastSyncedAt(new Date(now));
           } catch (err) {

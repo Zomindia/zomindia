@@ -723,8 +723,13 @@ export default function App() {
               return;
             }
 
-            // Normalise the profile to contain both customerData and partnerData
-            if (!currentProfile.customerData || !currentProfile.partnerData || !currentProfile.currentMode) {
+            // Normalise the profile to contain customerData and (if partner) partnerData
+            const needsNormalization = 
+              !currentProfile.customerData || 
+              !currentProfile.currentMode ||
+              (currentProfile.isPartner === true && !currentProfile.partnerData);
+
+            if (needsNormalization) {
               const normalized = buildDualPersonaUserDoc(currentProfile);
               updateDoc(masterDocRef, normalized).catch(e => console.error("Error normalizing user profile:", e));
               currentProfile = normalized as UserProfile;

@@ -39,6 +39,7 @@ export interface UserProfile {
   createdAt: any;
   updatedAt?: any;
   currentMode?: 'customer' | 'partner';
+  isPartner?: boolean;
   customerData?: {
     fullName?: string;
     email?: string;
@@ -109,6 +110,11 @@ export interface PartnerProfile {
   id: string;
   userId: string;
   categories: string[];
+  skills?: string[];
+  city?: string;
+  phone?: string;
+  email?: string;
+  fullName?: string;
   bio?: string;
   rating: number;
   reviewCount: number;
@@ -116,7 +122,7 @@ export interface PartnerProfile {
   status: 'active' | 'inactive' | 'pending';
   availabilityStatus?: 'Available' | 'Busy' | 'Offline';
   statusReason?: string;
-  kycStatus?: 'not_submitted' | 'pending' | 'verified' | 'rejected';
+  kycStatus?: 'not_submitted' | 'pending' | 'verified' | 'rejected' | 'approved';
   kycRejectReason?: string;
   kycDocuments?: KYCDocument[];
   totalEarnings?: number;
@@ -228,6 +234,12 @@ export interface Booking {
   customerBookedPhone?: string;
   customerPhone?: string;
   customerName?: string;
+  customerMobile?: string;
+  customerData?: {
+    fullName?: string;
+    mobile?: string;
+    email?: string;
+  };
 }
 
 export interface ActiveCallInfo {

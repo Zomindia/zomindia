@@ -14,7 +14,7 @@ import {
   addDoc,
   deleteField,
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import {
   Booking,
   UserProfile,
@@ -80,6 +80,7 @@ function PartnerLiveStatus({
   status,
   serviceOtp,
   bookingLocation,
+  bookingId,
 }: {
   partnerId: string;
   destinationAddress: string;
@@ -88,6 +89,7 @@ function PartnerLiveStatus({
   status: string;
   serviceOtp?: string;
   bookingLocation?: { lat: number; lng: number };
+  bookingId?: string;
 }) {
   const statusLabel =
     status === "on_the_way"
@@ -150,6 +152,7 @@ function PartnerLiveStatus({
               partnerId={partnerId}
               destinationAddress={destinationAddress}
               bookingLocation={bookingLocation}
+              bookingId={bookingId}
             />
           </motion.div>
         )}
@@ -161,7 +164,7 @@ function PartnerLiveStatus({
 interface SafetyInfoTooltipProps {
   partnerId?: string;
   isVerified?: boolean;
-  kycStatus?: 'not_submitted' | 'pending' | 'verified' | 'rejected';
+  kycStatus?: 'not_submitted' | 'pending' | 'verified' | 'rejected' | 'approved';
 }
 
 function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified' }: SafetyInfoTooltipProps) {
@@ -517,35 +520,12 @@ export default function CustomerDashboard({
   }, [bookings]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    const partnerUser = booking.partnerId ? partners[booking.partnerId] : null;
-    const partnerPhone = partnerUser?.phoneNumber || "9424456606";
-    const customerPhone = profile.phoneNumber || "9424456606";
-
-    setRoutingCallBookingId(booking.id);
     if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast("Secure Call: Connecting legs via masked proxy...");
+      (window as any).__showToast("Initiating secure call... Your privacy is protected.");
     }
-
-    try {
-      const result = await triggerSecureCall(booking.id, "customer", customerPhone, partnerPhone);
-      console.log("[Secure Call Result]:", result);
-      
-      if (result.success) {
-        if (typeof (window as any).__showToast === 'function') {
-          (window as any).__showToast(result.message || "Connected leg successfully!");
-        }
-      } else {
-        if (typeof (window as any).__showToast === 'function') {
-          (window as any).__showToast("Masking complete. Routing safely...");
-        }
-      }
-    } catch (err) {
-      console.error("Twilio Secure Call initiation failed:", err);
-    } finally {
-      setTimeout(() => {
-        setRoutingCallBookingId(null);
-      }, 3000);
-    }
+    setTimeout(() => {
+      window.location.href = 'tel:+19862490231';
+    }, 1500);
   };
 
   const handleAnswerCall = async (booking: Booking) => {
@@ -736,24 +716,42 @@ export default function CustomerDashboard({
   }, []);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "bookings"),
-      where("userId", "==", profile.uid),
-      orderBy("createdAt", "desc"),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const dbBookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Booking);
-        setBookings(dbBookings);
-        setLoading(false);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, "bookings"),
-    );
-
+    let unsubscribe = () => {};
+    const uid = auth.currentUser?.uid || profile?.uid;
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const q = query(
+        collection(db, "bookings"),
+        where("customerUid", "==", auth.currentUser?.uid || uid)
+      );
+      unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const dbBookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Booking);
+          dbBookings.sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+          setBookings(dbBookings);
+          setLoading(false);
+        },
+        (err) => {
+          console.error("onSnapshot error on customerUid:", err);
+          setBookings([]);
+          setLoading(false);
+        }
+      );
+    } catch (e) {
+      console.error("Failed to set up Customer bookings snapshot listener:", e);
+      setBookings([]);
+      setLoading(false);
+    }
     return () => unsubscribe();
-  }, [profile.uid]);
+  }, [profile?.uid, auth.currentUser?.uid]);
 
   // Fetch partner profiles (UserProfile) for bookings
   useEffect(() => {
@@ -1562,7 +1560,7 @@ export default function CustomerDashboard({
           "payment_pending",
           "pending_parts",
         ].includes(b.status),
-      ) && (
+      ) ? (
         <motion.div
           initial={{ opacity: 0, y: -24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1584,6 +1582,7 @@ export default function CustomerDashboard({
               ].includes(b.status),
             )
             .map((booking) => {
+              const bookingStatus = booking.status || "pending";
               const hasPartner = !!booking.partnerId;
               const partnerUser = hasPartner
                 ? partners[booking.partnerId!]
@@ -1596,7 +1595,7 @@ export default function CustomerDashboard({
                 "on_the_way",
                 "arrived",
                 "in_progress",
-              ].includes(booking.status);
+              ].includes(bookingStatus);
 
               const itemVariants: any = {
                 hidden: { opacity: 0, y: 15 },
@@ -1639,7 +1638,7 @@ export default function CustomerDashboard({
                   <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-slate-50/20 border-b border-slate-100 relative z-10 w-full">
                     <div className="flex items-center gap-3">
                       {(() => {
-                        const isConfirmedOrAssigned = booking.status.toLowerCase() === 'confirmed' || booking.status.toLowerCase() === 'assigned';
+                        const isConfirmedOrAssigned = bookingStatus.toLowerCase() === 'confirmed' || bookingStatus.toLowerCase() === 'assigned';
                         const badgeColorText = isConfirmedOrAssigned ? 'text-[#0a2540]' : 'text-[#22c55e]';
                         const badgeBg = isConfirmedOrAssigned ? 'bg-[#0a2540]/10' : 'bg-[#22c55e]/10';
                         const badgeBorder = isConfirmedOrAssigned ? 'border-[#0a2540]/20' : 'border-[#22c55e]/20';
@@ -1652,11 +1651,11 @@ export default function CustomerDashboard({
                             </span>
                             <span className={`text-[9px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${statusBg} ${badgeColorText} border ${badgeBorder} shadow-xs`}>
                               {(() => {
-                                const statusStr = typeof booking?.status === 'string' ? booking.status.trim().toUpperCase() : "";
+                                const statusStr = typeof bookingStatus === 'string' ? bookingStatus.trim().toUpperCase() : "";
                                 if (statusStr === "ASSIGNED") {
                                   return "Expert Assigned & Preparing";
                                 }
-                                return typeof booking?.status === 'string' ? booking.status.replace("_", " ") : "";
+                                return typeof bookingStatus === 'string' ? bookingStatus.replace("_", " ") : "";
                               })()}
                             </span>
                           </>
@@ -1677,7 +1676,7 @@ export default function CustomerDashboard({
                       
                       {/* Service Header Info */}
                       <motion.div variants={itemVariants} className="flex items-center gap-4 bg-white">
-                        {renderServiceThumbnail(booking.serviceId, "md", booking.status)}
+                        {renderServiceThumbnail(booking.serviceId, "md", bookingStatus)}
                         <div>
                           <h4 className="text-lg sm:text-xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
                             {services[booking.serviceId]?.name || "Professional Service"}
@@ -1703,15 +1702,15 @@ export default function CustomerDashboard({
                             initial={{ width: '0%' }}
                             animate={{ 
                               width: `${
-                                booking.status.toLowerCase() === 'assigned' || booking.status.toUpperCase() === 'ASSIGNED'
+                                bookingStatus.toLowerCase() === 'assigned' || bookingStatus.toUpperCase() === 'ASSIGNED'
                                   ? '25%'
                                   : (() => {
-                                      if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return '0%';
-                                      if (['confirmed'].includes(booking.status)) return '12.5%';
-                                      if (['on_the_way'].includes(booking.status)) return '50%';
-                                      if (['arrived'].includes(booking.status)) return '62.5%';
-                                      if (booking.status === 'in_progress') return '75%';
-                                      if (['completed', 'finalized', 'closed'].includes(booking.status)) return '100%';
+                                      if (['pending', 'pending_parts', 'pending_acceptance'].includes(bookingStatus)) return '0%';
+                                      if (['confirmed'].includes(bookingStatus)) return '12.5%';
+                                      if (['on_the_way'].includes(bookingStatus)) return '50%';
+                                      if (['arrived'].includes(bookingStatus)) return '62.5%';
+                                      if (bookingStatus === 'in_progress') return '75%';
+                                      if (['completed', 'finalized', 'closed'].includes(bookingStatus)) return '100%';
                                       return '0%';
                                     })()
                               }` 
@@ -1728,22 +1727,22 @@ export default function CustomerDashboard({
                               { label: "In Progress", icon: Zap },
                               { label: "Completed", icon: CheckCircle2 }
                             ].map((step, idx) => {
-                              const isAssignedBooking = booking.status.toLowerCase() === 'assigned' || booking.status.toUpperCase() === 'ASSIGNED';
+                              const isAssignedBooking = bookingStatus.toLowerCase() === 'assigned' || bookingStatus.toUpperCase() === 'ASSIGNED';
                               
                               let isActiveColour = false;
                               if (isAssignedBooking) {
                                 isActiveColour = idx <= 1;
                               } else {
                                 const stageIndex = (() => {
-                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return 0;
-                                  if (['confirmed'].includes(booking.status)) return 1;
-                                  if (['assigned'].includes(booking.status)) return 1;
-                                  if (['on_the_way', 'arrived'].includes(booking.status)) return 2;
-                                  if (booking.status === 'in_progress') return 3;
-                                  if (['completed', 'finalized', 'closed'].includes(booking.status)) return 4;
+                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(bookingStatus)) return 0;
+                                  if (['confirmed'].includes(bookingStatus)) return 1;
+                                  if (['assigned'].includes(bookingStatus)) return 1;
+                                  if (['on_the_way', 'arrived'].includes(bookingStatus)) return 2;
+                                  if (bookingStatus === 'in_progress') return 3;
+                                  if (['completed', 'finalized', 'closed'].includes(bookingStatus)) return 4;
                                   return 0;
                                 })();
-                                isActiveColour = idx <= stageIndex || ['completed', 'finalized', 'closed'].includes(booking.status);
+                                isActiveColour = idx <= stageIndex || ['completed', 'finalized', 'closed'].includes(bookingStatus);
                               }
 
                               const StepIcon = step.icon;
@@ -1815,7 +1814,7 @@ export default function CustomerDashboard({
                       </motion.div>
 
                       {/* 5. Security Verification OTP Segment */}
-                      {otpCode && (booking.status.toLowerCase() !== "in_progress") && (
+                      {otpCode && (bookingStatus.toLowerCase() !== "in_progress") && (
                         <motion.div variants={itemVariants} className="bg-gradient-to-r from-slate-900 to-slate-950 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
                           <div className="text-center sm:text-left">
                             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#22c55e] px-2.5 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/20 rounded-full inline-block mb-1.5">
@@ -1827,7 +1826,7 @@ export default function CustomerDashboard({
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="flex gap-1.5">
-                              {otpCode.toString().split("").map((digit, i) => (
+                              {(otpCode || "").toString().split("").map((digit, i) => (
                                 <div key={i} className="w-10 h-10 bg-white border border-slate-200 text-slate-900 rounded-xl flex items-center justify-center text-xl font-black italic shadow-sm">
                                   {digit}
                                 </div>
@@ -1845,7 +1844,7 @@ export default function CustomerDashboard({
                         
                         {/* Service Checklist Card */}
                         <div className="bg-slate-50/50 border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
-                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                           <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                             <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
                               <FileText size={12} className="text-[#22c55e]" /> Service Checklist
                             </h5>
@@ -1855,7 +1854,7 @@ export default function CustomerDashboard({
                           </div>
                           <div className="space-y-2">
                             {(services[booking.serviceId]?.predefinedTasks?.length
-                              ? services[booking.serviceId].predefinedTasks
+                              ? services[booking.serviceId]?.predefinedTasks
                               : ["Inspect issue & diagnostics", "Perform requested repair/cleaning", "Calibrate or test performance", "Clean work area & final check"]
                             ).map((task: string, i: number) => {
                               const isDone = booking.completedTasks?.includes(task || "");
@@ -1928,7 +1927,7 @@ export default function CustomerDashboard({
                               <span className="text-base font-black text-slate-900">₹{booking.totalPrice}</span>
                             </div>
 
-                            {booking.status === "payment_pending" && (
+                            {bookingStatus === "payment_pending" && (
                               <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl flex flex-col gap-2">
                                 <div className="text-left">
                                   <h5 className="text-[8px] font-black uppercase text-[#22c55e] tracking-wider leading-none mb-1">
@@ -2005,6 +2004,7 @@ export default function CustomerDashboard({
                                   partnerId={booking.partnerId!}
                                   destinationAddress={booking.address}
                                   bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
+                                  bookingId={booking.id}
                                 />
                               </motion.div>
                             )}
@@ -2065,10 +2065,11 @@ export default function CustomerDashboard({
                             </button>
                             {partnerUser?.phoneNumber && (
                               <button
+                                id="customer-booking-secure-call-btn-1"
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors border border-slate-700"
+                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm"
                               >
-                                <Phone size={12} /> Call
+                                <Phone size={12} /> Call (Secure)
                               </button>
                             )}
                           </div>
@@ -2087,6 +2088,16 @@ export default function CustomerDashboard({
               );
             })}
         </motion.div>
+      ) : (
+        <div className="bg-white border-2 border-dashed border-slate-150 rounded-[32px] p-8 text-center mb-12 flex flex-col items-center justify-center py-16 max-w-7xl mx-auto shadow-sm">
+          <Calendar size={32} className="text-slate-300 mb-3" />
+          <p className="text-sm font-extrabold text-slate-500">
+            No active bookings right now.
+          </p>
+          <p className="text-xs text-slate-400 mt-1 font-medium">
+            Need a professional task done? Book a service below!
+          </p>
+        </div>
       )}
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8 px-2 sm:px-0">
@@ -2130,6 +2141,7 @@ export default function CustomerDashboard({
               ].includes(b.status),
             )
             .map((booking) => {
+              const bookingStatus = booking.status || "pending";
               const hasPartner = !!booking.partnerId;
               const partnerUser = hasPartner
                 ? partners[booking.partnerId!]
@@ -2142,7 +2154,7 @@ export default function CustomerDashboard({
                 "on_the_way",
                 "arrived",
                 "in_progress",
-              ].includes(booking.status);
+              ].includes(bookingStatus);
 
               return (
                 <div
@@ -2163,9 +2175,9 @@ export default function CustomerDashboard({
                           </span>
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
                           <span
-                            className={`text-[8px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${getStatusColor(booking.status)}`}
+                            className={`text-[8px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${getStatusColor(bookingStatus)}`}
                           >
-                            {booking.status.replace("_", " ")}
+                            {bookingStatus.replace("_", " ")}
                           </span>
                         </div>
                         <h4 className="text-xl sm:text-2xl font-black italic tracking-tighter uppercase text-white leading-none">
@@ -2198,13 +2210,13 @@ export default function CustomerDashboard({
                         initial={{ width: '0%' }}
                         animate={{ 
                           width: `${
-                            ['completed', 'finalized', 'closed'].includes(booking.status)
+                            ['completed', 'finalized', 'closed'].includes(bookingStatus)
                               ? '100'
                               : (() => {
-                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(booking.status)) return 0;
-                                  if (['confirmed', 'assigned'].includes(booking.status)) return 25;
-                                  if (['on_the_way', 'arrived'].includes(booking.status)) return 50;
-                                  if (booking.status === 'in_progress') return 75;
+                                  if (['pending', 'pending_parts', 'pending_acceptance'].includes(bookingStatus)) return 0;
+                                  if (['confirmed', 'assigned'].includes(bookingStatus)) return 25;
+                                  if (['on_the_way', 'arrived'].includes(bookingStatus)) return 50;
+                                  if (bookingStatus === 'in_progress') return 75;
                                   return 0;
                                 })()
                           }%` 
@@ -2229,9 +2241,9 @@ export default function CustomerDashboard({
                           return 0;
                         };
 
-                        const stageIndex = getTimelineStageIndex(booking.status);
-                        const isCompleted = idx < stageIndex || ['completed', 'finalized', 'closed'].includes(booking.status);
-                        const isCurrent = idx === stageIndex && !['completed', 'finalized', 'closed'].includes(booking.status);
+                        const stageIndex = getTimelineStageIndex(bookingStatus);
+                        const isCompleted = idx < stageIndex || ['completed', 'finalized', 'closed'].includes(bookingStatus);
+                        const isCurrent = idx === stageIndex && !['completed', 'finalized', 'closed'].includes(bookingStatus);
                         const StepIcon = step.icon;
 
                         return (
@@ -2419,11 +2431,12 @@ export default function CustomerDashboard({
                             </button>
                             {partnerUser?.phoneNumber && (
                               <button
+                                id="customer-booking-secure-call-btn-2"
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
                               >
                                 <Phone size={14} className="text-slate-300" />{" "}
-                                Call
+                                Call (Secure)
                               </button>
                             )}
                           </div>
@@ -2538,6 +2551,7 @@ export default function CustomerDashboard({
                                   partnerId={booking.partnerId!}
                                   destinationAddress={booking.address}
                                   bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
+                                  bookingId={booking.id}
                                 />
                               </motion.div>
                             )}
@@ -2682,7 +2696,7 @@ export default function CustomerDashboard({
                             <div className="space-y-3">
                               {(services[booking.serviceId]?.predefinedTasks
                                 ?.length
-                                ? services[booking.serviceId].predefinedTasks
+                                ? (services[booking.serviceId]?.predefinedTasks || [])
                                 : [
                                     "Inspect issue & diagnostics",
                                     "Perform requested repair/cleaning",
@@ -2902,12 +2916,13 @@ export default function CustomerDashboard({
 
                               <div className="flex gap-2 shrink-0">
                                 <button
+                                  id="customer-booking-secure-call-btn-3"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleInitiateCall(booking);
                                   }}
-                                  className="w-10 h-10 bg-emerald-500 text-white hover:bg-emerald-600 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-emerald-500/15"
-                                  title="Voice Call Partner"
+                                  className="w-10 h-10 bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white hover:bg-emerald-600 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-emerald-500/15 cursor-pointer"
+                                  title="Call (Secure)"
                                 >
                                   <Phone size={14} />
                                 </button>

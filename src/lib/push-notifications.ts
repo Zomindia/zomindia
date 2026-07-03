@@ -2,11 +2,13 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from './firebase';
+import { requestAndSaveFCMToken } from './fcm';
 
 export async function registerPushNotifications(userId: string) {
   // Only execute on native platforms (iOS / Android)
   if (!Capacitor.isNativePlatform()) {
-    console.log('[Push] Skipping push notification setup - not running on a native device (Web/PWA client).');
+    console.log('[Push] Web/PWA environment detected. Initializing web FCM token handshake.');
+    await requestAndSaveFCMToken(userId);
     return;
   }
 

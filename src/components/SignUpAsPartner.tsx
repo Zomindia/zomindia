@@ -257,7 +257,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
     setErrors({});
 
     try {
-      const uid = auth.currentUser?.uid || `partner_app_${Date.now()}`;
+      const uid = profile?.uid || auth.currentUser?.uid || `partner_app_${Date.now()}`;
       
       const appData = {
         id: uid,
@@ -273,6 +273,34 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
       };
 
       await setDoc(doc(db, "partner_applications", uid), appData);
+
+      // Inject the specific indexing flags: isPartner: true and ensure partnerData is fully initialized.
+      // Do NOT overwrite or delete existing customerData by using merge: true.
+      const partnerDataInit = {
+        partnerId: uid,
+        bio: `Elite Certified Professional specializing in ${selectedCategories.join(', ') || 'Home Services'} across ${selectedArea || 'Indore'}.`,
+        status: "inactive",
+        rating: 4.9,
+        reviewCount: 0,
+        isVerified: false,
+        kycStatus: "pending",
+        categories: selectedCategories,
+        skills: selectedCategories,
+        city: "Indore",
+        availabilityStatus: "Offline",
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        phone: phone.trim(),
+        email: email.trim() || "",
+        fullName: fullName.trim()
+      };
+
+      await setDoc(doc(db, "users", uid), {
+        isPartner: true,
+        partnerData: partnerDataInit,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+
       setSuccess(true);
     } catch (err: any) {
       console.error("Application upload failed:", err);

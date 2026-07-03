@@ -608,31 +608,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   }, [activeCoordinatedCallBooking]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    setCallTimer(30);
-    setShowSecondaryEscalation(false);
     if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast(`Secure Call: Connecting legs via masked proxy...`);
+      (window as any).__showToast("Initiating secure call... Your privacy is protected.");
     }
-    const customer = customers[booking.customerId];
-    const customerPhone = customer?.phoneNumber || '9424456606';
-    const partnerPhone = profile?.phoneNumber || '9424456606';
-
-    try {
-      const result = await triggerSecureCall(booking.id, "partner", partnerPhone, customerPhone);
-      console.log("[Twilio Partner Call Result]:", result);
-      
-      if (result.success) {
-        if (typeof (window as any).__showToast === 'function') {
-          (window as any).__showToast(result.message || "Connected leg successfully!");
-        }
-      } else {
-        if (typeof (window as any).__showToast === 'function') {
-          (window as any).__showToast("Masking complete. Routing safely...");
-        }
-      }
-    } catch (err) {
-      console.error("Error initiating secure Twilio call: ", err);
-    }
+    setTimeout(() => {
+      window.location.href = 'tel:+19862490231';
+    }, 1500);
   };
 
   const handleAnswerCall = async (booking: Booking) => {
@@ -1275,13 +1256,15 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const renderJobCard = (booking: Booking, isHistory = false) => {
     const customer = customers[booking.customerId];
     const service = services[booking.serviceId];
-    const isCompleted = ['completed', 'finalized'].includes(booking.status);
+    const bookingStatus = booking.status || 'pending';
+    const bookingId = booking.id || '';
+    const isCompleted = ['completed', 'finalized'].includes(bookingStatus);
 
     return (
       <motion.div 
         layout
-        id={`booking-${booking.id}`}
-        key={booking.id}
+        id={`booking-${bookingId}`}
+        key={bookingId}
         onClick={() => {
           setSelectedBooking(booking);
           setChatHidden(false);
@@ -1290,11 +1273,11 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       >
          {/* Visual Accent */}
          <div className={`absolute top-0 left-0 w-1.5 h-full transition-all group-hover:w-2 ${
-            ['confirmed', 'assigned'].includes(booking.status) ? 'bg-[#0a2540]' :
-            ['in_progress', 'on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500' :
-            ['pending', 'pending_parts', 'payment_pending'].includes(booking.status) ? 'bg-amber-400' :
+            ['confirmed', 'assigned'].includes(bookingStatus) ? 'bg-[#0a2540]' :
+            ['in_progress', 'on_the_way', 'arrived'].includes(bookingStatus) ? 'bg-emerald-500' :
+            ['pending', 'pending_parts', 'payment_pending'].includes(bookingStatus) ? 'bg-amber-400' :
             isCompleted ? 'bg-blue-700' :
-            booking.status === 'cancelled' ? 'bg-rose-500' :
+            bookingStatus === 'cancelled' ? 'bg-rose-500' :
             'bg-slate-200'
          }`} />
 
@@ -1303,18 +1286,18 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             <div className="flex-1 min-w-0">
                <div className="flex items-center gap-2 mb-1.5">
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">ID: {booking.id.slice(0, 6).toUpperCase()}</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">ID: {bookingId ? bookingId.slice(0, 6).toUpperCase() : '------'}</span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm ${
-                    ['confirmed', 'assigned'].includes(booking.status) ? 'bg-[#0a2540] text-white shadow-[#0a2540]/20' :
-                    booking.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
-                    booking.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/30' :
-                    ['on_the_way', 'arrived'].includes(booking.status) ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
-                    booking.status === 'cancelled' ? 'bg-rose-500 text-white' :
+                    ['confirmed', 'assigned'].includes(bookingStatus) ? 'bg-[#0a2540] text-white shadow-[#0a2540]/20' :
+                    bookingStatus === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
+                    bookingStatus === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-amber-500/30' :
+                    ['on_the_way', 'arrived'].includes(bookingStatus) ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
+                    bookingStatus === 'cancelled' ? 'bg-rose-500 text-white' :
                     isCompleted ? 'bg-blue-100 text-blue-700' :
                     'bg-slate-100 text-slate-500'
                   }`}>
-                    {booking.status.replace('_', ' ')}
+                    {bookingStatus.replace('_', ' ')}
                   </span>
                </div>
                <h4 className="text-base font-black text-slate-900 leading-none mb-2 italic group-hover:text-blue-700 transition-colors uppercase tracking-tight">{service?.name || 'Loading...'}</h4>
@@ -1355,7 +1338,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
                    >
                      <Phone size={11} className="text-white" fill="currentColor" />
-                     Call Customer
+                     Call (Secure)
                    </button>
                    {booking.status === 'arrived' && (
                      <button
@@ -1394,7 +1377,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     const booking = bookings.find(b => b.id === selectedBooking.id) || selectedBooking;
     const customer = customers[booking.customerId];
     const service = services[booking.serviceId];
-    const isHistory = ['completed', 'finalized', 'cancelled'].includes(booking.status);
+    const bookingStatus = booking.status || 'pending';
+    const bookingId = booking.id || '';
+    const isHistory = ['completed', 'finalized', 'cancelled'].includes(bookingStatus);
 
     return (
       <motion.div 
@@ -1417,16 +1402,16 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             </button>
             <div>
               <h3 className="text-lg font-black italic tracking-tighter">Job Details</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Booking #{booking.id.toUpperCase()}</p>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Booking #{bookingId.toUpperCase()}</p>
             </div>
           </div>
           <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-            booking.status === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
-            booking.status === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-lg shadow-amber-500/25' :
-            booking.status === 'completed' || booking.status === 'finalized' ? 'bg-emerald-50 text-emerald-600' :
+            bookingStatus === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
+            bookingStatus === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-lg shadow-amber-500/25' :
+            bookingStatus === 'completed' || bookingStatus === 'finalized' ? 'bg-emerald-50 text-emerald-600' :
             'bg-slate-50 text-slate-500'
           }`}>
-            {booking.status.replace('_', ' ')}
+            {bookingStatus.replace('_', ' ')}
           </div>
         </div>
 
@@ -1435,13 +1420,14 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           {!isHistory && (
             <div className="grid grid-cols-3 gap-4">
                <button 
+                 id="partner-booking-secure-call-btn-2"
                  onClick={() => handleInitiateCall(booking)}
-                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-95 transition-all"
+                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-95 active:scale-90 active:bg-emerald-100 transition-all cursor-pointer"
                >
                  <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                   <Phone size={24} fill="currentColor" className="fill-emerald-200/30" />
+                   <Phone size={24} className="fill-emerald-200/30" />
                  </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest">In-App Call</span>
+                 <span className="text-[10px] font-black uppercase tracking-widest">Call (Secure)</span>
                </button>
                <button 
                  onClick={() => setActiveChat(booking)}
@@ -1483,8 +1469,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                          <Smartphone size={14} className="text-blue-500" />
                       </div>
                       <p className="text-sm font-bold text-slate-600">
-                        {['completed', 'finalized'].includes(booking.status) ? 'Access Masked' : (customer?.displayName || 'Client')}
-                        {!['completed', 'finalized'].includes(booking.status) && (
+                        {['completed', 'finalized'].includes(bookingStatus) ? 'Access Masked' : (customer?.displayName || 'Client')}
+                        {!['completed', 'finalized'].includes(bookingStatus) && (
                           <span className="text-xs font-black text-emerald-605 block mt-1.5 select-none font-sans">
                             🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}
                           </span>

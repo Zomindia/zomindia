@@ -42,6 +42,7 @@ interface Props {
 export default function PartnerHome({ partner, bookings, services, users, profile, onNavigate, application }: Props) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
   const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
+  const [showPendingPopup, setShowPendingPopup] = useState(false);
 
   // Onboarding modal states
   const [currentStep, setCurrentStep] = useState(1);
@@ -411,8 +412,16 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                 </p>
               </div>
 
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-2">
-                Helpdesk: 9424456606
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={() => setShowPendingPopup(true)}
+                  className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md shadow-blue-700/15 active:scale-[0.98] cursor-pointer"
+                >
+                  Track Live Status
+                </button>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-1">
+                  Helpdesk: 9424456606
+                </div>
               </div>
             </div>
           </div>
@@ -1176,6 +1185,34 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   </button>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showPendingPopup && (
+          <div 
+            id="partner-pending-status-modal"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center"
+            >
+              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
+                <Clock size={28} />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Under Review</h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                Your profile is currently being verified by our admin team. We will notify you once it is approved.
+              </p>
+              <button
+                onClick={() => setShowPendingPopup(false)}
+                className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 cursor-pointer"
+              >
+                Okay, Understood
+              </button>
             </motion.div>
           </div>
         )}

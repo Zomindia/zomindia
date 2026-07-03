@@ -55,6 +55,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // Real-time kycStatus and onboarding modal states as instructed
+  const [kycStatus, setKycStatus] = useState<string>(() => profile?.partnerData?.kycStatus || 'pending');
+  const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
+  const [showPendingAlert, setShowPendingAlert] = useState<boolean>(false);
 
   // Active global background service that periodic/live updates coordinate markers in firebase
   const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
@@ -65,6 +70,16 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       setActiveScreen('jobs');
     }
   }, [initialTargetId]);
+
+  // Sync to open congratulations onboarding modal on approved state change
+  useEffect(() => {
+    if (kycStatus === 'approved') {
+      const dismissed = sessionStorage.getItem('congrats_dismissed_' + profile.uid);
+      if (!dismissed) {
+        setShowOnboardingModal(true);
+      }
+    }
+  }, [kycStatus, profile.uid]);
 
   const navigateWithTarget = (screen: any, targetId: string | null = null) => {
     // If screen is a top level app tab, use onAppNavigate
@@ -85,6 +100,59 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           setPartner({ id: snap.docs[0].id, ...snap.docs[0].data() } as PartnerProfile);
         }
         setLoading(false);
+      }, (err) => {
+        setLoading(false);
+      });
+    };
+
+    // Real-time Firestore listener tracking the logged-in partner's /users/{uid} document
+    const fetchUserDocRealtime = () => {
+      return onSnapshot(doc(db, 'users', profile.uid), (snap) => {
+        if (snap.exists()) {
+          const uData = snap.data();
+          if (uData && uData.partnerData) {
+            const pData = uData.partnerData;
+            const liveKyc = pData.kycStatus || 'pending';
+            setKycStatus(liveKyc);
+
+            if (liveKyc === "approved") {
+              console.log("[PartnerApp Realtime] KYC approval detected live!");
+              setPartner(prev => {
+                const updated: PartnerProfile = {
+                  id: profile.uid,
+                  userId: profile.uid,
+                  isVerified: true,
+                  kycStatus: "approved",
+                  status: (pData.status || "active") as any,
+                  availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
+                  bio: pData.bio || prev?.bio || "",
+                  categories: pData.categories || prev?.categories || [],
+                  skills: pData.skills || prev?.skills || [],
+                  city: pData.city || prev?.city || "Indore",
+                  phone: pData.phone || prev?.phone || "",
+                  email: pData.email || prev?.email || "",
+                  fullName: pData.fullName || prev?.fullName || "",
+                  rating: pData.rating || prev?.rating || 4.9,
+                  reviewCount: pData.reviewCount || prev?.reviewCount || 0,
+                  onboardingCompleted: true,
+                  createdAt: pData.createdAt || prev?.createdAt,
+                  updatedAt: pData.updatedAt || prev?.updatedAt,
+                };
+                return updated;
+              });
+            } else {
+              setPartner(prev => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  ...pData
+                };
+              });
+            }
+          }
+        }
+      }, (err) => {
+        console.error("Error listening to user document in PartnerApp:", err);
       });
     };
 
@@ -155,6 +223,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     };
 
     const unsubPartner = fetchPartner();
+    const unsubUserRealtime = fetchUserDocRealtime();
     const unsubBookings = fetchBookings();
     const unsubServices = fetchServices();
     const unsubUsers = fetchUsers();
@@ -162,6 +231,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     
     return () => {
       unsubPartner();
+      unsubUserRealtime();
       unsubBookings();
       unsubServices();
       unsubUsers();
@@ -191,10 +261,6 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       handleFirestoreError(err, OperationType.UPDATE, 'partners');
     }
   };
-
-  if (loading) {
-    return <LoadingScreen message="Updating your jobs and clients..." />;
-  }
 
   const renderScreen = () => {
     switch (activeScreen) {
@@ -239,6 +305,93 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     { id: 'offers', icon: TicketPercent, label: 'Offers' },
   ];
 
+  if (loading) {
+    return <LoadingScreen message="Updating your jobs and clients..." />;
+  }
+
+  // SCENARIO A (Pending): Clean screen with "Track Application Status" button
+  if (kycStatus === 'pending') {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
+        <header className="flex justify-between items-center py-4 select-none shrink-0">
+          <div className="flex items-center gap-2 select-none">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1">
+              <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+            </div>
+            <div className="flex flex-col max-w-[100px]">
+              <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
+              <span className="text-[7.5px] text-[#0a2540] font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-white border border-slate-100 rounded-3xl p-8 shadow-xl space-y-6 flex flex-col items-center"
+          >
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 border border-blue-100 rounded-2xl flex items-center justify-center shadow-md">
+              <Clock size={32} />
+            </div>
+            
+            <div className="space-y-2">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight">Elite Partner Program</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Thank you for applying to become a Zomindia partner. Our onboarding team is currently reviewing your profile credentials.
+              </p>
+            </div>
+
+            <button
+              id="partner-track-application-status-btn"
+              onClick={() => setShowPendingAlert(true)}
+              className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md shadow-blue-700/15 active:scale-[0.98] cursor-pointer"
+            >
+              Track Application Status
+            </button>
+          </motion.div>
+        </main>
+
+        <footer className="py-4 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider select-none shrink-0">
+          ZOMINDIA INDORE PARTNER NETWORK • HELPDESK: 9424456606
+        </footer>
+
+        {/* Alert Modal for Scenario A */}
+        <AnimatePresence>
+          {showPendingAlert && (
+            <div 
+              id="partner-pending-alert-modal"
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center"
+              >
+                <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 shadow-sm">
+                  <Clock size={28} />
+                </div>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Under Review</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                  Application Under Review - Your profile is being verified by our admin team.
+                </p>
+                <button
+                  id="partner-pending-alert-ok-btn"
+                  onClick={() => setShowPendingAlert(false)}
+                  className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 cursor-pointer"
+                >
+                  Okay
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // SCENARIO C (Approved + Modal Closed)
   return (
     <div className="min-h-[100dvh] bg-slate-50 pb-32 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
       {/* App Header */}
@@ -504,6 +657,51 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             </div>
             <span>{toastMessage}</span>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SCENARIO B (Approved + Onboarding Modal Active): overlay a beautiful Tailwind modal with a dark backdrop (bg-black/60) */}
+      <AnimatePresence>
+        {showOnboardingModal && (
+          <div 
+            id="partner-kyc-onboarding-modal"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -15 }}
+              className="w-full max-w-sm bg-white rounded-[32px] p-8 shadow-2xl border border-slate-100 flex flex-col text-center"
+            >
+              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-sm text-2xl">
+                🎉
+              </div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight mb-3">Congratulations! 🎉</h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-8">
+                Your profile is digitally approved. To fully activate your account and accept live bookings, please visit the Zomindia Indore branch to complete physical onboarding.
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem('congrats_dismissed_' + profile.uid, 'true');
+                    setShowOnboardingModal(false);
+                  }}
+                  className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 cursor-pointer"
+                >
+                  I'll Visit Soon
+                </button>
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem('congrats_dismissed_' + profile.uid, 'true');
+                    setShowOnboardingModal(false);
+                  }}
+                  className="w-full py-2.5 text-slate-500 hover:text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
+                >
+                  Skip for Now
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

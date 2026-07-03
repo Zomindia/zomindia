@@ -109,6 +109,7 @@ service cloud.firestore {
              (!('currentMode' in data) || (data.currentMode is string && data.currentMode in ['customer', 'partner'])) &&
              (!('customerData' in data) || (data.customerData is map)) &&
              (!('partnerData' in data) || (data.partnerData is map)) &&
+             (!('isPartner' in data) || (data.isPartner is bool)) &&
              (!('partnerApplicationStatus' in data) || (data.partnerApplicationStatus is string)) &&
              (!('partnerId' in data) || (data.partnerId is string)) &&
              (!('city' in data) || (data.city is string)) &&
@@ -362,7 +363,7 @@ service cloud.firestore {
                 'displayName', 'fullName', 'email', 'phoneNumber', 'phoneNumberVerified', 'photoURL', 'address', 'bio', 
                 'notificationPreferences', 'updatedAt', 'gender', 'languagePreference', 
                 'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete',
-                'currentMode', 'customerData', 'partnerData'
+                'currentMode', 'customerData', 'partnerData', 'isPartner'
               ])) ||
               ('email' in request.auth.token && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
               ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||
@@ -399,7 +400,15 @@ service cloud.firestore {
     }
 
     match /partners/{partnerId} {
-      allow read, write, update, delete: if true;
+      allow read: if true;
+      allow create: if isSignedIn() && (isAdmin() || isHRAdmin() || isHeadAdmin() || incoming().userId == request.auth.uid);
+      allow update: if isSignedIn() && (
+        isAdmin() || isHRAdmin() || isHeadAdmin() || (
+          isOwner(existing().userId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin();
 
       match /earningsHistory/{historyId} {
         allow read: if isSignedIn() && (isHeadAdmin() || isAccountsAdmin() || isOwner(get(/databases/$(database)/documents/partners/$(partnerId)).data.userId));
@@ -454,7 +463,7 @@ service cloud.firestore {
             'status', 'otpVerified', 'cancellationReason', 'completedTasks', 'completionPhotos',
             'pendingReason', 'pendingResolveDate', 'pendingResolveDuration', 
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
-            'paymentStatus', 'lat', 'lng', 'address', 'updatedAt', 'activeCall'
+            'paymentStatus', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation'
           ])
         )) ||
         isAdmin()

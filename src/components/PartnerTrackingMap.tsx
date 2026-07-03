@@ -42,165 +42,10 @@ interface PartnerTrackingMapProps {
   bookingLocation?: { lat: number; lng: number };
   destinationAddress?: string;
   onClose?: () => void;
+  bookingId?: string;
 }
 
-export interface SimulatedPro {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  status: "Available" | "On Job" | "In Transit";
-  serviceType: string;
-  rating: number;
-  heading: number;
-  speed: number;
-}
 
-const generateSimulatedPros = (center: {
-  lat: number;
-  lng: number;
-}): SimulatedPro[] => {
-  const pros: SimulatedPro[] = [];
-
-  const names = [
-    // Available pros (6 specialists)
-    { name: "Arjun Verma", type: "AC Technician" },
-    { name: "Rahul Sharma", type: "Washing Machine Expert" },
-    { name: "Vijay Kumar", type: "Lead Plumber" },
-    { name: "Deepak Gupta", type: "Professional Electrician" },
-    { name: "Karan Singh", type: "RO Water Specialist" },
-    { name: "Amit Mishra", type: "Chimney Cleaning Pro" },
-
-    // On Job pros (4 busy specialists)
-    { name: "Rajesh Patel", type: "Home Appliance Repair" },
-    { name: "Manoj Yadav", type: "AC Deep Cleaner" },
-    { name: "Vikram Rathore", type: "Smart TV Setup Specialist" },
-    { name: "Sanjay Rao", type: "Geyser Installation Expert" },
-
-    // Moving pros (3 active transit specialists)
-    { name: "Rohan Malhotra", type: "Emergency Repair Lead" },
-    { name: "Kunal Sen", type: "Premium Cleaning Supervisor" },
-    { name: "Anil Joshi", type: "Senior Electrician" },
-  ];
-
-  names.forEach((item, idx) => {
-    let status: "Available" | "On Job" | "In Transit";
-    if (idx < 6) {
-      status = "Available";
-    } else if (idx < 10) {
-      status = "On Job";
-    } else {
-      status = "In Transit";
-    }
-
-    // Generate random distance (600m to 2500m) around coordinates
-    const distanceMeters = 600 + Math.random() * 1900;
-    const angle = Math.random() * 2 * Math.PI;
-    const earthRadius = 6371000;
-
-    const dLat =
-      ((distanceMeters * Math.cos(angle)) / earthRadius) * (180 / Math.PI);
-    const dLng =
-      ((distanceMeters * Math.sin(angle)) /
-        (earthRadius * Math.cos((center.lat * Math.PI) / 180))) *
-      (180 / Math.PI);
-
-    pros.push({
-      id: `sim_pro_${idx}`,
-      name: item.name,
-      serviceType: item.type,
-      lat: center.lat + dLat,
-      lng: center.lng + dLng,
-      status,
-      rating: +(4.5 + Math.random() * 0.5).toFixed(1),
-      heading: angle + Math.PI, // Initial movement vector
-      speed: 0.00003 + Math.random() * 0.00004,
-    });
-  });
-
-  return pros;
-};
-
-const getHaversineDistance = (
-  p1: { lat: number; lng: number },
-  p2: { lat: number; lng: number },
-) => {
-  const R = 6371e3; // meters
-  const dLat = ((p2.lat - p1.lat) * Math.PI) / 180;
-  const dLng = ((p2.lng - p1.lng) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((p1.lat * Math.PI) / 180) *
-      Math.cos((p2.lat * Math.PI) / 180) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-function SimulatedProsLayer({
-  simulatedPros,
-  onProSelect,
-  selectedSimProId,
-  closestSimProIds,
-  referenceCenter,
-}: {
-  simulatedPros: SimulatedPro[];
-  onProSelect: (pro: SimulatedPro) => void;
-  selectedSimProId?: string;
-  closestSimProIds: string[];
-  referenceCenter: { lat: number; lng: number };
-}) {
-  const map = useMap();
-
-  return (
-    <>
-      {simulatedPros.map((pro) => {
-        const isSelected = selectedSimProId === pro.id;
-        const closestIndex = closestSimProIds.indexOf(pro.id);
-        const isClosest = closestIndex !== -1;
-
-        return (
-          <AdvancedMarker
-            key={pro.id}
-            position={{ lat: pro.lat, lng: pro.lng }}
-            onClick={(e) => {
-              if (e) e.domEvent?.stopPropagation();
-              onProSelect(pro);
-              if (map) {
-                map.panTo({ lat: pro.lat, lng: pro.lng });
-              }
-            }}
-          >
-            <div className="relative">
-              {/* Highlight Rank Badge on top of closest simulated pros */}
-              {isClosest && (
-                <div
-                  className="absolute -top-11 left-1/2 -translate-x-1/2 bg-yellow-400 border border-white text-slate-900 font-extrabold text-[7px] tracking-wider uppercase px-1.5 py-0.5 rounded-full shadow-lg z-30 select-none whitespace-nowrap animate-bounce"
-                  style={{ animationDuration: "2s" }}
-                >
-                  #{closestIndex + 1} NEAR
-                </div>
-              )}
-
-              <PartnerIdentityMarker
-                status={pro.status}
-                isClosest={isClosest}
-                isSelected={isSelected}
-                name={pro.name}
-                distanceText={
-                  isClosest
-                    ? `${(getHaversineDistance(pro, referenceCenter) / 1000).toFixed(1)}km`
-                    : undefined
-                }
-              />
-            </div>
-          </AdvancedMarker>
-        );
-      })}
-    </>
-  );
-}
 
 function MapLogic({
   partnerLocation,
@@ -928,6 +773,7 @@ export default function PartnerTrackingMap({
   bookingLocation,
   destinationAddress,
   onClose,
+  bookingId,
 }: PartnerTrackingMapProps) {
   const [partnerLocation, setPartnerLocation] = useState<{
     lat: number;
@@ -957,11 +803,6 @@ export default function PartnerTrackingMap({
   const [pulseEnabled, setPulseEnabled] = useState<boolean>(true);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(true);
 
-  const [simulatedPros, setSimulatedPros] = useState<SimulatedPro[]>([]);
-  const [selectedSimPro, setSelectedSimPro] = useState<SimulatedPro | null>(
-    null,
-  );
-
   const [prevLocation, setPrevLocation] = useState<{
     lat: number;
     lng: number;
@@ -982,18 +823,6 @@ export default function PartnerTrackingMap({
     );
   }, [bookingLocation, partnerLocation, animatedLocation]);
 
-  const closestSimProIds = React.useMemo(() => {
-    if (!referenceCenter) return [];
-    return [...simulatedPros]
-      .map((pro) => ({
-        id: pro.id,
-        distance: getHaversineDistance(pro, referenceCenter),
-      }))
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, 3)
-      .map((item) => item.id);
-  }, [simulatedPros, referenceCenter]);
-
   useEffect(() => {
     if (!autoRefreshEnabled) return;
     const timer = setInterval(() => {
@@ -1007,61 +836,6 @@ export default function PartnerTrackingMap({
     }, 1000);
     return () => clearInterval(timer);
   }, [autoRefreshEnabled]);
-
-  useEffect(() => {
-    const center = bookingLocation || partnerLocation || animatedLocation;
-    if (center && simulatedPros.length === 0) {
-      setSimulatedPros(generateSimulatedPros(center));
-    }
-  }, [
-    bookingLocation,
-    partnerLocation,
-    animatedLocation,
-    simulatedPros.length,
-  ]);
-
-  useEffect(() => {
-    if (simulatedPros.length === 0) return;
-
-    const interval = setInterval(() => {
-      setSimulatedPros((prev) =>
-        prev.map((pro) => {
-          if (pro.status === "In Transit") {
-            const center =
-              bookingLocation || partnerLocation || animatedLocation;
-            let nextLat = pro.lat;
-            let nextLng = pro.lng;
-
-            if (center) {
-              const dy = center.lat - pro.lat;
-              const dx =
-                (center.lng - pro.lng) * Math.cos((center.lat * Math.PI) / 180);
-              const angle = Math.atan2(dy, dx);
-
-              const speed = 0.000015;
-              nextLat += Math.sin(angle) * speed;
-              nextLng +=
-                (Math.cos(angle) * speed) /
-                Math.cos((center.lat * Math.PI) / 180);
-            }
-            return {
-              ...pro,
-              lat: nextLat,
-              lng: nextLng,
-            };
-          }
-          return pro;
-        }),
-      );
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, [
-    simulatedPros.length,
-    bookingLocation,
-    partnerLocation,
-    animatedLocation,
-  ]);
 
   useEffect(() => {
     if (!partnerLocation) return;
@@ -1160,11 +934,29 @@ export default function PartnerTrackingMap({
       }
     });
 
+    let unsubBooking: (() => void) | undefined;
+    if (bookingId) {
+      unsubBooking = onSnapshot(doc(db, "bookings", bookingId), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data && data.partnerLocation && typeof data.partnerLocation.lat === "number" && typeof data.partnerLocation.lng === "number") {
+            setPartnerLocation({ lat: data.partnerLocation.lat, lng: data.partnerLocation.lng });
+            console.log("[Map Sync] Received live partner position from booking doc:", data.partnerLocation);
+          } else if (data && typeof data.lat === "number" && typeof data.lng === "number") {
+            setPartnerLocation({ lat: data.lat, lng: data.lng });
+          }
+        }
+      });
+    }
+
     return () => {
       unsubPartner();
       unsubUser();
+      if (unsubBooking) {
+        unsubBooking();
+      }
     };
-  }, [partnerId, autoRefreshEnabled]);
+  }, [partnerId, bookingId, autoRefreshEnabled]);
 
   // Smooth position animation interpolation loop
   useEffect(() => {
@@ -1461,7 +1253,6 @@ export default function PartnerTrackingMap({
             userInfo={userInfo}
             partnerInfo={partnerInfo}
             onPartnerClick={() => {
-              setSelectedSimPro(null);
               setShowDetailCard(true);
             }}
             pulseEnabled={pulseEnabled}
@@ -1474,16 +1265,6 @@ export default function PartnerTrackingMap({
           <CenterToPartnerButton
             partnerLocation={animatedLocation}
             setZoom={setZoom}
-          />
-          <SimulatedProsLayer
-            simulatedPros={simulatedPros}
-            selectedSimProId={selectedSimPro?.id}
-            onProSelect={(pro) => {
-              setSelectedSimPro(pro);
-              setShowDetailCard(true);
-            }}
-            closestSimProIds={closestSimProIds}
-            referenceCenter={referenceCenter}
           />
           {historicalPath.length > 0 && (
             <AdvancedMarker position={historicalPath[0]}>
@@ -1733,20 +1514,15 @@ export default function PartnerTrackingMap({
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-black text-slate-800 tracking-tight">
-                    {selectedSimPro
-                      ? selectedSimPro.name
-                      : userInfo?.displayName || "Partner Specialist"}
+                    {userInfo?.displayName || "Partner Specialist"}
                   </h4>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                    {selectedSimPro
-                      ? selectedSimPro.serviceType
-                      : "Live GPS Connection"}
+                    Live GPS Connection
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     setShowDetailCard(false);
-                    setSelectedSimPro(null);
                   }}
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-black flex items-center justify-center transition-colors shadow-sm"
                 >
@@ -1765,11 +1541,7 @@ export default function PartnerTrackingMap({
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
                     <span className="text-xs font-black text-slate-800">
-                      {selectedSimPro
-                        ? selectedSimPro.status === "In Transit"
-                          ? "In Transit to Job"
-                          : selectedSimPro.status
-                        : partnerContactStatus}
+                      {partnerContactStatus}
                     </span>
                   </div>
                 </div>
@@ -1781,9 +1553,7 @@ export default function PartnerTrackingMap({
                   <div className="flex items-center gap-1.5 text-slate-800">
                     <Clock size={12} className="text-slate-400" />
                     <span className="text-xs font-black">
-                      {selectedSimPro
-                        ? "Live GPS signal feed"
-                        : getFormattedLastUpdated()}
+                      {getFormattedLastUpdated()}
                     </span>
                   </div>
                 </div>
@@ -1793,18 +1563,12 @@ export default function PartnerTrackingMap({
                 <div className="flex items-center gap-1.5">
                   <Star size={14} className="fill-amber-400 stroke-amber-400" />
                   <span className="text-xs font-black text-slate-800">
-                    {selectedSimPro
-                      ? selectedSimPro.rating
-                      : partnerInfo?.rating
-                        ? Number(partnerInfo.rating).toFixed(1)
-                        : "4.9"}
+                    {partnerInfo?.rating
+                      ? Number(partnerInfo.rating).toFixed(1)
+                      : "4.9"}
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    (
-                    {selectedSimPro
-                      ? Math.floor(selectedSimPro.rating * 12)
-                      : partnerInfo?.reviewCount || 18}{" "}
-                    reviews)
+                    ({partnerInfo?.reviewCount || 18} reviews)
                   </span>
                 </div>
 
@@ -1902,7 +1666,6 @@ export default function PartnerTrackingMap({
 
       <div
         onClick={() => {
-          setSelectedSimPro(null);
           setShowDetailCard(true);
         }}
         className="flex items-center justify-between p-6 bg-slate-50 hover:bg-slate-100/80 transition-all rounded-[32px] border border-slate-100 cursor-pointer group"
