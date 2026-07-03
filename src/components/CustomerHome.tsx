@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
 import BookingModal from "./BookingModal";
 import { ImageCarousel } from "./ServiceDetails";
-import { BrandedButtonSpinner } from "./LoadingIndicator";
+import { BrandedButtonSpinner, ServiceCardSkeleton, ShimmerCard } from "./LoadingIndicator";
 import {
   Wrench,
   Sparkles,
@@ -1512,6 +1512,49 @@ export default function CustomerHome({
             />
           )}
         </AnimatePresence>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 select-none animate-pulse space-y-16">
+        {/* Banner skeleton */}
+        <div className="w-full h-48 sm:h-64 bg-slate-100 rounded-[32px]" />
+        
+        {/* Categories grid/carousel skeleton */}
+        <div className="space-y-4">
+          <div className="w-48 h-6 bg-slate-200 rounded-lg" />
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-4 sm:gap-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 rounded-3xl bg-slate-100" />
+                <div className="w-12 h-3 bg-slate-100 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Services grid skeleton */}
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="w-48 h-6 bg-slate-200 rounded-lg" />
+            <div className="w-24 h-4 bg-slate-200 rounded-lg" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="border border-slate-100 rounded-[32px] p-6 space-y-4 bg-white font-sans">
+                <div className="w-full h-40 bg-slate-100 rounded-2xl" />
+                <div className="w-2/3 h-5 bg-slate-100 rounded" />
+                <div className="w-1/2 h-3 bg-slate-100 rounded" />
+                <div className="pt-4 border-t border-slate-50 flex justify-between">
+                  <div className="w-16 h-4 bg-slate-100 rounded" />
+                  <div className="w-24 h-8 bg-slate-100 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

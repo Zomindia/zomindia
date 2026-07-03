@@ -13,10 +13,6 @@ const CATEGORIES = [
 ];
 
 export async function seedDatabase() {
-  if (!auth.currentUser || auth.currentUser.email !== 'sarthakwebtech@gmail.com') {
-    return;
-  }
-
   try {
     // Seed Categories
     const catsSnap = await getDocs(collection(db, 'categories'));

@@ -749,6 +749,8 @@ export default function App() {
                   const p = mergedSnap.data() as UserProfile;
                   setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
                 }
+              }, (err) => {
+                console.warn("[Auth Snapshot] Merged profile snapshot subscription failed:", err);
               });
               return;
             }
@@ -805,6 +807,26 @@ export default function App() {
             }, (err) => {
               console.error("Error subscribing to active bookings:", err);
             });
+          }, (err) => {
+            console.warn("[Auth Snapshot] Master profile snapshot subscription failed, falling back to default/cached profile:", err);
+            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+            setProfile(buildDualPersonaUserDoc({
+              uid: resolvedUid,
+              displayName: u.displayName || 'User',
+              fullName: u.displayName || 'User',
+              email: u.email || '',
+              phoneNumber: u.phoneNumber || '',
+              mobile: u.phoneNumber || '',
+              role: isAdminUser ? 'admin' : 'customer',
+              photoURL: u.photoURL || '',
+              referralCode: `ZOM${resolvedUid.slice(0, 6).toUpperCase()}`,
+              walletBalance: 100,
+              notificationPreferences: {
+                bookingUpdates: true,
+                promotionalMessages: true
+              },
+              createdAt: Timestamp.now() as any
+            }) as UserProfile);
           });
         };
 
