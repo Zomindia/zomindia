@@ -631,55 +631,90 @@ export default function App() {
             return null;
           };
 
-          // 1. Check if there's an existing document by phone number
-          let existingDoc = await findProfileByPhone(targetPhone);
-          
-          // 2. If not found by phone, but email exists, search by email
-          if (!existingDoc && u.email) {
-            const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
-            const snap3 = await getDocs(q3);
-            if (!snap3.empty) {
-              existingDoc = snap3.docs[0];
+          try {
+            // 1. Check if there's an existing document by phone number
+            let existingDoc = await findProfileByPhone(targetPhone);
+            
+            // 2. If not found by phone, but email exists, search by email
+            if (!existingDoc && u.email) {
+              const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
+              const snap3 = await getDocs(q3);
+              if (!snap3.empty) {
+                existingDoc = snap3.docs[0];
+              }
             }
+
+            if (existingDoc) {
+              resolvedUid = existingDoc.id;
+              console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
+              
+              // Merge Google / new Auth info directly into existing master document
+              const existingData = existingDoc.data();
+              const mergedPayload: any = buildDualPersonaUserDoc({
+                ...existingData,
+                uid: resolvedUid,
+                email: u.email || existingData.email || '',
+                phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
+                mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
+                displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
+                fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
+                onboardingComplete: true,
+                updatedAt: Timestamp.now()
+              });
+
+              await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
+
+              // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
+              if (u.uid !== resolvedUid) {
+                await setDoc(doc(db, 'users', u.uid), {
+                  uid: u.uid,
+                  mergedInto: resolvedUid,
+                  onboardingComplete: false,
+                  updatedAt: Timestamp.now()
+                }, { merge: true });
+              }
+            } else {
+              // New user, create the document under u.uid
+              const userDocRef = doc(db, 'users', u.uid);
+              const userSnap = await getDoc(userDocRef);
+              if (!userSnap.exists()) {
+                const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+                const newProfile: any = buildDualPersonaUserDoc({
+                  uid: u.uid,
+                  displayName: u.displayName || 'User',
+                  fullName: u.displayName || 'User',
+                  email: u.email || '',
+                  phoneNumber: u.phoneNumber || '',
+                  mobile: u.phoneNumber || '',
+                  role: isAdminUser ? 'admin' : 'customer',
+                  photoURL: u.photoURL || '',
+                  referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
+                  walletBalance: 100, // ₹100 Welcome Bonus on registration!
+                  notificationPreferences: {
+                    bookingUpdates: true,
+                    promotionalMessages: true
+                  },
+                  createdAt: Timestamp.now() as any,
+                });
+                if (isAdminUser) {
+                  newProfile.adminSubRole = 'head';
+                }
+                await setDoc(userDocRef, newProfile);
+              }
+            }
+          } catch (error) {
+            console.warn("[Auth Resolution] Firestore query/write failed or client is offline. Falling back to direct subscription on auth UID:", error);
+            resolvedUid = u.uid;
           }
 
-          if (existingDoc) {
-            resolvedUid = existingDoc.id;
-            console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
-            
-            // Merge Google / new Auth info directly into existing master document
-            const existingData = existingDoc.data();
-            const mergedPayload: any = buildDualPersonaUserDoc({
-              ...existingData,
-              uid: resolvedUid,
-              email: u.email || existingData.email || '',
-              phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
-              mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
-              displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
-              fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
-              onboardingComplete: true,
-              updatedAt: Timestamp.now()
-            });
-
-            await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
-
-            // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
-            if (u.uid !== resolvedUid) {
-              await setDoc(doc(db, 'users', u.uid), {
-                uid: u.uid,
-                mergedInto: resolvedUid,
-                onboardingComplete: false,
-                updatedAt: Timestamp.now()
-              }, { merge: true });
-            }
-          } else {
-            // New user, create the document under u.uid
-            const userDocRef = doc(db, 'users', u.uid);
-            const userSnap = await getDoc(userDocRef);
-            if (!userSnap.exists()) {
+          // Subscribe to the resolved master UID!
+          const masterDocRef = doc(db, 'users', resolvedUid);
+          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
+            if (!snap.exists()) {
+              // If completely offline and no cached document exists yet, supply a default user profile to prevent infinite loading
               const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-              const newProfile: any = buildDualPersonaUserDoc({
-                uid: u.uid,
+              const defaultProfile = buildDualPersonaUserDoc({
+                uid: resolvedUid,
                 displayName: u.displayName || 'User',
                 fullName: u.displayName || 'User',
                 email: u.email || '',
@@ -687,25 +722,20 @@ export default function App() {
                 mobile: u.phoneNumber || '',
                 role: isAdminUser ? 'admin' : 'customer',
                 photoURL: u.photoURL || '',
-                referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-                walletBalance: 100, // ₹100 Welcome Bonus on registration!
+                referralCode: `ZOM${resolvedUid.slice(0, 6).toUpperCase()}`,
+                walletBalance: 100,
                 notificationPreferences: {
                   bookingUpdates: true,
                   promotionalMessages: true
                 },
-                createdAt: Timestamp.now() as any,
-              });
+                createdAt: Timestamp.now() as any
+              }) as UserProfile;
               if (isAdminUser) {
-                newProfile.adminSubRole = 'head';
+                defaultProfile.adminSubRole = 'head';
               }
-              await setDoc(userDocRef, newProfile);
+              setProfile(defaultProfile);
+              return;
             }
-          }
-
-          // Subscribe to the resolved master UID!
-          const masterDocRef = doc(db, 'users', resolvedUid);
-          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
-            if (!snap.exists()) return;
             let currentProfile = snap.data() as UserProfile;
 
             // Follow mergedInto pointer if any
