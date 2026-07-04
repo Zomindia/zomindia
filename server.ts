@@ -81,7 +81,8 @@ const initializeServerClientDb = async () => {
       });
       await clientApp.auth().signInWithCustomToken(customToken);
       console.log("[Server Client Backend] Authenticated system-worker@zomindia.com successfully");
-      _serverClientDb = clientApp.firestore();
+      const dbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
+      _serverClientDb = clientApp.firestore(dbId);
       _serverDb = _serverClientDb;
     } catch (authErr: any) {
       console.log("[Server Client Backend] Sandbox token sign-in bypassed: using secure Admin SDK fallback directly.");
@@ -102,16 +103,13 @@ const getDbInstance = () => {
   try {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
-    if (firebaseConfig.firestoreDatabaseId) {
-      _serverDb = getFirestore(admin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
-    } else {
-      _serverDb = getFirestore();
-    }
+    const dbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
+    _serverDb = getFirestore(admin.apps[0] || undefined, dbId);
   } catch (err: any) {
     console.error("[Server getDbInstance Fallback Error]:", err.message);
     try {
       if (admin.apps.length > 0) {
-        _serverDb = admin.firestore();
+        _serverDb = getFirestore(admin.apps[0], "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc");
       } else {
         _serverDb = null;
       }
