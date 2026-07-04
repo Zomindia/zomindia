@@ -22,16 +22,16 @@ export default function Avatar({
     <div className={`relative shrink-0 rounded-full select-none p-[3.5px] ${sizeClass} overflow-hidden`}>
       {/* Outer Border Background (rotating conic gradient) */}
       <div
-        className={`absolute inset-0 rounded-full ${
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] rounded-full origin-center ${
           hasSpecialGlow
-            ? "animate-spin-gold conic-gold-bg scale-110"
-            : "animate-spin-rgb conic-rgb-bg scale-110"
+            ? "animate-spin-gold conic-gold-bg"
+            : "animate-spin-rgb conic-rgb-bg"
         }`}
       />
 
       {/* Shimmer Wipe overlay for Founder / Premium users */}
       {hasSpecialGlow && (
-        <div className="absolute inset-0 rounded-full animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay z-10 pointer-events-none" />
+        <div className="absolute inset-0 rounded-full animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay z-30 pointer-events-none" />
       )}
 
       {/* Inner Image/Fallback container (keeps face photo 100% sharp and clear) */}

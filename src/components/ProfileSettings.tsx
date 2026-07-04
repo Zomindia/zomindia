@@ -1259,20 +1259,24 @@ export default function ProfileSettings({
       >
         {/* SECTION 1: Zomato/Urban Company Inspired High-Trust Header card */}
         <div className="relative p-[3.5px] rounded-[24px] sm:rounded-[32px] mb-6 sm:mb-8 overflow-hidden">
-          {/* Rotating border background layer */}
+          {/* Rotating border background layer (perfectly centered giant circle to prevent clipping on rectangular card) */}
           <div
-            className={`absolute inset-0 rounded-[24px] sm:rounded-[32px] ${
+            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300%] h-[300%] rounded-full origin-center ${
               (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
-                ? "animate-spin-gold conic-gold-bg scale-150"
-                : "animate-spin-rgb conic-rgb-bg scale-150"
+                ? "animate-spin-gold conic-gold-bg"
+                : "animate-spin-rgb conic-rgb-bg"
             }`}
           />
-          {/* Shimmer wipe overlay for Founder / Premium */}
+          {/* Shimmer wipe overlay for Founder / Premium (z-30 so it sweeps on top of card content at z-20) */}
           {(profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium) && (
-            <div className="absolute inset-0 rounded-[24px] sm:rounded-[32px] animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay pointer-events-none z-10" />
+            <div className="absolute inset-0 rounded-[24px] sm:rounded-[32px] animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay pointer-events-none z-30" />
           )}
           {/* Inner card content wrapper */}
-          <div className="relative bg-white rounded-[21px] sm:rounded-[29px] p-4.5 sm:p-8 z-20 shadow-xs">
+          <div className={`relative rounded-[21px] sm:rounded-[29px] p-4.5 sm:p-8 z-20 shadow-xs ${
+            (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
+              ? "premium-gold-card"
+              : "bg-white"
+          }`}>
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 sm:gap-6">
             {/* User Basic Badges */}
             <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">

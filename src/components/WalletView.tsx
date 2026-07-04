@@ -175,10 +175,16 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           </div>
 
           {/* Subscription Card */}
-          <div className="bg-gradient-to-br from-indigo-900 to-purple-900 border border-indigo-500 rounded-[40px] p-8 text-center flex flex-col items-center shadow-lg relative overflow-hidden">
+          <div className={`border rounded-[40px] p-8 text-center flex flex-col items-center shadow-lg relative overflow-hidden transition-all duration-500 ${
+            profile.isPremium 
+              ? "premium-gold-card" 
+              : "bg-gradient-to-br from-indigo-900 to-purple-900 border-indigo-500"
+          }`}>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
-            <h3 className="text-xl font-black text-white mb-2 italic tracking-tight">ZomIndia <span className="text-indigo-300">PRIME</span></h3>
-            <p className="text-sm text-indigo-200 mb-6 text-balance">
+            <h3 className={`text-xl font-black mb-2 italic tracking-tight ${profile.isPremium ? 'text-amber-950' : 'text-white'}`}>
+              ZomIndia <span className={profile.isPremium ? 'text-amber-800' : 'text-indigo-300'}>PRIME</span>
+            </h3>
+            <p className={`text-sm mb-6 text-balance ${profile.isPremium ? 'text-amber-900/95 font-bold' : 'text-indigo-200'}`}>
               {profile.isPremium ? 'You are currently enjoying Prime benefits!' : 'Get 15% OFF all services and ZERO surge pricing for 1 year.'}
             </p>
             
@@ -206,9 +212,13 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
                 }
               }}
               disabled={profile.isPremium}
-              className={`font-bold px-8 py-3 rounded-2xl transition-colors w-full ${profile.isPremium ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-700 cursor-not-allowed' : 'bg-white text-indigo-900 hover:bg-indigo-50 shadow-xl'}`}
+              className={`font-bold px-8 py-3 rounded-2xl transition-colors w-full ${
+                profile.isPremium 
+                  ? 'bg-amber-950 text-amber-100 border border-amber-900 shadow-md cursor-default' 
+                  : 'bg-white text-indigo-900 hover:bg-indigo-50 shadow-xl'
+              }`}
             >
-              {profile.isPremium ? 'Active Member' : 'Join Prime @ ₹999/yr'}
+              {profile.isPremium ? '✓ Active Member' : 'Join Prime @ ₹999/yr'}
             </button>
           </div>
 

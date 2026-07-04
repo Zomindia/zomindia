@@ -147,4 +147,24 @@
   background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%);
 }
 
+@keyframes gold-shine-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.premium-gold-card {
+  background: linear-gradient(135deg, #fffdf2 0%, #fef3c7 20%, #fde68a 40%, #fcd34d 60%, #fde68a 80%, #fffdf2 100%);
+  background-size: 300% 300%;
+  animation: gold-shine-flow 6s ease-in-out infinite;
+  border: 1.5px solid rgba(217, 119, 6, 0.35);
+  box-shadow: 0 10px 25px -5px rgba(217, 119, 6, 0.2), 0 8px 10px -6px rgba(217, 119, 6, 0.2);
+}
+
 
