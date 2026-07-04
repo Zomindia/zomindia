@@ -19,7 +19,6 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
-import { seedDatabase } from "../lib/seed";
 import { signOut } from "firebase/auth";
 import { sendNotification } from "../lib/notifications";
 import EarningsView from "./EarningsView";
@@ -42,7 +41,6 @@ import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { notifyBookingUpdate } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
-import { PremiumAvatar } from "./PremiumAvatar";
 import { LoadingScreen, LoadingSpinner } from "./LoadingIndicator";
 import AmcManagement from "./AmcManagement";
 import ReferralLifecycleManager from "./ReferralLifecycleManager";
@@ -98,7 +96,6 @@ import {
   Home,
   Sparkles,
   Zap,
-  Database,
 } from "lucide-react";
 import {
   AreaChart,
@@ -284,33 +281,36 @@ export default function AdminDashboard({
       const b = selectedOverviewBooking;
       const targetId = b.customerId || b.userId;
       if (targetId) {
-        // Search memory first - extremely fast, no DB call
-        const matched = users.find((u) => u.uid === targetId);
-        if (matched) {
-          setModalCustomer(matched);
-        } else {
-          // Only fallback to DB if not found in memory
-          const custRef = doc(db, "users", targetId);
-          getDoc(custRef)
-            .then((snap) => {
-              if (snap.exists()) {
-                setModalCustomer(snap.data());
+        const custRef = doc(db, "users", targetId);
+        getDoc(custRef)
+          .then((snap) => {
+            if (snap.exists()) {
+              setModalCustomer(snap.data());
+            } else {
+              const matched = users.find((u) => u.uid === targetId);
+              if (matched) {
+                setModalCustomer(matched);
               } else {
                 setModalCustomer(null);
               }
-            })
-            .catch((err) => {
-              console.error("Error fetching customer in Admin popup:", err);
+            }
+          })
+          .catch((err) => {
+            console.error("Error fetching customer in Admin popup:", err);
+            const matched = users.find((u) => u.uid === targetId);
+            if (matched) {
+              setModalCustomer(matched);
+            } else {
               setModalCustomer(null);
-            });
-        }
+            }
+          });
       } else {
         setModalCustomer(null);
       }
     } else {
       setModalCustomer(null);
     }
-  }, [selectedOverviewBooking?.id, users]);
+  }, [selectedOverviewBooking, users]);
 
   const [initialManagingBookingId, setInitialManagingBookingId] = useState<
     string | null
@@ -471,17 +471,9 @@ export default function AdminDashboard({
     const unsubCategories = onSnapshot(
       collection(db, "categories"),
       (snap) => {
-        const rawCats = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category);
-        const seenNames = new Set<string>();
-        const uniqueCats: Category[] = [];
-        for (const cat of rawCats) {
-          const normName = (cat.name || "").toLowerCase().trim();
-          if (normName && !seenNames.has(normName)) {
-            seenNames.add(normName);
-            uniqueCats.push(cat);
-          }
-        }
-        setCategories(uniqueCats);
+        setCategories(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
+        );
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "categories"),
     );
@@ -492,16 +484,7 @@ export default function AdminDashboard({
         const sList = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Service,
         );
-        const seenServiceKeys = new Set<string>();
-        const uniqueServices: Service[] = [];
-        for (const s of sList) {
-          const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
-          if (!seenServiceKeys.has(key)) {
-            seenServiceKeys.add(key);
-            uniqueServices.push(s);
-          }
-        }
-        setServices(uniqueServices);
+        setServices(sList);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "services"),
     );
@@ -853,72 +836,8 @@ export default function AdminDashboard({
     window.location.reload();
   };
 
-  const renderAdminSkeleton = () => {
-    return (
-      <div className="space-y-8 animate-pulse select-none">
-        {/* Overview Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white border border-slate-100 p-6 rounded-[24px] space-y-4 shadow-sm">
-              <div className="flex justify-between items-center">
-                <div className="w-10 h-10 rounded-xl bg-slate-100" />
-                <div className="w-16 h-4 rounded bg-slate-100" />
-              </div>
-              <div className="space-y-2">
-                <div className="w-24 h-8 rounded-lg bg-slate-100" />
-                <div className="w-32 h-4 rounded bg-slate-100" />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Large Grid section mimicking two-column charts or tables */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main large list/table mimicking box */}
-          <div className="lg:col-span-2 bg-white border border-slate-100 p-6 rounded-[24px] space-y-6 shadow-sm">
-            <div className="flex justify-between items-center pb-4 border-b border-slate-50">
-              <div className="w-48 h-6 rounded bg-slate-100" />
-              <div className="w-24 h-8 rounded-xl bg-slate-100" />
-            </div>
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100" />
-                    <div className="space-y-1.5">
-                      <div className="w-36 h-4 rounded bg-slate-100" />
-                      <div className="w-24 h-3 rounded bg-slate-100" />
-                    </div>
-                  </div>
-                  <div className="w-20 h-6 rounded-full bg-slate-100" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Sidebar helper/analytics card */}
-          <div className="bg-white border border-slate-100 p-6 rounded-[24px] space-y-6 shadow-sm">
-            <div className="pb-4 border-b border-slate-50">
-              <div className="w-32 h-6 rounded bg-slate-100" />
-            </div>
-            <div className="flex justify-center py-6">
-              <div className="w-40 h-40 rounded-full border-[16px] border-slate-100 animate-spin" style={{ animationDuration: '3s' }} />
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <div className="w-20 h-4 rounded bg-slate-100" />
-                <div className="w-8 h-4 rounded bg-slate-100" />
-              </div>
-              <div className="flex justify-between">
-                <div className="w-24 h-4 rounded bg-slate-100" />
-                <div className="w-8 h-4 rounded bg-slate-100" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  if (loading)
+    return <LoadingScreen message="Initializing ZomIndia Admin Panel..." />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative overflow-x-hidden">
@@ -1116,12 +1035,8 @@ export default function AdminDashboard({
         </header>
 
         <div className="p-6 md:p-8 lg:p-12 flex-1 overflow-y-auto">
-          {loading ? (
-            renderAdminSkeleton()
-          ) : (
-            <>
-              {/* 1. Global PWA Install Banner */}
-              {(showPwaInstall || showIosSafariInstall) && (
+          {/* 1. Global PWA Install Banner */}
+          {(showPwaInstall || showIosSafariInstall) && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -2131,8 +2046,6 @@ export default function AdminDashboard({
               )}
             </motion.div>
           </AnimatePresence>
-          </>
-          )}
         </div>
       </main>
 
@@ -2243,23 +2156,6 @@ function BookingManager({
 
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
 
-  const relevantBookingIdsString = useMemo(() => {
-    return bookings
-      .filter((b) =>
-        [
-          "confirmed",
-          "assigned",
-          "on_the_way",
-          "arrived",
-          "in_progress",
-          "payment_pending",
-          "pending_parts",
-        ].includes(b.status),
-      )
-      .map((b) => `${b.id}:${b.status}`)
-      .join(",");
-  }, [bookings]);
-
   useEffect(() => {
     const relevantBookings = bookings.filter((b) =>
       [
@@ -2272,10 +2168,7 @@ function BookingManager({
         "pending_parts",
       ].includes(b.status),
     );
-    if (relevantBookings.length === 0) {
-      setBookingOtps({});
-      return;
-    }
+    if (relevantBookings.length === 0) return;
 
     const unsubscribes = relevantBookings.map((booking) => {
       return onSnapshot(
@@ -2292,7 +2185,7 @@ function BookingManager({
     });
 
     return () => unsubscribes.forEach((unsub) => unsub());
-  }, [relevantBookingIdsString]);
+  }, [bookings]);
 
   useEffect(() => {
     if (
@@ -4461,7 +4354,7 @@ function ServiceManager({
     const category = categories.find((c) => c.id === s.categoryId);
     return (
       s.name.toLowerCase().includes(query) ||
-      (s.description || "").toLowerCase().includes(query) ||
+      s.description.toLowerCase().includes(query) ||
       category?.name.toLowerCase().includes(query)
     );
   });
@@ -9030,27 +8923,6 @@ function AdminManager({
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [seeding, setSeeding] = useState(false);
-  const [seedStatus, setSeedStatus] = useState<string | null>(null);
-
-  const handleManualSeed = async () => {
-    if (!window.confirm("Are you sure you want to run the database seed script? This will check and seed missing default categories and services.")) {
-      return;
-    }
-    setSeeding(true);
-    setSeedStatus("Running database seed script...");
-    try {
-      await seedDatabase();
-      setSeedStatus("Database seeded successfully!");
-      alert("Database seeded successfully!");
-    } catch (err: any) {
-      console.error(err);
-      setSeedStatus(`Database seeding failed: ${err.message || err}`);
-      alert(`Database seeding failed: ${err.message || err}`);
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   const admins = users.filter((u) => u.role === "admin");
 
@@ -9404,47 +9276,6 @@ function AdminManager({
           </div>
         ))}
       </div>
-
-      {/* Database Seeding and System Maintenance Section */}
-      <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mt-10">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div>
-            <h3 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
-              <Database size={20} className="text-blue-700" />
-              Database Seeding & System Maintenance
-            </h3>
-            <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-              Populate default home service categories, system FAQs, and default services in the named database container. This script is self-healing and will skip existing items.
-            </p>
-            {seedStatus && (
-              <p className="text-xs font-semibold text-blue-700 mt-3 font-mono">
-                Status: {seedStatus}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={handleManualSeed}
-            disabled={seeding}
-            className={`px-8 py-4 rounded-2xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-white shadow-xl transition-all shrink-0 ${
-              seeding
-                ? "bg-slate-400 cursor-not-allowed shadow-none"
-                : "bg-blue-700 hover:bg-blue-800 shadow-blue-700/20"
-            }`}
-          >
-            {seeding ? (
-              <>
-                <LoadingSpinner size="sm" />
-                Seeding...
-              </>
-            ) : (
-              <>
-                <Database size={14} />
-                Seed Database
-              </>
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -9473,11 +9304,16 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mb-12">
         <div className="flex items-center gap-6">
-          <PremiumAvatar 
-            src={profile.photoURL} 
-            displayName={profile.displayName} 
-            className="w-16 h-16 shadow-xl" 
-          />
+          <div className="w-16 h-16 rounded-[24px] overflow-hidden border-2 border-indigo-100 shadow-xl shadow-indigo-100 ring-1 ring-slate-100">
+            <img
+              src={
+                profile.photoURL ||
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`
+              }
+              alt={profile.displayName}
+              className="w-full h-full object-cover"
+            />
+          </div>
           <div>
             <h3 className="text-2xl font-bold font-display italic text-slate-900">
               {profile.displayName}

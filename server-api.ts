@@ -16,10 +16,13 @@ const admin: any = new Proxy(realAdmin, {
       const dbIsClient = firebase.apps.some(app => app.name === "client-backend");
       
       const firestoreFunc = () => {
-        return getDb();
+        if (dbIsClient) {
+          return firebase.app("client-backend").firestore();
+        }
+        return target.firestore();
       };
 
-      const currentNamespace = (target as any).firestore;
+      const currentNamespace = dbIsClient ? firebase.firestore : (target as any).firestore;
       
       Object.defineProperty(firestoreFunc, "FieldValue", {
         get: () => currentNamespace.FieldValue,
@@ -69,8 +72,7 @@ const initializeClientDb = async () => {
       });
       await clientApp.auth().signInWithCustomToken(customToken);
       console.log("[Client Backend] Authenticated system-worker@zomindia.com successfully");
-      const dbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
-      _clientDb = clientApp.firestore(dbId);
+      _clientDb = clientApp.firestore();
       _db = _clientDb;
     } catch (authErr: any) {
       console.log("[Client Backend] Sandbox token sign-in bypassed: using secure Admin SDK fallback directly.");
@@ -85,20 +87,23 @@ const initializeClientDb = async () => {
 // Start the auth flow immediately on load
 initializeClientDb();
 
-function getDb() {
+const getDb = () => {
   if (_db) return _db;
   
   // Dynamic fallback to admin firestore if client auth hasn't completed/failed
   try {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
-    const dbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
-    _db = getAdminFirestore(realAdmin.apps[0] || undefined, dbId);
+    if (firebaseConfig.firestoreDatabaseId) {
+      _db = getAdminFirestore(realAdmin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
+    } else {
+      _db = realAdmin.firestore();
+    }
   } catch (err: any) {
     console.error("[getDb Fallback Error]:", err.message);
     try {
       if (realAdmin.apps.length > 0) {
-        _db = getAdminFirestore(realAdmin.apps[0], "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc");
+        _db = realAdmin.firestore();
       } else {
         _db = null;
       }
@@ -107,7 +112,7 @@ function getDb() {
     }
   }
   return _db;
-}
+};
 
 /**
  * Sends a real-time push notification using Firebase Admin SDK Messaging
@@ -1309,8 +1314,7 @@ router.post("/analytics/city-demand", async (req: any, res: any) => {
       } else {
         clientApp = firebase.initializeApp(firebaseConfig, appName);
       }
-      const dbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
-      clientDb = clientApp.firestore(dbId);
+      clientDb = clientApp.firestore();
     } catch (clientInitErr: any) {
       console.warn("[City Demand Client DB Init Warning]:", clientInitErr.message);
     }

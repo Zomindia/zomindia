@@ -22,7 +22,6 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, WorkingHours, Booking, Service } from '../../types';
-import { PremiumAvatar } from '../PremiumAvatar';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
@@ -160,13 +159,11 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
         <>
           {/* Profile Header */}
           <section className="flex items-center gap-6">
-             <div className="relative group italic shrink-0">
-                <PremiumAvatar 
-                  src={profile.photoURL} 
-                  displayName={profile.displayName} 
-                  className="w-20 h-20 shadow-xs" 
-                />
-                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-700 border-4 border-slate-50 rounded-full flex items-center justify-center text-white z-20">
+             <div className="relative group italic">
+                <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner">
+                   <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-700 border-4 border-slate-50 rounded-full flex items-center justify-center text-white">
                    <Check size={12} />
                 </div>
              </div>
@@ -339,13 +336,9 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
 
             {/* Profile Photo Uploader */}
             <div className="p-5 bg-blue-50/40 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center gap-5">
-              <div className="relative group shrink-0">
-                <PremiumAvatar 
-                  src={editForm.photoURL || profile.photoURL} 
-                  displayName={profile.displayName} 
-                  className="w-16 h-16 shadow-xs" 
-                />
-                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+              <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner shrink-0 relative group">
+                <img src={editForm.photoURL || profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera size={14} />
                 </div>
               </div>

@@ -8,10 +8,10 @@ import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmai
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
-import { buildDualPersonaUserDoc } from './lib/user-schema';
-import { PremiumAvatar } from './components/PremiumAvatar';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
+import { seedDatabase } from './lib/seed';
+import { buildDualPersonaUserDoc } from './lib/user-schema';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import {
   Building2,
@@ -311,17 +311,7 @@ export default function App() {
   useEffect(() => {
     let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      const rawServices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
-      const seenServiceKeys = new Set<string>();
-      const uniqueServices: Service[] = [];
-      for (const s of rawServices) {
-        const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
-        if (!seenServiceKeys.has(key)) {
-          seenServiceKeys.add(key);
-          uniqueServices.push(s);
-        }
-      }
-      setAllServices(uniqueServices);
+      setAllServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
       if (isInitialServices) {
         isInitialServices = false;
       } else {
@@ -334,17 +324,7 @@ export default function App() {
 
     let isInitialCategories = true;
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
-      const rawCats = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-      const seenNames = new Set<string>();
-      const uniqueCats: Category[] = [];
-      for (const cat of rawCats) {
-        const normName = (cat.name || "").toLowerCase().trim();
-        if (normName && !seenNames.has(normName)) {
-          seenNames.add(normName);
-          uniqueCats.push(cat);
-        }
-      }
-      setAllCategories(uniqueCats);
+      setAllCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
       if (isInitialCategories) {
         isInitialCategories = false;
       } else {
@@ -598,6 +578,7 @@ export default function App() {
   }, [user?.uid, user?.emailVerified]);
 
   useEffect(() => {
+    seedDatabase();
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
@@ -650,90 +631,55 @@ export default function App() {
             return null;
           };
 
-          try {
-            // 1. Check if there's an existing document by phone number
-            let existingDoc = await findProfileByPhone(targetPhone);
-            
-            // 2. If not found by phone, but email exists, search by email
-            if (!existingDoc && u.email) {
-              const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
-              const snap3 = await getDocs(q3);
-              if (!snap3.empty) {
-                existingDoc = snap3.docs[0];
-              }
+          // 1. Check if there's an existing document by phone number
+          let existingDoc = await findProfileByPhone(targetPhone);
+          
+          // 2. If not found by phone, but email exists, search by email
+          if (!existingDoc && u.email) {
+            const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
+            const snap3 = await getDocs(q3);
+            if (!snap3.empty) {
+              existingDoc = snap3.docs[0];
             }
-
-            if (existingDoc) {
-              resolvedUid = existingDoc.id;
-              console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
-              
-              // Merge Google / new Auth info directly into existing master document
-              const existingData = existingDoc.data();
-              const mergedPayload: any = buildDualPersonaUserDoc({
-                ...existingData,
-                uid: resolvedUid,
-                email: u.email || existingData.email || '',
-                phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
-                mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
-                displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
-                fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
-                onboardingComplete: true,
-                updatedAt: Timestamp.now()
-              });
-
-              await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
-
-              // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
-              if (u.uid !== resolvedUid) {
-                await setDoc(doc(db, 'users', u.uid), {
-                  uid: u.uid,
-                  mergedInto: resolvedUid,
-                  onboardingComplete: false,
-                  updatedAt: Timestamp.now()
-                }, { merge: true });
-              }
-            } else {
-              // New user, create the document under u.uid
-              const userDocRef = doc(db, 'users', u.uid);
-              const userSnap = await getDoc(userDocRef);
-              if (!userSnap.exists()) {
-                const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-                const newProfile: any = buildDualPersonaUserDoc({
-                  uid: u.uid,
-                  displayName: u.displayName || 'User',
-                  fullName: u.displayName || 'User',
-                  email: u.email || '',
-                  phoneNumber: u.phoneNumber || '',
-                  mobile: u.phoneNumber || '',
-                  role: isAdminUser ? 'admin' : 'customer',
-                  photoURL: u.photoURL || '',
-                  referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-                  walletBalance: 100, // ₹100 Welcome Bonus on registration!
-                  notificationPreferences: {
-                    bookingUpdates: true,
-                    promotionalMessages: true
-                  },
-                  createdAt: Timestamp.now() as any,
-                });
-                if (isAdminUser) {
-                  newProfile.adminSubRole = 'head';
-                }
-                await setDoc(userDocRef, newProfile);
-              }
-            }
-          } catch (error) {
-            console.warn("[Auth Resolution] Firestore query/write failed or client is offline. Falling back to direct subscription on auth UID:", error);
-            resolvedUid = u.uid;
           }
 
-          // Subscribe to the resolved master UID!
-          const masterDocRef = doc(db, 'users', resolvedUid);
-          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
-            if (!snap.exists()) {
-              // If completely offline and no cached document exists yet, supply a default user profile to prevent infinite loading
+          if (existingDoc) {
+            resolvedUid = existingDoc.id;
+            console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
+            
+            // Merge Google / new Auth info directly into existing master document
+            const existingData = existingDoc.data();
+            const mergedPayload: any = buildDualPersonaUserDoc({
+              ...existingData,
+              uid: resolvedUid,
+              email: u.email || existingData.email || '',
+              phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
+              mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
+              displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
+              fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
+              onboardingComplete: true,
+              updatedAt: Timestamp.now()
+            });
+
+            await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
+
+            // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
+            if (u.uid !== resolvedUid) {
+              await setDoc(doc(db, 'users', u.uid), {
+                uid: u.uid,
+                mergedInto: resolvedUid,
+                onboardingComplete: false,
+                updatedAt: Timestamp.now()
+              }, { merge: true });
+            }
+          } else {
+            // New user, create the document under u.uid
+            const userDocRef = doc(db, 'users', u.uid);
+            const userSnap = await getDoc(userDocRef);
+            if (!userSnap.exists()) {
               const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-              const defaultProfile = buildDualPersonaUserDoc({
-                uid: resolvedUid,
+              const newProfile: any = buildDualPersonaUserDoc({
+                uid: u.uid,
                 displayName: u.displayName || 'User',
                 fullName: u.displayName || 'User',
                 email: u.email || '',
@@ -741,20 +687,25 @@ export default function App() {
                 mobile: u.phoneNumber || '',
                 role: isAdminUser ? 'admin' : 'customer',
                 photoURL: u.photoURL || '',
-                referralCode: `ZOM${resolvedUid.slice(0, 6).toUpperCase()}`,
-                walletBalance: 100,
+                referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
+                walletBalance: 100, // ₹100 Welcome Bonus on registration!
                 notificationPreferences: {
                   bookingUpdates: true,
                   promotionalMessages: true
                 },
-                createdAt: Timestamp.now() as any
-              }) as UserProfile;
+                createdAt: Timestamp.now() as any,
+              });
               if (isAdminUser) {
-                defaultProfile.adminSubRole = 'head';
+                newProfile.adminSubRole = 'head';
               }
-              setProfile(defaultProfile);
-              return;
+              await setDoc(userDocRef, newProfile);
             }
+          }
+
+          // Subscribe to the resolved master UID!
+          const masterDocRef = doc(db, 'users', resolvedUid);
+          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
+            if (!snap.exists()) return;
             let currentProfile = snap.data() as UserProfile;
 
             // Follow mergedInto pointer if any
@@ -768,8 +719,6 @@ export default function App() {
                   const p = mergedSnap.data() as UserProfile;
                   setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
                 }
-              }, (err) => {
-                console.warn("[Auth Snapshot] Merged profile snapshot subscription failed:", err);
               });
               return;
             }
@@ -826,26 +775,6 @@ export default function App() {
             }, (err) => {
               console.error("Error subscribing to active bookings:", err);
             });
-          }, (err) => {
-            console.warn("[Auth Snapshot] Master profile snapshot subscription failed, falling back to default/cached profile:", err);
-            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-            setProfile(buildDualPersonaUserDoc({
-              uid: resolvedUid,
-              displayName: u.displayName || 'User',
-              fullName: u.displayName || 'User',
-              email: u.email || '',
-              phoneNumber: u.phoneNumber || '',
-              mobile: u.phoneNumber || '',
-              role: isAdminUser ? 'admin' : 'customer',
-              photoURL: u.photoURL || '',
-              referralCode: `ZOM${resolvedUid.slice(0, 6).toUpperCase()}`,
-              walletBalance: 100,
-              notificationPreferences: {
-                bookingUpdates: true,
-                promotionalMessages: true
-              },
-              createdAt: Timestamp.now() as any
-            }) as UserProfile);
           });
         };
 
@@ -965,7 +894,9 @@ export default function App() {
     );
   }
 
-
+  if (loading) {
+    return <LoadingScreen message="Connecting to secure zomindia console..." />;
+  }
 
   if (authError) {
     return (
@@ -1172,93 +1103,7 @@ export default function App() {
     return null;
   };
 
-  const renderTabSkeleton = (tab: string) => {
-    if (tab === 'home' || tab === 'service-details') {
-      return (
-        <CustomerHome
-          setActiveTab={setActiveTab}
-          profile={null}
-          onAuthRequired={() => setIsAuthModalOpen(true)}
-          onServiceSelect={(id) => {
-            setSelectedServiceId(id);
-            setActiveTab('service-details');
-          }}
-          initialCategoryId={selectedCategoryId}
-        />
-      );
-    }
-
-    if (tab === 'bookings') {
-      return (
-        <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-          <div className="flex justify-between items-center mb-6">
-            <div className="w-48 h-8 bg-slate-100 rounded-xl animate-pulse" />
-            <div className="w-32 h-10 bg-slate-100 rounded-xl animate-pulse" />
-          </div>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-white border border-slate-100 rounded-[32px] p-6 space-y-4 shadow-sm relative overflow-hidden">
-              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-slate-100/40 to-transparent pointer-events-none" />
-              <div className="flex justify-between items-start">
-                <div className="flex gap-4">
-                  <div className="w-14 h-14 bg-slate-100 rounded-2xl" />
-                  <div className="space-y-2">
-                    <div className="w-40 h-5 bg-slate-100 rounded-lg animate-pulse" />
-                    <div className="w-24 h-4 bg-slate-100 rounded-lg animate-pulse" />
-                  </div>
-                </div>
-                <div className="w-24 h-8 bg-slate-100 rounded-full" />
-              </div>
-              <div className="pt-4 border-t border-slate-50 flex justify-between">
-                <div className="w-32 h-4 bg-slate-100 rounded" />
-                <div className="w-16 h-5 bg-slate-100 rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (tab === 'profile') {
-      return (
-        <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
-          <div className="flex flex-col items-center gap-4 text-center pb-6 border-b border-slate-100 relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-slate-100/40 to-transparent pointer-events-none" />
-            <div className="w-24 h-24 rounded-full bg-slate-100 animate-pulse" />
-            <div className="w-48 h-6 bg-slate-100 rounded-lg animate-pulse" />
-            <div className="w-32 h-4 bg-slate-100 rounded-lg animate-pulse" />
-          </div>
-          <div className="space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-100 rounded-lg" />
-                  <div className="w-32 h-4 bg-slate-100 rounded" />
-                </div>
-                <div className="w-6 h-6 bg-slate-100 rounded-full animate-pulse" />
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
-        <div className="flex flex-col gap-4 animate-pulse">
-          <div className="w-1/3 h-8 bg-slate-100 rounded-lg" />
-          <div className="w-full h-48 bg-slate-100 rounded-3xl" />
-          <div className="w-full h-24 bg-slate-100 rounded-3xl" />
-        </div>
-      </div>
-    );
-  };
-
   const renderContent = () => {
-    const isProfileLoading = loading || (user && !profile);
-    if (isProfileLoading && !['about', 'contact', 'help', 'terms', 'privacy', 'refund'].includes(activeTab)) {
-      return renderTabSkeleton(activeTab);
-    }
-
     if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
@@ -1843,11 +1688,15 @@ If you have any billing questions, or if your refund is delayed, please email us
                         </span>
                       </div>
 
-                      <PremiumAvatar 
-                        src={profile.photoURL} 
-                        displayName={profile.displayName} 
-                        className="w-10 h-10 shadow-sm" 
-                      />
+                      <div className="w-10 h-10 rounded-full border-2 border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 hover:scale-105 active:scale-95 transition-all">
+                        {profile.photoURL ? (
+                          <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
+                            {profile.displayName?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        )}
+                      </div>
                     </button>
 
                     <AnimatePresence>
@@ -1995,24 +1844,21 @@ If you have any billing questions, or if your refund is delayed, please email us
                     >
                       📍 INDORE
                     </button>
-                    <PremiumAvatar 
-                      src={profile.photoURL} 
-                      displayName={profile.displayName} 
-                      className="w-10 h-10 shadow-sm cursor-pointer" 
+                    <button 
                       onClick={() => setIsMenuOpen(true)}
+                      className="w-10 h-10 rounded-full border border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
-                    />
+                    >
+                      {profile.photoURL ? (
+                        <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
+                          {profile.displayName?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </button>
                   </div>
                 </>
-              ) : user ? (
-                /* Compact Shimmer Header Placeholder when logged in but profile is still resolving */
-                <div className="flex items-center gap-3 animate-pulse">
-                  <div className="flex flex-col items-end gap-1.5">
-                    <div className="w-16 h-3 bg-slate-100 rounded" />
-                    <div className="w-12 h-2.5 bg-slate-100 rounded" />
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-slate-100 animate-pulse" />
-                </div>
               ) : (
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
@@ -2127,11 +1973,13 @@ If you have any billing questions, or if your refund is delayed, please email us
               {profile && (
                 <div className="mb-4 pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3 px-2">
-                    <PremiumAvatar 
-                      src={profile.photoURL} 
-                      displayName={profile.displayName} 
-                      className="w-10 h-10 shadow-sm" 
-                    />
+                    {profile.photoURL ? (
+                      <img src={profile.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                        {profile.displayName?.charAt(0) || 'U'}
+                      </div>
+                    )}
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                       <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
@@ -2412,7 +2260,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         hasNotifications={true}
-        isAuthenticated={!!user || !!profile}
+        isAuthenticated={!!profile}
         hasActiveArrival={hasActiveArrival}
       />
 

@@ -26,7 +26,6 @@ import { db, auth } from "../lib/firebase";
 import { offlineSyncEngine } from "../lib/offlineQueue";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { UserProfile } from "../types";
-import { PremiumAvatar } from "./PremiumAvatar";
 import { buildDualPersonaUserDoc } from "../lib/user-schema";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
@@ -1263,12 +1262,23 @@ export default function ProfileSettings({
             {/* User Basic Badges */}
             <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
               <div className="relative shrink-0">
-                <PremiumAvatar 
-                  src={profile.photoURL} 
-                  displayName={profile.displayName} 
-                  className="w-14 h-14 sm:w-20 sm:h-20 shadow-xs" 
-                />
-                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 sm:p-1 rounded-full text-[8px] sm:text-[9px] font-bold border-2 border-white z-20">
+                {profile.photoURL ? (
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-[#050CA6]/10 shadow-xs">
+                    <img
+                      src={profile.photoURL}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-[#050CA6]/5 border-2 border-[#050CA6]/10 flex items-center justify-center text-[#050CA6] text-xl sm:text-2xl font-black">
+                    {profile.displayName
+                      ? profile.displayName.slice(0, 2).toUpperCase()
+                      : "Z"}
+                  </div>
+                )}
+                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 sm:p-1 rounded-full text-[8px] sm:text-[9px] font-bold border-2 border-white">
                   ✓
                 </span>
               </div>

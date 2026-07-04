@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
 import BookingModal from "./BookingModal";
 import { ImageCarousel } from "./ServiceDetails";
-import { BrandedButtonSpinner, ServiceCardSkeleton, ShimmerCard } from "./LoadingIndicator";
+import { BrandedButtonSpinner } from "./LoadingIndicator";
 import {
   Wrench,
   Sparkles,
@@ -76,6 +76,52 @@ interface PartnerWithInfo extends PartnerProfile {
   displayName: string;
   photoURL?: string;
 }
+
+const SAMPLE_CATEGORIES = [
+  {
+    id: "1",
+    name: "Cleaning",
+    icon: "Sparkles",
+    description: "Deep cleaning, sofa & carpet",
+  },
+  {
+    id: "2",
+    name: "Repairs",
+    icon: "Wrench",
+    description: "Plumbing, Electrician, Carpenter",
+  },
+  {
+    id: "3",
+    name: "Appliance",
+    icon: "Smartphone",
+    description: "AC, TV, Refrigerator, RO",
+  },
+  {
+    id: "4",
+    name: "Painting",
+    icon: "PaintBucket",
+    description: "Full house painting",
+  },
+  {
+    id: "5",
+    name: "Beauty",
+    icon: "Sparkles",
+    description: "Salon at home for women",
+  },
+  {
+    id: "6",
+    name: "Appliance Repair",
+    icon: "Smartphone",
+    description:
+      "Repair services for electronics, home appliances, and gadgets",
+  },
+  {
+    id: "Phone Repair",
+    name: "Phone Repair",
+    icon: "Smartphone",
+    description: "Expert repair services for all smartphone brands",
+  },
+];
 
 const getCategoryIcon = (iconName: string): any => {
   if (!iconName) return Sparkles;
@@ -397,13 +443,13 @@ export default function CustomerHome({
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
       const cat = allCategories.find((c) => c.id === initialCategoryId);
-      if (cat && cat.id !== selectedCategory?.id) {
+      if (cat) {
         setSelectedCategory(cat);
       }
-    } else if (!initialCategoryId && selectedCategory !== null) {
+    } else if (!initialCategoryId && allCategories.length > 0) {
       setSelectedCategory(null);
     }
-  }, [initialCategoryId, allCategories, selectedCategory?.id]);
+  }, [initialCategoryId, allCategories]);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoriesSearchQuery, setCategoriesSearchQuery] = useState("");
   const [categoryTypeTab, setCategoryTypeTab] = useState<
@@ -812,25 +858,21 @@ export default function CustomerHome({
     const unsubscribeCategories = onSnapshot(
       q,
       (snap) => {
-        const rawCats = snap.docs.map(
+        const cats = snap.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as Category,
         );
-        const seenNames = new Set<string>();
-        const uniqueCats: Category[] = [];
-        for (const cat of rawCats) {
-          const normName = (cat.name || "").toLowerCase().trim();
-          if (normName && !seenNames.has(normName)) {
-            seenNames.add(normName);
-            uniqueCats.push(cat);
-          }
+        if (cats.length === 0) {
+          setCategories(SAMPLE_CATEGORIES as Category[]);
+          setAllCategories(SAMPLE_CATEGORIES as Category[]);
+        } else {
+          setCategories(cats);
+          setAllCategories(cats);
         }
-        setCategories(uniqueCats);
-        setAllCategories(uniqueCats);
         setLoading(false);
       },
       (err) => {
         console.error("Error subscribing to categories:", err);
-        setCategories([]);
+        setCategories(SAMPLE_CATEGORIES as Category[]);
         setLoading(false);
       },
     );
@@ -841,17 +883,9 @@ export default function CustomerHome({
     const unsubscribeServices = onSnapshot(
       collection(db, "services"),
       (snap) => {
-        const rawServices = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service);
-        const seenKeys = new Set<string>();
-        const uniqueServices: Service[] = [];
-        for (const s of rawServices) {
-          const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
-          if (!seenKeys.has(key)) {
-            seenKeys.add(key);
-            uniqueServices.push(s);
-          }
-        }
-        setAllServices(uniqueServices);
+        setAllServices(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
+        );
       },
       (err) => {
         console.error("Error subscribing to services:", err);
@@ -889,20 +923,23 @@ export default function CustomerHome({
   }, [allServices, searchQuery, allCategories]);
 
   useEffect(() => {
-    if (selectedCategory?.id) {
-      // Get services directly from in-memory allServices cache (no DB query needed)
-      const uniqueCategoryServices = allServices.filter(
-        (s) => s.categoryId === selectedCategory.id
-      );
-      setServices(uniqueCategoryServices);
-    } else {
-      setServices([]);
-    }
-  }, [selectedCategory?.id, allServices]);
+    if (selectedCategory) {
+      const fetchServices = async () => {
+        const path = "services";
+        try {
+          const q = query(
+            collection(db, path),
+            where("categoryId", "==", selectedCategory.id),
+          );
+          const snap = await getDocs(q);
+          setServices(
+            snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
+          );
+        } catch (err) {
+          handleFirestoreError(err, OperationType.LIST, path);
+        }
+      };
 
-  useEffect(() => {
-    if (selectedCategory?.id) {
-      // Fetch partners only when the selected category ID changes
       const fetchPartners = async () => {
         try {
           const q = query(
@@ -930,9 +967,10 @@ export default function CustomerHome({
         }
       };
 
+      fetchServices();
       fetchPartners();
     }
-  }, [selectedCategory?.id]);
+  }, [selectedCategory]);
 
   const mostRecentService = (() => {
     if (!allServices || allServices.length === 0) return null;
@@ -1474,49 +1512,6 @@ export default function CustomerHome({
             />
           )}
         </AnimatePresence>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 select-none animate-pulse space-y-16">
-        {/* Banner skeleton */}
-        <div className="w-full h-48 sm:h-64 bg-slate-100 rounded-[32px]" />
-        
-        {/* Categories grid/carousel skeleton */}
-        <div className="space-y-4">
-          <div className="w-48 h-6 bg-slate-200 rounded-lg" />
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-4 sm:gap-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex flex-col items-center gap-3">
-                <div className="w-16 h-16 rounded-3xl bg-slate-100" />
-                <div className="w-12 h-3 bg-slate-100 rounded" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Services grid skeleton */}
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="w-48 h-6 bg-slate-200 rounded-lg" />
-            <div className="w-24 h-4 bg-slate-200 rounded-lg" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="border border-slate-100 rounded-[32px] p-6 space-y-4 bg-white font-sans">
-                <div className="w-full h-40 bg-slate-100 rounded-2xl" />
-                <div className="w-2/3 h-5 bg-slate-100 rounded" />
-                <div className="w-1/2 h-3 bg-slate-100 rounded" />
-                <div className="pt-4 border-t border-slate-50 flex justify-between">
-                  <div className="w-16 h-4 bg-slate-100 rounded" />
-                  <div className="w-24 h-8 bg-slate-100 rounded-xl" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     );
   }

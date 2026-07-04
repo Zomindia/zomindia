@@ -676,30 +676,14 @@ export default function CustomerDashboard({
         const catsSnap = await getDocs(
           query(collection(db, "categories"), orderBy("name", "asc")),
         );
-        const rawCats = catsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category);
-        const seenNames = new Set<string>();
-        const uniqueCats: Category[] = [];
-        for (const cat of rawCats) {
-          const normName = (cat.name || "").toLowerCase().trim();
-          if (normName && !seenNames.has(normName)) {
-            seenNames.add(normName);
-            uniqueCats.push(cat);
-          }
-        }
-        setAllCategories(uniqueCats);
+        setAllCategories(
+          catsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
+        );
 
         const servicesSnap = await getDocs(collection(db, "services"));
-        const rawServices = servicesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service);
-        const seenServiceKeys = new Set<string>();
-        const uniqueServices: Service[] = [];
-        for (const s of rawServices) {
-          const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
-          if (!seenServiceKeys.has(key)) {
-            seenServiceKeys.add(key);
-            uniqueServices.push(s);
-          }
-        }
-        setAllActiveServices(uniqueServices);
+        setAllActiveServices(
+          servicesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
+        );
       } catch (err) {
         console.error("Error fetching discovery data:", err);
       }
