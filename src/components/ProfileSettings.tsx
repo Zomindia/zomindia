@@ -30,6 +30,7 @@ import { buildDualPersonaUserDoc } from "../lib/user-schema";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
 import { motion, AnimatePresence } from "motion/react";
+import Avatar from "./Avatar";
 
 const HardwarePermissionDiagnoser = React.lazy(
   () => import("./HardwarePermissionDiagnoser"),
@@ -1257,28 +1258,33 @@ export default function ProfileSettings({
         className="max-w-6xl mx-auto px-4 py-6 sm:py-12"
       >
         {/* SECTION 1: Zomato/Urban Company Inspired High-Trust Header card */}
-        <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-neutral-100 p-4.5 sm:p-8 mb-6 sm:mb-8 shadow-sm">
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 sm:gap-6">
+        <div className="relative p-[3.5px] rounded-[24px] sm:rounded-[32px] mb-6 sm:mb-8 overflow-hidden">
+          {/* Rotating border background layer */}
+          <div
+            className={`absolute inset-0 rounded-[24px] sm:rounded-[32px] ${
+              (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
+                ? "animate-spin-gold conic-gold-bg scale-150"
+                : "animate-spin-rgb conic-rgb-bg scale-150"
+            }`}
+          />
+          {/* Shimmer wipe overlay for Founder / Premium */}
+          {(profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium) && (
+            <div className="absolute inset-0 rounded-[24px] sm:rounded-[32px] animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay pointer-events-none z-10" />
+          )}
+          {/* Inner card content wrapper */}
+          <div className="relative bg-white rounded-[21px] sm:rounded-[29px] p-4.5 sm:p-8 z-20 shadow-xs">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 sm:gap-6">
             {/* User Basic Badges */}
             <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
               <div className="relative shrink-0">
-                {profile.photoURL ? (
-                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-[#050CA6]/10 shadow-xs">
-                    <img
-                      src={profile.photoURL}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-[#050CA6]/5 border-2 border-[#050CA6]/10 flex items-center justify-center text-[#050CA6] text-xl sm:text-2xl font-black">
-                    {profile.displayName
-                      ? profile.displayName.slice(0, 2).toUpperCase()
-                      : "Z"}
-                  </div>
-                )}
-                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 sm:p-1 rounded-full text-[8px] sm:text-[9px] font-bold border-2 border-white">
+                <Avatar
+                  photoURL={profile.photoURL}
+                  displayName={profile.displayName || profile.fullName}
+                  email={profile.email}
+                  isPremium={profile.isPremium}
+                  sizeClass="w-14 h-14 sm:w-20 sm:h-20"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 sm:p-1 rounded-full text-[8px] sm:text-[9px] font-bold border-2 border-white z-30">
                   ✓
                 </span>
               </div>
@@ -1423,6 +1429,7 @@ export default function ProfileSettings({
             </div>
           </div>
         </div>
+      </div>
 
         {/* SECTION 2: Split Layout (Left list options panel like Urban Company / Right details body form) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

@@ -104,3 +104,47 @@
   box-shadow: 0 0 20px rgba(29, 78, 216, 0.05);
 }
 
+/* Visual Gamification Custom Glow & Animations */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer-wipe {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  40%, 100% {
+    transform: translateX(150%) skewX(-20deg);
+  }
+}
+
+.animate-spin-gold {
+  animation: spin-slow 3.5s linear infinite;
+}
+
+.animate-spin-rgb {
+  animation: spin-slow 4s linear infinite;
+}
+
+.animate-shimmer-wipe {
+  animation: shimmer-wipe 5s ease-in-out infinite;
+}
+
+.conic-gold-bg {
+  background: conic-gradient(from 0deg, #ffe066, #d4af37, #aa7c11, #ffffff, #aa7c11, #d4af37, #ffe066);
+}
+
+.conic-rgb-bg {
+  background: conic-gradient(from 0deg, #ff0000, #ff7f00, #ffff00, #00ff00, #00ffff, #0000ff, #8b00ff, #ff00ff, #ff0000);
+}
+
+.bg-shimmer-wipe {
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%);
+}
+
+

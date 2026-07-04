@@ -42,6 +42,7 @@ import {
 
 // Modules
 import CustomerHome from './components/CustomerHome';
+import Avatar from './components/Avatar';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
@@ -1688,15 +1689,13 @@ If you have any billing questions, or if your refund is delayed, please email us
                         </span>
                       </div>
 
-                      <div className="w-10 h-10 rounded-full border-2 border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 hover:scale-105 active:scale-95 transition-all">
-                        {profile.photoURL ? (
-                          <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
-                            {profile.displayName?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                        )}
-                      </div>
+                      <Avatar
+                        photoURL={profile.photoURL}
+                        displayName={profile.displayName || profile.fullName}
+                        email={profile.email}
+                        isPremium={profile.isPremium}
+                        sizeClass="w-10 h-10 hover:scale-105 active:scale-95 transition-all"
+                      />
                     </button>
 
                     <AnimatePresence>
@@ -1846,16 +1845,16 @@ If you have any billing questions, or if your refund is delayed, please email us
                     </button>
                     <button 
                       onClick={() => setIsMenuOpen(true)}
-                      className="w-10 h-10 rounded-full border border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 active:scale-90 transition-all cursor-pointer"
+                      className="shrink-0 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
                     >
-                      {profile.photoURL ? (
-                        <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
-                          {profile.displayName?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                      )}
+                      <Avatar
+                        photoURL={profile.photoURL}
+                        displayName={profile.displayName || profile.fullName}
+                        email={profile.email}
+                        isPremium={profile.isPremium}
+                        sizeClass="w-10 h-10"
+                      />
                     </button>
                   </div>
                 </>
@@ -1973,13 +1972,13 @@ If you have any billing questions, or if your refund is delayed, please email us
               {profile && (
                 <div className="mb-4 pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3 px-2">
-                    {profile.photoURL ? (
-                      <img src={profile.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                        {profile.displayName?.charAt(0) || 'U'}
-                      </div>
-                    )}
+                    <Avatar
+                      photoURL={profile.photoURL}
+                      displayName={profile.displayName || profile.fullName}
+                      email={profile.email}
+                      isPremium={profile.isPremium}
+                      sizeClass="w-10 h-10"
+                    />
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                       <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
