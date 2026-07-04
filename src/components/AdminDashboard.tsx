@@ -42,6 +42,7 @@ import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { notifyBookingUpdate } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
+import { PremiumAvatar } from "./PremiumAvatar";
 import { LoadingScreen, LoadingSpinner } from "./LoadingIndicator";
 import AmcManagement from "./AmcManagement";
 import ReferralLifecycleManager from "./ReferralLifecycleManager";
@@ -9472,16 +9473,11 @@ function MyAdminProfile({ profile }: { profile: UserProfile }) {
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mb-12">
         <div className="flex items-center gap-6">
-          <div className="w-16 h-16 rounded-[24px] overflow-hidden border-2 border-indigo-100 shadow-xl shadow-indigo-100 ring-1 ring-slate-100">
-            <img
-              src={
-                profile.photoURL ||
-                `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.displayName}`
-              }
-              alt={profile.displayName}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <PremiumAvatar 
+            src={profile.photoURL} 
+            displayName={profile.displayName} 
+            className="w-16 h-16 shadow-xl" 
+          />
           <div>
             <h3 className="text-2xl font-bold font-display italic text-slate-900">
               {profile.displayName}

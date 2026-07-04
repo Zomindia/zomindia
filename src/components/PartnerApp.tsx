@@ -21,6 +21,7 @@ import {
   TicketPercent
 } from 'lucide-react';
 import { UserProfile, PartnerProfile, Booking, Service, PartnerApplication } from '../types';
+import { PremiumAvatar } from './PremiumAvatar';
 import { auth, db } from '../lib/firebase';
 import PartnerHome from './partner/PartnerHome';
 import PartnerJobs from './partner/PartnerJobs';
@@ -494,12 +495,12 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
              <Bell size={18} />
              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-rose-500 rounded-full border border-white" />
            </button>
-           <button 
-             onClick={() => navigateWithTarget('settings')}
-             className={`w-8 h-8 rounded-full overflow-hidden bg-slate-100 border-2 transition-all shrink-0 ${activeScreen === 'settings' ? 'border-[#22c55e] ring-2 ring-[#22c55e]/10' : 'border-[#22c55e]'}`}
-           >
-              <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
-           </button>
+            <PremiumAvatar 
+              src={profile.photoURL} 
+              displayName={profile.displayName} 
+              className="w-8 h-8 cursor-pointer shadow-sm" 
+              onClick={() => navigateWithTarget('settings')}
+            />
            <button 
              onClick={() => setShowStatusModal(true)}
              className={`px-2 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border transition-all shrink-0 ${

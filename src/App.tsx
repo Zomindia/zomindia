@@ -9,6 +9,7 @@ import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, 
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
 import { buildDualPersonaUserDoc } from './lib/user-schema';
+import { PremiumAvatar } from './components/PremiumAvatar';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { APIProvider } from '@vis.gl/react-google-maps';
@@ -1758,15 +1759,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                         </span>
                       </div>
 
-                      <div className="w-10 h-10 rounded-full border-2 border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 hover:scale-105 active:scale-95 transition-all">
-                        {profile.photoURL ? (
-                          <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
-                            {profile.displayName?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                        )}
-                      </div>
+                      <PremiumAvatar 
+                        src={profile.photoURL} 
+                        displayName={profile.displayName} 
+                        className="w-10 h-10 shadow-sm" 
+                      />
                     </button>
 
                     <AnimatePresence>
@@ -1914,19 +1911,13 @@ If you have any billing questions, or if your refund is delayed, please email us
                     >
                       📍 INDORE
                     </button>
-                    <button 
+                    <PremiumAvatar 
+                      src={profile.photoURL} 
+                      displayName={profile.displayName} 
+                      className="w-10 h-10 shadow-sm cursor-pointer" 
                       onClick={() => setIsMenuOpen(true)}
-                      className="w-10 h-10 rounded-full border border-emerald-500/20 shadow-sm overflow-hidden shrink-0 flex items-center justify-center bg-emerald-50 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
-                    >
-                      {profile.photoURL ? (
-                        <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs">
-                          {profile.displayName?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                      )}
-                    </button>
+                    />
                   </div>
                 </>
               ) : (
@@ -2043,13 +2034,11 @@ If you have any billing questions, or if your refund is delayed, please email us
               {profile && (
                 <div className="mb-4 pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3 px-2">
-                    {profile.photoURL ? (
-                      <img src={profile.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                        {profile.displayName?.charAt(0) || 'U'}
-                      </div>
-                    )}
+                    <PremiumAvatar 
+                      src={profile.photoURL} 
+                      displayName={profile.displayName} 
+                      className="w-10 h-10 shadow-sm" 
+                    />
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                       <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">

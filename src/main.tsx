@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
+import { PremiumProvider } from './context/PremiumContext';
 import { initSecurityShield } from './utils/securityShield';
 
 // Initialize frontend shield & honeypot
@@ -103,7 +104,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <I18nProvider>
-        <App />
+        <PremiumProvider>
+          <App />
+        </PremiumProvider>
       </I18nProvider>
     </ErrorBoundary>
   </StrictMode>,
