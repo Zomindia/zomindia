@@ -31,9 +31,9 @@ export function getEditDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-export function fuzzyMatch(text: string, query: string): { matches: boolean; score: number } {
-  const normalizedText = text.toLowerCase().trim();
-  const normalizedQuery = query.toLowerCase().trim();
+export function fuzzyMatch(text: string | undefined | null, query: string): { matches: boolean; score: number } {
+  const normalizedText = (text || "").toLowerCase().trim();
+  const normalizedQuery = (query || "").toLowerCase().trim();
 
   if (!normalizedQuery) return { matches: true, score: 1 };
 

@@ -4424,7 +4424,7 @@ function ServiceManager({
     const category = categories.find((c) => c.id === s.categoryId);
     return (
       s.name.toLowerCase().includes(query) ||
-      s.description.toLowerCase().includes(query) ||
+      (s.description || "").toLowerCase().includes(query) ||
       category?.name.toLowerCase().includes(query)
     );
   });

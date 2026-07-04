@@ -13,18 +13,19 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || fallbackConfig.messagingSenderId,
   appId: import.meta.env.VITE_FIREBASE_APP_ID || fallbackConfig.appId,
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || fallbackConfig.measurementId,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (fallbackConfig as any).firestoreDatabaseId || '(default)'
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (fallbackConfig as any).firestoreDatabaseId || 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc'
 };
 
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore with persistent offline local cache for extreme reliability
 export const db = initializeFirestore(app, {
+  databaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc',
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   }),
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+} as any);
 
 offlineSyncEngine.setDb(db);
 
