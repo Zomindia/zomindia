@@ -19,6 +19,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
+import { seedDatabase } from "../lib/seed";
 import { signOut } from "firebase/auth";
 import { sendNotification } from "../lib/notifications";
 import EarningsView from "./EarningsView";
@@ -96,6 +97,7 @@ import {
   Home,
   Sparkles,
   Zap,
+  Database,
 } from "lucide-react";
 import {
   AreaChart,
@@ -281,36 +283,33 @@ export default function AdminDashboard({
       const b = selectedOverviewBooking;
       const targetId = b.customerId || b.userId;
       if (targetId) {
-        const custRef = doc(db, "users", targetId);
-        getDoc(custRef)
-          .then((snap) => {
-            if (snap.exists()) {
-              setModalCustomer(snap.data());
-            } else {
-              const matched = users.find((u) => u.uid === targetId);
-              if (matched) {
-                setModalCustomer(matched);
+        // Search memory first - extremely fast, no DB call
+        const matched = users.find((u) => u.uid === targetId);
+        if (matched) {
+          setModalCustomer(matched);
+        } else {
+          // Only fallback to DB if not found in memory
+          const custRef = doc(db, "users", targetId);
+          getDoc(custRef)
+            .then((snap) => {
+              if (snap.exists()) {
+                setModalCustomer(snap.data());
               } else {
                 setModalCustomer(null);
               }
-            }
-          })
-          .catch((err) => {
-            console.error("Error fetching customer in Admin popup:", err);
-            const matched = users.find((u) => u.uid === targetId);
-            if (matched) {
-              setModalCustomer(matched);
-            } else {
+            })
+            .catch((err) => {
+              console.error("Error fetching customer in Admin popup:", err);
               setModalCustomer(null);
-            }
-          });
+            });
+        }
       } else {
         setModalCustomer(null);
       }
     } else {
       setModalCustomer(null);
     }
-  }, [selectedOverviewBooking, users]);
+  }, [selectedOverviewBooking?.id, users]);
 
   const [initialManagingBookingId, setInitialManagingBookingId] = useState<
     string | null
@@ -471,9 +470,17 @@ export default function AdminDashboard({
     const unsubCategories = onSnapshot(
       collection(db, "categories"),
       (snap) => {
-        setCategories(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
-        );
+        const rawCats = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category);
+        const seenNames = new Set<string>();
+        const uniqueCats: Category[] = [];
+        for (const cat of rawCats) {
+          const normName = (cat.name || "").toLowerCase().trim();
+          if (normName && !seenNames.has(normName)) {
+            seenNames.add(normName);
+            uniqueCats.push(cat);
+          }
+        }
+        setCategories(uniqueCats);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "categories"),
     );
@@ -484,7 +491,16 @@ export default function AdminDashboard({
         const sList = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Service,
         );
-        setServices(sList);
+        const seenServiceKeys = new Set<string>();
+        const uniqueServices: Service[] = [];
+        for (const s of sList) {
+          const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
+          if (!seenServiceKeys.has(key)) {
+            seenServiceKeys.add(key);
+            uniqueServices.push(s);
+          }
+        }
+        setServices(uniqueServices);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "services"),
     );
@@ -2226,6 +2242,23 @@ function BookingManager({
 
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
 
+  const relevantBookingIdsString = useMemo(() => {
+    return bookings
+      .filter((b) =>
+        [
+          "confirmed",
+          "assigned",
+          "on_the_way",
+          "arrived",
+          "in_progress",
+          "payment_pending",
+          "pending_parts",
+        ].includes(b.status),
+      )
+      .map((b) => `${b.id}:${b.status}`)
+      .join(",");
+  }, [bookings]);
+
   useEffect(() => {
     const relevantBookings = bookings.filter((b) =>
       [
@@ -2238,7 +2271,10 @@ function BookingManager({
         "pending_parts",
       ].includes(b.status),
     );
-    if (relevantBookings.length === 0) return;
+    if (relevantBookings.length === 0) {
+      setBookingOtps({});
+      return;
+    }
 
     const unsubscribes = relevantBookings.map((booking) => {
       return onSnapshot(
@@ -2255,7 +2291,7 @@ function BookingManager({
     });
 
     return () => unsubscribes.forEach((unsub) => unsub());
-  }, [bookings]);
+  }, [relevantBookingIdsString]);
 
   useEffect(() => {
     if (
@@ -8993,6 +9029,27 @@ function AdminManager({
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+
+  const handleManualSeed = async () => {
+    if (!window.confirm("Are you sure you want to run the database seed script? This will check and seed missing default categories and services.")) {
+      return;
+    }
+    setSeeding(true);
+    setSeedStatus("Running database seed script...");
+    try {
+      await seedDatabase();
+      setSeedStatus("Database seeded successfully!");
+      alert("Database seeded successfully!");
+    } catch (err: any) {
+      console.error(err);
+      setSeedStatus(`Database seeding failed: ${err.message || err}`);
+      alert(`Database seeding failed: ${err.message || err}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const admins = users.filter((u) => u.role === "admin");
 
@@ -9345,6 +9402,47 @@ function AdminManager({
             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-slate-50 rounded-full opacity-50 group-hover:bg-blue-50 transition-all" />
           </div>
         ))}
+      </div>
+
+      {/* Database Seeding and System Maintenance Section */}
+      <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm mt-10">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <h3 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
+              <Database size={20} className="text-blue-700" />
+              Database Seeding & System Maintenance
+            </h3>
+            <p className="text-sm text-slate-400 mt-1 max-w-2xl">
+              Populate default home service categories, system FAQs, and default services in the named database container. This script is self-healing and will skip existing items.
+            </p>
+            {seedStatus && (
+              <p className="text-xs font-semibold text-blue-700 mt-3 font-mono">
+                Status: {seedStatus}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleManualSeed}
+            disabled={seeding}
+            className={`px-8 py-4 rounded-2xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-white shadow-xl transition-all shrink-0 ${
+              seeding
+                ? "bg-slate-400 cursor-not-allowed shadow-none"
+                : "bg-blue-700 hover:bg-blue-800 shadow-blue-700/20"
+            }`}
+          >
+            {seeding ? (
+              <>
+                <LoadingSpinner size="sm" />
+                Seeding...
+              </>
+            ) : (
+              <>
+                <Database size={14} />
+                Seed Database
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

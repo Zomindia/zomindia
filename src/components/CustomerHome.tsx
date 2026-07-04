@@ -77,52 +77,6 @@ interface PartnerWithInfo extends PartnerProfile {
   photoURL?: string;
 }
 
-const SAMPLE_CATEGORIES = [
-  {
-    id: "1",
-    name: "Cleaning",
-    icon: "Sparkles",
-    description: "Deep cleaning, sofa & carpet",
-  },
-  {
-    id: "2",
-    name: "Repairs",
-    icon: "Wrench",
-    description: "Plumbing, Electrician, Carpenter",
-  },
-  {
-    id: "3",
-    name: "Appliance",
-    icon: "Smartphone",
-    description: "AC, TV, Refrigerator, RO",
-  },
-  {
-    id: "4",
-    name: "Painting",
-    icon: "PaintBucket",
-    description: "Full house painting",
-  },
-  {
-    id: "5",
-    name: "Beauty",
-    icon: "Sparkles",
-    description: "Salon at home for women",
-  },
-  {
-    id: "6",
-    name: "Appliance Repair",
-    icon: "Smartphone",
-    description:
-      "Repair services for electronics, home appliances, and gadgets",
-  },
-  {
-    id: "Phone Repair",
-    name: "Phone Repair",
-    icon: "Smartphone",
-    description: "Expert repair services for all smartphone brands",
-  },
-];
-
 const getCategoryIcon = (iconName: string): any => {
   if (!iconName) return Sparkles;
   const name = iconName.toLowerCase().trim();
@@ -443,13 +397,13 @@ export default function CustomerHome({
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
       const cat = allCategories.find((c) => c.id === initialCategoryId);
-      if (cat) {
+      if (cat && cat.id !== selectedCategory?.id) {
         setSelectedCategory(cat);
       }
-    } else if (!initialCategoryId && allCategories.length > 0) {
+    } else if (!initialCategoryId && selectedCategory !== null) {
       setSelectedCategory(null);
     }
-  }, [initialCategoryId, allCategories]);
+  }, [initialCategoryId, allCategories, selectedCategory?.id]);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoriesSearchQuery, setCategoriesSearchQuery] = useState("");
   const [categoryTypeTab, setCategoryTypeTab] = useState<
@@ -858,21 +812,25 @@ export default function CustomerHome({
     const unsubscribeCategories = onSnapshot(
       q,
       (snap) => {
-        const cats = snap.docs.map(
+        const rawCats = snap.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as Category,
         );
-        if (cats.length === 0) {
-          setCategories(SAMPLE_CATEGORIES as Category[]);
-          setAllCategories(SAMPLE_CATEGORIES as Category[]);
-        } else {
-          setCategories(cats);
-          setAllCategories(cats);
+        const seenNames = new Set<string>();
+        const uniqueCats: Category[] = [];
+        for (const cat of rawCats) {
+          const normName = (cat.name || "").toLowerCase().trim();
+          if (normName && !seenNames.has(normName)) {
+            seenNames.add(normName);
+            uniqueCats.push(cat);
+          }
         }
+        setCategories(uniqueCats);
+        setAllCategories(uniqueCats);
         setLoading(false);
       },
       (err) => {
         console.error("Error subscribing to categories:", err);
-        setCategories(SAMPLE_CATEGORIES as Category[]);
+        setCategories([]);
         setLoading(false);
       },
     );
@@ -883,9 +841,17 @@ export default function CustomerHome({
     const unsubscribeServices = onSnapshot(
       collection(db, "services"),
       (snap) => {
-        setAllServices(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
-        );
+        const rawServices = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service);
+        const seenKeys = new Set<string>();
+        const uniqueServices: Service[] = [];
+        for (const s of rawServices) {
+          const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            uniqueServices.push(s);
+          }
+        }
+        setAllServices(uniqueServices);
       },
       (err) => {
         console.error("Error subscribing to services:", err);
@@ -923,23 +889,14 @@ export default function CustomerHome({
   }, [allServices, searchQuery, allCategories]);
 
   useEffect(() => {
-    if (selectedCategory) {
-      const fetchServices = async () => {
-        const path = "services";
-        try {
-          const q = query(
-            collection(db, path),
-            where("categoryId", "==", selectedCategory.id),
-          );
-          const snap = await getDocs(q);
-          setServices(
-            snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
-          );
-        } catch (err) {
-          handleFirestoreError(err, OperationType.LIST, path);
-        }
-      };
+    if (selectedCategory?.id) {
+      // Get services directly from in-memory allServices cache (no DB query needed)
+      const uniqueCategoryServices = allServices.filter(
+        (s) => s.categoryId === selectedCategory.id
+      );
+      setServices(uniqueCategoryServices);
 
+      // Fetch partners only when the selected category ID changes
       const fetchPartners = async () => {
         try {
           const q = query(
@@ -967,10 +924,9 @@ export default function CustomerHome({
         }
       };
 
-      fetchServices();
       fetchPartners();
     }
-  }, [selectedCategory]);
+  }, [selectedCategory?.id, allServices]);
 
   const mostRecentService = (() => {
     if (!allServices || allServices.length === 0) return null;

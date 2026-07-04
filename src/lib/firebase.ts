@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache, doc, getDocFromServer } from 'firebase/firestore';
 import { offlineSyncEngine } from './offlineQueue';
 import fallbackConfig from '../../firebase-applet-config.json';
 
@@ -18,12 +18,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with persistent offline local cache for extreme reliability
+// Initialize Firestore with memory local cache to guarantee fresh live data from the single Firestore instance
 export const db = initializeFirestore(app, {
-  databaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc',
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  }),
+  databaseId: firebaseConfig.firestoreDatabaseId,
+  localCache: memoryLocalCache(),
   experimentalForceLongPolling: true,
 } as any);
 

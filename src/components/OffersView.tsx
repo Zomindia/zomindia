@@ -131,7 +131,9 @@ export default function OffersView({
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [promotionsLoaded, setPromotionsLoaded] = useState(false);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const loading = !promotionsLoaded || !categoriesLoaded;
   const [selectedPromo, setSelectedPromo] = useState<Promotion | null>(null);
   const [targetCategory, setTargetCategory] = useState<string>('');
   const [isRedeeming, setIsRedeeming] = useState(false);
@@ -165,6 +167,7 @@ export default function OffersView({
     }
   }, []);
 
+  // Subscribe to promotions and categories ONLY once on mount (or when context changes, which is a stable string/primitive)
   useEffect(() => {
     const unsubPromos = onSnapshot(query(collection(db, 'promotions'), where('active', '==', true)), (snap) => {
       const dbPromos = snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
@@ -181,27 +184,51 @@ export default function OffersView({
         }
       }
       setPromotions(merged);
+      setPromotionsLoaded(true);
+    }, (err) => {
+      console.error("Error subscribing to promotions in OffersView:", err);
+      setPromotionsLoaded(true);
     });
 
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
-      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      const rawCats = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      const seenNames = new Set<string>();
+      const uniqueCats: Category[] = [];
+      for (const cat of rawCats) {
+        const normName = (cat.name || "").toLowerCase().trim();
+        if (normName && !seenNames.has(normName)) {
+          seenNames.add(normName);
+          uniqueCats.push(cat);
+        }
+      }
+      setCategories(uniqueCats);
+      setCategoriesLoaded(true);
+    }, (err) => {
+      console.error("Error subscribing to categories in OffersView:", err);
+      setCategoriesLoaded(true);
     });
 
-    if (profile) {
-      const unsubRedemptions = onSnapshot(query(collection(db, 'redemptions'), where('userId', '==', profile.uid)), (snap) => {
-        setRedemptions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)));
-      });
-      return () => { unsubPromos(); unsubCategories(); unsubRedemptions(); };
-    }
+    return () => { 
+      unsubPromos(); 
+      unsubCategories(); 
+    };
+  }, [context]);
 
-    return () => { unsubPromos(); unsubCategories(); };
-  }, [profile, context]);
-
+  // Subscribe to redemptions only when profile UID changes (using a primitive dependency)
   useEffect(() => {
-    if (promotions.length > 0 && categories.length > 0) {
-      setLoading(false);
+    if (!profile?.uid) {
+      setRedemptions([]);
+      return;
     }
-  }, [promotions, categories]);
+    const unsubRedemptions = onSnapshot(query(collection(db, 'redemptions'), where('userId', '==', profile.uid)), (snap) => {
+      setRedemptions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)));
+    }, (err) => {
+      console.error("Error subscribing to redemptions in OffersView:", err);
+    });
+    return () => {
+      unsubRedemptions();
+    };
+  }, [profile?.uid]);
 
   const handleRedeem = async () => {
     if (!profile) {

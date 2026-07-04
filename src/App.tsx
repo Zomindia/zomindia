@@ -8,10 +8,9 @@ import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmai
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
+import { buildDualPersonaUserDoc } from './lib/user-schema';
 import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
-import { seedDatabase } from './lib/seed';
-import { buildDualPersonaUserDoc } from './lib/user-schema';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import {
   Building2,
@@ -311,7 +310,17 @@ export default function App() {
   useEffect(() => {
     let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      setAllServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      const rawServices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
+      const seenServiceKeys = new Set<string>();
+      const uniqueServices: Service[] = [];
+      for (const s of rawServices) {
+        const key = `${s.categoryId}_${(s.name || "").toLowerCase().trim()}`;
+        if (!seenServiceKeys.has(key)) {
+          seenServiceKeys.add(key);
+          uniqueServices.push(s);
+        }
+      }
+      setAllServices(uniqueServices);
       if (isInitialServices) {
         isInitialServices = false;
       } else {
@@ -324,7 +333,17 @@ export default function App() {
 
     let isInitialCategories = true;
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
-      setAllCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      const rawCats = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      const seenNames = new Set<string>();
+      const uniqueCats: Category[] = [];
+      for (const cat of rawCats) {
+        const normName = (cat.name || "").toLowerCase().trim();
+        if (normName && !seenNames.has(normName)) {
+          seenNames.add(normName);
+          uniqueCats.push(cat);
+        }
+      }
+      setAllCategories(uniqueCats);
       if (isInitialCategories) {
         isInitialCategories = false;
       } else {
@@ -578,7 +597,6 @@ export default function App() {
   }, [user?.uid, user?.emailVerified]);
 
   useEffect(() => {
-    seedDatabase();
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
