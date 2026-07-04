@@ -895,7 +895,13 @@ export default function CustomerHome({
         (s) => s.categoryId === selectedCategory.id
       );
       setServices(uniqueCategoryServices);
+    } else {
+      setServices([]);
+    }
+  }, [selectedCategory?.id, allServices]);
 
+  useEffect(() => {
+    if (selectedCategory?.id) {
       // Fetch partners only when the selected category ID changes
       const fetchPartners = async () => {
         try {
@@ -926,7 +932,7 @@ export default function CustomerHome({
 
       fetchPartners();
     }
-  }, [selectedCategory?.id, allServices]);
+  }, [selectedCategory?.id]);
 
   const mostRecentService = (() => {
     if (!allServices || allServices.length === 0) return null;

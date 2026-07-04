@@ -18,11 +18,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with memory local cache to guarantee fresh live data from the single Firestore instance
+// Initialize Firestore with databaseId mapping
 export const db = initializeFirestore(app, {
-  databaseId: firebaseConfig.firestoreDatabaseId,
-  localCache: memoryLocalCache(),
-  experimentalForceLongPolling: true,
+  databaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc"
 } as any);
 
 offlineSyncEngine.setDb(db);

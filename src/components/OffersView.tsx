@@ -167,7 +167,7 @@ export default function OffersView({
     }
   }, []);
 
-  // Subscribe to promotions and categories ONLY once on mount (or when context changes, which is a stable string/primitive)
+  // Subscribe to promotions and categories ONLY once on mount
   useEffect(() => {
     const unsubPromos = onSnapshot(query(collection(db, 'promotions'), where('active', '==', true)), (snap) => {
       const dbPromos = snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
@@ -212,7 +212,7 @@ export default function OffersView({
       unsubPromos(); 
       unsubCategories(); 
     };
-  }, [context]);
+  }, []);
 
   // Subscribe to redemptions only when profile UID changes (using a primitive dependency)
   useEffect(() => {

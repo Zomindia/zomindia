@@ -965,9 +965,7 @@ export default function App() {
     );
   }
 
-  if (loading) {
-    return <LoadingScreen message="Connecting to secure zomindia console..." />;
-  }
+
 
   if (authError) {
     return (
@@ -1174,7 +1172,93 @@ export default function App() {
     return null;
   };
 
+  const renderTabSkeleton = (tab: string) => {
+    if (tab === 'home' || tab === 'service-details') {
+      return (
+        <CustomerHome
+          setActiveTab={setActiveTab}
+          profile={null}
+          onAuthRequired={() => setIsAuthModalOpen(true)}
+          onServiceSelect={(id) => {
+            setSelectedServiceId(id);
+            setActiveTab('service-details');
+          }}
+          initialCategoryId={selectedCategoryId}
+        />
+      );
+    }
+
+    if (tab === 'bookings') {
+      return (
+        <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+          <div className="flex justify-between items-center mb-6">
+            <div className="w-48 h-8 bg-slate-100 rounded-xl animate-pulse" />
+            <div className="w-32 h-10 bg-slate-100 rounded-xl animate-pulse" />
+          </div>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-white border border-slate-100 rounded-[32px] p-6 space-y-4 shadow-sm relative overflow-hidden">
+              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-slate-100/40 to-transparent pointer-events-none" />
+              <div className="flex justify-between items-start">
+                <div className="flex gap-4">
+                  <div className="w-14 h-14 bg-slate-100 rounded-2xl" />
+                  <div className="space-y-2">
+                    <div className="w-40 h-5 bg-slate-100 rounded-lg animate-pulse" />
+                    <div className="w-24 h-4 bg-slate-100 rounded-lg animate-pulse" />
+                  </div>
+                </div>
+                <div className="w-24 h-8 bg-slate-100 rounded-full" />
+              </div>
+              <div className="pt-4 border-t border-slate-50 flex justify-between">
+                <div className="w-32 h-4 bg-slate-100 rounded" />
+                <div className="w-16 h-5 bg-slate-100 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (tab === 'profile') {
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+          <div className="flex flex-col items-center gap-4 text-center pb-6 border-b border-slate-100 relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-slate-100/40 to-transparent pointer-events-none" />
+            <div className="w-24 h-24 rounded-full bg-slate-100 animate-pulse" />
+            <div className="w-48 h-6 bg-slate-100 rounded-lg animate-pulse" />
+            <div className="w-32 h-4 bg-slate-100 rounded-lg animate-pulse" />
+          </div>
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-slate-100 rounded-lg" />
+                  <div className="w-32 h-4 bg-slate-100 rounded" />
+                </div>
+                <div className="w-6 h-6 bg-slate-100 rounded-full animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
+        <div className="flex flex-col gap-4 animate-pulse">
+          <div className="w-1/3 h-8 bg-slate-100 rounded-lg" />
+          <div className="w-full h-48 bg-slate-100 rounded-3xl" />
+          <div className="w-full h-24 bg-slate-100 rounded-3xl" />
+        </div>
+      </div>
+    );
+  };
+
   const renderContent = () => {
+    const isProfileLoading = loading || (user && !profile);
+    if (isProfileLoading && !['about', 'contact', 'help', 'terms', 'privacy', 'refund'].includes(activeTab)) {
+      return renderTabSkeleton(activeTab);
+    }
+
     if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
@@ -1920,6 +2004,15 @@ If you have any billing questions, or if your refund is delayed, please email us
                     />
                   </div>
                 </>
+              ) : user ? (
+                /* Compact Shimmer Header Placeholder when logged in but profile is still resolving */
+                <div className="flex items-center gap-3 animate-pulse">
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="w-16 h-3 bg-slate-100 rounded" />
+                    <div className="w-12 h-2.5 bg-slate-100 rounded" />
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-slate-100 animate-pulse" />
+                </div>
               ) : (
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
@@ -2319,7 +2412,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         hasNotifications={true}
-        isAuthenticated={!!profile}
+        isAuthenticated={!!user || !!profile}
         hasActiveArrival={hasActiveArrival}
       />
 
