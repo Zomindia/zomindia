@@ -736,9 +736,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
       return cleaned.slice(0, 10);
     };
-    setPopupEmail(contactEmail || profile?.email || '');
-    setPopupPhone(cleanPhoneTo10(contactPhone) || cleanPhoneTo10(profile?.phoneNumber || '') || '');
-    setShowContactPopup(true);
+
+    const emailToUse = contactEmail || profile?.email || '';
+    const rawPhone = contactPhone || profile?.phoneNumber || profile?.mobile || '';
+    const cleanedPhone = cleanPhoneTo10(rawPhone);
+
+    if (cleanedPhone && cleanedPhone.length === 10) {
+      setContactEmail(emailToUse);
+      setContactPhone(`+91${cleanedPhone}`);
+      handleBooking(emailToUse, `+91${cleanedPhone}`);
+    } else {
+      setPopupEmail(emailToUse);
+      setPopupPhone(cleanedPhone);
+      setShowContactPopup(true);
+    }
   };
 
   const handleBooking = async (overrideEmail?: string, overridePhone?: string) => {
