@@ -2084,8 +2084,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   </div>
 
                   <div className="bg-white rounded-2xl border border-slate-150 p-3.5 space-y-3">
-                    <p className="text-[9px] text-[#0a2540] uppercase font-black tracking-widest text-left">Payment Method</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider text-left">Payment Method</p>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
                       <button 
                         type="button"
                         onClick={() => {
@@ -2093,10 +2093,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           setOnlineSubMethod(null);
                           setError(null);
                         }}
-                        className={`flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border-2 transition-all cursor-pointer ${paymentMethod === 'cash' ? 'border-blue-700 bg-blue-700 text-white shadow' : 'border-slate-100 bg-slate-50/50 text-slate-400 hover:border-slate-200'}`}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-white text-blue-900 shadow-xs border border-slate-200/40' : 'text-slate-500 hover:text-slate-800'}`}
                       >
-                         <CheckCircle2 size={12} className={paymentMethod === 'cash' ? 'opacity-100' : 'opacity-0'} />
-                         <span className="text-[10px] font-bold uppercase tracking-wider">Pay on Arrival</span>
+                         <span className="text-[11px]">Pay on arrival</span>
                       </button>
                       <button 
                         type="button"
@@ -2105,10 +2104,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           if (!onlineSubMethod) setOnlineSubMethod('upi');
                           setError(null);
                         }}
-                        className={`flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border-2 transition-all cursor-pointer ${paymentMethod === 'online' ? 'border-blue-700 bg-blue-700 text-white shadow' : 'border-slate-100 bg-slate-50/50 text-slate-400 hover:border-slate-200'}`}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${paymentMethod === 'online' ? 'bg-white text-blue-900 shadow-xs border border-slate-200/40' : 'text-slate-500 hover:text-slate-800'}`}
                       >
-                        <CheckCircle2 size={12} className={paymentMethod === 'online' ? 'opacity-100' : 'opacity-0'} />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Pay Online</span>
+                         <span className="text-[11px]">Pay online</span>
                       </button>
                     </div>
                     {profile?.walletBalance !== undefined && profile.walletBalance > 0 && (
@@ -2120,15 +2118,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                             setUseWalletBalance(nextVal);
                             setError(null);
                           }}
-                          className={`w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl border-2 transition-all cursor-pointer ${useWalletBalance ? 'border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm' : 'border-slate-100 bg-emerald-50/40 text-slate-600 hover:border-slate-200'}`}
+                          className={`w-full flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer ${useWalletBalance ? 'border-emerald-500 bg-emerald-50/50 text-emerald-900 shadow-xs' : 'border-slate-200 bg-slate-50/30 text-slate-600 hover:border-slate-300'}`}
                         >
                           <div className="flex items-center gap-1.5">
-                            <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[8px] ${useWalletBalance ? 'border-emerald-650 bg-emerald-600 text-white' : 'border-slate-300'}`}>
+                            <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[8px] ${useWalletBalance ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white'}`}>
                               {useWalletBalance ? '✓' : ''}
                             </span>
-                            <span className="text-[10px] font-black uppercase tracking-wider font-mono">Use Wallet Balance</span>
+                            <span className="text-[11px] font-semibold text-slate-700">Use wallet balance</span>
                           </div>
-                          <span className="text-[10px] font-bold tracking-tight bg-white/80 shrink-0 px-2 py-0.5 rounded-md border border-emerald-100">Bal: ₹{profile.walletBalance}</span>
+                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Bal: ₹{profile.walletBalance}</span>
                         </button>
                       </div>
                     )}
@@ -2139,9 +2137,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
                       if (useWalletBalance && remainingDue > 0) {
                         return (
-                          <div className="p-3 bg-blue-50/45 rounded-xl border border-blue-150 space-y-2.5 mt-2">
-                            <span className="block text-[9px] uppercase font-black tracking-widest text-[#0a2540] text-left">
-                              Remaining Balance of ₹{remainingDue} Due via:
+                          <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2.5 mt-2">
+                            <span className="block text-[10px] font-bold text-slate-500 text-left">
+                              Remaining balance due via:
                             </span>
                             <div className="grid grid-cols-2 gap-2">
                               <button
@@ -2151,7 +2149,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                   setOnlineSubMethod('upi');
                                   setError(null);
                                 }}
-                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'upi' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'upi' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
                               >
                                 📱 UPI (GPay/PhonePe)
                               </button>
@@ -2162,143 +2160,143 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                   setOnlineSubMethod('card');
                                   setError(null);
                                 }}
-                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'card' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'card' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
                               >
                                 💳 Card / Net Banking
                               </button>
                             </div>
                             <div className="mt-1 flex items-center gap-2">
                               <div className="h-[1px] bg-slate-200 flex-1"></div>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase">OR</span>
+                              <span className="text-[8px] font-bold text-slate-400">or</span>
                               <div className="h-[1px] bg-slate-200 flex-1"></div>
                             </div>
                             <button
                               type="button"
                               onClick={() => {
-                                setPaymentMethod('cash');
-                                setOnlineSubMethod(null);
-                                setError(null);
-                              }}
-                              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'}`}
-                            >
-                              💵 Pay Outstanding on Arrival (Cash)
-                            </button>
-                          </div>
-                        );
-                      } else if (paymentMethod === 'online') {
-                        // Prompt online submethod selection if paying online general
-                        return (
-                          <div className="p-3 bg-blue-50/45 rounded-xl border border-blue-150 space-y-2 mt-2">
-                            <span className="block text-[9px] uppercase font-black tracking-widest text-[#0a2540] text-left">
-                              Select Online Mode:
-                            </span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOnlineSubMethod('upi');
+                                  setPaymentMethod('cash');
+                                  setOnlineSubMethod(null);
                                   setError(null);
                                 }}
-                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${onlineSubMethod === 'upi' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
                               >
-                                📱 UPI (GPay/PhonePe)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOnlineSubMethod('card');
-                                  setError(null);
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border text-[9px] font-bold uppercase transition-all cursor-pointer ${onlineSubMethod === 'card' ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                              >
-                                💳 Card / Net Banking
+                                💵 Pay outstanding on arrival (Cash)
                               </button>
                             </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-
-                  <div id="price-summary-container" className="pt-2 pb-1 text-left space-y-1">
-                    <div className="flex justify-between items-center">
-                      <p className="text-xs font-medium text-slate-500">Service Base Price</p>
-                      <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
+                          );
+                        } else if (paymentMethod === 'online') {
+                          // Prompt online submethod selection if paying online general
+                          return (
+                            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2 mt-2">
+                              <span className="block text-[10px] font-bold text-slate-500 text-left">
+                                Select online mode:
+                              </span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOnlineSubMethod('upi');
+                                    setError(null);
+                                  }}
+                                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${onlineSubMethod === 'upi' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                >
+                                  📱 UPI (GPay/PhonePe)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOnlineSubMethod('card');
+                                    setError(null);
+                                  }}
+                                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${onlineSubMethod === 'card' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                >
+                                  💳 Card / Net Banking
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
-                     {isSurgePricingActive() && (
-                      <div className="flex justify-between items-center bg-rose-50/50 px-2.5 py-1 rounded-lg border border-rose-100">
-                        <div className="flex items-center gap-1">
-                          <Zap size={10} className="text-rose-600 fill-rose-600 animate-pulse" />
-                          <p className="text-[11px] font-bold text-rose-650 uppercase">
-                            {time === '19:00' ? "Evening Surge (20% Extra)" : "Prime Surge"}
+  
+                    <div id="price-summary-container" className="pt-2 pb-1 text-left space-y-1">
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs font-medium text-slate-500">Service Base Price</p>
+                        <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
+                      </div>
+                       {isSurgePricingActive() && (
+                        <div className="flex justify-between items-center bg-rose-50/50 px-2.5 py-1 rounded-lg border border-rose-100">
+                          <div className="flex items-center gap-1">
+                            <Zap size={10} className="text-rose-600 fill-rose-600 animate-pulse" />
+                            <p className="text-[11px] font-bold text-rose-650 uppercase">
+                              {time === '19:00' ? "Evening Surge (20% Extra)" : "Prime Surge"}
+                            </p>
+                          </div>
+                          <p className="text-[11px] font-heavy text-rose-650">+₹{getSurgeAmount()}</p>
+                        </div>
+                      )}
+                      {appliedPromo && (
+                        <div className="flex justify-between items-center bg-emerald-50/50 px-2.5 py-1 rounded-lg">
+                          <div className="flex items-center gap-1">
+                            <Zap size={10} className="text-emerald-600 fill-emerald-600" />
+                            <p className="text-[11px] font-bold text-emerald-650 uppercase">Promo Code ({appliedPromo.code})</p>
+                          </div>
+                          <p className="text-[11px] font-heavy text-emerald-650">-₹{appliedPromo.discountType === 'percent' 
+                            ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) 
+                            : appliedPromo.discountValue}</p>
+                        </div>
+                      )}
+                      {profile?.isPremium && (
+                        <div className="flex justify-between items-center bg-indigo-50/50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                          <div className="flex items-center gap-1">
+                            <Zap size={10} className="text-indigo-600 fill-indigo-600" />
+                            <p className="text-[11px] font-bold text-indigo-650 uppercase">Prime Club (15% Off)</p>
+                          </div>
+                          <p className="text-[11px] font-heavy text-indigo-[650]">-₹{getPrimeDiscountAmount()}</p>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs font-medium text-slate-500 font-mono">Tax & Convenience Charges</p>
+                        <p className="text-xs font-bold text-slate-450 italic">On Arrival</p>
+                      </div>
+  
+                      {useWalletBalance && (
+                        <>
+                          <div className="flex justify-between items-center bg-emerald-50/70 px-2.5 py-1 rounded-lg border border-emerald-100">
+                            <div className="flex items-center gap-1">
+                              <span className="text-emerald-600">💼</span>
+                              <p className="text-[11px] font-bold text-emerald-700 uppercase">Wallet applied</p>
+                            </div>
+                            <p className="text-[11px] font-black text-emerald-700">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</p>
+                          </div>
+                        </>
+                      )}
+  
+                      <div className="flex justify-between items-center pt-2.5 mt-2.5 border-t border-slate-100">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">
+                            {useWalletBalance ? "Remaining due" : "Final payable"}
+                          </p>
+                          <p className="text-xl font-black text-slate-900 tracking-tight">
+                            ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
                           </p>
                         </div>
-                        <p className="text-[11px] font-heavy text-rose-650">+₹{getSurgeAmount()}</p>
-                      </div>
-                    )}
-                    {appliedPromo && (
-                      <div className="flex justify-between items-center bg-emerald-50/50 px-2.5 py-1 rounded-lg">
-                        <div className="flex items-center gap-1">
-                          <Zap size={10} className="text-emerald-600 fill-emerald-600" />
-                          <p className="text-[11px] font-bold text-emerald-650 uppercase">Promo Code ({appliedPromo.code})</p>
+                        <div className="text-slate-350 shrink-0">
+                           <CheckCircle2 size={24} className={useWalletBalance ? "text-emerald-500" : ""} />
                         </div>
-                        <p className="text-[11px] font-heavy text-emerald-650">-₹{appliedPromo.discountType === 'percent' 
-                          ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) 
-                          : appliedPromo.discountValue}</p>
-                      </div>
-                    )}
-                    {profile?.isPremium && (
-                      <div className="flex justify-between items-center bg-indigo-50/50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                        <div className="flex items-center gap-1">
-                          <Zap size={10} className="text-indigo-600 fill-indigo-600" />
-                          <p className="text-[11px] font-bold text-indigo-650 uppercase">Prime Club (15% Off)</p>
-                        </div>
-                        <p className="text-[11px] font-heavy text-indigo-[650]">-₹{getPrimeDiscountAmount()}</p>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <p className="text-xs font-medium text-slate-500 font-mono">Tax & Convenience Charges</p>
-                      <p className="text-xs font-bold text-slate-450 italic">On Arrival</p>
-                    </div>
-
-                    {useWalletBalance && (
-                      <>
-                        <div className="flex justify-between items-center bg-emerald-50/70 px-2.5 py-1 rounded-lg border border-emerald-100">
-                          <div className="flex items-center gap-1">
-                            <span className="text-emerald-600">💼</span>
-                            <p className="text-[11px] font-bold text-emerald-700 uppercase">Wallet Applied</p>
-                          </div>
-                          <p className="text-[11px] font-black text-emerald-700">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</p>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="flex justify-between items-center pt-2.5 mt-2.5 border-t border-slate-100">
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">
-                          {useWalletBalance ? "Remaining Due" : "Final Payable"}
-                        </p>
-                        <p className="text-xl font-black text-slate-900 tracking-tight">
-                          ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
-                        </p>
-                      </div>
-                      <div className="text-slate-350 shrink-0">
-                         <CheckCircle2 size={24} className={useWalletBalance ? "text-emerald-500" : ""} />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
-                    <button 
-                      disabled={loading}
-                      onClick={handleConfirmServiceClick}
-                      className="w-full bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-800 transition-all flex justify-center items-center gap-1.5 shadow active:scale-[0.98] cursor-pointer"
-                    >
-                      {loading ? 'Processing...' : 'Continue / Book Now'}
-                    </button>
-                  </div>
-                </motion.div>
+  
+                    <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
+                      <button 
+                        disabled={loading}
+                        onClick={handleConfirmServiceClick}
+                        className="w-full bg-blue-700 text-white py-3 rounded-xl font-bold text-sm tracking-wide hover:bg-blue-800 transition-all flex justify-center items-center gap-1.5 shadow active:scale-[0.98] cursor-pointer"
+                      >
+                        {loading ? 'Processing...' : 'Confirm Booking'}
+                      </button>
+                    </div>
+                  </motion.div>
               )}
 
               {step === 4 && (
