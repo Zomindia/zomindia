@@ -726,8 +726,18 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
 
     // Prefill popup fields with existing email and phone
+    const cleanPhoneTo10 = (ph: string) => {
+      let cleaned = (ph || '').replace(/\D/g, '');
+      if (cleaned.length === 12 && cleaned.startsWith('91')) {
+        return cleaned.substring(2);
+      }
+      if (cleaned.length === 11 && cleaned.startsWith('0')) {
+        return cleaned.substring(1);
+      }
+      return cleaned.slice(0, 10);
+    };
     setPopupEmail(contactEmail || profile?.email || '');
-    setPopupPhone(contactPhone.replace('+91', '') || profile?.phoneNumber?.replace('+91', '') || '');
+    setPopupPhone(cleanPhoneTo10(contactPhone) || cleanPhoneTo10(profile?.phoneNumber || '') || '');
     setShowContactPopup(true);
   };
 
@@ -746,7 +756,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     const phoneToUse = (overridePhone || contactPhone).trim();
 
     const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
-    const cleanPhone = phoneToUse.replace(/\D/g, "");
+    let cleanPhone = phoneToUse.replace(/\D/g, "");
+    if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+      cleanPhone = cleanPhone.substring(2);
+    } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+      cleanPhone = cleanPhone.substring(1);
+    }
     const formattedPrimaryPhone = `+91${cleanPhone}`;
     const emailLower = emailToUse.toLowerCase();
 
@@ -756,14 +771,18 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPrimaryPhone));
       const phoneQ3 = query(collection(db, "users"), where("phoneNumber", "==", cleanPhone));
       const phoneQ4 = query(collection(db, "users"), where("mobile", "==", cleanPhone));
+      const phoneQ5 = query(collection(db, "users"), where("phoneNumber", "==", `91${cleanPhone}`));
+      const phoneQ6 = query(collection(db, "users"), where("mobile", "==", `91${cleanPhone}`));
       const emailQ1 = query(collection(db, "users"), where("email", "==", emailToUse));
       const emailQ2 = query(collection(db, "users"), where("email", "==", emailLower));
 
-      const [pSnap1, pSnap2, pSnap3, pSnap4, eSnap1, eSnap2] = await Promise.all([
+      const [pSnap1, pSnap2, pSnap3, pSnap4, pSnap5, pSnap6, eSnap1, eSnap2] = await Promise.all([
         getDocs(phoneQ1),
         getDocs(phoneQ2),
         getDocs(phoneQ3),
         getDocs(phoneQ4),
+        getDocs(phoneQ5),
+        getDocs(phoneQ6),
         getDocs(emailQ1),
         getDocs(emailQ2)
       ]);
@@ -772,7 +791,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         ...pSnap1.docs.map(d => d.id),
         ...pSnap2.docs.map(d => d.id),
         ...pSnap3.docs.map(d => d.id),
-        ...pSnap4.docs.map(d => d.id)
+        ...pSnap4.docs.map(d => d.id),
+        ...pSnap5.docs.map(d => d.id),
+        ...pSnap6.docs.map(d => d.id)
       ].filter(id => id !== activeUid)));
 
       const emailDocIds = Array.from(new Set([
@@ -800,7 +821,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           if (snap.exists()) {
             const data = snap.data();
             const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
-            if (docPhone && docPhone !== cleanPhone) {
+            let cleanDocPhone = docPhone;
+            if (cleanDocPhone.length === 12 && cleanDocPhone.startsWith('91')) {
+              cleanDocPhone = cleanDocPhone.substring(2);
+            } else if (cleanDocPhone.length === 11 && cleanDocPhone.startsWith('0')) {
+              cleanDocPhone = cleanDocPhone.substring(1);
+            }
+            if (cleanDocPhone && cleanDocPhone !== cleanPhone) {
               throw new Error("This email is already associated with another mobile number.");
             }
           }
@@ -2501,8 +2528,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         type="tel"
                         value={popupPhone}
                         onChange={(e) => {
-                          const raw = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setPopupPhone(raw);
+                          let raw = e.target.value.replace(/\D/g, '');
+                          // Strip leading 91 or 0 prefix if it exceeds standard 10-digit bounds
+                          if (raw.length === 12 && raw.startsWith('91')) {
+                            raw = raw.substring(2);
+                          } else if (raw.length === 11 && raw.startsWith('0')) {
+                            raw = raw.substring(1);
+                          } else if (raw.length > 10 && raw.startsWith('91')) {
+                            raw = raw.substring(2);
+                          } else if (raw.length > 10 && raw.startsWith('0')) {
+                            raw = raw.substring(1);
+                          }
+                          const sliced = raw.slice(0, 10);
+                          setPopupPhone(sliced);
                           setPopupError(null);
                         }}
                         placeholder="Enter 10-digit number"
@@ -2541,7 +2579,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     disabled={loading}
                     onClick={async () => {
                       const emailTrimmed = popupEmail.trim();
-                      const phoneDigits = popupPhone.replace(/\D/g, '').trim();
+                      let phoneDigits = popupPhone.replace(/\D/g, '').trim();
+                      if (phoneDigits.length === 12 && phoneDigits.startsWith('91')) {
+                        phoneDigits = phoneDigits.substring(2);
+                      } else if (phoneDigits.length === 11 && phoneDigits.startsWith('0')) {
+                        phoneDigits = phoneDigits.substring(1);
+                      }
 
                       if (emailTrimmed) {
                         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -2569,15 +2612,26 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           const checkPhoneQ2 = query(collection(db, 'users'), where('mobile', '==', `+91${phoneDigits}`));
                           const checkPhoneQ3 = query(collection(db, 'users'), where('phoneNumber', '==', phoneDigits));
                           const checkPhoneQ4 = query(collection(db, 'users'), where('mobile', '==', phoneDigits));
+                          const checkPhoneQ5 = query(collection(db, 'users'), where('phoneNumber', '==', `91${phoneDigits}`));
+                          const checkPhoneQ6 = query(collection(db, 'users'), where('mobile', '==', `91${phoneDigits}`));
 
-                          const [pSnap1, pSnap2, pSnap3, pSnap4] = await Promise.all([
+                          const [pSnap1, pSnap2, pSnap3, pSnap4, pSnap5, pSnap6] = await Promise.all([
                             getDocs(checkPhoneQ1),
                             getDocs(checkPhoneQ2),
                             getDocs(checkPhoneQ3),
-                            getDocs(checkPhoneQ4)
+                            getDocs(checkPhoneQ4),
+                            getDocs(checkPhoneQ5),
+                            getDocs(checkPhoneQ6)
                           ]);
 
-                          const mergedPhoneDocs = [...pSnap1.docs, ...pSnap2.docs, ...pSnap3.docs, ...pSnap4.docs];
+                          const mergedPhoneDocs = [
+                            ...pSnap1.docs,
+                            ...pSnap2.docs,
+                            ...pSnap3.docs,
+                            ...pSnap4.docs,
+                            ...pSnap5.docs,
+                            ...pSnap6.docs
+                          ];
                           for (const docSnap of mergedPhoneDocs) {
                             if (targetUid && docSnap.id !== targetUid) {
                               const docEmail = (docSnap.data().email || '').trim().toLowerCase();
@@ -2604,7 +2658,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                             if (targetUid && docSnap.id !== targetUid) {
                               const data = docSnap.data();
                               const docPhone = (data.phoneNumber || data.mobile || '').replace(/\D/g, '');
-                              if (docPhone && docPhone !== phoneDigits) {
+                              let cleanDocPhone = docPhone;
+                              if (cleanDocPhone.length === 12 && cleanDocPhone.startsWith('91')) {
+                                cleanDocPhone = cleanDocPhone.substring(2);
+                              } else if (cleanDocPhone.length === 11 && cleanDocPhone.startsWith('0')) {
+                                cleanDocPhone = cleanDocPhone.substring(1);
+                              }
+                              if (cleanDocPhone && cleanDocPhone !== phoneDigits) {
                                 setPopupError("This email is already associated with another mobile number.");
                                 setLoading(false);
                                 return;
@@ -2656,7 +2716,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-                className="relative bg-white w-full max-w-md rounded-[32px] sm:rounded-[40px] shadow-2xl p-6 sm:p-8 text-center max-h-[90vh] overflow-y-auto no-scrollbar z-10 flex flex-col items-center justify-center border border-slate-100"
+                className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-5 sm:p-6 text-center max-h-[90vh] overflow-y-auto no-scrollbar z-10 flex flex-col items-center justify-center border border-slate-100"
               >
                 <button 
                   onClick={() => {
@@ -2667,62 +2727,62 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   className="absolute top-4 right-4 p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-full transition-colors cursor-pointer"
                   title="Close"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
 
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-5 shadow-lg shadow-emerald-100/40 shrink-0 animate-bounce">
-                  <CheckCircle2 size={36} className="stroke-[2.5]" />
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-3 shadow-md shadow-emerald-100/30 shrink-0 animate-bounce">
+                  <CheckCircle2 size={24} className="stroke-[2.5]" />
                 </div>
                 
-                <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 tracking-tight font-display">
+                <h3 className="text-lg sm:text-xl font-black text-slate-900 mb-1 tracking-tight font-display">
                   Booking Confirmed!
                 </h3>
-                <p className="text-slate-400 text-xs font-semibold mb-6 max-w-xs mx-auto">
+                <p className="text-slate-400 text-[11px] font-semibold mb-4 max-w-[260px] mx-auto leading-relaxed">
                   Your order has been placed successfully. A service professional will reach your location on schedule.
                 </p>
                 
-                <div className="w-full bg-slate-50/85 p-5 sm:p-6 rounded-[24px] border border-slate-150/70 mb-6 text-center space-y-4">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1.5 border-b border-slate-200/50 max-w-[120px] mx-auto">
+                <div className="w-full bg-slate-50/80 p-4 rounded-2xl border border-slate-200/60 mb-4 text-center space-y-3">
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1 border-b border-slate-200/40 max-w-[100px] mx-auto">
                      Order Summary
                    </p>
                    
-                   <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
-                      <p className="text-sm font-black text-slate-900 leading-snug">{service.name}</p>
+                   <div className="space-y-0.5">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
+                      <p className="text-xs font-black text-slate-900 leading-snug">{service.name}</p>
                    </div>
 
-                   <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-3">
+                   <div className="grid grid-cols-2 gap-2 border-t border-b border-slate-100 py-2">
                      <div className="space-y-0.5 border-r border-slate-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
-                        <p className="text-xs font-bold text-slate-900">{date}</p>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
+                        <p className="text-[11px] font-bold text-slate-900">{date}</p>
                      </div>
                      <div className="space-y-0.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
-                        <p className="text-xs font-bold text-slate-900">{time}</p>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
+                        <p className="text-[11px] font-bold text-slate-900">{time}</p>
                      </div>
                    </div>
 
-                   <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
-                      <p className="text-xs font-bold text-slate-800 max-w-[280px] mx-auto leading-relaxed truncate">{address}</p>
+                   <div className="space-y-0.5">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
+                      <p className="text-[11px] font-bold text-slate-800 max-w-[220px] mx-auto leading-relaxed truncate">{address}</p>
                    </div>
 
-                   <div className="pt-3.5 border-t border-slate-200/50 space-y-0.5">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
-                      <p className="text-xl font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
+                   <div className="pt-2.5 border-t border-slate-200/40 space-y-0.5">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
+                      <p className="text-lg font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
                    </div>
                 </div>
 
-                <div className="flex flex-col gap-3 w-full max-w-sm mx-auto">
+                <div className="flex flex-col gap-2.5 w-full max-w-sm mx-auto">
                   {lastBookingId && (
                     <button 
                       onClick={() => {
                         const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
                         if (link) window.open(link, '_blank');
                       }}
-                      className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <MessageCircle size={15} className="shrink-0" /> Confirm via WhatsApp
+                      <MessageCircle size={14} className="shrink-0" /> Confirm via WhatsApp
                     </button>
                   )}
                   
@@ -2732,7 +2792,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       onSuccess();
                       onClose();
                     }} 
-                    className="w-full py-3.5 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
+                    className="w-full py-3 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
                   >
                     TRACK MY ORDER
                   </button>
