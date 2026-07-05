@@ -267,13 +267,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
 
 
+  const cleanPhoneTo10 = (ph: string) => {
+    let cleaned = (ph || '').replace(/\D/g, '');
+    if (cleaned.length === 12 && cleaned.startsWith('91')) {
+      return cleaned.substring(2);
+    }
+    if (cleaned.length === 11 && cleaned.startsWith('0')) {
+      return cleaned.substring(1);
+    }
+    return cleaned.slice(0, 10);
+  };
+
   const [contactEmail, setContactEmail] = useState(profile?.email || '');
-  const [contactPhone, setContactPhone] = useState(profile?.phoneNumber || '');
+  const [contactPhone, setContactPhone] = useState(cleanPhoneTo10(profile?.phoneNumber || profile?.mobile || ''));
 
   useEffect(() => {
     if (profile) {
       if (!contactEmail && profile.email) setContactEmail(profile.email);
-      if (!contactPhone && profile.phoneNumber) setContactPhone(profile.phoneNumber);
+      const initialPhone = cleanPhoneTo10(profile.phoneNumber || profile.mobile || '');
+      if (!contactPhone && initialPhone) setContactPhone(initialPhone);
     }
   }, [profile]);
 
@@ -743,8 +755,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
     if (cleanedPhone && cleanedPhone.length === 10) {
       setContactEmail(emailToUse);
-      setContactPhone(`+91${cleanedPhone}`);
-      handleBooking(emailToUse, `+91${cleanedPhone}`);
+      setContactPhone(cleanedPhone);
+      handleBooking(emailToUse, cleanedPhone);
     } else {
       setPopupEmail(emailToUse);
       setPopupPhone(cleanedPhone);
@@ -849,8 +861,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
         const updateData = {
           email: emailToUse,
-          phoneNumber: formattedPrimaryPhone,
-          mobile: formattedPrimaryPhone,
+          phoneNumber: cleanPhone,
+          mobile: cleanPhone,
           updatedAt: Timestamp.now()
         };
 
@@ -1107,6 +1119,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           console.error("Error reading active session database snapshot:", dbErr);
         }
       }
+
+      // Ensure resolvedMobile is clean 10-digit number and has no +91 or 91 or 0 prefix
+      const cleanPhoneTo10Internal = (ph: string) => {
+        let cleaned = (ph || '').replace(/\D/g, '');
+        if (cleaned.length === 12 && cleaned.startsWith('91')) {
+          return cleaned.substring(2);
+        }
+        if (cleaned.length === 11 && cleaned.startsWith('0')) {
+          return cleaned.substring(1);
+        }
+        return cleaned.slice(0, 10);
+      };
+      resolvedMobile = cleanPhone || cleanPhoneTo10Internal(resolvedMobile) || "9876543210";
 
       if (resolvedFullName === "User" || resolvedFullName === "Live Customer Indore" || !resolvedFullName) {
         resolvedFullName = "VIKASS CHOPRA";
@@ -2534,7 +2559,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       Mobile Number <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">+91</span>
                       <input 
                         type="tel"
                         value={popupPhone}
@@ -2555,7 +2579,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           setPopupError(null);
                         }}
                         placeholder="Enter 10-digit number"
-                        className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 pl-11 pr-3.5 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-750 transition-all placeholder:text-slate-350"
+                        className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 px-3.5 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-750 transition-all placeholder:text-slate-350"
                       />
                     </div>
                   </div>
@@ -2691,12 +2715,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       
                       // Save back to main states
                       setContactEmail(emailTrimmed);
-                      setContactPhone(`+91${phoneDigits}`);
+                      setContactPhone(phoneDigits);
                       
                       setShowContactPopup(false);
                       
                       // Proceed directly to the booking write promise
-                      await handleBooking(emailTrimmed, `+91${phoneDigits}`);
+                      await handleBooking(emailTrimmed, phoneDigits);
                     }}
                     className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
