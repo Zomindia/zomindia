@@ -43,9 +43,32 @@ export default function PartnerWallet({ partner }: Props) {
     });
   }, [partner?.id]);
 
+  const isKycVerified = partner?.kycStatus === 'verified' || partner?.kycStatus === 'approved';
+  let isGracePeriodExpired = false;
+  if (partner?.gracePeriodEnd && !isKycVerified) {
+    let targetMs = 0;
+    const graceEnd = partner.gracePeriodEnd;
+    if (typeof graceEnd === 'string') {
+      targetMs = new Date(graceEnd).getTime();
+    } else if (graceEnd?.seconds) {
+      targetMs = graceEnd.seconds * 1000;
+    } else if (graceEnd?.toDate) {
+      targetMs = graceEnd.toDate().getTime();
+    } else if (typeof graceEnd === 'number') {
+      targetMs = graceEnd;
+    } else {
+      targetMs = new Date(graceEnd).getTime();
+    }
+    isGracePeriodExpired = Date.now() > targetMs;
+  }
+
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partner) return;
+    if (isGracePeriodExpired) {
+      alert("KYC submission required to unlock payouts.");
+      return;
+    }
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0 || amount > (partner.totalEarnings || 0)) {
       alert("Invalid withdraw amount.");
@@ -83,16 +106,34 @@ export default function PartnerWallet({ partner }: Props) {
                <span className="text-[10px] font-black uppercase tracking-widest">+12% from last week</span>
             </div>
 
-            <div className="mt-12 flex gap-4">
-               <button 
-                 onClick={() => setShowWithdraw(true)}
-                 className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/40 active:scale-95 transition-all"
-               >
-                  Withdraw
-               </button>
-               <button className="flex-1 bg-white/10 border border-white/20 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">
-                  Tax Details
-               </button>
+            <div className="mt-12 flex flex-col gap-2">
+               <div className="flex gap-4">
+                  {isGracePeriodExpired ? (
+                    <button 
+                      disabled
+                      className="flex-1 bg-slate-400 text-slate-100 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed opacity-70"
+                      title="KYC submission required to unlock payouts"
+                    >
+                       Withdraw (Locked)
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setShowWithdraw(true)}
+                      className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/40 active:scale-95 transition-all"
+                    >
+                       Withdraw
+                    </button>
+                  )}
+                  <button className="flex-1 bg-white/10 border border-white/20 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">
+                     Tax Details
+                  </button>
+               </div>
+               
+               {isGracePeriodExpired && (
+                 <p className="text-[9px] text-amber-300 font-extrabold mt-2 text-center uppercase tracking-wider">
+                   KYC submission required to unlock payouts.
+                 </p>
+               )}
             </div>
          </div>
          <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl" />

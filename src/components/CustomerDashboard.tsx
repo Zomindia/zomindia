@@ -165,7 +165,7 @@ function PartnerLiveStatus({
 interface SafetyInfoTooltipProps {
   partnerId?: string;
   isVerified?: boolean;
-  kycStatus?: 'not_submitted' | 'pending' | 'verified' | 'rejected' | 'approved';
+  kycStatus?: 'not_submitted' | 'pending' | 'pending_review' | 'verified' | 'rejected' | 'approved';
 }
 
 function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified' }: SafetyInfoTooltipProps) {

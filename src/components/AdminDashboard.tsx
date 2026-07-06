@@ -46,6 +46,7 @@ import AmcManagement from "./AmcManagement";
 import ReferralLifecycleManager from "./ReferralLifecycleManager";
 import ChatWindow from "./ChatWindow";
 import PartnerTrackingMap from "./PartnerTrackingMap";
+import UnifiedKYCForm from "./partner/UnifiedKYCForm";
 import {
   triggerTelephonyBridge,
   CORPORATE_LANDLINE_GATEWAY,
@@ -5731,6 +5732,13 @@ function PartnerManager({
               key={p.id}
               className="bg-white p-8 border border-slate-200 rounded-[40px] shadow-sm relative overflow-hidden group hover:border-blue-700 transition-all"
             >
+              {p.approvalStatus === 'blacklisted' && (
+                <div className="absolute inset-0 bg-red-600/10 backdrop-blur-[1px] flex items-center justify-center z-30 select-none pointer-events-none">
+                  <div className="border-4 border-red-600 text-red-600 font-black text-2xl uppercase tracking-widest px-6 py-3 rounded-2xl rotate-[-12deg] shadow-lg bg-white/95 animate-pulse">
+                    BANNED
+                  </div>
+                </div>
+              )}
               <div className="relative z-10 flex flex-col items-center text-center">
                 <div className="relative mb-6">
                   <img
@@ -6123,6 +6131,62 @@ function PartnerManager({
                     <Star size={18} />
                   </button>
                 </div>
+
+                <div className="w-full mt-4 pt-4 border-t border-slate-100 flex gap-2 relative z-10">
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Are you absolutely sure you want to permanently delete partner? This will delete both user and partner records.`)) return;
+                      try {
+                        await deleteDoc(doc(db, "partners", p.id));
+                        await deleteDoc(doc(db, "users", p.id));
+                        alert("Partner record permanently deleted.");
+                        setRawPartners?.((prev) => prev.filter((item) => item.id !== p.id));
+                      } catch (err) {
+                        alert("Failed to delete partner: " + err);
+                      }
+                    }}
+                    className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                    Delete Partner
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      const isBlacklisted = p.approvalStatus === "blacklisted";
+                      const nextStatus = isBlacklisted ? "approved" : "blacklisted";
+                      if (!confirm(`Are you sure you want to set approval status to "${nextStatus}" for this partner?`)) return;
+                      try {
+                        await updateDoc(doc(db, "users", p.id), {
+                          approvalStatus: nextStatus,
+                          "partnerData.approvalStatus": nextStatus
+                        });
+                        await setDoc(doc(db, "partners", p.id), {
+                          approvalStatus: nextStatus
+                        }, { merge: true });
+                        alert(`Partner is now ${nextStatus === "blacklisted" ? "BLACKLISTED" : "APPROVED"}.`);
+                        setRawPartners?.((prev) =>
+                          prev.map((item) => {
+                            if (item.id === p.id) {
+                              return { ...item, approvalStatus: nextStatus };
+                            }
+                            return item;
+                          })
+                        );
+                      } catch (err) {
+                        alert("Failed to update blacklist: " + err);
+                      }
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      p.approvalStatus === "blacklisted"
+                        ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-600"
+                        : "bg-slate-900 hover:bg-slate-800 text-white"
+                    }`}
+                  >
+                    <ShieldAlert size={12} />
+                    {p.approvalStatus === "blacklisted" ? "Restore / Approve" : "Blacklist"}
+                  </button>
+                </div>
               </div>
               <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-slate-50 rounded-full z-0 group-hover:scale-110 transition-transform" />
             </div>
@@ -6202,111 +6266,29 @@ function PartnerManager({
           </div>
         )}
 
-        {manualKYCPartner && (
-          <div
-            key="manual-kyc-modal"
-            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-sm"
-          >
-            <motion.div
-              key="manual-kyc-motion"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-[40px] max-w-md w-full shadow-2xl flex flex-col max-h-[90vh]"
-            >
-              <div className="px-10 py-6 border-b border-slate-50 shrink-0 flex justify-between items-center">
-                <div>
-                  <h3 className="text-2xl font-bold italic">Add Documents</h3>
-                  <p className="text-slate-500 text-sm font-medium">
-                    Add identity documents manually.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setManualKYCPartner(null)}
-                  className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    ID Proof Document
-                  </p>
-                  <input
-                    type="text"
-                    placeholder="Enter ID Proof Number (e.g., Aadhar/PAN)"
-                    value={manualDocs[0]?.documentNumber || ""}
-                    onChange={(e) => {
-                      const newDocs = [...manualDocs];
-                      newDocs[0] = {
-                        ...newDocs[0],
-                        documentNumber: e.target.value,
-                      };
-                      setManualDocs(newDocs);
-                    }}
-                    className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
-                  />
-                  <AdminUpload
-                    label=""
-                    placeholder="Upload ID Proof image"
-                    value={manualDocs[0]?.url || ""}
-                    onUpload={(url) => {
-                      const newDocs = [...manualDocs];
-                      newDocs[0] = { ...newDocs[0], url };
-                      setManualDocs(newDocs);
-                    }}
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Address Proof Document
-                  </p>
-                  <input
-                    type="text"
-                    placeholder="Enter Address Proof Details (Optional)"
-                    value={manualDocs[1]?.documentNumber || ""}
-                    onChange={(e) => {
-                      const newDocs = [...manualDocs];
-                      newDocs[1] = {
-                        ...newDocs[1],
-                        documentNumber: e.target.value,
-                      };
-                      setManualDocs(newDocs);
-                    }}
-                    className="w-full mb-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none transition-all shadow-inner"
-                  />
-                  <AdminUpload
-                    label=""
-                    placeholder="Upload Address Proof image"
-                    value={manualDocs[1]?.url || ""}
-                    onUpload={(url) => {
-                      const newDocs = [...manualDocs];
-                      newDocs[1] = { ...newDocs[1], url };
-                      setManualDocs(newDocs);
-                    }}
-                  />
-                </div>
-
-                <div className="flex gap-4 pt-4 border-t border-slate-100">
-                  <button
-                    onClick={() => setManualKYCPartner(null)}
-                    className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl transition-colors uppercase tracking-widest text-[10px]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleManualKYC}
-                    className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-900/20 uppercase tracking-widest text-[10px]"
-                  >
-                    Verify Now
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
+         {manualKYCPartner && (
+          <UnifiedKYCForm
+            mode="admin_manual"
+            partnerId={manualKYCPartner.id}
+            onClose={() => setManualKYCPartner(null)}
+            onSuccess={() => {
+              setManualKYCPartner(null);
+              // Force local state update so it is ultra-responsive!
+              setRawPartners?.((prev) =>
+                prev.map((item) => {
+                  if (item.id === manualKYCPartner.id) {
+                    return {
+                      ...item,
+                      kycStatus: "verified",
+                      isVerified: true,
+                      isElite: true,
+                    };
+                  }
+                  return item;
+                })
+              );
+            }}
+          />
         )}
 
         {rejectingKYCPartner && (

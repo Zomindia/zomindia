@@ -29,6 +29,8 @@ import PartnerSettings from './partner/PartnerSettings';
 import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
+import UnifiedKYCForm from './partner/UnifiedKYCForm';
+import { ShieldAlert, Lock } from 'lucide-react';
 import { LoadingScreen } from './LoadingIndicator';
 import LogoHorizontal from '../assets/logo-horizontal.png';
 import LogoIcon from '../assets/logo-icon.png';
@@ -62,11 +64,73 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     const nested = (profile as any)?.partnerData?.kycStatus;
     return String(direct || nested || 'pending').toLowerCase().trim();
   });
+  const [approvalStatus, setApprovalStatus] = useState<string>(() => {
+    return (profile as any)?.approvalStatus || 'pending';
+  });
   const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
   const [showPendingAlert, setShowPendingAlert] = useState<boolean>(false);
+  const [showKycForm, setShowKycForm] = useState<boolean>(false);
+  const [countdownText, setCountdownText] = useState<string>("");
 
   // Active global background service that periodic/live updates coordinate markers in firebase
   const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
+
+  // Listen to open-kyc-modal event
+  useEffect(() => {
+    const handleOpenKyc = () => setShowKycForm(true);
+    window.addEventListener('open-kyc-modal', handleOpenKyc);
+    return () => window.removeEventListener('open-kyc-modal', handleOpenKyc);
+  }, []);
+
+  // Set up live countdown for grace period
+  useEffect(() => {
+    if (approvalStatus === 'approved' && partner?.gracePeriodEnd) {
+      const updateTimer = () => {
+        let targetMs = 0;
+        const graceEnd = partner.gracePeriodEnd;
+        if (typeof graceEnd === 'string') {
+          targetMs = new Date(graceEnd).getTime();
+        } else if (graceEnd?.seconds) {
+          targetMs = graceEnd.seconds * 1000;
+        } else if (graceEnd?.toDate) {
+          targetMs = graceEnd.toDate().getTime();
+        } else if (typeof graceEnd === 'number') {
+          targetMs = graceEnd;
+        } else {
+          targetMs = new Date(graceEnd).getTime();
+        }
+
+        const diff = targetMs - Date.now();
+        if (diff <= 0) {
+          setCountdownText("KYC Overdue");
+        } else {
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          setCountdownText(`${days}d ${hours}h ${mins}m`);
+        }
+      };
+      updateTimer();
+      const interval = setInterval(updateTimer, 30000); // update every 30s
+      return () => clearInterval(interval);
+    }
+  }, [approvalStatus, partner?.gracePeriodEnd]);
+
+  // Set gracePeriodEnd if they are approved but don't have one
+  useEffect(() => {
+    if (approvalStatus === 'approved' && partner && !partner.gracePeriodEnd) {
+      const gracePeriod = Timestamp.fromDate(new Date(Date.now() + 72 * 60 * 60 * 1000));
+      const activeUid = profile.uid;
+      updateDoc(doc(db, 'users', activeUid), {
+        gracePeriodEnd: gracePeriod,
+        "partnerData.gracePeriodEnd": gracePeriod
+      }).catch(console.error);
+      
+      updateDoc(doc(db, 'partners', activeUid), {
+        gracePeriodEnd: gracePeriod
+      }).catch(console.error);
+    }
+  }, [approvalStatus, partner, profile.uid]);
 
   useEffect(() => {
     if (initialTargetId) {
@@ -121,8 +185,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           const uData = snap.data();
           const pData = uData?.partnerData || {};
           const liveKyc = String(uData?.kycStatus || pData.kycStatus || 'pending').toLowerCase().trim();
+          const liveApproval = uData?.approvalStatus || pData.approvalStatus || 'pending';
+          const liveGracePeriodEnd = uData?.gracePeriodEnd || pData.gracePeriodEnd || null;
           
           setKycStatus(liveKyc);
+          setApprovalStatus(liveApproval);
 
           if (liveKyc === "approved" || liveKyc === "verified") {
             console.log("[PartnerApp Realtime] KYC approval/verification detected live!");
@@ -132,6 +199,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                 userId: activeUid,
                 isVerified: true,
                 kycStatus: "approved",
+                approvalStatus: liveApproval,
+                gracePeriodEnd: liveGracePeriodEnd,
                 status: (pData.status || "active") as any,
                 availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
                 bio: pData.bio || prev?.bio || "",
@@ -151,9 +220,33 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             });
           } else {
             setPartner(prev => {
-              if (!prev) return null;
+              if (!prev) {
+                return {
+                  id: activeUid,
+                  userId: activeUid,
+                  isVerified: false,
+                  kycStatus: liveKyc as any,
+                  approvalStatus: liveApproval,
+                  gracePeriodEnd: liveGracePeriodEnd,
+                  status: 'pending',
+                  availabilityStatus: 'Offline',
+                  bio: pData.bio || '',
+                  categories: pData.categories || [],
+                  skills: pData.skills || [],
+                  city: pData.city || 'Indore',
+                  phone: pData.phone || '',
+                  email: pData.email || '',
+                  fullName: pData.fullName || profile.displayName || '',
+                  rating: 4.9,
+                  reviewCount: 0,
+                  createdAt: Timestamp.now(),
+                  updatedAt: Timestamp.now()
+                } as any;
+              }
               return {
                 ...prev,
+                approvalStatus: liveApproval,
+                gracePeriodEnd: liveGracePeriodEnd,
                 ...pData
               };
             });
@@ -317,11 +410,57 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     return <LoadingScreen message="Updating your jobs and clients..." />;
   }
 
-  // SCENARIO A (Pending): Clean screen with "Track Application Status" button
-  const isKycApproved = kycStatus === 'approved' || kycStatus === 'verified';
-  if (!isKycApproved) {
+  // 1. BLACKLISTED CHECK
+  if (approvalStatus === 'blacklisted') {
     return (
-      <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
+      <div className="min-h-[100dvh] bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-800 text-white">
+        <header className="flex justify-between items-center py-4 select-none shrink-0">
+          <div className="flex items-center gap-2 select-none">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-red-900 bg-red-950/20 p-1">
+              <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+            </div>
+            <div className="flex flex-col max-w-[100px]">
+              <span className="text-xs font-black text-red-500 tracking-tight leading-none uppercase">ZOMINDIA</span>
+              <span className="text-[7.5px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">Security Block</span>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto space-y-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-red-950/20 border border-red-900/30 rounded-3xl p-8 shadow-2xl space-y-6 flex flex-col items-center"
+          >
+            <div className="w-16 h-16 bg-red-900/20 text-red-500 border border-red-500/30 rounded-2xl flex items-center justify-center shadow-lg animate-pulse">
+              <ShieldAlert size={36} />
+            </div>
+            
+            <div className="space-y-3">
+              <h2 className="text-lg font-black text-red-400 tracking-tight leading-tight uppercase">ACCESS BLOCKED</h2>
+              <p className="text-xs text-slate-300 leading-relaxed font-semibold">
+                This partner account has been blacklisted for quality or security violations in the Indore area.
+              </p>
+              <div className="p-4 bg-red-950/40 border border-red-900/40 rounded-2xl text-left mt-2">
+                <p className="text-[11px] text-red-200 leading-relaxed font-black text-center uppercase tracking-wider">
+                  Please contact your nearest branch - Zomindia Head Office, Indore at +91 8819991904.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </main>
+
+        <footer className="py-4 text-center text-[9px] text-slate-600 font-bold uppercase tracking-wider select-none shrink-0">
+          ZOMINDIA SECURE SYSTEM • INDORE
+        </footer>
+      </div>
+    );
+  }
+
+  // 2. PENDING STATUS CHECK
+  if (approvalStatus === 'pending') {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200 text-slate-800">
         <header className="flex justify-between items-center py-4 select-none shrink-0">
           <div className="flex items-center gap-2 select-none">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1">
@@ -345,9 +484,12 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             </div>
             
             <div className="space-y-2">
-              <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight">Elite Partner Program</h2>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Thank you for applying to become a Zomindia partner. Our onboarding team is currently reviewing your profile credentials.
+              <span className="px-2.5 py-1 bg-amber-50 text-[#C5A021] border border-[#C5A021]/15 rounded-full font-black text-[9px] uppercase tracking-wider">
+                Application Pending Approval
+              </span>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight pt-1">Elite Partner Program</h2>
+              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                Our regional verification team in Indore is evaluating your credentials. We will activate your account once approved.
               </p>
             </div>
 
@@ -376,14 +518,14 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center"
+                className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center text-slate-800"
               >
                 <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 shadow-sm">
                   <Clock size={28} />
                 </div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Under Review</h3>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Pending Approval</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                  Application Under Review - Your profile is being verified by our admin team.
+                  Your profile is being verified by our Indore admin team. Please wait while we process your request.
                 </p>
                 <button
                   id="partner-pending-alert-ok-btn"
@@ -400,9 +542,41 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     );
   }
 
-  // SCENARIO C (Approved + Modal Closed)
+  // SCENARIO C (Approved)
   return (
     <div className="min-h-[100dvh] bg-slate-50 pb-32 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
+      {/* Sticky Countdown Banner */}
+      {kycStatus === 'pending' && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 flex items-center justify-between text-left relative z-50 shadow-md">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="animate-pulse shrink-0 text-white" />
+            <p className="text-[9px] leading-snug font-black tracking-wide uppercase">
+              Partner, your KYC is pending. Please complete your verification within <span className="underline font-black text-yellow-100">{countdownText || "3 days"}</span> to keep your payouts active
+            </p>
+          </div>
+          <button
+            onClick={() => setShowKycForm(true)}
+            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-900 rounded-lg text-[9px] font-black uppercase tracking-wider shrink-0 transition-all duration-150 active:scale-95 shadow-sm"
+          >
+            KYC NOW
+          </button>
+        </div>
+      )}
+
+      {/* Unified KYC Form Modal */}
+      {showKycForm && (
+        <UnifiedKYCForm 
+          mode="online" 
+          partnerId={partner?.id || profile?.partnerId || profile?.uid} 
+          onClose={() => setShowKycForm(false)} 
+          onSuccess={() => {
+            setShowKycForm(false);
+            setToastMessage("KYC Documents submitted for review successfully!");
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 3000);
+          }} 
+        />
+      )}
       {/* App Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
         <div className="flex items-center gap-2 shrink-0 select-none">

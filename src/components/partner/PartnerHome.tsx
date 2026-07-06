@@ -474,13 +474,60 @@ export default function PartnerHome({ partner, bookings, services, users, profil
           <p className="text-3xl font-black italic">₹{partner?.totalEarnings?.toLocaleString() || '0'}</p>
         </div>
         
-        <div className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 active:scale-95 transition-all">
-          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mb-6 text-amber-400">
-             <Star size={20} fill="currentColor" />
-          </div>
-          <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
-          <p className="text-3xl font-black italic">{partner?.rating || '4.9'}</p>
-        </div>
+        {(() => {
+          const isKycVerified = partner?.kycStatus === 'verified' || partner?.kycStatus === 'approved';
+          let isGracePeriodExpired = false;
+          if (partner?.gracePeriodEnd && !isKycVerified) {
+            let targetMs = 0;
+            const graceEnd = partner.gracePeriodEnd;
+            if (typeof graceEnd === 'string') {
+              targetMs = new Date(graceEnd).getTime();
+            } else if (graceEnd?.seconds) {
+              targetMs = graceEnd.seconds * 1000;
+            } else if (graceEnd?.toDate) {
+              targetMs = graceEnd.toDate().getTime();
+            } else if (typeof graceEnd === 'number') {
+              targetMs = graceEnd;
+            } else {
+              targetMs = new Date(graceEnd).getTime();
+            }
+            isGracePeriodExpired = Date.now() > targetMs;
+          }
+
+          if (isGracePeriodExpired) {
+            return (
+              <div className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 relative overflow-hidden flex flex-col justify-between">
+                <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm p-4 flex flex-col justify-center items-center text-center">
+                  <Lock size={16} className="text-amber-400 mb-1 animate-pulse" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">KYC Pending</span>
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('open-kyc-modal'));
+                    }}
+                    className="mt-1 px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer shadow-md"
+                  >
+                    KYC Now
+                  </button>
+                </div>
+                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mb-6 text-amber-400">
+                   <Star size={20} fill="currentColor" />
+                </div>
+                <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
+                <p className="text-3xl font-black italic">4.9</p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 active:scale-95 transition-all">
+              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mb-6 text-amber-400">
+                 <Star size={20} fill="currentColor" />
+              </div>
+              <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
+              <p className="text-3xl font-black italic">{partner?.rating || '4.9'}</p>
+            </div>
+          );
+        })()}
       </section>
 
       {/* Recharts Weekly Earnings Trend Mini-Dashboard */}
@@ -802,7 +849,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
       {/* 4. Mandatory Step-by-Step Onboarding Popup */}
       <AnimatePresence>
-        {partner && partner.onboardingCompleted !== true && !skippedOnboarding && (
+        {false && partner && partner.onboardingCompleted !== true && !skippedOnboarding && (
           <div 
             id="partner-onboarding-modal-wrapper"
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto"
