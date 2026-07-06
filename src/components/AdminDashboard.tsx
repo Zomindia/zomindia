@@ -5390,7 +5390,9 @@ function PartnerManager({
           lng: 75.8577,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
-          kycStatus: "verified"
+          kycStatus: "pending",
+          approvalStatus: "approved",
+          gracePeriodEnd: Date.now() + 72 * 60 * 60 * 1000
         };
 
         if (userSnap.exists()) {
@@ -5399,7 +5401,9 @@ function PartnerManager({
             role: 'partner',
             partnerId: userId,
             partnerApplicationStatus: 'approved',
+            approvalStatus: 'approved',
             isPartner: true,
+            gracePeriodEnd: Date.now() + 72 * 60 * 60 * 1000,
             partnerData: partnerData,
             updatedAt: new Date().toISOString()
           }, { merge: true });
@@ -5415,7 +5419,9 @@ function PartnerManager({
             phoneNumber: app.phone,
             city: app.area,
             partnerApplicationStatus: 'approved',
+            approvalStatus: 'approved',
             isPartner: true,
+            gracePeriodEnd: Date.now() + 72 * 60 * 60 * 1000,
             partnerData: partnerData,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()

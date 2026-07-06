@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
 import LogoIcon from '../assets/logo-icon.png';
@@ -13,58 +13,211 @@ export function LoadingScreen({
   message?: string 
 }) {
   const [imgError, setImgError] = useState(false);
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (phase === 0) {
+      // On Blue step, pause for 0.5s before jumping
+      timer = setTimeout(() => setPhase(1), 500);
+    } else if (phase === 1) {
+      // Jump from Blue to Green
+      timer = setTimeout(() => setPhase(2), 600);
+    } else if (phase === 2) {
+      // Landed on Green, pause for 0.5s
+      timer = setTimeout(() => setPhase(3), 500);
+    } else if (phase === 3) {
+      // Jump from Green to Yellow
+      timer = setTimeout(() => setPhase(4), 600);
+    } else if (phase === 4) {
+      // Landed on Yellow, pause for 0.5s
+      timer = setTimeout(() => setPhase(5), 500);
+    } else if (phase === 5) {
+      // Jump from Yellow to Red
+      timer = setTimeout(() => setPhase(6), 600);
+    } else if (phase === 6) {
+      // Landed on Red, vanishes, Top logo glows for 1.2s
+      timer = setTimeout(() => setPhase(0), 1200);
+    }
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  const getJumperAnimation = () => {
+    switch (phase) {
+      case 0:
+        return { left: 38, bottom: 56, opacity: 1, scale: 1, rotate: 0 };
+      case 1:
+        return {
+          left: [38, 108],
+          bottom: [56, 115, 96],
+          scale: [1, 1.25, 0.9, 1],
+          rotate: [0, 15, 0],
+        };
+      case 2:
+        return { left: 108, bottom: 96, opacity: 1, scale: 1, rotate: 0 };
+      case 3:
+        return {
+          left: [108, 178],
+          bottom: [96, 155, 136],
+          scale: [1, 1.25, 0.9, 1],
+          rotate: [0, 15, 0],
+        };
+      case 4:
+        return { left: 178, bottom: 136, opacity: 1, scale: 1, rotate: 0 };
+      case 5:
+        return {
+          left: [178, 248],
+          bottom: [136, 195, 176],
+          scale: [1, 1.25, 0.9, 1],
+          rotate: [0, 15, 0],
+        };
+      case 6:
+        return { left: 248, bottom: 176, opacity: 0, scale: 0, rotate: 0 };
+      default:
+        return {};
+    }
+  };
+
+  const getJumperTransition = (): any => {
+    if (phase === 1 || phase === 3 || phase === 5) {
+      return {
+        duration: 0.6,
+        ease: "easeInOut",
+      };
+    }
+    if (phase === 0) {
+      return { duration: 0.3, ease: "easeOut" };
+    }
+    return { duration: 0.15, ease: "linear" };
+  };
+
+  const stairs = [
+    { color: 'blue', left: 30, bottom: 40, pulse: "steadyPulseBlue 2s infinite ease-in-out", bg: "bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-300" },
+    { color: 'green', left: 100, bottom: 80, pulse: "steadyPulseGreen 2s infinite ease-in-out", bg: "bg-gradient-to-b from-emerald-400 to-emerald-600 border border-emerald-300" },
+    { color: 'yellow', left: 170, bottom: 120, pulse: "steadyPulseYellow 2s infinite ease-in-out", bg: "bg-gradient-to-b from-amber-400 to-amber-600 border border-amber-300" },
+    { color: 'red', left: 240, bottom: 160, pulse: "steadyPulseRed 2s infinite ease-in-out", bg: "bg-gradient-to-b from-rose-400 to-rose-600 border border-rose-300" }
+  ];
 
   return (
-    <div className="fixed inset-0 min-h-screen bg-white flex flex-col items-center justify-center overflow-hidden z-50 select-none">
-      <div className="relative flex flex-col items-center justify-center font-sans text-center">
-        {/* Simple & Clean Rotating Outer Track Ring */}
-        <div className="relative w-28 h-28 flex items-center justify-center mb-6">
-          <motion.div 
-            className="absolute inset-0 rounded-full border-2 border-neutral-100 border-t-[#050CA6]"
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, ease: "linear", duration: 1.2 }}
-          />
+    <div className="fixed inset-0 min-h-screen bg-slate-950 flex flex-col items-center justify-center overflow-hidden z-[9999] select-none">
+      <style>{`
+        @keyframes steadyPulseBlue {
+          0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+          50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.85); }
+        }
+        @keyframes steadyPulseGreen {
+          0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+          50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.85); }
+        }
+        @keyframes steadyPulseYellow {
+          0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+          50% { box-shadow: 0 0 30px rgba(245, 158, 11, 0.85); }
+        }
+        @keyframes steadyPulseRed {
+          0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.4); }
+          50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.85); }
+        }
+      `}</style>
+
+      {/* Blurred Background Image - Rajwada Palace Indore */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center scale-105 filter blur-[12px] opacity-35 mix-blend-lighten"
+        style={{ 
+          backgroundImage: `url('https://images.unsplash.com/photo-1627308595229-7830a5c91f9f?q=80&w=1200&auto=format&fit=crop')` 
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-slate-950/40" />
+
+      <div className="relative flex flex-col items-center justify-center font-sans text-center z-10 max-w-md w-full px-6">
+        
+        {/* Fixed gold-bordered brand logo at top center */}
+        <motion.div
+          animate={{
+            boxShadow: phase === 6
+              ? "0 0 50px rgba(255, 215, 0, 0.95), inset 0 0 25px rgba(255, 215, 0, 0.6)"
+              : "0 0 15px rgba(255, 215, 0, 0.35), inset 0 0 10px rgba(255, 215, 0, 0.15)",
+            borderColor: phase === 6 ? "#fffbcf" : "#ffd700",
+            scale: phase === 6 ? [1, 1.15, 1.08] : 1
+          }}
+          transition={{
+            duration: phase === 6 ? 1.2 : 0.8,
+            ease: "easeInOut"
+          }}
+          className="w-24 h-24 rounded-3xl bg-slate-900 border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
+        >
+          <div className="absolute inset-0.5 rounded-[22px] border border-amber-500/25 pointer-events-none" />
+          {!imgError ? (
+            <img 
+              src={LogoIcon} 
+              alt="zomindia brand" 
+              className="w-[68px] h-[68px] object-contain"
+              referrerPolicy="no-referrer"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <span className="text-[#ffd700] text-3xl font-black">Z</span>
+          )}
+        </motion.div>
+
+        {/* Stair animation container */}
+        <div className="relative w-[320px] h-[240px] flex items-center justify-center mb-6">
           
-          {/* Animated zomindia Logo Shield / Custom Loader Gif */}
-          <div className="absolute w-16 h-16 flex items-center justify-center overflow-hidden rounded-2xl bg-neutral-50/50 shadow-sm border border-neutral-100/50">
-            <motion.div 
-              className="absolute w-12 h-12 flex items-center justify-center"
-              initial={{ scale: 0.95 }}
-              animate={{ 
-                scale: [1, 1.05, 1]
+          {/* Static solid-box RGB stairs */}
+          {stairs.map((step) => (
+            <div
+              key={step.color}
+              className={`absolute w-14 h-4 rounded-lg shadow-lg ${step.bg}`}
+              style={{
+                left: `${step.left}px`,
+                bottom: `${step.bottom}px`,
+                animation: step.pulse
               }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: 2.0, 
-                ease: "easeInOut" 
+            />
+          ))}
+
+          {/* Gold splash burst when landing on Red step (phase 6) */}
+          {phase === 6 && (
+            <motion.div
+              initial={{ scale: 0.1, opacity: 1 }}
+              animate={{ scale: 2.2, opacity: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="absolute w-14 h-14 bg-amber-400 rounded-full blur-md pointer-events-none"
+              style={{
+                left: "241px", // Centered near the red step center (240 + 28 - 28)
+                bottom: "167px", // Centered on the red step top (160 + 7)
               }}
-            >
-              {!imgError ? (
-                <img 
-                  src={LogoIcon} 
-                  alt="zomindia icon" 
-                  className="w-full h-full object-contain focus-image-align"
-                  referrerPolicy="no-referrer"
-                  onError={() => setImgError(true)}
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-[#0F1A80] text-white rounded-xl font-extrabold text-2xl shadow-inner select-none">
-                  Z
-                </div>
-              )}
-            </motion.div>
-          </div>
+            />
+          )}
+
+          {/* Moving Element: Smaller Zomindia logo with gold glow */}
+          <motion.div
+            animate={getJumperAnimation()}
+            transition={getJumperTransition()}
+            className="absolute w-10 h-10 rounded-xl bg-slate-900/95 border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
+          >
+            {!imgError ? (
+              <img 
+                src={LogoIcon} 
+                alt="zomindia mini" 
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="text-[#ffd700] text-lg font-black leading-none">Z</span>
+            )}
+          </motion.div>
         </div>
 
-        {/* Message */}
-        <motion.p 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-slate-500 text-sm font-semibold tracking-wide"
-        >
-          {message}
-        </motion.p>
+        {/* Brand Shield & Info */}
+        <div className="space-y-2 mt-4 text-center">
+          <h2 className="text-white text-sm font-black uppercase tracking-[0.25em] flex items-center justify-center gap-2">
+            <Shield className="text-[#ffd700] w-4 h-4 fill-[#ffd700]/15" />
+            Zomindia Trust Shield
+          </h2>
+          <p className="text-slate-400 text-[9px] font-black uppercase tracking-[0.2em] opacity-80 min-h-[16px]">
+            {message}
+          </p>
+        </div>
       </div>
     </div>
   );
