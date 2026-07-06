@@ -1466,6 +1466,99 @@ router.post("/call/mask", async (req: any, res: any) => {
   }
 });
 
+// POST /api/make-secure-call
+router.post("/make-secure-call", async (req: any, res: any) => {
+  try {
+    const { fromUserId, toUserId, recipientRole } = req.body;
+    if (!fromUserId || !toUserId) {
+      return res.status(400).json({ error: "Missing required parameters: fromUserId, toUserId" });
+    }
+
+    const db = getDb();
+
+    // Helper to extract phone number from users or partners collection
+    const getPhone = async (uid: string) => {
+      const uDoc = await db.collection("users").doc(uid).get();
+      if (uDoc.exists) {
+        const uData = uDoc.data() || {};
+        const p = uData.phoneNumber || uData.customerPhone || uData.customerMobile || uData.customerBookedPhone || uData.phone || uData.mobile;
+        if (p) return p;
+      }
+      const pDoc = await db.collection("partners").doc(uid).get();
+      if (pDoc.exists) {
+        const pData = pDoc.data() || {};
+        const p = pData.phoneNumber || pData.phone || pData.mobile;
+        if (p) return p;
+      }
+      return null;
+    };
+
+    const initiatorPhone = await getPhone(fromUserId);
+    const recipientPhone = await getPhone(toUserId);
+
+    if (!initiatorPhone) {
+      return res.status(404).json({ error: `Initiator phone number not found for user ID: ${fromUserId}` });
+    }
+    if (!recipientPhone) {
+      return res.status(404).json({ error: `Recipient phone number not found for user ID: ${toUserId}` });
+    }
+
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
+
+    if (!accountSid || !authToken || !twilioNumber || accountSid.trim() === "" || accountSid === "YOUR_ACCOUNT_SID") {
+      console.log("[Twilio Proxy] Credentials not configured. Running telephony simulation.");
+      return res.json({
+        success: true,
+        isSimulated: true,
+        message: "Initiating Secure Connection via Zomindia Shield...",
+        callId: `twilio_sim_${Math.floor(100000 + Math.random() * 900000)}`
+      });
+    }
+
+    // Format phone numbers to E.164 format
+    const formatE164 = (phone: string) => {
+      let clean = phone.replace(/\D/g, "");
+      if (clean.length === 10) {
+        return "+91" + clean;
+      }
+      if (!phone.startsWith("+")) {
+        return "+" + clean;
+      }
+      return phone;
+    };
+
+    const formattedInitiator = formatE164(initiatorPhone);
+    const formattedRecipient = formatE164(recipientPhone);
+
+    const twilio = (await import("twilio")).default;
+    const client = twilio(accountSid, authToken);
+
+    console.log(`[Twilio Call Masking] Outgoing dial to initiator: ${formattedInitiator} | Target: ${formattedRecipient}`);
+
+    const twiml = `<Response><Say voice="alice">Connecting your secure call via Zomindia Shield.</Say><Dial callerId="${twilioNumber}">${formattedRecipient}</Dial></Response>`;
+
+    const call = await client.calls.create({
+      to: formattedInitiator,
+      from: twilioNumber,
+      twiml: twiml
+    });
+
+    console.log(`[Twilio Call Masking] Call Sid created: ${call.sid}`);
+    return res.json({
+      success: true,
+      isSimulated: false,
+      callId: call.sid,
+      message: "Initiating Secure Connection via Zomindia Shield..."
+    });
+
+  } catch (err: any) {
+    console.error("[Twilio Telephony Error]:", err);
+    return res.status(500).json({ error: err.message || "Failed to initiate secure call masking via Twilio." });
+  }
+});
+
 // Helper to clean and extract last 10 digits of a phone number
 const getCleanDigits = (phone: any): string => {
   if (!phone) return "";

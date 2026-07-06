@@ -3087,15 +3087,52 @@ export default function ProfileSettings({
                                   {booking.partnerPhone && (
                                     <button
                                       id="profile-secure-call-btn"
-                                      onClick={(e) => {
-                                        window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                                          detail: {
-                                            phone: booking.partnerPhone || "+918517071009",
-                                            name: booking.partnerName || "Service Partner",
-                                            role: "Partner",
-                                            bookingId: booking.id
+                                      onClick={async (e) => {
+                                        const currentUid = auth.currentUser?.uid;
+                                        const targetUid = booking.partnerId || booking.partnerUid;
+
+                                        if (!currentUid) {
+                                          if (typeof (window as any).__showToast === "function") {
+                                            (window as any).__showToast("Authentication required to make calls.");
                                           }
-                                        }));
+                                          return;
+                                        }
+                                        if (!targetUid) {
+                                          if (typeof (window as any).__showToast === "function") {
+                                            (window as any).__showToast("Recipient details are missing.");
+                                          }
+                                          return;
+                                        }
+
+                                        if (typeof (window as any).__showToast === "function") {
+                                          (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
+                                        }
+
+                                        try {
+                                          const response = await fetch('/api/make-secure-call', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                              fromUserId: currentUid,
+                                              toUserId: targetUid,
+                                              recipientRole: 'partner'
+                                            })
+                                          });
+                                          const data = await response.json();
+                                          if (response.ok && data.success) {
+                                            if (typeof (window as any).__showToast === "function") {
+                                              (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+                                            }
+                                          } else {
+                                            if (typeof (window as any).__showToast === "function") {
+                                              (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+                                            }
+                                          }
+                                        } catch (err: any) {
+                                          if (typeof (window as any).__showToast === "function") {
+                                            (window as any).__showToast("Failed to connect to the telephony bridge.");
+                                          }
+                                        }
                                       }}
                                       className="w-full sm:w-auto text-center bg-white border border-neutral-200 text-neutral-800 hover:border-neutral-300 active:bg-neutral-50 active:scale-95 font-extrabold tracking-wider text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                                     >

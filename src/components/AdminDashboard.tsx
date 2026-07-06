@@ -198,6 +198,53 @@ const handleAdminBridgeCall = async (
   }
 };
 
+const handleInitiateSecureCall = async (targetUid: string, recipientRole: 'customer' | 'partner') => {
+  const currentUid = auth.currentUser?.uid;
+
+  if (!currentUid) {
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("Authentication required to make calls.");
+    }
+    return;
+  }
+  if (!targetUid) {
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("Recipient details are missing.");
+    }
+    return;
+  }
+
+  if (typeof (window as any).__showToast === "function") {
+    (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
+  }
+
+  try {
+    const response = await fetch('/api/make-secure-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fromUserId: currentUid,
+        toUserId: targetUid,
+        recipientRole
+      })
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+      }
+    } else {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+      }
+    }
+  } catch (err: any) {
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("Failed to connect to the telephony bridge.");
+    }
+  }
+};
+
 export default function AdminDashboard({
   profile,
   setActiveTab,
@@ -1905,14 +1952,13 @@ export default function AdminDashboard({
                             <button
                               id="admin-secure-call-overview-btn"
                               onClick={() => {
-                                window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                                  detail: {
-                                    phone: partnerInfo?.phone || "+918517071009",
-                                    name: partnerInfo?.displayName || "Vikas Chopra",
-                                    role: "Partner",
-                                    bookingId: b.id
+                                if (b.partnerId) {
+                                  handleInitiateSecureCall(b.partnerId, 'partner');
+                                } else {
+                                  if (typeof (window as any).__showToast === "function") {
+                                    (window as any).__showToast("No partner assigned to this booking yet.");
                                   }
-                                }));
+                                }
                               }}
                               className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
@@ -3137,14 +3183,14 @@ function BookingManager({
                           <button
                             id="admin-connect-customer-call-btn"
                             onClick={() => {
-                              window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                                detail: {
-                                  phone: bridgeCustomer?.phoneNumber || bridgeCustomer?.mobile || "+919424456606",
-                                  name: bridgeCustomer?.fullName || bridgeCustomer?.displayName || "Customer",
-                                  role: "Customer",
-                                  bookingId: managingStatusBookingId || undefined
+                              const customerUid = bridgeBooking?.customerUid;
+                              if (customerUid) {
+                                handleInitiateSecureCall(customerUid, 'customer');
+                              } else {
+                                if (typeof (window as any).__showToast === "function") {
+                                  (window as any).__showToast("Customer details are missing for this booking.");
                                 }
-                              }));
+                              }
                             }}
                             className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 cursor-pointer"
                           >
@@ -3176,14 +3222,7 @@ function BookingManager({
                             <button
                               id="admin-connect-agent-call-btn"
                               onClick={() => {
-                                window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                                  detail: {
-                                    phone: bridgePartner?.phone || "+918517071009",
-                                    name: bridgePartner?.fullName || bridgePartner?.displayName || "Service Agent",
-                                    role: "Partner",
-                                    bookingId: managingStatusBookingId || undefined
-                                  }
-                                }));
+                                handleInitiateSecureCall(bridgeBooking.partnerId!, 'partner');
                               }}
                               className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 cursor-pointer"
                             >
@@ -6038,14 +6077,13 @@ function PartnerManager({
                     <button
                       id="admin-secure-call-partner-btn"
                       onClick={() => {
-                        window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                          detail: {
-                            phone: user.phoneNumber || "+918517071009",
-                            name: user.fullName || user.displayName || "Service Agent",
-                            role: "Partner",
-                            bookingId: undefined
+                        if (user?.uid) {
+                          handleInitiateSecureCall(user.uid, 'partner');
+                        } else {
+                          if (typeof (window as any).__showToast === "function") {
+                            (window as any).__showToast("User ID is missing.");
                           }
-                        }));
+                        }
                       }}
                       className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
                     >
@@ -6480,14 +6518,13 @@ function PartnerManager({
                         <button
                           id="admin-secure-call-agent-btn"
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-                              detail: {
-                                phone: selectedProfilePartner.user?.phoneNumber || "+918517071009",
-                                name: selectedProfilePartner.user?.fullName || selectedProfilePartner.user?.displayName || "Service Agent",
-                                role: "Partner",
-                                bookingId: undefined
+                            if (selectedProfilePartner.user?.uid) {
+                              handleInitiateSecureCall(selectedProfilePartner.user.uid, 'partner');
+                            } else {
+                              if (typeof (window as any).__showToast === "function") {
+                                (window as any).__showToast("User ID is missing.");
                               }
-                            }));
+                            }
                           }}
                           className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
                         >

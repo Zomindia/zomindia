@@ -608,18 +608,51 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   }, [activeCoordinatedCallBooking]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    const customer = customers[booking.customerUid];
-    const customerPhone = customer?.phoneNumber || customer?.mobile || booking.customerPhone || "+919424456606";
-    const customerName = customer?.fullName || customer?.displayName || booking.customerName || "Customer";
-    
-    window.dispatchEvent(new CustomEvent('trigger-secure-call', {
-      detail: {
-        phone: customerPhone,
-        name: customerName,
-        role: "Customer",
-        bookingId: booking.id
+    const currentUid = auth.currentUser?.uid;
+    const targetUid = booking.customerUid;
+
+    if (!currentUid) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Authentication required to make calls.");
       }
-    }));
+      return;
+    }
+    if (!targetUid) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Recipient details are missing.");
+      }
+      return;
+    }
+
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
+    }
+
+    try {
+      const response = await fetch('/api/make-secure-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: currentUid,
+          toUserId: targetUid,
+          recipientRole: 'customer'
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        if (typeof (window as any).__showToast === "function") {
+          (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+        }
+      } else {
+        if (typeof (window as any).__showToast === "function") {
+          (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+        }
+      }
+    } catch (err: any) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast("Failed to connect to the telephony bridge.");
+      }
+    }
   };
 
   const handleAnswerCall = async (booking: Booking) => {
