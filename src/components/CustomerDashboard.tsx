@@ -521,12 +521,18 @@ export default function CustomerDashboard({
   }, [bookings]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-    }
-    setTimeout(() => {
-      window.location.href = 'tel:+19862490231';
-    }, 1500);
+    const partner = booking.partnerId ? partners[booking.partnerId] : null;
+    const partnerPhone = partner?.phoneNumber || partner?.mobile || booking.partnerPhone || "+918517071009";
+    const partnerName = partner?.fullName || partner?.displayName || booking.partnerName || "Service Professional";
+    
+    window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+      detail: {
+        phone: partnerPhone,
+        name: partnerName,
+        role: "Partner",
+        bookingId: booking.id
+      }
+    }));
   };
 
   const handleAnswerCall = async (booking: Booking) => {

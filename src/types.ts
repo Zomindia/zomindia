@@ -267,6 +267,8 @@ export interface Booking {
   customerPhone?: string;
   customerName?: string;
   customerMobile?: string;
+  partnerPhone?: string;
+  partnerName?: string;
   customerData?: {
     fullName?: string;
     mobile?: string;

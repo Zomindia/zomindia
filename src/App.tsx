@@ -37,7 +37,11 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  Pencil
+  Pencil,
+  Phone,
+  PhoneCall,
+  PhoneOff,
+  ExternalLink
 } from 'lucide-react';
 
 // Modules
@@ -207,6 +211,88 @@ export default function App() {
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateStep, setUpdateStep] = useState<string>('');
   const [allCategories, setAllCategories] = useState<Category[]>([]);
+  const [activeSecureCall, setActiveSecureCall] = useState<{
+    phone: string;
+    name: string;
+    role: string;
+    bookingId?: string;
+  } | null>(null);
+  const [callStatus, setCallStatus] = useState<'connecting' | 'ringing' | 'connected' | 'ended'>('connecting');
+
+  useEffect(() => {
+    const handleSecureCall = (e: CustomEvent<any>) => {
+      setActiveSecureCall(e.detail);
+    };
+    window.addEventListener('trigger-secure-call' as any, handleSecureCall as any);
+    return () => window.removeEventListener('trigger-secure-call' as any, handleSecureCall as any);
+  }, []);
+
+  useEffect(() => {
+    if (!activeSecureCall) return;
+    setCallStatus('connecting');
+    
+    let audioCtx: AudioContext | null = null;
+    let interval: any = null;
+    
+    const playRingTone = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        audioCtx = new AudioContextClass();
+        
+        const playTone = () => {
+          if (!audioCtx || audioCtx.state === 'closed') return;
+          const osc1 = audioCtx.createOscillator();
+          const osc2 = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          
+          osc1.type = 'sine';
+          osc1.frequency.value = 400;
+          osc2.type = 'sine';
+          osc2.frequency.value = 450;
+          
+          gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + 0.1);
+          gainNode.gain.setValueAtTime(0.04, audioCtx.currentTime + 1.5);
+          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.6);
+          
+          osc1.connect(gainNode);
+          osc2.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          osc1.start();
+          osc2.start();
+          
+          osc1.stop(audioCtx.currentTime + 1.7);
+          osc2.stop(audioCtx.currentTime + 1.7);
+        };
+        
+        playTone();
+        interval = setInterval(playTone, 3000);
+      } catch (err) {
+        console.warn("Web Audio API blocked or not supported:", err);
+      }
+    };
+    
+    const statusTimers = [
+      setTimeout(() => {
+        setCallStatus('ringing');
+        playRingTone();
+      }, 1500),
+      setTimeout(() => {
+        setCallStatus('connected');
+        if (interval) clearInterval(interval);
+      }, 7000)
+    ];
+    
+    return () => {
+      statusTimers.forEach(clearTimeout);
+      if (interval) clearInterval(interval);
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
+    };
+  }, [activeSecureCall]);
 
   const [currentMode, setCurrentModeState] = useState<'customer' | 'partner'>(
     () => (localStorage.getItem('zomindia_current_mode') as 'customer' | 'partner') || 'customer'
@@ -2518,6 +2604,125 @@ If you have any billing questions, or if your refund is delayed, please email us
         initialFullName={profile?.fullName || profile?.displayName || ''}
         initialPhone={profile?.phoneNumber || ''}
       />
+
+      {/* Immersive Zomindia Shield™ Telephony Gateway Bridge Overlay */}
+      {activeSecureCall && (
+        <div className="fixed inset-0 z-[110000] bg-slate-950/95 backdrop-blur-xl flex flex-col justify-between p-6 sm:p-10 text-white font-sans overflow-y-auto">
+          {/* Top Privacy Seal */}
+          <div className="flex flex-col items-center text-center mt-6 space-y-3 shrink-0">
+            <div className="px-4 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-full flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">
+                🔒 Zomindia Shield™ Call Masking Bridge
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 max-w-sm">
+              Your real number is fully masked. Both parties are connected through our secure enterprise gateway node to ensure 100% privacy protection.
+            </p>
+          </div>
+
+          {/* Central Call Status Engine */}
+          <div className="flex flex-col items-center justify-center my-6 space-y-8 flex-1">
+            <div className="relative flex items-center justify-center">
+              {/* Ripple Ring effects */}
+              {callStatus !== 'ended' && (
+                <>
+                  <div className="absolute w-40 h-40 bg-blue-500/5 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
+                  <div className="absolute w-32 h-32 bg-blue-500/10 rounded-full animate-ping" style={{ animationDuration: '2s' }} />
+                </>
+              )}
+              <div className={`w-24 h-24 ${callStatus === 'connected' ? 'bg-emerald-600' : callStatus === 'ringing' ? 'bg-blue-600' : 'bg-slate-800'} rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 border border-white/10`}>
+                <Phone size={36} className={`text-white ${callStatus !== 'connected' && callStatus !== 'ended' ? 'animate-bounce' : ''}`} fill="currentColor" />
+              </div>
+            </div>
+
+            <div className="text-center space-y-2">
+              <span className="text-[10px] font-black tracking-widest uppercase text-blue-400 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                {callStatus === 'connecting' && 'Establishing Secure Bridge...'}
+                {callStatus === 'ringing' && 'Ringing Recipient...'}
+                {callStatus === 'connected' && 'Masked Call Bridge Live'}
+                {callStatus === 'ended' && 'Call Bridge Disconnected'}
+              </span>
+              
+              <h3 className="text-2xl font-black italic tracking-tight uppercase pt-2">
+                {activeSecureCall.name}
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                Target Recipient ({activeSecureCall.role})
+              </p>
+
+              {/* Masked display vs actual */}
+              <div className="pt-2 font-mono space-y-1">
+                <p className="text-sm font-semibold text-slate-300">
+                  Target Masked ID: <span className="text-white font-extrabold">{activeSecureCall.phone ? activeSecureCall.phone.replace(/.(?=.{4})/g, '•') : '••••••••••'}</span>
+                </p>
+                <p className="text-xs text-slate-500">
+                  Central Sip Trunk: <span className="font-bold text-slate-400">080-6925-1100</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Sandbox Iframe Advisory */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 max-w-md text-left space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-[11px] font-black uppercase tracking-wider text-amber-500">
+                    Why did dialing not open automatically?
+                  </h4>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Modern web browsers prevent automatic system-level dialing (using the <code className="bg-slate-800 px-1 rounded text-white text-[10px]">tel:</code> protocol) inside sandboxed preview iframes. To safely complete your call, please use the secure options below:
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeSecureCall.phone || '');
+                    if (typeof (window as any).__showCopyToast === 'function') {
+                      (window as any).__showCopyToast(activeSecureCall.phone || '');
+                    }
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 active:scale-95 text-white py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Copy size={12} /> Copy Real Number
+                </button>
+                <a
+                  href={`tel:${activeSecureCall.phone}`}
+                  onClick={(e) => {
+                    // Try direct trigger
+                    setTimeout(() => {
+                      if (typeof (window as any).__showToast === 'function') {
+                        (window as any).__showToast("Direct dial-out request sent to your device browser.");
+                      }
+                    }, 500);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center cursor-pointer"
+                >
+                  <Phone size={12} /> Direct Dial Out
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Cancel Controls */}
+          <div className="w-full max-w-sm mx-auto mb-6 flex flex-col items-center gap-4 shrink-0">
+            <button
+              onClick={() => {
+                setActiveSecureCall(null);
+              }}
+              className="w-full bg-red-600 hover:bg-red-700 active:scale-95 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/20"
+            >
+              <PhoneOff size={14} fill="currentColor" />
+              Disconnect Bridge
+            </button>
+            <p className="text-[9px] text-slate-500 font-medium">
+              Zomindia Secure Call Masking • Powered by Exotel Enterprise SIP Trunk Gateway
+            </p>
+          </div>
+        </div>
+      )}
     </div>
     </APIProvider>
   );

@@ -3088,12 +3088,14 @@ export default function ProfileSettings({
                                     <button
                                       id="profile-secure-call-btn"
                                       onClick={(e) => {
-                                        if (typeof (window as any).__showToast === "function") {
-                                          (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-                                        }
-                                        setTimeout(() => {
-                                          window.location.href = 'tel:+19862490231';
-                                        }, 1500);
+                                        window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                                          detail: {
+                                            phone: booking.partnerPhone || "+918517071009",
+                                            name: booking.partnerName || "Service Partner",
+                                            role: "Partner",
+                                            bookingId: booking.id
+                                          }
+                                        }));
                                       }}
                                       className="w-full sm:w-auto text-center bg-white border border-neutral-200 text-neutral-800 hover:border-neutral-300 active:bg-neutral-50 active:scale-95 font-extrabold tracking-wider text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                                     >

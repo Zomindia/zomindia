@@ -1905,10 +1905,14 @@ export default function AdminDashboard({
                             <button
                               id="admin-secure-call-overview-btn"
                               onClick={() => {
-                                triggerToast("Initiating secure call... Your privacy is protected.");
-                                setTimeout(() => {
-                                  window.location.href = 'tel:+19862490231';
-                                }, 1500);
+                                window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                                  detail: {
+                                    phone: partnerInfo?.phone || "+918517071009",
+                                    name: partnerInfo?.displayName || "Vikas Chopra",
+                                    role: "Partner",
+                                    bookingId: b.id
+                                  }
+                                }));
                               }}
                               className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
@@ -3118,90 +3122,97 @@ function BookingManager({
                 </div>
 
                 {/* Communication Bridge */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-6 bg-blue-50/50 rounded-[32px] border border-blue-100/50">
-                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-4 tracking-widest">
-                      Connect with Customer
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        id="admin-connect-customer-call-btn"
-                        onClick={() => {
-                          if (typeof (window as any).__showToast === "function") {
-                            (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-                          }
-                          setTimeout(() => {
-                            window.location.href = 'tel:+19862490231';
-                          }, 1500);
-                        }}
-                        className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 cursor-pointer"
-                      >
-                        <Phone size={14} />{" "}
-                        <span className="text-[10px] font-bold">Call (Secure)</span>
-                      </button>
-                      <button
-                        onClick={() =>
-                          setShowChat({
-                            type: "customer",
-                            id: bookings.find(
-                              (b) => b.id === managingStatusBookingId,
-                            )?.customerUid!,
-                            bookingId: managingStatusBookingId!,
-                          })
-                        }
-                        className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
-                      >
-                        <MessageSquare size={14} />{" "}
-                        <span className="text-[10px] font-bold">Chat</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100/50">
-                    <label className="block text-[10px] font-black text-emerald-700 uppercase mb-4 tracking-widest">
-                      Connect with Agent
-                    </label>
-                    {bookings.find((b) => b.id === managingStatusBookingId)
-                      ?.partnerId ? (
-                      <div className="flex gap-2">
-                        <button
-                          id="admin-connect-agent-call-btn"
-                          onClick={() => {
-                            if (typeof (window as any).__showToast === "function") {
-                              (window as any).__showToast("Initiating secure call... Your privacy is protected.");
+                {(() => {
+                  const bridgeBooking = bookings.find((b) => b.id === managingStatusBookingId);
+                  const bridgeCustomer = bridgeBooking ? users.find((u) => u.uid === bridgeBooking.customerUid) : null;
+                  const bridgePartner = bridgeBooking ? partners.find((p) => p.id === bridgeBooking.partnerId || p.userId === bridgeBooking.partnerId) : null;
+                  
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-6 bg-blue-50/50 rounded-[32px] border border-blue-100/50">
+                        <label className="block text-[10px] font-black text-blue-700 uppercase mb-4 tracking-widest">
+                          Connect with Customer
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            id="admin-connect-customer-call-btn"
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                                detail: {
+                                  phone: bridgeCustomer?.phoneNumber || bridgeCustomer?.mobile || "+919424456606",
+                                  name: bridgeCustomer?.fullName || bridgeCustomer?.displayName || "Customer",
+                                  role: "Customer",
+                                  bookingId: managingStatusBookingId || undefined
+                                }
+                              }));
+                            }}
+                            className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 cursor-pointer"
+                          >
+                            <Phone size={14} />{" "}
+                            <span className="text-[10px] font-bold">Call (Secure)</span>
+                          </button>
+                          <button
+                            onClick={() =>
+                              setShowChat({
+                                type: "customer",
+                                id: bridgeBooking?.customerUid!,
+                                bookingId: managingStatusBookingId!,
+                              })
                             }
-                            setTimeout(() => {
-                              window.location.href = 'tel:+19862490231';
-                            }, 1500);
-                          }}
-                          className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 cursor-pointer"
-                        >
-                          <Phone size={14} />{" "}
-                          <span className="text-[10px] font-bold">Call (Secure)</span>
-                        </button>
-                        <button
-                          onClick={() =>
-                            setShowChat({
-                              type: "partner",
-                              id: bookings.find(
-                                (b) => b.id === managingStatusBookingId,
-                              )?.partnerId!,
-                              bookingId: managingStatusBookingId!,
-                            })
-                          }
-                          className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
-                        >
-                          <MessageSquare size={14} />{" "}
-                          <span className="text-[10px] font-bold">Chat</span>
-                        </button>
+                            className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 hover:bg-blue-700 hover:text-white transition-all shadow-sm"
+                          >
+                            <MessageSquare size={14} />{" "}
+                            <span className="text-[10px] font-bold">Chat</span>
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <p className="text-[10px] text-slate-400 font-bold italic py-2">
-                        No agent assigned yet
-                      </p>
-                    )}
-                  </div>
-                </div>
+
+                      <div className="p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100/50">
+                        <label className="block text-[10px] font-black text-emerald-700 uppercase mb-4 tracking-widest">
+                          Connect with Agent
+                        </label>
+                        {bridgeBooking?.partnerId ? (
+                          <div className="flex gap-2">
+                            <button
+                              id="admin-connect-agent-call-btn"
+                              onClick={() => {
+                                window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                                  detail: {
+                                    phone: bridgePartner?.phone || "+918517071009",
+                                    name: bridgePartner?.fullName || bridgePartner?.displayName || "Service Agent",
+                                    role: "Partner",
+                                    bookingId: managingStatusBookingId || undefined
+                                  }
+                                }));
+                              }}
+                              className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 cursor-pointer"
+                            >
+                              <Phone size={14} />{" "}
+                              <span className="text-[10px] font-bold">Call (Secure)</span>
+                            </button>
+                            <button
+                              onClick={() =>
+                                setShowChat({
+                                  type: "partner",
+                                  id: bridgeBooking.partnerId!,
+                                  bookingId: managingStatusBookingId!,
+                                })
+                              }
+                              className="flex-1 bg-white p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 hover:bg-emerald-700 hover:text-white transition-all shadow-sm"
+                            >
+                              <MessageSquare size={14} />{" "}
+                              <span className="text-[10px] font-bold">Chat</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 font-bold italic py-2">
+                            No agent assigned yet
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Pending Metadata */}
                 {statusForm.status === "pending" && (
@@ -6027,12 +6038,14 @@ function PartnerManager({
                     <button
                       id="admin-secure-call-partner-btn"
                       onClick={() => {
-                        if (typeof (window as any).__showToast === "function") {
-                          (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-                        }
-                        setTimeout(() => {
-                          window.location.href = 'tel:+19862490231';
-                        }, 1500);
+                        window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                          detail: {
+                            phone: user.phoneNumber || "+918517071009",
+                            name: user.fullName || user.displayName || "Service Agent",
+                            role: "Partner",
+                            bookingId: undefined
+                          }
+                        }));
                       }}
                       className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
                     >
@@ -6467,12 +6480,14 @@ function PartnerManager({
                         <button
                           id="admin-secure-call-agent-btn"
                           onClick={() => {
-                            if (typeof (window as any).__showToast === "function") {
-                              (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-                            }
-                            setTimeout(() => {
-                              window.location.href = 'tel:+19862490231';
-                            }, 1500);
+                            window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+                              detail: {
+                                phone: selectedProfilePartner.user?.phoneNumber || "+918517071009",
+                                name: selectedProfilePartner.user?.fullName || selectedProfilePartner.user?.displayName || "Service Agent",
+                                role: "Partner",
+                                bookingId: undefined
+                              }
+                            }));
                           }}
                           className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
                         >

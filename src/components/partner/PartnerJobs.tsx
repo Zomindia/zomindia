@@ -608,12 +608,18 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   }, [activeCoordinatedCallBooking]);
 
   const handleInitiateCall = async (booking: Booking) => {
-    if (typeof (window as any).__showToast === 'function') {
-      (window as any).__showToast("Initiating secure call... Your privacy is protected.");
-    }
-    setTimeout(() => {
-      window.location.href = 'tel:+19862490231';
-    }, 1500);
+    const customer = customers[booking.customerUid];
+    const customerPhone = customer?.phoneNumber || customer?.mobile || booking.customerPhone || "+919424456606";
+    const customerName = customer?.fullName || customer?.displayName || booking.customerName || "Customer";
+    
+    window.dispatchEvent(new CustomEvent('trigger-secure-call', {
+      detail: {
+        phone: customerPhone,
+        name: customerName,
+        role: "Customer",
+        bookingId: booking.id
+      }
+    }));
   };
 
   const handleAnswerCall = async (booking: Booking) => {
