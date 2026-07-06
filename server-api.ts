@@ -48,8 +48,8 @@ import { readFileSync } from "fs";
 const router = express.Router();
 
 // Helper to access Firestore database instance
-let _db: any = null;
 let _clientDb: any = null;
+let _adminDb: any = null;
 
 const initializeClientDb = async () => {
   try {
@@ -72,15 +72,14 @@ const initializeClientDb = async () => {
       });
       await clientApp.auth().signInWithCustomToken(customToken);
       console.log("[Client Backend] Authenticated system-worker@zomindia.com successfully");
-      _clientDb = clientApp.firestore();
-      _db = _clientDb;
+      _clientDb = clientApp.firestore(firebaseConfig.firestoreDatabaseId || undefined);
     } catch (authErr: any) {
       console.log("[Client Backend] Sandbox token sign-in bypassed: using secure Admin SDK fallback directly.");
-      _db = null; // Forces getDb() to use getAdminFirestore() Admin SDK fallback
+      _clientDb = null;
     }
   } catch (err: any) {
     console.log("[Client Backend] Initialization fallback to high-privilege Admin SDK active.");
-    _db = null;
+    _clientDb = null;
   }
 };
 
@@ -88,30 +87,26 @@ const initializeClientDb = async () => {
 initializeClientDb();
 
 const getDb = () => {
-  if (_db) return _db;
+  // Always prefer Admin SDK if available
+  if (_adminDb) return _adminDb;
   
-  // Dynamic fallback to admin firestore if client auth hasn't completed/failed
   try {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
-    if (firebaseConfig.firestoreDatabaseId) {
-      _db = getAdminFirestore(realAdmin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
-    } else {
-      _db = realAdmin.firestore();
+    if (realAdmin.apps.length > 0) {
+      if (firebaseConfig.firestoreDatabaseId) {
+        _adminDb = getAdminFirestore(realAdmin.apps[0], firebaseConfig.firestoreDatabaseId);
+      } else {
+        _adminDb = realAdmin.firestore();
+      }
+      return _adminDb;
     }
   } catch (err: any) {
-    console.error("[getDb Fallback Error]:", err.message);
-    try {
-      if (realAdmin.apps.length > 0) {
-        _db = realAdmin.firestore();
-      } else {
-        _db = null;
-      }
-    } catch (innerErr: any) {
-      _db = null;
-    }
+    console.error("[getDb] Admin SDK initialization failed, checking client DB:", err.message);
   }
-  return _db;
+  
+  if (_clientDb) return _clientDb;
+  return null;
 };
 
 /**

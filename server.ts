@@ -57,8 +57,8 @@ let isWorkerAuthenticated = true;
 // Background worker connection runs directly under high-privilege Admin SDK, no client login required.
 
 
-let _serverDb: any = null;
 let _serverClientDb: any = null;
+let _serverAdminDb: any = null;
 
 const initializeServerClientDb = async () => {
   try {
@@ -81,15 +81,14 @@ const initializeServerClientDb = async () => {
       });
       await clientApp.auth().signInWithCustomToken(customToken);
       console.log("[Server Client Backend] Authenticated system-worker@zomindia.com successfully");
-      _serverClientDb = clientApp.firestore();
-      _serverDb = _serverClientDb;
+      _serverClientDb = clientApp.firestore(firebaseConfig.firestoreDatabaseId || undefined);
     } catch (authErr: any) {
       console.log("[Server Client Backend] Sandbox token sign-in bypassed: using secure Admin SDK fallback directly.");
-      _serverDb = null; // Forces getDbInstance() to use getFirestore() Admin SDK fallback
+      _serverClientDb = null;
     }
   } catch (err: any) {
     console.log("[Server Client Backend] Initialization fallback to high-privilege Admin SDK active.");
-    _serverDb = null;
+    _serverClientDb = null;
   }
 };
 
@@ -97,29 +96,26 @@ const initializeServerClientDb = async () => {
 initializeServerClientDb();
 
 const getDbInstance = () => {
-  if (_serverDb) return _serverDb;
+  // Always prefer Admin SDK if available
+  if (_serverAdminDb) return _serverAdminDb;
   
   try {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
-    if (firebaseConfig.firestoreDatabaseId) {
-      _serverDb = getFirestore(admin.apps[0] || undefined, firebaseConfig.firestoreDatabaseId);
-    } else {
-      _serverDb = getFirestore();
+    if (admin.apps.length > 0) {
+      if (firebaseConfig.firestoreDatabaseId) {
+        _serverAdminDb = getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId);
+      } else {
+        _serverAdminDb = getFirestore();
+      }
+      return _serverAdminDb;
     }
   } catch (err: any) {
-    console.error("[Server getDbInstance Fallback Error]:", err.message);
-    try {
-      if (admin.apps.length > 0) {
-        _serverDb = admin.firestore();
-      } else {
-        _serverDb = null;
-      }
-    } catch (innerErr: any) {
-      _serverDb = null;
-    }
+    console.error("[Server getDbInstance Error]:", err.message);
   }
-  return _serverDb;
+  
+  if (_serverClientDb) return _serverClientDb;
+  return null;
 };
 
 // Proxies for db and adminDb to auto-delegate with zero refactoring in server.ts
