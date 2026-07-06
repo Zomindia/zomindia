@@ -195,8 +195,7 @@ export interface AdditionalCharge {
 
 export interface Booking {
   id: string;
-  customerId: string;
-  userId?: string; // relational matching customer uid
+  customerUid: string;
   partnerId?: string;
   serviceId: string;
   status: BookingStatus;
@@ -284,7 +283,7 @@ export interface FAQ {
 export interface Review {
   id: string;
   bookingId: string;
-  customerId: string;
+  customerUid: string;
   partnerId: string;
   serviceId?: string;
   rating: number;

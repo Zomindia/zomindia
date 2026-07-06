@@ -12,6 +12,7 @@ import {
   updateDoc,
   Timestamp,
   addDoc,
+  or,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import {
@@ -742,14 +743,16 @@ export default function CustomerHome({
   }, [activeBooking]);
 
   useEffect(() => {
-    if (!profile) {
+    if (!profile?.uid) {
       setActiveBooking(null);
       return;
     }
     const q = query(
       collection(db, "bookings"),
-      where("userId", "==", profile.uid),
-      where("status", "in", [
+      where("customerUid", "==", profile.uid)
+    );
+    return onSnapshot(q, (snap) => {
+      const allowedStatuses = [
         "pending",
         "confirmed",
         "assigned",
@@ -760,16 +763,20 @@ export default function CustomerHome({
         "pending_parts",
         "completed",
         "finalized",
-      ]),
-      orderBy("createdAt", "desc"),
-      limit(1),
-    );
-    return onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const booking = {
-          id: snap.docs[0].id,
-          ...snap.docs[0].data(),
-        } as Booking;
+      ];
+      const bookings = snap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() } as Booking))
+        .filter((b) => allowedStatuses.includes(b.status || ""));
+
+      // Sort client-side in-memory to prevent composite index issues
+      bookings.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+
+      if (bookings.length > 0) {
+        const booking = bookings[0];
         setActiveBooking(booking);
         const isDismissed =
           localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
@@ -780,6 +787,8 @@ export default function CustomerHome({
         setTickerDismissed(false);
         setRecentCardDismissed(false);
       }
+    }, (err) => {
+      console.error("Error watching active bookings query:", err);
     });
   }, [profile?.uid]);
 
@@ -790,7 +799,7 @@ export default function CustomerHome({
     }
     const q = query(
       collection(db, "bookings"),
-      where("userId", "==", profile.uid)
+      where("customerUid", "==", profile.uid)
     );
     const unsubscribe = onSnapshot(q, (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));

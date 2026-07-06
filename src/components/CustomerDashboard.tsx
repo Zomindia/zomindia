@@ -990,7 +990,7 @@ export default function CustomerDashboard({
   // Automatically open rating popup for completed bookings that need review (Urban Company style)
   useEffect(() => {
     const completedBookingToReview = bookings.find(
-      (b) => b.status === "completed" && b.paymentStatus === "paid" && b.customerId === profile?.uid
+      (b) => b.status === "completed" && b.paymentStatus === "paid" && b.customerUid === profile?.uid
     );
     if (completedBookingToReview && !finalizingBooking) {
       setRating(0);

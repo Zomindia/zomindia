@@ -147,7 +147,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
         const referrer = users.find(u => u.uid === referee.referredBy);
         
         // Check local booking state for referee's first completed job
-        const refereeBookings = bookings.filter(b => b.customerId === referee.uid);
+        const refereeBookings = bookings.filter(b => b.customerUid === referee.uid);
         const hasCompletedBooking = refereeBookings.some(b => ['completed', 'finalized'].includes(b.status));
         
         // Find if they have any bookings details to show (count, dates)

@@ -20,7 +20,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isCustomerUser = auth.currentUser?.uid === booking.customerId;
+  const isCustomerUser = auth.currentUser?.uid === booking.customerUid;
 
   useEffect(() => {
     const messagesRef = collection(db, 'bookings', booking.id, 'messages');
@@ -76,7 +76,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
   };
 
   const getQuickReplies = () => {
-    const isCustomer = auth.currentUser?.uid === booking.customerId;
+    const isCustomer = auth.currentUser?.uid === booking.customerUid;
     
     if (isCustomer) {
       return [
@@ -211,7 +211,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
               <MessageSquare size={32} className="text-slate-100" />
             </div>
             <h5 className="text-lg font-bold text-slate-900 mb-1 italic">Direct Message</h5>
-            <p className="text-[10px] text-slate-400 leading-relaxed font-black uppercase tracking-widest">Connect with your {auth.currentUser?.uid === booking.customerId ? 'pro' : 'client'}</p>
+            <p className="text-[10px] text-slate-400 leading-relaxed font-black uppercase tracking-widest">Connect with your {auth.currentUser?.uid === booking.customerUid ? 'pro' : 'client'}</p>
           </div>
         ) : (
           <div className="space-y-6">

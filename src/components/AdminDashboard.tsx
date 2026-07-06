@@ -279,7 +279,7 @@ export default function AdminDashboard({
   useEffect(() => {
     if (selectedOverviewBooking) {
       const b = selectedOverviewBooking;
-      const targetId = b.customerId || b.userId;
+      const targetId = b.customerUid;
       if (targetId) {
         const custRef = doc(db, "users", targetId);
         getDoc(custRef)
@@ -1176,7 +1176,7 @@ export default function AdminDashboard({
                           .map((b) => {
                             const customer = users.find(
                               (u) =>
-                                u.uid === b.customerId || u.uid === b.userId,
+                                u.uid === b.customerUid,
                             );
                             const serviceObj = services.find(
                               (s) => s.id === b.serviceId,
@@ -1618,7 +1618,7 @@ export default function AdminDashboard({
                 (() => {
                   const b = selectedOverviewBooking;
                   const customer = users.find(
-                    (u) => u.uid === b.customerId || u.uid === b.userId,
+                    (u) => u.uid === b.customerUid,
                   );
                   const partnerInfo = partners.find(
                     (p) => p.id === b.partnerId || p.userId === b.partnerId,
@@ -3141,7 +3141,7 @@ function BookingManager({
                             type: "customer",
                             id: bookings.find(
                               (b) => b.id === managingStatusBookingId,
-                            )?.customerId!,
+                            )?.customerUid!,
                             bookingId: managingStatusBookingId!,
                           })
                         }
@@ -3337,7 +3337,7 @@ function BookingRow({
   key?: any;
 }) {
   const user = users.find(
-    (u) => u.uid === booking.customerId || u.uid === booking.userId,
+    (u) => u.uid === booking.customerUid,
   );
   const partner = partners.find((p) => p.userId === booking.partnerId);
   const service = services.find((s) => s.id === booking.serviceId);
@@ -6988,16 +6988,16 @@ function UserManager({
           </thead>
           <tbody>
              {(() => {
-              // Extract all customerId and partnerId from bookings that do not exist in the users array to find ghost users
+              // Extract all customerUid and partnerId from bookings that do not exist in the users array to find ghost users
               const existingUids = new Set(users.map((usr) => usr.uid));
               const ghostUsers: UserProfile[] = [];
               bookings.forEach((b) => {
-                if (b.customerId && !existingUids.has(b.customerId)) {
-                  existingUids.add(b.customerId);
+                if (b.customerUid && !existingUids.has(b.customerUid)) {
+                  existingUids.add(b.customerUid);
                   ghostUsers.push({
-                    uid: b.customerId,
-                    displayName: b.customerName || `Ghost Customer (${b.customerId.slice(0, 6)})`,
-                    email: `ghost_${b.customerId.slice(0, 6)}@zomindia.com`,
+                    uid: b.customerUid,
+                    displayName: b.customerName || `Ghost Customer (${b.customerUid.slice(0, 6)})`,
+                    email: `ghost_${b.customerUid.slice(0, 6)}@zomindia.com`,
                     phoneNumber: b.customerPhone || '',
                     mobile: b.customerPhone || '',
                     role: 'customer',
@@ -7025,7 +7025,7 @@ function UserManager({
 
               return allUsersToDisplay.map((u, i) => {
                 const userBookings = bookings.filter(
-                  (b) => b.customerId === u.uid || b.partnerId === u.uid,
+                  (b) => b.customerUid === u.uid || b.partnerId === u.uid,
                 );
                 return (
                   <tr

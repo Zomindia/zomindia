@@ -239,7 +239,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   const currentJob = activeJobs[0]; // Simplification for mobile: show one most urgent job
 
   const service = currentJob ? services.find(s => s.id === currentJob.serviceId) : null;
-  const customer = currentJob ? users.find(u => u.uid === currentJob.customerId) : null;
+  const customer = currentJob ? users.find(u => u.uid === currentJob.customerUid) : null;
 
   const upcomingJobs = bookings
     .filter(b => b.status === 'confirmed')
@@ -251,7 +251,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   
   const nextUpcomingJob = upcomingJobs[0];
   const nextService = nextUpcomingJob ? services.find(s => s.id === nextUpcomingJob.serviceId) : null;
-  const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerId) : null;
+  const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerUid) : null;
 
   // Compile real metrics from bookings for the sparklines
   const myBookings = bookings.filter(b => b.partnerId === profile.uid);

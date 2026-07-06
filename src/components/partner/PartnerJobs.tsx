@@ -392,7 +392,7 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
                     </h4>
                     <p className="text-xs text-indigo-950/70 mt-1 font-semibold flex items-center gap-1 font-sans">
                       <User size={12} className="text-indigo-950/40" />
-                      Client: {customers[highlightedBooking.customerId]?.displayName || 'Customer'}
+                      Client: {customers[highlightedBooking.customerUid]?.displayName || 'Customer'}
                     </p>
                     <p className="text-[11px] text-indigo-950/60 font-normal mt-1 leading-normal">
                       📍 {highlightedBooking.address}
@@ -1029,7 +1029,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       fetch('/api/process-referral-reward', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ customerId: booking.customerId })
+         body: JSON.stringify({ customerUid: booking.customerUid })
       }).catch(err => console.error('Failed to trigger referral reward', err));
 
       notifyBookingUpdate({ ...booking, status: 'completed', paymentStatus: 'paid', paymentMethod: 'cash' }, 'completed', partner?.userId || '');
@@ -1093,7 +1093,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   // Sync Customers & Services (Optimization: could be handled in parent and passed down)
   useEffect(() => {
     const fetchMissingData = async () => {
-      const customerIds = Array.from(new Set(bookings.map(b => b.customerId))).filter(id => !customers[id]);
+      const customerIds = Array.from(new Set(bookings.map(b => b.customerUid))).filter(id => !customers[id]);
       const serviceIds = Array.from(new Set(bookings.map(b => b.serviceId))).filter(id => !services[id]);
 
       if (customerIds.length > 0) {
@@ -1254,7 +1254,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   };
 
   const renderJobCard = (booking: Booking, isHistory = false) => {
-    const customer = customers[booking.customerId];
+    const customer = customers[booking.customerUid];
     const service = services[booking.serviceId];
     const bookingStatus = booking.status || 'pending';
     const bookingId = booking.id || '';
@@ -1375,7 +1375,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const renderBookingDetailsModal = () => {
     if (!selectedBooking) return null;
     const booking = bookings.find(b => b.id === selectedBooking.id) || selectedBooking;
-    const customer = customers[booking.customerId];
+    const customer = customers[booking.customerUid];
     const service = services[booking.serviceId];
     const bookingStatus = booking.status || 'pending';
     const bookingId = booking.id || '';
@@ -2438,7 +2438,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           <div className="fixed inset-0 z-[120]">
             <ChatWindow 
                booking={activeChat} 
-               otherUser={customers[activeChat.customerId]} 
+               otherUser={customers[activeChat.customerUid]} 
                onClose={() => setActiveChat(null)} 
             />
           </div>
