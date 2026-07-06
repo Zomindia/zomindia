@@ -507,6 +507,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [services, setServices] = useState<Record<string, Service>>({});
   const [activeChat, setActiveChat] = useState<Booking | null>(null);
   const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(null);
+  const [isCalling, setIsCalling] = useState<boolean>(false);
 
   const [callTimer, setCallTimer] = useState<number>(30);
   const [showSecondaryEscalation, setShowSecondaryEscalation] = useState<boolean>(false);
@@ -624,9 +625,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       return;
     }
 
-    if (typeof (window as any).__showToast === "function") {
-      (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
-    }
+    setIsCalling(true);
 
     try {
       const response = await fetch('/api/make-secure-call', {
@@ -641,17 +640,19 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       const data = await response.json();
       if (response.ok && data.success) {
         if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+          (window as any).__showToast("Call initiated! Please answer your phone to connect.");
         }
       } else {
         if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+          (window as any).__showToast("Could not connect call. Please try again.");
         }
       }
     } catch (err: any) {
       if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Failed to connect to the telephony bridge.");
+        (window as any).__showToast("Could not connect call. Please try again.");
       }
+    } finally {
+      setIsCalling(false);
     }
   };
 
@@ -1375,15 +1376,15 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                ) : !isHistory && (
                  <div className="mt-3 flex flex-wrap gap-2">
                    <button
-                     type="button"
+                     type="button" disabled={isCalling}
                      onClick={(e) => {
                        e.stopPropagation();
                        handleInitiateCall(booking);
                      }}
-                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
+                     className="disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
                    >
-                     <Phone size={11} className="text-white" fill="currentColor" />
-                     Call (Secure)
+                     <Phone size={11} className="disabled:opacity-50 text-white" fill="currentColor" />
+                     {isCalling ? "Connecting..." : "Call"}
                    </button>
                    {booking.status === 'arrived' && (
                      <button
@@ -1466,13 +1467,14 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             <div className="grid grid-cols-3 gap-4">
                <button 
                  id="partner-booking-secure-call-btn-2"
+                 disabled={isCalling}
                  onClick={() => handleInitiateCall(booking)}
-                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-95 active:scale-90 active:bg-emerald-100 transition-all cursor-pointer"
+                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-95 active:scale-90 active:bg-emerald-100 transition-all cursor-pointer disabled:opacity-50"
                >
                  <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
                    <Phone size={24} className="fill-emerald-200/30" />
                  </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest">Call (Secure)</span>
+                 <span className="text-[10px] font-black uppercase tracking-widest">{isCalling ? "Connecting..." : "Call"}</span>
                </button>
                <button 
                  onClick={() => setActiveChat(booking)}

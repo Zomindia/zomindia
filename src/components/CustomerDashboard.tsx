@@ -427,6 +427,7 @@ export default function CustomerDashboard({
   };
 
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isCalling, setIsCalling] = useState<boolean>(false);
   const [partners, setPartners] = useState<Record<string, UserProfile>>({});
   const [partnerDetails, setPartnerDetails] = useState<
     Record<string, PartnerProfile>
@@ -537,9 +538,7 @@ export default function CustomerDashboard({
       return;
     }
 
-    if (typeof (window as any).__showToast === "function") {
-      (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
-    }
+    setIsCalling(true);
 
     try {
       const response = await fetch('/api/make-secure-call', {
@@ -554,17 +553,19 @@ export default function CustomerDashboard({
       const data = await response.json();
       if (response.ok && data.success) {
         if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+          (window as any).__showToast("Call initiated! Please answer your phone to connect.");
         }
       } else {
         if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+          (window as any).__showToast("Could not connect call. Please try again.");
         }
       }
     } catch (err: any) {
       if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Failed to connect to the telephony bridge.");
+        (window as any).__showToast("Could not connect call. Please try again.");
       }
+    } finally {
+      setIsCalling(false);
     }
   };
 
@@ -2126,10 +2127,11 @@ export default function CustomerDashboard({
                             {partnerUser?.phoneNumber && (
                               <button
                                 id="customer-booking-secure-call-btn-1"
+                                disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm"
                               >
-                                <Phone size={12} /> Call (Secure)
+                                <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                               </button>
                             )}
                           </div>
@@ -2492,11 +2494,12 @@ export default function CustomerDashboard({
                             {partnerUser?.phoneNumber && (
                               <button
                                 id="customer-booking-secure-call-btn-2"
+                                disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 disabled:opacity-50 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
                               >
                                 <Phone size={14} className="text-slate-300" />{" "}
-                                Call (Secure)
+                                {isCalling ? "Connecting..." : "Call"}
                               </button>
                             )}
                           </div>
@@ -2977,12 +2980,13 @@ export default function CustomerDashboard({
                               <div className="flex gap-2 shrink-0">
                                 <button
                                   id="customer-booking-secure-call-btn-3"
+                                  disabled={isCalling}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleInitiateCall(booking);
                                   }}
-                                  className="w-10 h-10 bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white hover:bg-emerald-600 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-emerald-500/15 cursor-pointer"
-                                  title="Call (Secure)"
+                                  className="w-10 h-10 bg-emerald-500 active:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white hover:bg-emerald-600 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-emerald-500/15 cursor-pointer"
+                                  title="Call"
                                 >
                                   <Phone size={14} />
                                 </button>

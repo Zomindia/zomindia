@@ -198,6 +198,35 @@ const handleAdminBridgeCall = async (
   }
 };
 
+class CallStateStore {
+  private listeners: (() => void)[] = [];
+  public isCalling = false;
+
+  public subscribe(listener: () => void) {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  public setCalling(val: boolean) {
+    this.isCalling = val;
+    this.listeners.forEach(l => l());
+  }
+}
+
+const callStore = new CallStateStore();
+
+function useCallStore() {
+  const [isCalling, setIsCalling] = useState(callStore.isCalling);
+  useEffect(() => {
+    return callStore.subscribe(() => {
+      setIsCalling(callStore.isCalling);
+    });
+  }, []);
+  return isCalling;
+}
+
 const handleInitiateSecureCall = async (targetUid: string, recipientRole: 'customer' | 'partner') => {
   const currentUid = auth.currentUser?.uid;
 
@@ -214,9 +243,7 @@ const handleInitiateSecureCall = async (targetUid: string, recipientRole: 'custo
     return;
   }
 
-  if (typeof (window as any).__showToast === "function") {
-    (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
-  }
+  callStore.setCalling(true);
 
   try {
     const response = await fetch('/api/make-secure-call', {
@@ -231,17 +258,19 @@ const handleInitiateSecureCall = async (targetUid: string, recipientRole: 'custo
     const data = await response.json();
     if (response.ok && data.success) {
       if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+        (window as any).__showToast("Call initiated! Please answer your phone to connect.");
       }
     } else {
       if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+        (window as any).__showToast("Could not connect call. Please try again.");
       }
     }
   } catch (err: any) {
     if (typeof (window as any).__showToast === "function") {
-      (window as any).__showToast("Failed to connect to the telephony bridge.");
+      (window as any).__showToast("Could not connect call. Please try again.");
     }
+  } finally {
+    callStore.setCalling(false);
   }
 };
 
@@ -256,6 +285,7 @@ export default function AdminDashboard({
 }) {
   const [showPwaInstall, setShowPwaInstall] = useState(false);
   const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
+  const isCalling = useCallStore();
 
   useEffect(() => {
     const checkPrompt = () => {
@@ -1951,6 +1981,7 @@ export default function AdminDashboard({
                             </a>
                             <button
                               id="admin-secure-call-overview-btn"
+                              disabled={isCalling}
                               onClick={() => {
                                 if (b.partnerId) {
                                   handleInitiateSecureCall(b.partnerId, 'partner');
@@ -1960,9 +1991,9 @@ export default function AdminDashboard({
                                   }
                                 }
                               }}
-                              className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                              className="flex-1 sm:flex-none text-center bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <Phone size={12} /> Call (Secure)
+                              <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                             </button>
                           </div>
                         </div>
@@ -2163,6 +2194,7 @@ function BookingManager({
   initialManagingBookingId?: string | null;
   onClearInitialManagingBookingId?: () => void;
 }) {
+  const isCalling = useCallStore();
   const [sendingBillId, setSendingBillId] = useState<string | null>(null);
   const [managingStatusBookingId, setManagingStatusBookingId] = useState<
     string | null
@@ -3182,6 +3214,7 @@ function BookingManager({
                         <div className="flex gap-2">
                           <button
                             id="admin-connect-customer-call-btn"
+                            disabled={isCalling}
                             onClick={() => {
                               const customerUid = bridgeBooking?.customerUid;
                               if (customerUid) {
@@ -3192,10 +3225,10 @@ function BookingManager({
                                 }
                               }
                             }}
-                            className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 cursor-pointer"
+                            className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-blue-700 transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
                           >
                             <Phone size={14} />{" "}
-                            <span className="text-[10px] font-bold">Call (Secure)</span>
+                            <span className="text-[10px] font-bold">{isCalling ? "Connecting..." : "Call"}</span>
                           </button>
                           <button
                             onClick={() =>
@@ -3221,13 +3254,14 @@ function BookingManager({
                           <div className="flex gap-2">
                             <button
                               id="admin-connect-agent-call-btn"
+                              disabled={isCalling}
                               onClick={() => {
                                 handleInitiateSecureCall(bridgeBooking.partnerId!, 'partner');
                               }}
-                              className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 cursor-pointer"
+                              className="flex-1 bg-white hover:bg-slate-50 active:bg-slate-100 p-3 rounded-xl flex items-center justify-center gap-2 text-emerald-700 transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
                             >
                               <Phone size={14} />{" "}
-                              <span className="text-[10px] font-bold">Call (Secure)</span>
+                              <span className="text-[10px] font-bold">{isCalling ? "Connecting..." : "Call"}</span>
                             </button>
                             <button
                               onClick={() =>
@@ -5135,6 +5169,7 @@ function PartnerManager({
   setRawPartners?: React.Dispatch<React.SetStateAction<any[]>>;
   triggerToast?: (msg: string) => void;
 }) {
+  const isCalling = useCallStore();
   const [partnerViewMode, setPartnerViewMode] = useState<"all" | "kyc_pending">(
     "all",
   );
@@ -6076,6 +6111,7 @@ function PartnerManager({
                     </div>
                     <button
                       id="admin-secure-call-partner-btn"
+                      disabled={isCalling}
                       onClick={() => {
                         if (user?.uid) {
                           handleInitiateSecureCall(user.uid, 'partner');
@@ -6085,11 +6121,11 @@ function PartnerManager({
                           }
                         }
                       }}
-                      className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+                      className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
                     >
                       <Phone size={12} />
                       <span className="text-[10px] font-black uppercase tracking-widest">
-                        Call (Secure)
+                        {isCalling ? "Connecting..." : "Call"}
                       </span>
                     </button>
                   </div>
@@ -6517,6 +6553,7 @@ function PartnerManager({
                       {selectedProfilePartner.user?.phoneNumber && (
                         <button
                           id="admin-secure-call-agent-btn"
+                          disabled={isCalling}
                           onClick={() => {
                             if (selectedProfilePartner.user?.uid) {
                               handleInitiateSecureCall(selectedProfilePartner.user.uid, 'partner');
@@ -6526,9 +6563,9 @@ function PartnerManager({
                               }
                             }
                           }}
-                          className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
+                          className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
                         >
-                          <Phone size={12} /> Call (Secure)
+                          <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                         </button>
                       )}
                     </div>

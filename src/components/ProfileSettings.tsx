@@ -67,6 +67,7 @@ import {
   Camera,
   ArrowLeft,
   HelpCircle,
+  Phone,
 } from "lucide-react";
 
 interface Props {
@@ -98,6 +99,7 @@ export default function ProfileSettings({
   const [openFaq, setOpenFaq] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isCalling, setIsCalling] = useState<boolean>(false);
 
   // Real stats fetched in background
   const [stats, setStats] = useState({
@@ -3087,6 +3089,7 @@ export default function ProfileSettings({
                                   {booking.partnerPhone && (
                                     <button
                                       id="profile-secure-call-btn"
+                                      disabled={isCalling}
                                       onClick={async (e) => {
                                         const currentUid = auth.currentUser?.uid;
                                         const targetUid = booking.partnerId || booking.partnerUid;
@@ -3104,9 +3107,7 @@ export default function ProfileSettings({
                                           return;
                                         }
 
-                                        if (typeof (window as any).__showToast === "function") {
-                                          (window as any).__showToast("Initiating Secure Connection via Zomindia Shield...");
-                                        }
+                                        setIsCalling(true);
 
                                         try {
                                           const response = await fetch('/api/make-secure-call', {
@@ -3121,22 +3122,24 @@ export default function ProfileSettings({
                                           const data = await response.json();
                                           if (response.ok && data.success) {
                                             if (typeof (window as any).__showToast === "function") {
-                                              (window as any).__showToast(data.message || "Twilio Shield Call Masking initiated!");
+                                              (window as any).__showToast("Call initiated! Please answer your phone to connect.");
                                             }
                                           } else {
                                             if (typeof (window as any).__showToast === "function") {
-                                              (window as any).__showToast(data.error || data.message || "Failed to initiate secure call masking.");
+                                              (window as any).__showToast("Could not connect call. Please try again.");
                                             }
                                           }
                                         } catch (err: any) {
                                           if (typeof (window as any).__showToast === "function") {
-                                            (window as any).__showToast("Failed to connect to the telephony bridge.");
+                                            (window as any).__showToast("Could not connect call. Please try again.");
                                           }
+                                        } finally {
+                                          setIsCalling(false);
                                         }
                                       }}
-                                      className="w-full sm:w-auto text-center bg-white border border-neutral-200 text-neutral-800 hover:border-neutral-300 active:bg-neutral-50 active:scale-95 font-extrabold tracking-wider text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                                      className="w-full sm:w-auto text-center bg-white border border-neutral-200 text-neutral-800 hover:border-neutral-300 active:bg-neutral-50 active:scale-95 disabled:opacity-50 font-extrabold tracking-wider text-[10px] uppercase px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                                     >
-                                      Call (Secure)
+                                      <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                                     </button>
                                   )}
                                 </div>
