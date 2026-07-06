@@ -1125,6 +1125,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   }, [bookings]);
 
   const handleBookingUpdate = async (id: string, update: Partial<Booking>) => {
+    if (partner?.approvalStatus === 'pending' || profile?.approvalStatus === 'pending') {
+      window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+        detail: { message: 'Action locked. Waiting for Admin approval.' } 
+      }));
+      return;
+    }
     setLoading(true);
     try {
       if (update.status) {
@@ -1622,6 +1628,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   <button 
                     disabled={acceptingBookingId === booking.id}
                     onClick={async () => {
+                      if (partner?.approvalStatus === 'pending' || profile?.approvalStatus === 'pending') {
+                        window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                          detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                        }));
+                        return;
+                      }
                       setAcceptingBookingId(booking.id);
                       setTimeout(async () => {
                         await handleBookingUpdate(booking.id, { status: 'assigned', partnerId: partner?.userId || profile?.uid });

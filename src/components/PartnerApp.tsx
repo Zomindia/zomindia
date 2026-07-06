@@ -82,6 +82,20 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     return () => window.removeEventListener('open-kyc-modal', handleOpenKyc);
   }, []);
 
+  // Listen to show-partner-toast event
+  useEffect(() => {
+    const handleShowToast = (e: Event) => {
+      const msg = (e as CustomEvent)?.detail?.message || '';
+      if (msg) {
+        setToastMessage(msg);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      }
+    };
+    window.addEventListener('show-partner-toast', handleShowToast);
+    return () => window.removeEventListener('show-partner-toast', handleShowToast);
+  }, []);
+
   // Set up live countdown for grace period
   useEffect(() => {
     if (approvalStatus === 'approved' && partner?.gracePeriodEnd) {
@@ -457,90 +471,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     );
   }
 
-  // 2. PENDING STATUS CHECK
-  if (approvalStatus === 'pending') {
-    return (
-      <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200 text-slate-800">
-        <header className="flex justify-between items-center py-4 select-none shrink-0">
-          <div className="flex items-center gap-2 select-none">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1">
-              <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-            </div>
-            <div className="flex flex-col max-w-[100px]">
-              <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
-              <span className="text-[7.5px] text-[#0a2540] font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm bg-white border border-slate-100 rounded-3xl p-8 shadow-xl space-y-6 flex flex-col items-center"
-          >
-            <div className="w-16 h-16 bg-blue-50 text-blue-600 border border-blue-100 rounded-2xl flex items-center justify-center shadow-md">
-              <Clock size={32} />
-            </div>
-            
-            <div className="space-y-2">
-              <span className="px-2.5 py-1 bg-amber-50 text-[#C5A021] border border-[#C5A021]/15 rounded-full font-black text-[9px] uppercase tracking-wider">
-                Application Pending Approval
-              </span>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight pt-1">Elite Partner Program</h2>
-              <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                Our regional verification team in Indore is evaluating your credentials. We will activate your account once approved.
-              </p>
-            </div>
-
-            <button
-              id="partner-track-application-status-btn"
-              onClick={() => setShowPendingAlert(true)}
-              className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md shadow-blue-700/15 active:scale-[0.98] cursor-pointer"
-            >
-              Track Application Status
-            </button>
-          </motion.div>
-        </main>
-
-        <footer className="py-4 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider select-none shrink-0">
-          ZOMINDIA INDORE PARTNER NETWORK • HELPDESK: 9424456606
-        </footer>
-
-        {/* Alert Modal for Scenario A */}
-        <AnimatePresence>
-          {showPendingAlert && (
-            <div 
-              id="partner-pending-alert-modal"
-              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center text-slate-800"
-              >
-                <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 shadow-sm">
-                  <Clock size={28} />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Pending Approval</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                  Your profile is being verified by our Indore admin team. Please wait while we process your request.
-                </p>
-                <button
-                  id="partner-pending-alert-ok-btn"
-                  onClick={() => setShowPendingAlert(false)}
-                  className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 cursor-pointer"
-                >
-                  Okay
-                </button>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
+  // 2. PENDING STATUS CHECK - Render actual dashboard instead of blocking screen (Read-Only Teaser Mode)
+  // Replaced with conditional Welcome Training Video and action locks in sub-components
 
   // SCENARIO C (Approved)
   return (
@@ -620,7 +552,15 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
               <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
            </button>
            <button 
-             onClick={() => setShowStatusModal(true)}
+             onClick={() => {
+               if (approvalStatus === 'pending') {
+                 window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                   detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                 }));
+                 return;
+               }
+               setShowStatusModal(true);
+             }}
              className={`px-2 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border transition-all shrink-0 ${
                partner?.availabilityStatus === 'Available' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                partner?.availabilityStatus === 'Busy' ? 'bg-amber-50 text-amber-600 border-amber-100' :

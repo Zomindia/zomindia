@@ -199,7 +199,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
       )}
 
       {/* Onboarding and Application State check */}
-      {!partner && (
+      {(!partner && profile?.approvalStatus !== 'pending') && (
         application ? (
           <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-8 text-center bg-[#F8FAFC]">
             <div className="w-full max-w-sm bg-white border border-[#1B4D3E]/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
@@ -281,7 +281,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
         )
       )}
 
-      {partner && (
+      {(partner || profile?.approvalStatus === 'pending') && (
         <>
           {/* Sticky Grace Period Countdown Banner */}
           {partner?.kycStatus === 'pending' && partner?.gracePeriodEnd && (
@@ -342,6 +342,40 @@ export default function PartnerHome({ partner, bookings, services, users, profil
             <h2 className="text-2xl font-black text-slate-900 leading-tight">Welcome, {profile.displayName.split(' ')[0]}</h2>
             <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">Partner ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase() || 'TEMP'}</p>
           </section>
+
+          {/* Welcome & Training Card for Pending Partners */}
+          {(profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-br from-amber-50 to-amber-100/40 border border-amber-300/30 rounded-[32px] p-6 shadow-lg space-y-4 text-left"
+            >
+              <div className="flex gap-3.5 items-start">
+                <div className="bg-amber-500 text-white p-2.5 rounded-2xl shrink-0 shadow-md">
+                  <Sparkles size={20} className="animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-slate-900 leading-snug">
+                    ✨ Zomindia Security Check in Progress!
+                  </h3>
+                  <p className="text-[10px] text-slate-600 leading-relaxed font-bold">
+                    Your profile is being reviewed by the Indore Hub Admin. Please watch this quick training video to understand our Trust Shield guidelines before your account goes live.
+                  </p>
+                </div>
+              </div>
+
+              {/* Responsive Video Embed */}
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 shadow-inner border border-slate-200">
+                <iframe
+                  className="absolute inset-0 w-full h-full border-0"
+                  src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                  title="Zomindia Partner Training Video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </motion.div>
+          )}
 
           {/* Quick Stats Grid */}
           <section className="grid grid-cols-2 gap-4">
@@ -675,7 +709,15 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                  </div>
 
                  <button 
-                   onClick={() => onNavigate('jobs', currentJob.id)}
+                   onClick={() => {
+                     if (profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') {
+                       window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                         detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                       }));
+                       return;
+                     }
+                     onNavigate('jobs', currentJob.id);
+                   }}
                    className="w-full bg-blue-700 text-white py-6 rounded-[32px] font-black uppercase tracking-[0.2em] text-xs hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 flex items-center justify-center gap-4 active:scale-95 group/btn"
                  >
                     {currentJob.status === 'arrived' ? 'Verify OTP & Start' : 

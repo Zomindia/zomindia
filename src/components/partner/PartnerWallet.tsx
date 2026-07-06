@@ -118,7 +118,15 @@ export default function PartnerWallet({ partner }: Props) {
                     </button>
                   ) : (
                     <button 
-                      onClick={() => setShowWithdraw(true)}
+                      onClick={() => {
+                        if (partner?.approvalStatus === 'pending') {
+                          window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                            detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                          }));
+                          return;
+                        }
+                        setShowWithdraw(true);
+                      }}
                       className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/40 active:scale-95 transition-all"
                     >
                        Withdraw

@@ -18,61 +18,80 @@ export function LoadingScreen({
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (phase === 0) {
-      // On Blue step, pause for 0.5s before jumping
+      // 1. Idle on Blue step: Pause for 0.5s
       timer = setTimeout(() => setPhase(1), 500);
     } else if (phase === 1) {
-      // Jump from Blue to Green
+      // 2. Jump from Blue to Green: 0.6s animation
       timer = setTimeout(() => setPhase(2), 600);
     } else if (phase === 2) {
-      // Landed on Green, pause for 0.5s
+      // 3. Landed on Green: Pause for 0.5s
       timer = setTimeout(() => setPhase(3), 500);
     } else if (phase === 3) {
-      // Jump from Green to Yellow
+      // 4. Jump from Green to Yellow: 0.6s animation
       timer = setTimeout(() => setPhase(4), 600);
     } else if (phase === 4) {
-      // Landed on Yellow, pause for 0.5s
+      // 5. Landed on Yellow: Pause for 0.5s
       timer = setTimeout(() => setPhase(5), 500);
     } else if (phase === 5) {
-      // Jump from Yellow to Red
+      // 6. Jump from Yellow to Red: 0.6s animation
       timer = setTimeout(() => setPhase(6), 600);
     } else if (phase === 6) {
-      // Landed on Red, vanishes, Top logo glows for 1.2s
-      timer = setTimeout(() => setPhase(0), 1200);
+      // 7. Landed on Red: Pause for 0.5s before vanishing
+      timer = setTimeout(() => setPhase(7), 500);
+    } else if (phase === 7) {
+      // 8. Vanish in gold burst: 0.5s animation (Triumphant glow phase 1)
+      timer = setTimeout(() => setPhase(8), 500);
+    } else if (phase === 8) {
+      // 9. gone / reset stage: 0.5s animation (Triumphant glow phase 2)
+      timer = setTimeout(() => setPhase(0), 500);
     }
     return () => clearTimeout(timer);
   }, [phase]);
 
   const getJumperAnimation = () => {
     switch (phase) {
-      case 0:
+      case 0: // Idle on Blue
         return { left: 38, bottom: 56, opacity: 1, scale: 1, rotate: 0 };
-      case 1:
+      case 1: // Jump from Blue to Green
         return {
           left: [38, 108],
           bottom: [56, 115, 96],
           scale: [1, 1.25, 0.9, 1],
           rotate: [0, 15, 0],
+          opacity: 1
         };
-      case 2:
+      case 2: // Landed on Green
         return { left: 108, bottom: 96, opacity: 1, scale: 1, rotate: 0 };
-      case 3:
+      case 3: // Jump from Green to Yellow
         return {
           left: [108, 178],
           bottom: [96, 155, 136],
           scale: [1, 1.25, 0.9, 1],
           rotate: [0, 15, 0],
+          opacity: 1
         };
-      case 4:
+      case 4: // Landed on Yellow
         return { left: 178, bottom: 136, opacity: 1, scale: 1, rotate: 0 };
-      case 5:
+      case 5: // Jump from Yellow to Red
         return {
           left: [178, 248],
           bottom: [136, 195, 176],
           scale: [1, 1.25, 0.9, 1],
           rotate: [0, 15, 0],
+          opacity: 1
         };
-      case 6:
-        return { left: 248, bottom: 176, opacity: 0, scale: 0, rotate: 0 };
+      case 6: // Landed on Red (Pause)
+        return { left: 248, bottom: 176, opacity: 1, scale: 1, rotate: 0 };
+      case 7: // Vanishing in gold light burst
+        return {
+          left: 248,
+          bottom: 176,
+          opacity: [1, 0],
+          scale: [1, 1.35, 0],
+          rotate: 0
+        };
+      case 8: // Gone, resetting
+        return { left: 38, bottom: 56, opacity: 0, scale: 0, rotate: 0 };
       default:
         return {};
     }
@@ -85,8 +104,14 @@ export function LoadingScreen({
         ease: "easeInOut",
       };
     }
-    if (phase === 0) {
-      return { duration: 0.3, ease: "easeOut" };
+    if (phase === 7) {
+      return {
+        duration: 0.5,
+        ease: "easeOut",
+      };
+    }
+    if (phase === 0 || phase === 8) {
+      return { duration: 0.1, ease: "easeOut" };
     }
     return { duration: 0.15, ease: "linear" };
   };
@@ -97,6 +122,8 @@ export function LoadingScreen({
     { color: 'yellow', left: 170, bottom: 120, pulse: "steadyPulseYellow 2s infinite ease-in-out", bg: "bg-gradient-to-b from-amber-400 to-amber-600 border border-amber-300" },
     { color: 'red', left: 240, bottom: 160, pulse: "steadyPulseRed 2s infinite ease-in-out", bg: "bg-gradient-to-b from-rose-400 to-rose-600 border border-rose-300" }
   ];
+
+  const isMainLogoGlowing = phase === 7 || phase === 8;
 
   return (
     <div className="fixed inset-0 min-h-screen bg-slate-950 flex flex-col items-center justify-center overflow-hidden z-[9999] select-none">
@@ -133,14 +160,14 @@ export function LoadingScreen({
         {/* Fixed gold-bordered brand logo at top center */}
         <motion.div
           animate={{
-            boxShadow: phase === 6
-              ? "0 0 50px rgba(255, 215, 0, 0.95), inset 0 0 25px rgba(255, 215, 0, 0.6)"
+            boxShadow: isMainLogoGlowing
+              ? "0 0 60px rgba(255, 215, 0, 1), inset 0 0 30px rgba(255, 215, 0, 0.7)"
               : "0 0 15px rgba(255, 215, 0, 0.35), inset 0 0 10px rgba(255, 215, 0, 0.15)",
-            borderColor: phase === 6 ? "#fffbcf" : "#ffd700",
-            scale: phase === 6 ? [1, 1.15, 1.08] : 1
+            borderColor: isMainLogoGlowing ? "#fffbcf" : "#ffd700",
+            scale: isMainLogoGlowing ? [1, 1.15, 1.08] : 1
           }}
           transition={{
-            duration: phase === 6 ? 1.2 : 0.8,
+            duration: isMainLogoGlowing ? 0.8 : 0.8,
             ease: "easeInOut"
           }}
           className="w-24 h-24 rounded-3xl bg-slate-900 border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
@@ -175,12 +202,12 @@ export function LoadingScreen({
             />
           ))}
 
-          {/* Gold splash burst when landing on Red step (phase 6) */}
-          {phase === 6 && (
+          {/* Gold splash burst when landing on Red step (phase 7) */}
+          {phase === 7 && (
             <motion.div
               initial={{ scale: 0.1, opacity: 1 }}
               animate={{ scale: 2.2, opacity: 0 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
               className="absolute w-14 h-14 bg-amber-400 rounded-full blur-md pointer-events-none"
               style={{
                 left: "241px", // Centered near the red step center (240 + 28 - 28)
@@ -201,6 +228,7 @@ export function LoadingScreen({
                 alt="zomindia mini" 
                 className="w-full h-full object-contain"
                 referrerPolicy="no-referrer"
+                onError={() => setImgError(true)}
               />
             ) : (
               <span className="text-[#ffd700] text-lg font-black leading-none">Z</span>

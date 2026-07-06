@@ -577,7 +577,9 @@ export default function AdminDashboard({
               profilePhoto: u.profilePhoto || pData.profilePhoto || u.photoURL,
               onboardingCompleted: pData.onboardingCompleted !== undefined ? pData.onboardingCompleted : true,
               govtId: pData.govtId || u.govtId,
-              bankDetails: pData.bankDetails || u.bankDetails
+              bankDetails: pData.bankDetails || u.bankDetails,
+              approvalStatus: u.approvalStatus || pData.approvalStatus || "pending",
+              gracePeriodEnd: u.gracePeriodEnd || pData.gracePeriodEnd || null,
             });
           }
         });
@@ -1112,7 +1114,7 @@ export default function AdminDashboard({
                     />
                     <StatCard
                       title="Total Customers"
-                      value={users.length.toString()}
+                      value={users.filter(u => u.role === "customer" || u.isPartner === false || u.isPartner === undefined).length.toString()}
                       icon={Users}
                       color="bg-blue-700"
                     />
@@ -1988,6 +1990,7 @@ export default function AdminDashboard({
                     setActiveTab={setActiveTab}
                     partnerApplications={derivedPartnerApplications}
                     setRawPartners={setRawPartners}
+                    triggerToast={triggerToast}
                   />
                 )}
               {activeAdminTab === "users" && isAdminAuthorized("users") && (
@@ -5073,12 +5076,14 @@ function PartnerManager({
   setActiveTab,
   partnerApplications = [],
   setRawPartners,
+  triggerToast,
 }: {
   partners: PartnerProfile[];
   users: UserProfile[];
   setActiveTab: (tab: any) => void;
   partnerApplications?: PartnerApplication[];
   setRawPartners?: React.Dispatch<React.SetStateAction<any[]>>;
+  triggerToast?: (msg: string) => void;
 }) {
   const [partnerViewMode, setPartnerViewMode] = useState<"all" | "kyc_pending">(
     "all",
@@ -6139,6 +6144,47 @@ function PartnerManager({
                 </div>
 
                 <div className="w-full mt-4 pt-4 border-t border-slate-100 flex gap-2 relative z-10">
+                  {p.approvalStatus === "pending" && (
+                    <button
+                      onClick={async () => {
+                        const graceEnd = Date.now() + (72 * 60 * 60 * 1000);
+                        try {
+                          await updateDoc(doc(db, "users", p.id), {
+                            approvalStatus: "approved",
+                            gracePeriodEnd: graceEnd,
+                            "partnerData.approvalStatus": "approved",
+                            "partnerData.gracePeriodEnd": graceEnd
+                          });
+                          await setDoc(doc(db, "partners", p.id), {
+                            approvalStatus: "approved",
+                            gracePeriodEnd: graceEnd
+                          }, { merge: true });
+                          
+                          if (triggerToast) {
+                            triggerToast("Partner approved! 72-hour KYC window started.");
+                          } else {
+                            alert("Partner approved! 72-hour KYC window started.");
+                          }
+                          
+                          setRawPartners?.((prev) =>
+                            prev.map((item) => {
+                              if (item.id === p.id) {
+                                return { ...item, approvalStatus: "approved", gracePeriodEnd: graceEnd };
+                              }
+                              return item;
+                            })
+                          );
+                        } catch (err) {
+                          alert("Failed to approve partner: " + err);
+                        }
+                      }}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 cursor-pointer shadow-lg shadow-emerald-500/20"
+                    >
+                      <Check size={12} />
+                      Approve Partner
+                    </button>
+                  )}
+
                   <button
                     onClick={async () => {
                       if (!confirm(`Are you absolutely sure you want to permanently delete partner? This will delete both user and partner records.`)) return;
@@ -9551,8 +9597,8 @@ function AnalyticsView({
     0,
   );
   const totalBookings = bookings.length;
-  const activePartnersCount = partners.filter(
-    (p) => p.status === "active",
+  const activePartnersCount = users.filter(
+    (u) => u.isPartner === true,
   ).length;
 
   const processTrendData = (
