@@ -472,10 +472,7 @@ export default function CustomerDashboard({
     [bookings],
   );
   const pastBookings = useMemo(
-    () =>
-      bookings.filter((b) =>
-        ["completed", "finalized", "cancelled"].includes(b.status),
-      ),
+    () => bookings,
     [bookings],
   );
 
@@ -635,6 +632,41 @@ export default function CustomerDashboard({
   >(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
 
+  // Support request states
+  const [supportBookingId, setSupportBookingId] = useState<string | null>(null);
+  const [supportReason, setSupportReason] = useState("");
+  const [supportSubmitted, setSupportSubmitted] = useState(false);
+
+  const handleInitiateSupport = (bookingId: string) => {
+    console.log(`Support request initiated for Booking ID: ${bookingId}`);
+    setSupportBookingId(bookingId);
+    setSupportReason("");
+    setSupportSubmitted(false);
+  };
+
+  const handleSubmitSupportRequest = async () => {
+    if (!supportBookingId) return;
+    try {
+      await addDoc(collection(db, "support_requests"), {
+        bookingId: supportBookingId,
+        customerId: profile.uid,
+        reason: supportReason,
+        createdAt: Timestamp.now(),
+        status: "open",
+      });
+      setSupportSubmitted(true);
+      setTimeout(() => {
+        setSupportBookingId(null);
+      }, 2000);
+    } catch (error) {
+      console.error("Error creating support request:", error);
+      setSupportSubmitted(true);
+      setTimeout(() => {
+        setSupportBookingId(null);
+      }, 2000);
+    }
+  };
+
   // State for tracking bookings that have already been rated/reviewed in Firestore
   const [dbRatedBookings, setDbRatedBookings] = useState<Record<string, boolean>>({});
   // State for tracking locally dismissed/hidden card IDs (for animating/smooth transition before hiding)
@@ -676,17 +708,6 @@ export default function CustomerDashboard({
   // Derived filtered past bookings list for historical search/filters
   const filteredPastBookings = useMemo(() => {
     return pastBookings.filter((booking) => {
-      // If rating has already been submitted to Firestore for this booking (or marked as finalized or dismissed), hide it automatically!
-      if (booking.status === "finalized") {
-        return false;
-      }
-      if (dbRatedBookings[booking.id]) {
-        return false;
-      }
-      if (dismissedHistoryCards[booking.id]) {
-        return false;
-      }
-
       const service = services[booking.serviceId];
       // Get search query of lowercase
       const queryStr = historySearchQuery.trim().toLowerCase();
@@ -707,7 +728,7 @@ export default function CustomerDashboard({
 
       return matchesSearch && matchesCategory;
     });
-  }, [pastBookings, services, historySearchQuery, historyCategoryFilter, dbRatedBookings, dismissedHistoryCards]);
+  }, [pastBookings, services, historySearchQuery, historyCategoryFilter]);
 
   // Fetch Categories & Services for discovery
   useEffect(() => {
@@ -768,12 +789,13 @@ export default function CustomerDashboard({
     let unsubscribeSnapshot = () => {};
 
     try {
-      // Query Firestore with both 'customerUid' and 'userId' using or()
+      // Query Firestore with both 'customerUid', 'userId', and 'customerId' using or()
       const q = query(
         collection(db, "bookings"),
         or(
           where("customerUid", "==", uid),
-          where("userId", "==", uid)
+          where("userId", "==", uid),
+          where("customerId", "==", uid)
         )
       );
 
@@ -785,11 +807,11 @@ export default function CustomerDashboard({
             (d) => ({ id: d.id, ...d.data() }) as Booking
           );
 
-          // Gracefully sort client-side in memory to bypass any Firestore composite indexing requirements
+          // Gracefully sort client-side in memory descending by date/time to bypass any Firestore composite indexing requirements
           dbBookings.sort((a, b) => {
-            const timeA = a.createdAt?.seconds || 0;
-            const timeB = b.createdAt?.seconds || 0;
-            return timeB - timeA;
+            const dateA = a.scheduledAt?.toDate?.() || (a.scheduledAt instanceof Date ? a.scheduledAt : (a.scheduledAt?.seconds ? new Date(a.scheduledAt.seconds * 1000) : null)) || ((a as any).dateTime ? new Date((a as any).dateTime) : null) || (a.createdAt?.toDate?.() || (a.createdAt instanceof Date ? a.createdAt : (a.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : null))) || new Date(0);
+            const dateB = b.scheduledAt?.toDate?.() || (b.scheduledAt instanceof Date ? b.scheduledAt : (b.scheduledAt?.seconds ? new Date(b.scheduledAt.seconds * 1000) : null)) || ((b as any).dateTime ? new Date((b as any).dateTime) : null) || (b.createdAt?.toDate?.() || (b.createdAt instanceof Date ? b.createdAt : (b.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : null))) || new Date(0);
+            return dateB.getTime() - dateA.getTime();
           });
 
           setBookings(dbBookings);
@@ -3657,42 +3679,75 @@ export default function CustomerDashboard({
                       </div>
                     )}
 
-                    {["completed", "finalized"].includes(booking.status) && (
-                      <div className="flex flex-col items-end gap-1.5 ml-auto">
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">
-                          Post-Service & Billing
-                        </p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const link = document.createElement("a");
-                              link.href = `/api/download-invoice?bookingId=${booking.id}`;
-                              link.setAttribute("download", `invoice_${booking.id}.pdf`);
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
-                            }}
-                            className="text-[9px] font-black uppercase tracking-widest text-[#050CA6] flex items-center gap-1.5 hover:text-[#040980] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 transition-all shadow-sm cursor-pointer"
-                            title="Download invoice for this completed service"
-                          >
-                            <Download size={10} /> Invoice PDF
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(
-                                `mailto:support@zomindia.com?subject=Support Request: Booking ${booking.id}&body=Hi Support Team,%0D%0A%0D%0AI need assistance with my booking ${booking.id} (${services[booking.serviceId]?.name}).%0D%0A%0D%0A[Please describe your issue here]`,
-                              );
-                            }}
-                            className="text-[9px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1.5 hover:text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 transition-all shadow-sm"
-                            title="Our experts are here 24/7 to resolve any post-service concerns or quality issues."
-                          >
-                            <HelpCircle size={10} /> Support
-                          </button>
+                    {(() => {
+                      const getBookingDate = (b: any): Date | null => {
+                        if (b.scheduledAt) {
+                          if (typeof b.scheduledAt.toDate === "function") {
+                            return b.scheduledAt.toDate();
+                          }
+                          return new Date(b.scheduledAt);
+                        }
+                        if (b.dateTime) {
+                          return new Date(b.dateTime);
+                        }
+                        if (b.createdAt) {
+                          if (typeof b.createdAt.toDate === "function") {
+                            return b.createdAt.toDate();
+                          }
+                          return new Date(b.createdAt);
+                        }
+                        return null;
+                      };
+
+                      const bookingDate = getBookingDate(booking);
+                      let daysDiff = 999;
+                      if (bookingDate) {
+                        const diffTime = Math.abs(Date.now() - bookingDate.getTime());
+                        daysDiff = diffTime / (1000 * 60 * 60 * 24);
+                      }
+
+                      const showHelpAndSupport = (booking.status === "completed" || booking.status === "finalized") && daysDiff <= 30;
+
+                      if (!["completed", "finalized"].includes(booking.status)) return null;
+
+                      return (
+                        <div className="flex flex-col items-end gap-1.5 ml-auto">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">
+                            Post-Service & Billing
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const link = document.createElement("a");
+                                link.href = `/api/download-invoice?bookingId=${booking.id}`;
+                                link.setAttribute("download", `invoice_${booking.id}.pdf`);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                              }}
+                              className="text-[9px] font-black uppercase tracking-widest text-[#050CA6] flex items-center gap-1.5 hover:text-[#040980] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 transition-all shadow-sm cursor-pointer"
+                              title="Download invoice for this completed service"
+                            >
+                              <Download size={10} /> Invoice PDF
+                            </button>
+
+                            {showHelpAndSupport && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleInitiateSupport(booking.id);
+                                }}
+                                className="text-[9px] font-black uppercase tracking-widest text-white bg-red-600 hover:bg-red-750 px-2.5 py-1.5 rounded-lg border border-red-500 transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                                title="Request Support for this booking"
+                              >
+                                <HelpCircle size={10} /> Help & Support
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -4151,6 +4206,72 @@ export default function CustomerDashboard({
             onClose={() => setIsPaymentScannerOpen(false)}
             onScanSuccess={handlePaymentScanSuccess}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {supportBookingId && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSupportBookingId(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-slate-100 flex flex-col z-10 max-h-[85dvh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                  Help & Support
+                </h3>
+                <button
+                  onClick={() => setSupportBookingId(null)}
+                  className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer border-0 bg-transparent"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {supportSubmitted ? (
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                    Support Ticket Raised
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Your support request has been initiated for Booking #{supportBookingId.toUpperCase().slice(-6)}. We'll contact you shortly.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Need help with your booking <strong>#{supportBookingId.toUpperCase().slice(-6)}</strong>? Please describe your issue below.
+                  </p>
+                  <textarea
+                    value={supportReason}
+                    onChange={(e) => setSupportReason(e.target.value)}
+                    placeholder="Describe how we can help you with this booking..."
+                    rows={4}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-700 transition-all font-sans font-medium"
+                  />
+                  <button
+                    onClick={handleSubmitSupportRequest}
+                    disabled={!supportReason.trim()}
+                    className="w-full py-3 bg-red-600 hover:bg-red-750 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer border-0"
+                  >
+                    Submit Support Request
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
