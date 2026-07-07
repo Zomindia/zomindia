@@ -195,6 +195,14 @@ export const sendEcosystemNotification = async (
         createdAt: Timestamp.now()
       };
       await addDoc(collection(db, 'notifications'), payload);
+
+      // Trigger Firebase push via proxy
+      fetch('/api/send-push-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, title, message })
+      }).catch(err => console.error('[Push System] Ecosystem push trigger failed:', err));
+
     } catch (err) {
       console.error(`Failed to write push notification to Firestore for user ${userId}:`, err);
     }

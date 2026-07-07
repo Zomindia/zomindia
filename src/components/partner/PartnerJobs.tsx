@@ -2303,7 +2303,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                  initial={{ scale: 0.9, opacity: 0 }}
                  animate={{ scale: 1, opacity: 1 }}
                  exit={{ scale: 0.9, opacity: 0 }}
-                 className="bg-white rounded-[40px] p-10 w-full max-w-sm text-center shadow-2xl"
+                 className="bg-white rounded-[40px] p-10 w-full max-w-sm text-center shadow-2xl max-h-[85dvh] overflow-y-auto"
                >
                   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner ring-4 ring-emerald-500/10">
                      <ShieldCheck size={32} />
@@ -2393,7 +2393,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                initial={{ scale: 0.9, opacity: 0 }}
                animate={{ scale: 1, opacity: 1 }}
                exit={{ scale: 0.9, opacity: 0 }}
-               className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center shadow-2xl space-y-6 my-auto"
+               className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center shadow-2xl space-y-6 my-auto max-h-[85dvh] overflow-y-auto"
              >
                 <div className="w-14 h-14 bg-blue-50 text-blue-700 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
                    <CheckCircle2 size={28} />
