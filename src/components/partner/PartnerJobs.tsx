@@ -34,7 +34,7 @@ import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource 
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
-import { notifyBookingUpdate } from '../../lib/notifications';
+import { notifyBookingUpdate, sendEcosystemNotification } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import ChatWindow from '../ChatWindow';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -1195,6 +1195,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          if (selectedBooking?.id === id) {
            setSelectedBooking(prev => prev ? { ...prev, ...update } : null);
          }
+         const resolvedService = services[b.serviceId];
+         sendEcosystemNotification(
+           'all',
+           update.status || b.status,
+           {
+             bookingId: id,
+             customerId: b.customerUid,
+             partnerId: b.partnerId,
+             customerName: b.customerName || b.customerBookedName || "Customer",
+             partnerName: profile?.displayName || partner?.fullName || "Partner",
+             serviceName: resolvedService?.name || "Service",
+             dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+           }
+         ).catch(err => console.error("Ecosystem notification error:", err));
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${id}`);
@@ -1253,6 +1267,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             'in_progress',
             computedPartnerId
           );
+          const resolvedService = services[bookingForOTP.serviceId];
+          sendEcosystemNotification(
+            'all',
+            'in_progress',
+            {
+              bookingId: verifyingOTPId,
+              customerId: bookingForOTP.customerUid,
+              partnerId: bookingForOTP.partnerId,
+              customerName: bookingForOTP.customerName || bookingForOTP.customerBookedName || "Customer",
+              partnerName: profile?.displayName || partner?.fullName || "Partner",
+              serviceName: resolvedService?.name || "Service",
+              dateTime: bookingForOTP.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+            }
+          ).catch(err => console.error("Ecosystem notification error:", err));
         }
 
         setVerifyingOTPId(null);
@@ -1648,7 +1676,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                const updatedTasks = isCompleted 
                                  ? currentTasks.filter(t => t !== task)
                                  : [...currentTasks, task];
-                               handleBookingUpdate(booking.id, { completedTasks: updatedTasks });
+                               const allTasks = (services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']) || [];
+                               const percent = allTasks.length > 0 ? Math.round((updatedTasks.length / allTasks.length) * 100) : 0;
+                               handleBookingUpdate(booking.id, { 
+                                 completedTasks: updatedTasks,
+                                 progressPercentage: percent,
+                                 checklist: allTasks
+                               });
                              }}
                              className="w-5 h-5 rounded border-slate-300 text-blue-700 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer accent-blue-700 transition-all font-sans font-medium"
                            />

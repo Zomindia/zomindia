@@ -38,7 +38,7 @@ import {
   PartnerApplication,
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
-import { notifyBookingUpdate } from "../lib/notifications";
+import { notifyBookingUpdate, sendEcosystemNotification } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
 import { LoadingScreen, LoadingSpinner } from "./LoadingIndicator";
@@ -2443,6 +2443,22 @@ function BookingManager({
         "admin",
       );
 
+      const resolvedPartner = partners.find((p) => p.userId === (updateData.partnerId || booking.partnerId));
+      const resolvedService = services.find((s) => s.id === booking.serviceId);
+      sendEcosystemNotification(
+        "all",
+        updateData.status || statusForm.status,
+        {
+          bookingId: managingStatusBookingId,
+          customerId: booking.customerUid,
+          partnerId: updateData.partnerId || booking.partnerId,
+          customerName: booking.customerName || booking.customerBookedName || "Customer",
+          partnerName: resolvedPartner?.displayName || "Partner",
+          serviceName: resolvedService?.name || "Service",
+          dateTime: booking.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+        }
+      ).catch(e => console.error("Ecosystem notification failed:", e));
+
       setManagingStatusBookingId(null);
       setShowSuccessModal(
         `Booking #${managingStatusBookingId.slice(0, 8).toUpperCase()} updated to ${updateData.status || statusForm.status}`,
@@ -2479,7 +2495,24 @@ function BookingManager({
         updatedAt: Timestamp.now(),
       });
       const b = bookings.find((x) => x.id === id);
-      if (b) notifyBookingUpdate({ ...b, status }, status, "admin");
+      if (b) {
+        notifyBookingUpdate({ ...b, status }, status, "admin");
+        const bPartner = partners.find((p) => p.userId === b.partnerId);
+        const bService = services.find((s) => s.id === b.serviceId);
+        sendEcosystemNotification(
+          "all",
+          status,
+          {
+            bookingId: id,
+            customerId: b.customerUid,
+            partnerId: b.partnerId,
+            customerName: b.customerName || b.customerBookedName || "Customer",
+            partnerName: bPartner?.displayName || "Partner",
+            serviceName: bService?.name || "Service",
+            dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+          }
+        ).catch(e => console.error("Ecosystem notification failed:", e));
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${id}`);
     }
@@ -2509,6 +2542,22 @@ function BookingManager({
         "cancelled",
         "admin",
       );
+
+      const cancelPartner = partners.find((p) => p.userId === booking.partnerId);
+      const cancelService = services.find((s) => s.id === booking.serviceId);
+      sendEcosystemNotification(
+        "all",
+        "cancelled",
+        {
+          bookingId: cancellingBookingId,
+          customerId: booking.customerUid,
+          partnerId: booking.partnerId,
+          customerName: booking.customerName || booking.customerBookedName || "Customer",
+          partnerName: cancelPartner?.displayName || "Partner",
+          serviceName: cancelService?.name || "Service",
+          dateTime: booking.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+        }
+      ).catch(e => console.error("Ecosystem notification failed:", e));
 
       setCancellingBookingId(null);
       setCancelReason("");
@@ -2549,12 +2598,28 @@ function BookingManager({
       });
 
       const b = bookings.find((x) => x.id === bookingId);
-      if (b)
+      if (b) {
         notifyBookingUpdate(
           { ...b, partnerId, status: "pending_acceptance" },
           "pending_acceptance",
           "admin",
         );
+        const assignP = partners.find((p) => p.userId === partnerId);
+        const assignS = services.find((s) => s.id === b.serviceId);
+        sendEcosystemNotification(
+          "all",
+          "pending_acceptance",
+          {
+            bookingId,
+            customerId: b.customerUid,
+            partnerId,
+            customerName: b.customerName || b.customerBookedName || "Customer",
+            partnerName: assignP?.displayName || "Partner",
+            serviceName: assignS?.name || "Service",
+            dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+          }
+        ).catch(e => console.error("Ecosystem notification failed:", e));
+      }
       setShowSuccessModal(
         `Partner assigned to booking #${bookingId.slice(0, 8).toUpperCase()}`,
       );
@@ -2598,15 +2663,25 @@ function BookingManager({
       return isPartnerRole && isApproved;
     });
 
-    // 3. Ignore Availability Filter: We return all approved partners, regardless of online/offline status, sorting Available first
+    const activeBooking = bookings.find((b) => b.id === managingStatusBookingId);
+    const activeService = activeBooking ? services.find((s) => s.id === activeBooking.serviceId) : null;
+    const targetCatId = activeService?.categoryId;
+
+    // 3. Sort Available first, but match the category of the booking first
     return [...allocationPartners].sort((a, b) => {
+      const aMatch = targetCatId && a.categories?.includes(targetCatId);
+      const bMatch = targetCatId && b.categories?.includes(targetCatId);
+      
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+
       const aOnline = a.availabilityStatus === "Available";
       const bOnline = b.availabilityStatus === "Available";
       if (aOnline && !bOnline) return -1;
       if (!aOnline && bOnline) return 1;
       return 0;
     });
-  }, [partners, users]);
+  }, [partners, users, bookings, managingStatusBookingId, services]);
 
   // Sort partners to show 'Available' ones first for fallback references
   const sortedPartners = [...partners].sort((a, b) => {
@@ -3147,9 +3222,14 @@ function BookingManager({
                         phoneSuffix = ` (..${digits})`;
                       }
 
+                      const activeBooking = bookings.find((b) => b.id === managingStatusBookingId);
+                      const activeService = activeBooking ? services.find((s) => s.id === activeBooking.serviceId) : null;
+                      const targetCatId = activeService?.categoryId;
+                      const isCategoryMatch = targetCatId && p.categories?.includes(targetCatId);
+
                       return (
                         <option key={p.id} value={p.userId}>
-                          {p.displayName || p.id.slice(0, 8).toUpperCase()}{phoneSuffix} - {onlineLabel}
+                          {isCategoryMatch ? "⭐️ " : ""}{p.displayName || p.id.slice(0, 8).toUpperCase()}{isCategoryMatch ? " (Category Expert)" : ""}{phoneSuffix} - {onlineLabel}
                         </option>
                       );
                     })}

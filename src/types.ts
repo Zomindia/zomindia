@@ -248,6 +248,10 @@ export interface Booking {
   previousStatus?: BookingStatus;
   serviceOtp?: string;
   otpVerified?: boolean;
+  progressPercentage?: number;
+  checklist?: string[];
+  startOTP?: string;
+  partnerLocation?: { lat: number; lng: number };
   createdAt: any;
   updatedAt: any;
   partnerPriority?: 'high' | 'medium' | 'low';

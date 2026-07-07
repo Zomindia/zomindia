@@ -1910,11 +1910,13 @@ export default function CustomerDashboard({
                               <FileText size={12} className="text-[#22c55e]" /> Service Checklist
                             </h5>
                             <span className="text-[9px] font-black text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-lg font-mono">
-                              Progress: {Math.round(((booking.completedTasks?.length || 0) / (services[booking.serviceId]?.predefinedTasks?.length || 4)) * 100)}%
+                              Progress: {booking.progressPercentage !== undefined ? booking.progressPercentage : Math.round(((booking.completedTasks?.length || 0) / (services[booking.serviceId]?.predefinedTasks?.length || 4)) * 100)}%
                             </span>
                           </div>
                           <div className="space-y-2">
-                            {(services[booking.serviceId]?.predefinedTasks?.length
+                            {(booking.checklist?.length
+                              ? booking.checklist
+                              : services[booking.serviceId]?.predefinedTasks?.length
                               ? services[booking.serviceId]?.predefinedTasks
                               : ["Inspect issue & diagnostics", "Perform requested repair/cleaning", "Calibrate or test performance", "Clean work area & final check"]
                             ).map((task: string, i: number) => {

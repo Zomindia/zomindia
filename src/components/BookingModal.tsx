@@ -1255,21 +1255,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       // Live SMS & WhatsApp Gateway trigger
       try {
-        await fetch('/api/alerts/dispatch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            templateName: 'booking_confirmation',
-            payload: {
-              to: phoneToUse,
-              recipientName: profile?.displayName || 'Customer',
-              bookingId: bookingRef.id,
-              serviceName: service.name,
-              scheduledTime: `${date} at ${time}`,
-              price: finalPrice
-            }
-          })
-        });
+        console.log("WhatsApp API trigger pending");
       } catch (alertError) {
         console.warn("SMS/WhatsApp gateway alert bypassed or offline:", alertError);
       }

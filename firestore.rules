@@ -169,6 +169,10 @@ service cloud.firestore {
              (!('lng' in data) || (data.lng is number || data.lng == null)) &&
              (!('serviceOtp' in data) || (data.serviceOtp is string && data.serviceOtp.size() == 4)) &&
              (!('otpVerified' in data) || (data.otpVerified is bool)) &&
+             (!('progressPercentage' in data) || (data.progressPercentage is number)) &&
+             (!('checklist' in data) || (data.checklist is list)) &&
+             (!('startOTP' in data) || (data.startOTP is string)) &&
+             (!('partnerLocation' in data) || (data.partnerLocation is map)) &&
              (!('promoCode' in data) || (data.promoCode is string || data.promoCode == null)) &&
              (!('discountApplied' in data) || (data.discountApplied is number)) &&
              (!('cancellationReason' in data) || (data.cancellationReason is string && data.cancellationReason.size() <= 1000)) &&
