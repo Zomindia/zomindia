@@ -941,20 +941,8 @@ export default function AdminDashboard({
         className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-100 flex flex-col transition-transform duration-300 transform lg:sticky top-0 h-screen ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1 select-none">
-              <img
-                src={LogoIcon}
-                alt="Zomindia Icon"
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            {/*
-
-             </div>
-             */}{" "}
-            {!isCollapsed && (
+          <div className="flex items-center gap-3 overflow-hidden w-full">
+            {!isCollapsed ? (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -970,6 +958,15 @@ export default function AdminDashboard({
                   Admin PRO
                 </span>
               </motion.div>
+            ) : (
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1 select-none mx-auto">
+                <img
+                  src={LogoIcon}
+                  alt="Zomindia Icon"
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
             )}
           </div>
           <button
