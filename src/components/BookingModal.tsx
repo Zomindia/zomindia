@@ -5,6 +5,7 @@ import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingSta
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { sendNotification, NotificationEngine } from '../lib/notifications';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
+import { generateGoogleCalendarUrl, downloadIcsFile } from '../utils/calendar';
 import { handleMapsError } from '../lib/maps-errors';
 import AuthModal from './AuthModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -2778,6 +2779,70 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
                       <p className="text-lg font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
                    </div>
+                </div>
+
+                {/* Add to Calendar Sync Section */}
+                <div className="w-full mb-4 bg-slate-50/50 p-3 rounded-2xl border border-dashed border-slate-200/80">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1 mb-2">
+                    <CalendarIcon size={12} className="text-blue-600 animate-pulse" /> Sync Service to Calendar
+                  </p>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        const baseDateStr = date;
+                        let baseTimeStr = time || "10:00";
+                        if (!/^\d{2}:\d{2}$/.test(baseTimeStr)) {
+                          baseTimeStr = "10:00";
+                        }
+                        const start = new Date(`${baseDateStr}T${baseTimeStr}:00`);
+                        const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
+                        
+                        const title = `Zomindia: ${service.name}`;
+                        const description = `Your Zomindia home service booking is confirmed!\n\nService: ${service.name}\nScheduled Slot: ${date} at ${time}\nAddress: ${address}\nBooking ID: ${lastBookingId || 'N/A'}\n\nThank you for choosing Zomindia!`;
+                        const location = address || 'Your home address';
+
+                        const url = generateGoogleCalendarUrl({
+                          title,
+                          startDate: start,
+                          endDate: end,
+                          description,
+                          location
+                        });
+                        window.open(url, '_blank');
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200/60 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" /> Google Calendar
+                    </button>
+                    <button
+                      onClick={() => {
+                        const baseDateStr = date;
+                        let baseTimeStr = time || "10:00";
+                        if (!/^\d{2}:\d{2}$/.test(baseTimeStr)) {
+                          baseTimeStr = "10:00";
+                        }
+                        const start = new Date(`${baseDateStr}T${baseTimeStr}:00`);
+                        const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
+                        
+                        const title = `Zomindia: ${service.name}`;
+                        const description = `Your Zomindia home service booking is confirmed!\n\nService: ${service.name}\nScheduled Slot: ${date} at ${time}\nAddress: ${address}\nBooking ID: ${lastBookingId || 'N/A'}\n\nThank you for choosing Zomindia!`;
+                        const location = address || 'Your home address';
+
+                        downloadIcsFile({
+                          title,
+                          startDate: start,
+                          endDate: end,
+                          description,
+                          location,
+                          filename: `zomindia-booking-${lastBookingId || 'service'}.ics`
+                        });
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200/60 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-700 shrink-0" /> Apple / Outlook
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2.5 w-full max-w-sm mx-auto">
