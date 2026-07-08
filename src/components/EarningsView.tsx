@@ -133,7 +133,7 @@ export default function EarningsView({ bookings, earnings = [], role, platformFe
           <div className="mb-6">
             <h3 className="text-lg font-bold text-slate-900">Revenue Trend</h3>
           </div>
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>

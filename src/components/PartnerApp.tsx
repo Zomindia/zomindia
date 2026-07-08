@@ -366,6 +366,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     try {
       await updateDoc(doc(db, 'partners', partner.id), {
         availabilityStatus: status,
+        isAvailable: status === 'Available',
         updatedAt: Timestamp.now()
       });
       setToastMessage(`Status updated to "${status}" successfully.`);
@@ -511,14 +512,9 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       )}
       {/* App Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
-        <div className="flex items-center gap-2 shrink-0 select-none">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 bg-[#0a2540]/5 p-1">
-            <img src={LogoIcon} alt="Zomindia Icon" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-          </div>
-          <div className="flex flex-col max-w-[100px]">
-            <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
-            <span className="text-[7.5px] text-[#0a2540] font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
-          </div>
+        <div className="flex flex-col shrink-0 select-none">
+          <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
+          <span className="text-[7.5px] text-[#0a2540]/60 font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
            {profile.role === 'admin' && (
@@ -567,34 +563,21 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                'bg-slate-100 text-slate-500 border-slate-200'
              }`}
            >
-             <span className={`w-1.5 h-1.5 rounded-full ${
-               partner?.availabilityStatus === 'Available' ? 'bg-emerald-500 animate-pulse' :
-               partner?.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-400'
-             }`} />
+             {partner?.availabilityStatus === 'Available' && isTrackingActive ? (
+               <span className="relative flex h-1.5 w-1.5 shrink-0">
+                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+               </span>
+             ) : (
+               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                 partner?.availabilityStatus === 'Available' ? 'bg-emerald-500 animate-pulse' :
+                 partner?.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-400'
+               }`} />
+             )}
              {partner?.availabilityStatus || 'Offline'}
            </button>
         </div>
       </header>
-
-      {/* Global Background Dispatch Tracking Banner */}
-      {partner && isTrackingActive && (
-        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-white select-none shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-100 truncate">
-              Continuous background dispatch active
-            </span>
-          </div>
-          <span className="text-[8px] font-mono font-bold text-slate-400 bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded shrink-0 select-none">
-            {lastSyncedAt 
-              ? `Locked • ${lastSyncedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` 
-              : 'Acquiring lock...'}
-          </span>
-        </div>
-      )}
 
       {/* Screen Content */}
       <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth">

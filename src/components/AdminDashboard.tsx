@@ -645,7 +645,8 @@ export default function AdminDashboard({
               reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
               isVerified: isVerifiedUser,
               status: pData.status || (isVerifiedUser ? "active" : "pending"),
-              availabilityStatus: pData.availabilityStatus || "Offline",
+              availabilityStatus: pData.availabilityStatus || (pData.isAvailable === true ? "Available" : "Offline"),
+              isAvailable: pData.isAvailable !== undefined ? pData.isAvailable : (pData.availabilityStatus === "Available"),
               kycStatus: finalKycStatus,
               lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
               lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
@@ -1460,7 +1461,7 @@ export default function AdminDashboard({
                             Booking Trends
                           </h3>
                         </div>
-                        <div className="h-[250px] w-full">
+                        <div className="h-[250px] min-h-[250px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <AreaChart
                               data={bookingTrendData}
@@ -1545,7 +1546,7 @@ export default function AdminDashboard({
                             Revenue Growth
                           </h3>
                         </div>
-                        <div className="h-[250px] w-full">
+                        <div className="h-[250px] min-h-[250px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <AreaChart
                               data={revenueTrendData}
@@ -1632,7 +1633,7 @@ export default function AdminDashboard({
                             User Growth
                           </h3>
                         </div>
-                        <div className="h-[250px] w-full">
+                        <div className="h-[250px] min-h-[250px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                               data={userTrendData}
@@ -5553,6 +5554,7 @@ function PartnerManager({
           status: "approved",
           city: "Indore",
           availabilityStatus: "Available",
+          isAvailable: true,
           lat: 22.7196,
           lng: 75.8577,
           createdAt: Timestamp.now(),
@@ -10034,7 +10036,7 @@ function AnalyticsView({
               Adaptive
             </div>
           </div>
-          <div className="h-[350px] w-full">
+          <div className="h-[350px] min-h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueTrendData}>
                 <defs>
@@ -10088,7 +10090,7 @@ function AnalyticsView({
               Customer Acquisition
             </h3>
           </div>
-          <div className="h-[350px] w-full">
+          <div className="h-[350px] min-h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={acquisitionTrendData}>
                 <CartesianGrid
@@ -10133,7 +10135,7 @@ function AnalyticsView({
               Booking Trends
             </h3>
           </div>
-          <div className="h-[350px] w-full">
+          <div className="h-[350px] min-h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bookingTrendData}>
                 <CartesianGrid
@@ -10177,7 +10179,7 @@ function AnalyticsView({
               Service Distribution
             </h3>
           </div>
-          <div className="h-[350px] w-full flex items-center justify-center">
+          <div className="h-[350px] min-h-[350px] w-full flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -10380,7 +10382,7 @@ function AnalyticsView({
                   <h4 className="text-[10px] font-black text-slate-450 uppercase tracking-widest mb-4">
                     Priority Distribution
                   </h4>
-                  <div className="h-[230px] w-full">
+                  <div className="h-[230px] min-h-[230px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={demandStats.slice(0, 8)}>
                         <CartesianGrid

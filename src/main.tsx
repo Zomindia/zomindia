@@ -5,6 +5,10 @@ import './index.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
 import { initSecurityShield } from './utils/securityShield';
+import { defineCustomElements } from '@ionic/pwa-elements/loader';
+
+// Call the element loader before rendering the App
+defineCustomElements(window);
 
 // Initialize frontend shield & honeypot
 initSecurityShield();

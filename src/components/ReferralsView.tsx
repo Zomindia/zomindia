@@ -709,7 +709,7 @@ ${profile.displayName || 'Your Friend'}`;
             </div>
 
             {/* Recharts Bar Chart Container */}
-            <div className="w-full h-[260px] bg-slate-50/50 border border-slate-100 rounded-3xl p-4">
+            <div className="w-full h-[260px] min-h-[260px] bg-slate-50/50 border border-slate-100 rounded-3xl p-4">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={analyticsData}

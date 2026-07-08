@@ -814,6 +814,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [completionPhoto, setCompletionPhoto] = useState<string | null>(null);
   const [capturingCompletionPhoto, setCapturingCompletionPhoto] = useState(false);
   const [chatHidden, setChatHidden] = useState(false);
+  const [isAddressExpanded, setIsAddressExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSuccess, setRefreshSuccess] = useState<string | null>(null);
 
@@ -976,14 +977,22 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         finalTotalPrice += extraAmt;
       }
 
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'payment_pending',
-        additionalCharges: finalAdditionalCharges,
-        totalPrice: finalTotalPrice,
-        completionPhotos: completionPhoto ? [completionPhoto] : [],
-        notes: serviceNotes || '', // Add dictated service notes/feedback here
-        updatedAt: Timestamp.now()
-      });
+      try {
+        await updateDoc(doc(db, 'bookings', booking.id), {
+          status: 'payment_pending',
+          additionalCharges: finalAdditionalCharges,
+          totalPrice: finalTotalPrice,
+          completionNote: serviceNotes || '',
+          updatedAt: Timestamp.now()
+        });
+      } catch (dbErr: any) {
+        console.error("Firestore finalize job permission/network error:", dbErr);
+        window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+          detail: { message: `Unable to update booking: ${dbErr?.message || 'Permission denied.'}` } 
+        }));
+        setLoading(false);
+        return;
+      }
 
       // Reset extra charges form
       setChargeForm({ amount: '', reason: '' });
@@ -1002,19 +1011,22 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          body: JSON.stringify({ bookingId: booking.id })
       }).catch(err => console.error('Failed to trigger bill email', err));
 
-      notifyBookingUpdate({ ...booking, status: 'payment_pending', totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, notes: serviceNotes }, 'payment_pending', partner?.userId || '');
+      notifyBookingUpdate({ ...booking, status: 'payment_pending', totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, completionNote: serviceNotes }, 'payment_pending', partner?.userId || '');
       setCompletingBookingId(null);
       setCompletionPhoto(null);
       setServiceNotes('');
       
-      const updatedBooking = { ...booking, status: 'payment_pending' as const, totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges } as Booking;
+      const updatedBooking = { ...booking, status: 'payment_pending' as const, totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, completionNote: serviceNotes } as Booking;
       if (selectedBooking?.id === booking.id) {
         setSelectedBooking(updatedBooking);
       }
       // Show success modal for completing the tasks
       setCompletedSuccessBooking(updatedBooking);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+      console.error("General finalize job failure:", err);
+      window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+        detail: { message: `Job Finalization failed. Please check inputs and try again.` } 
+      }));
     } finally {
       setLoading(false);
     }
@@ -1456,145 +1468,158 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     const isHistory = ['completed', 'finalized', 'cancelled'].includes(bookingStatus);
 
     return (
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex flex-col bg-white"
-      >
-        {/* Header */}
-        <div className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[85dvh] overflow-y-auto flex flex-col relative"
+        >
+          {/* Header */}
+          <div className="bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between sticky top-0 z-10">
+            <div>
+              <h3 className="text-base font-black italic tracking-tighter">Job Details</h3>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Booking #{bookingId.toUpperCase()}</p>
+            </div>
             <button 
               onClick={() => {
                 setSelectedBooking(null);
                 setChatHidden(false);
               }} 
-              className="p-2 -ml-2 text-slate-400"
+              className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
-            <div>
-              <h3 className="text-lg font-black italic tracking-tighter">Job Details</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Booking #{bookingId.toUpperCase()}</p>
-            </div>
           </div>
-          <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-            bookingStatus === 'in_progress' ? 'bg-blue-600 text-white animate-pulse' :
-            bookingStatus === 'payment_pending' ? 'bg-amber-500 text-white animate-pulse shadow-lg shadow-amber-500/25' :
-            bookingStatus === 'completed' || bookingStatus === 'finalized' ? 'bg-emerald-50 text-emerald-600' :
-            'bg-slate-50 text-slate-500'
-          }`}>
-            {bookingStatus.replace('_', ' ')}
-          </div>
-        </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
-          {/* Quick Actions */}
-          {!isHistory && (
-            <div className="grid grid-cols-3 gap-4">
-               <button 
-                 id="partner-booking-secure-call-btn-2"
-                 disabled={isCalling}
-                 onClick={() => handleInitiateCall(booking)}
-                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-95 active:scale-90 active:bg-emerald-100 transition-all cursor-pointer disabled:opacity-50"
-               >
-                 <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                   <Phone size={24} className="fill-emerald-200/30" />
-                 </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest">{isCalling ? "Connecting..." : "Call"}</span>
-               </button>
-               <button 
-                 onClick={() => setActiveChat(booking)}
-                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-blue-50 text-blue-700 border border-blue-100 hover:scale-95 transition-all"
-               >
-                 <div className="w-12 h-12 bg-blue-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-700/20">
-                   <MessageSquare size={24} fill="currentColor" className="fill-blue-200/30" />
-                 </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest">Message</span>
-               </button>
-               <button 
-                 onClick={() => {
-                   const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
-                   window.open(url, '_blank');
-                 }}
-                 className="flex flex-col items-center gap-3 p-5 rounded-[32px] bg-indigo-50 text-indigo-700 border border-indigo-100 hover:scale-95 transition-all"
-               >
-                 <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
-                   <Navigation size={24} />
-                 </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest">Navigate</span>
-               </button>
-            </div>
-          )}
-
-          {/* Service Info */}
-          <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100">
-             <div className="flex gap-6 mb-8">
-                <div className="w-20 h-20 rounded-3xl bg-white p-1 border border-slate-200 overflow-hidden shrink-0 shadow-sm">
-                   {service?.imageURL ? (
-                     <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-2xl" />
-                   ) : (
-                     <div className="w-full h-full flex items-center justify-center text-slate-200"><Briefcase size={32} /></div>
-                   )}
-                      <div className="flex-1">
-                   <h4 className="text-2xl font-black text-slate-900 leading-tight italic">{service?.name || 'Service Order'}</h4>
-                   <div className="flex items-center gap-2 mt-2">
-                      <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                         <Smartphone size={14} className="text-blue-500" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-600">
-                        {['completed', 'finalized'].includes(bookingStatus) ? 'Access Masked' : (customer?.displayName || 'Client')}
-                        {!['completed', 'finalized'].includes(bookingStatus) && (
-                          <span className="text-xs font-black text-emerald-605 block mt-1.5 select-none font-sans">
-                            🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}
-                          </span>
-                        )}
-                      </p>
+          <div className="flex-1 p-5 space-y-6 pb-24 text-left">
+            {/* Quick Actions */}
+            {!isHistory && (
+              <div className="grid grid-cols-3 gap-3">
+                 <button 
+                   id="partner-booking-secure-call-btn-2"
+                   disabled={isCalling}
+                   onClick={() => handleInitiateCall(booking)}
+                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-[0.98] active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                 >
+                   <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-md">
+                     <Phone size={18} className="fill-emerald-200/30" />
                    </div>
-                </div>
-             </div>
+                   <span className="text-[8px] font-black uppercase tracking-wider">{isCalling ? "Connecting..." : "Call"}</span>
+                 </button>
+                 <button 
+                   onClick={() => setActiveChat(booking)}
+                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 hover:scale-[0.98] transition-all"
+                 >
+                   <div className="w-10 h-10 bg-blue-700 text-white rounded-xl flex items-center justify-center shadow-md">
+                     <MessageSquare size={18} fill="currentColor" className="fill-blue-200/30" />
+                   </div>
+                   <span className="text-[8px] font-black uppercase tracking-wider">Message</span>
+                 </button>
+                 <button 
+                   onClick={() => {
+                     const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
+                     window.open(url, '_blank');
+                   }}
+                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-indigo-50 text-indigo-700 border border-indigo-100 hover:scale-[0.98] transition-all"
+                 >
+                   <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md">
+                     <Navigation size={18} />
+                   </div>
+                   <span className="text-[8px] font-black uppercase tracking-wider">Navigate</span>
+                 </button>
+              </div>
+            )}
 
-             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-slate-100">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Service Fee</p>
-                   <p className="text-2xl font-black text-emerald-600 italic">₹{booking.totalPrice}</p>
-                </div>
-                <div className="bg-white p-4 rounded-2xl border border-slate-100">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Payment</p>
-                   <p className="text-sm font-bold text-slate-900 uppercase tracking-tighter">{booking.paymentMethod || 'cash'}</p>
-                </div>
-             </div>
-          </div>
+          {/* Drastically simplified compact details card */}
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3.5 text-left">
+            {/* Service Details */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white p-1 border border-slate-200 overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                {service?.imageURL ? (
+                  <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-lg" />
+                ) : (
+                  <Briefcase size={18} className="text-slate-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Service</p>
+                <h4 className="text-sm font-black text-slate-950 truncate leading-none uppercase tracking-tight">{service?.name || 'Service Order'}</h4>
+              </div>
+            </div>
 
-          {/* Location & Map */}
-          <div className="space-y-4">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                   <MapPin size={18} className="text-rose-500" />
-                   <h5 className="text-sm font-black uppercase tracking-widest text-slate-900">Service Address</h5>
-                </div>
-                {!['completed', 'finalized'].includes(booking.status) && (
+            <hr className="border-slate-200/65" />
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Customer Name</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">
+                {['completed', 'finalized'].includes(bookingStatus) ? 'Access Masked' : (customer?.displayName || 'Client')}
+              </p>
+              {!['completed', 'finalized'].includes(bookingStatus) && (
+                <span className="text-[9px] font-bold text-emerald-600 block mt-1 select-none font-sans">
+                  🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}
+                </span>
+              )}
+            </div>
+
+            <hr className="border-slate-200/65" />
+
+            {/* Payment details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Payment Mode</p>
+                <span className="text-xs font-bold text-slate-950 uppercase tracking-tighter bg-white border border-slate-200 px-2 py-0.5 rounded-md inline-block font-sans">
+                  {booking.paymentMethod || 'cash'}
+                </span>
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Net Payout</p>
+                <p className="text-sm font-black text-emerald-600 leading-none mt-0.5 font-sans">₹{booking.totalPrice}</p>
+              </div>
+            </div>
+
+            <hr className="border-slate-200/65" />
+
+            {/* Address with collapse/expand */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Service Address</p>
+                {!['completed', 'finalized'].includes(bookingStatus) && (
                   <button 
                     onClick={() => {
                       const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
                       window.open(url, '_blank');
                     }}
-                    className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
+                    className="text-[9px] font-black text-blue-700 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-100 font-sans"
                   >
-                    Get Route
+                    Route
                   </button>
                 )}
-             </div>
-             <p className="text-sm font-bold text-slate-600 leading-relaxed bg-slate-50 p-6 rounded-3xl border border-slate-100">
-               {['completed', 'finalized'].includes(booking.status) 
-                 ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}` 
-                 : booking.address}
-             </p>
-             {!['arrived', 'in_progress', 'completed', 'finalized', 'cancelled'].includes(booking.status) && (
-                <JobLocationMap bookingId={booking.id} address={booking.address} lat={booking.lat} lng={booking.lng} />
-             )}
-          </div>
+              </div>
+              <div className="bg-white border border-slate-100 p-3 rounded-xl font-sans">
+                <p className="text-xs font-bold text-slate-600 leading-relaxed">
+                  {(() => {
+                    const isLongAddress = booking.address && booking.address.length > 50;
+                    const truncatedAddress = isLongAddress ? `${booking.address.slice(0, 50)}...` : booking.address;
+                    const displayAddress = ['completed', 'finalized'].includes(bookingStatus)
+                      ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}`
+                      : (isAddressExpanded ? booking.address : truncatedAddress);
+                    return (
+                      <>
+                        {displayAddress}
+                        {isLongAddress && !['completed', 'finalized'].includes(bookingStatus) && (
+                          <button
+                            onClick={() => setIsAddressExpanded(!isAddressExpanded)}
+                            className="text-blue-700 hover:text-blue-800 text-[9px] font-bold uppercase tracking-wider block mt-1 hover:underline cursor-pointer font-sans"
+                          >
+                            {isAddressExpanded ? 'Show Less' : 'Show More'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Live Chat Section */}
@@ -1909,6 +1934,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
 
       </motion.div>
+    </div>
     );
   };
 

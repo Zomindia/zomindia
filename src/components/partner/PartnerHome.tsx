@@ -458,7 +458,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                 <TrendingUp size={12} /> +12%
               </span>
             </div>
-            <div className="h-40 w-full">
+            <div className="h-40 min-h-[160px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart 
                   data={[
@@ -533,7 +533,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   </span>
                 </div>
                 
-                <div className="w-24 h-12">
+                <div className="w-24 h-12 min-h-[48px] min-w-[96px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={ratingTrendData}>
                       <Line 
@@ -575,7 +575,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   </span>
                 </div>
 
-                <div className="w-24 h-12">
+                <div className="w-24 h-12 min-h-[48px] min-w-[96px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={completionTrendData}>
                       <Line 

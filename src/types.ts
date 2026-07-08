@@ -265,6 +265,7 @@ export interface Booking {
   amcId?: string | null;
   activeCall?: ActiveCallInfo | null;
   completionPhotos?: string[];
+  completionNote?: string;
   secondaryContact?: string;
   customerBookedName?: string;
   customerBookedPhone?: string;

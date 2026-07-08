@@ -188,6 +188,9 @@ service cloud.firestore {
              (!('customerBookedEmail' in data) || (data.customerBookedEmail is string || data.customerBookedEmail == null)) &&
              (!('customerBookedPhone' in data) || (data.customerBookedPhone is string || data.customerBookedPhone == null)) &&
              (!('additionalCharges' in data) || (data.additionalCharges is list)) &&
+             (!('activeCall' in data) || (data.activeCall is map || data.activeCall == null)) &&
+             (!('secondaryContact' in data) || (data.secondaryContact is string || data.secondaryContact == null)) &&
+             (!('completionNote' in data) || (data.completionNote is string || data.completionNote == null)) &&
              (!('createdAt' in data) || (data.createdAt is timestamp)) &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp));
     }
@@ -409,7 +412,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         isAdmin() || isHRAdmin() || isHeadAdmin() || (
           isOwner(existing().userId) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'isAvailable', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'updatedAt'])
         )
       );
       allow delete: if isAdmin();
@@ -462,22 +465,37 @@ service cloud.firestore {
         !exists(/databases/$(database)/documents/services/$(incoming().serviceId))
       );
       allow update: if isSignedIn() && isValidId(bookingId) && (
-        // Customer can cancel, pay, finalize, or update activeCall
-        ((
-          existing().get('customerUid', '') == request.auth.uid
-        ) && (
+        // Customer update branch
+        (existing().get('customerUid', '') == request.auth.uid && (
+          // Action: Cancel or Finalize
           (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status in ['cancelled', 'finalized']) ||
+          // Action: Pay Online
           (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'razorpayPaymentId', 'razorpayOrderId', 'razorpaySignature', 'status', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
           (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentIntentId', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
+          // Action: Pay with Cash (Customer confirming cash handover)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentMethod', 'updatedAt']) && incoming().status == 'completed' && incoming().paymentStatus == 'paid' && incoming().paymentMethod == 'cash') ||
+          // Action: Reschedule
+          (incoming().diff(existing()).affectedKeys().hasOnly(['scheduledAt', 'status', 'partnerId', 'activeCall', 'updatedAt']) && incoming().status == 'pending') ||
+          // Action: Chat Quick Action (Secondary Contact)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['secondaryContact', 'updatedAt'])) ||
+          // Action: Active Call status
           (incoming().diff(existing()).affectedKeys().hasOnly(['activeCall', 'updatedAt']))
         )) ||
-        // Partner can update status, cancel with reason, or update activeCall
+        // Partner assignment/claim branch
+        (
+          existing().get('status', '') == 'pending' &&
+          (!('partnerId' in existing()) || existing().partnerId == null || existing().partnerId == '') &&
+          incoming().partnerId == request.auth.uid &&
+          incoming().status == 'assigned' &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'partnerId', 'updatedAt'])
+        ) ||
+        // Partner update branch
         (existing().get('partnerId', '') == request.auth.uid && (
           incoming().diff(existing()).affectedKeys().hasOnly([
             'status', 'otpVerified', 'cancellationReason', 'completedTasks', 'completionPhotos',
             'pendingReason', 'pendingResolveDate', 'pendingResolveDuration', 
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
-            'paymentStatus', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation'
+            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation'
           ])
         )) ||
         isAdmin()
