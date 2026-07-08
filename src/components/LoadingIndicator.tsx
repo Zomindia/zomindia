@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
-import { LogoIcon } from './BrandLogo';
+import logoIcon from '../assets/images/logo-icon.png';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 
@@ -12,7 +12,6 @@ export function LoadingScreen({
 }: { 
   message?: string 
 }) {
-  const [imgError, setImgError] = useState(false);
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -173,17 +172,12 @@ export function LoadingScreen({
           className="w-24 h-24 rounded-3xl bg-slate-900 border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
         >
           <div className="absolute inset-0.5 rounded-[22px] border border-amber-500/25 pointer-events-none" />
-          {!imgError ? (
-            <img 
-              src={LogoIcon} 
-              alt="zomindia brand" 
-              className="w-[68px] h-[68px] object-contain"
-              referrerPolicy="no-referrer"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <span className="text-[#ffd700] text-3xl font-black">Z</span>
-          )}
+          <img 
+            src={logoIcon} 
+            alt="zomindia brand" 
+            className="w-[68px] h-[68px] object-contain select-none animate-pulse"
+            referrerPolicy="no-referrer"
+          />
         </motion.div>
 
         {/* Stair animation container */}
@@ -222,17 +216,12 @@ export function LoadingScreen({
             transition={getJumperTransition()}
             className="absolute w-10 h-10 rounded-xl bg-slate-900/95 border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
           >
-            {!imgError ? (
-              <img 
-                src={LogoIcon} 
-                alt="zomindia mini" 
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-                onError={() => setImgError(true)}
-              />
-            ) : (
-              <span className="text-[#ffd700] text-lg font-black leading-none">Z</span>
-            )}
+            <img 
+              src={logoIcon} 
+              alt="zomindia mini" 
+              className="w-full h-full object-contain select-none"
+              referrerPolicy="no-referrer"
+            />
           </motion.div>
         </div>
 
@@ -297,9 +286,9 @@ export function BrandedButtonSpinner({
   return (
     <div className={`relative ${className} flex items-center justify-center shrink-0`}>
       <img
-        src={LogoIcon}
+        src={logoIcon}
         alt="loading..."
-        className="w-full h-full object-contain select-none z-0 animate-pulse"
+        className="w-full h-full object-contain select-none z-0 animate-spin"
         referrerPolicy="no-referrer"
       />
     </div>
