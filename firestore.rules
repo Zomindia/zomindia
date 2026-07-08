@@ -191,6 +191,7 @@ service cloud.firestore {
              (!('activeCall' in data) || (data.activeCall is map || data.activeCall == null)) &&
              (!('secondaryContact' in data) || (data.secondaryContact is string || data.secondaryContact == null)) &&
              (!('completionNote' in data) || (data.completionNote is string || data.completionNote == null)) &&
+             (!('completedAt' in data) || (data.completedAt is timestamp || data.completedAt == null)) &&
              (!('createdAt' in data) || (data.createdAt is timestamp)) &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp));
     }
@@ -495,7 +496,7 @@ service cloud.firestore {
             'status', 'otpVerified', 'cancellationReason', 'completedTasks', 'completionPhotos',
             'pendingReason', 'pendingResolveDate', 'pendingResolveDuration', 
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
-            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation'
+            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation', 'completedAt'
           ])
         )) ||
         isAdmin()

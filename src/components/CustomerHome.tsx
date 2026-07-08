@@ -1194,6 +1194,8 @@ export default function CustomerHome({
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -6, scale: 1.03 }}
+              whileTap={{ scale: 0.98 }}
               transition={{ delay: idx * 0.1 }}
               key={service.id}
               onClick={() => onServiceSelect(service.id)}
@@ -2941,7 +2943,8 @@ export default function CustomerHome({
                   key={service.id}
                   initial={{ opacity: 0, y: 16 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  whileHover={{ y: -6, scale: 1.01 }}
+                  whileHover={{ y: -6, scale: 1.03 }}
+                  whileTap={{ scale: 0.98 }}
                   transition={{
                     type: "spring",
                     stiffness: 240,
@@ -3393,6 +3396,8 @@ export default function CustomerHome({
                           initial={{ opacity: 0, y: 15 }}
                           whileInView={{ opacity: 1, y: 0 }}
                           viewport={{ once: true }}
+                          whileHover={{ y: -4, scale: 1.03 }}
+                          whileTap={{ scale: 0.98 }}
                           transition={{ delay: sIdx * 0.05 }}
                           onClick={() => onServiceSelect(service.id)}
                           className="bg-white p-3.5 sm:p-4.5 rounded-[22px] sm:rounded-[26px] border border-slate-100 hover:border-blue-500/30 hover:shadow-[0_12px_24px_rgba(37,99,235,0.03)] transition-all duration-300 cursor-pointer flex flex-row items-stretch gap-3 sm:gap-4 group h-full text-left relative overflow-hidden"
@@ -3550,7 +3555,8 @@ export default function CustomerHome({
                   initial={{ opacity: 0, scale: 0.95, y: 15 }}
                   whileInView={{ opacity: 1, scale: 1, y: 0 }}
                   viewport={{ once: true }}
-                  whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                  whileHover={{ y: -8, scale: 1.03, transition: { duration: 0.2 } }}
+                  whileTap={{ scale: 0.98 }}
                   transition={{
                     type: "spring",
                     stiffness: 240,
@@ -3673,7 +3679,8 @@ export default function CustomerHome({
                     initial={{ opacity: 0, y: 15 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                    whileHover={{ y: -6, scale: 1.02, transition: { duration: 0.2 } }}
+                    whileTap={{ scale: 0.99 }}
                     className="bg-gradient-to-br from-indigo-50/50 via-blue-50/50 to-white rounded-[32px] p-8 border border-indigo-150 text-left relative overflow-hidden group lg:col-span-2 flex flex-col justify-between min-h-[320px] shadow-xl hover:shadow-2xl hover:border-blue-300 transition-all cursor-pointer"
                     onClick={() => {
                       if (profile) {

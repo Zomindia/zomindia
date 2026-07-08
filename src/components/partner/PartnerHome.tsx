@@ -5,6 +5,7 @@ import {
   Star, 
   Package, 
   ChevronRight, 
+  ChevronDown,
   AlertCircle,
   Clock,
   MapPin,
@@ -43,6 +44,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   const [showPwaInstall, setShowPwaInstall] = useState(false);
   const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
   const [showPendingPopup, setShowPendingPopup] = useState(false);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
 
   useEffect(() => {
     const checkPrompt = () => {
@@ -649,84 +651,105 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
             {currentJob ? (
               <motion.div 
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white border-2 border-blue-700/10 rounded-[48px] p-8 shadow-[0_32px_64px_-12px_rgba(30,58,138,0.1)] relative overflow-hidden group"
+                className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm relative overflow-hidden flex flex-col gap-3"
               >
-                 {/* Status Badge - Floating */}
-                 <div className="absolute top-6 right-6 z-20">
-                    <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl shadow-xl font-black text-[10px] uppercase tracking-widest ${
-                      currentJob.status === 'in_progress' ? 'bg-blue-700 text-white animate-pulse' :
-                      currentJob.status === 'on_the_way' ? 'bg-indigo-600 text-white' :
-                      currentJob.status === 'arrived' ? 'bg-amber-500 text-white' :
-                      'bg-emerald-500 text-white'
-                    }`}>
-                      <div className={`w-1.5 h-1.5 rounded-full bg-white ${currentJob.status === 'in_progress' ? 'animate-ping' : ''}`} />
-                      {currentJob.status.replace('_', ' ')}
-                    </div>
-                 </div>
-
-                 {/* Job Header */}
-                 <div className="flex gap-6 mb-10 relative z-10">
-                    <div className="w-20 h-20 bg-slate-50 rounded-[32px] overflow-hidden border border-slate-100 p-1 shrink-0 shadow-inner group-hover:rotate-3 transition-transform duration-500">
+                <div className="flex items-center justify-between gap-3">
+                  {/* Left portion: thumbnail icon & name + time slot */}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-11 h-11 bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0 shadow-inner">
                        {service?.imageURL ? (
-                         <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-[24px]" />
+                         <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-xl" />
                        ) : (
-                         <div className="w-full h-full flex items-center justify-center text-slate-200"><Package size={32} /></div>
+                         <div className="w-full h-full flex items-center justify-center text-slate-300"><Package size={18} /></div>
                        )}
                     </div>
-                    <div className="flex-1 min-w-0 pt-2">
-                       <p className="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em] mb-1.5">Action Required</p>
-                       <h4 className="text-2xl font-black text-slate-900 italic leading-tight group-hover:text-blue-700 transition-colors">{service?.name || 'Pro Service'}</h4>
-                       <p className="text-[10px] font-bold text-slate-400 mt-1">ID: #{currentJob.id.slice(0, 8).toUpperCase()}</p>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-black text-slate-900 leading-tight truncate">{service?.name || 'Pro Service'}</h4>
+                      <div className="flex items-center gap-1 text-blue-700/80 mt-0.5">
+                        <Clock size={11} strokeWidth={2.5} />
+                        <span className="text-[11px] font-bold">
+                          {currentJob.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
                     </div>
-                 </div>
+                  </div>
 
-                 {/* Dynamic Context Card */}
-                 <div className="bg-slate-50 rounded-[32px] p-6 mb-8 border border-slate-100 group-hover:bg-slate-100/50 transition-colors">
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                            <Clock size={12} strokeWidth={2.5} />
-                            <span className="text-[9px] font-black uppercase tracking-widest">Time Slot</span>
-                          </div>
-                          <p className="text-sm font-black text-slate-900">{currentJob.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                       </div>
-                       <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                            <MapPin size={12} strokeWidth={2.5} />
-                            <span className="text-[9px] font-black uppercase tracking-widest">Client Location</span>
-                          </div>
-                          <p className="text-sm font-black text-slate-900 truncate italic">{currentJob.address.split(',')[0]}</p>
-                       </div>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-slate-200/50 flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center border border-slate-100 shrink-0">
-                          <Smartphone size={14} className="text-blue-700" />
-                       </div>
-                       <p className="text-xs font-bold text-slate-600 truncate">Customer: <span className="text-slate-900">{customer?.displayName || 'Customer'}</span></p>
-                    </div>
-                 </div>
+                  {/* Right portion: MANAGE button & Details toggle */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        if (profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') {
+                          window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                            detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                          }));
+                          return;
+                        }
+                        onNavigate('jobs', currentJob.id);
+                      }}
+                      className="bg-blue-700 text-white font-black text-[10px] px-3.5 py-2.5 rounded-xl uppercase tracking-wider hover:bg-blue-800 transition-colors active:scale-95 flex items-center gap-1 shadow-md shadow-blue-700/10"
+                    >
+                      Manage <ChevronRight size={10} strokeWidth={3} />
+                    </button>
 
-                 <button 
-                   onClick={() => {
-                     if (profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') {
-                       window.dispatchEvent(new CustomEvent('show-partner-toast', { 
-                         detail: { message: 'Action locked. Waiting for Admin approval.' } 
-                       }));
-                       return;
-                     }
-                     onNavigate('jobs', currentJob.id);
-                   }}
-                   className="w-full bg-blue-700 text-white py-6 rounded-[32px] font-black uppercase tracking-[0.2em] text-xs hover:bg-blue-800 transition-all shadow-2xl shadow-blue-700/20 flex items-center justify-center gap-4 active:scale-95 group/btn"
-                 >
-                    {currentJob.status === 'arrived' ? 'Verify OTP & Start' : 
-                     currentJob.status === 'in_progress' ? 'Manage Active Work' :
-                     currentJob.status === 'on_the_way' ? 'Update Arrival' : 'Continue Journey'} 
-                    <div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center group-hover/btn:bg-white/20 transition-all">
-                      <ChevronRight size={18} />
-                    </div>
-                 </button>
+                    <button
+                      onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                      aria-label="Toggle details"
+                    >
+                      <motion.div
+                        animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown size={16} />
+                      </motion.div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Collapsible details accordion */}
+                <AnimatePresence initial={false}>
+                  {isDetailsExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden border-t border-slate-100 pt-3 mt-1"
+                    >
+                      <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-600">
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Booking ID</span>
+                          <span className="font-mono font-bold text-slate-800">#{currentJob.id.slice(0, 8).toUpperCase()}</span>
+                        </div>
+                        
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px] shrink-0 mt-0.5">Location</span>
+                          <span className="font-bold text-slate-800 text-right truncate italic flex-1">{currentJob.address}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Customer</span>
+                          <span className="font-bold text-slate-800">{customer?.displayName || 'Customer'}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Status</span>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-black text-[9px] uppercase tracking-wider ${
+                            currentJob.status === 'in_progress' ? 'bg-blue-100 text-blue-800 animate-pulse' :
+                            currentJob.status === 'on_the_way' ? 'bg-indigo-100 text-indigo-800' :
+                            currentJob.status === 'arrived' ? 'bg-amber-100 text-amber-800' :
+                            'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            <span className={`w-1 h-1 rounded-full ${currentJob.status === 'in_progress' ? 'bg-blue-600 animate-ping' : 'bg-current'}`} />
+                            {currentJob.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             ) : (
               <div className="bg-slate-100 border border-slate-200 border-dashed rounded-[40px] p-10 text-center">

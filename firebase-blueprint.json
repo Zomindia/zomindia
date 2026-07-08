@@ -119,6 +119,7 @@
         "cancellationReason": { "type": "string" },
         "serviceOtp": { "type": "string", "description": "4-digit random OTP for service start" },
         "otpVerified": { "type": "boolean", "description": "Whether the OTP has been verified by the partner" },
+        "completedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

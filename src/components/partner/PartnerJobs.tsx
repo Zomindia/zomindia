@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource } from '@capacitor/camera';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { notifyBookingUpdate, sendEcosystemNotification } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
@@ -1040,28 +1040,11 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const handleFinishJob = async (booking: Booking) => {
     setLoading(true);
     try {
-      let finalTotalPrice = booking.totalPrice || 0;
-      let finalAdditionalCharges = booking.additionalCharges || [];
-
-      // If extra charges were typed in chargeForm, apply them automatically before transitioning
-      if (chargeForm.amount && !isNaN(Number(chargeForm.amount))) {
-        const extraAmt = parseFloat(chargeForm.amount);
-        const newCharge = {
-          amount: extraAmt,
-          reason: chargeForm.reason || 'Service Diagnostic Adjustment & Material Charges',
-          createdAt: Timestamp.now()
-        };
-        finalAdditionalCharges = [...finalAdditionalCharges, newCharge];
-        finalTotalPrice += extraAmt;
-      }
-
       try {
         await updateDoc(doc(db, 'bookings', booking.id), {
-          status: 'payment_pending',
-          additionalCharges: finalAdditionalCharges,
-          totalPrice: finalTotalPrice,
-          completionNote: serviceNotes || '',
-          updatedAt: Timestamp.now()
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
       } catch (dbErr: any) {
         console.error("Firestore finalize job permission/network error:", dbErr);
@@ -1089,12 +1072,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          body: JSON.stringify({ bookingId: booking.id })
       }).catch(err => console.error('Failed to trigger bill email', err));
 
-      notifyBookingUpdate({ ...booking, status: 'payment_pending', totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, completionNote: serviceNotes }, 'payment_pending', partner?.userId || '');
+      notifyBookingUpdate({ ...booking, status: 'completed', completedAt: Timestamp.now() }, 'completed', partner?.userId || '');
       setCompletingBookingId(null);
       setCompletionPhoto(null);
       setServiceNotes('');
       
-      const updatedBooking = { ...booking, status: 'payment_pending' as const, totalPrice: finalTotalPrice, additionalCharges: finalAdditionalCharges, completionNote: serviceNotes } as Booking;
+      const updatedBooking = { ...booking, status: 'completed' as const, completedAt: Timestamp.now() } as Booking;
       if (selectedBooking?.id === booking.id) {
         setSelectedBooking(updatedBooking);
       }
