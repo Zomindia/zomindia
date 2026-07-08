@@ -3010,7 +3010,7 @@ function BookingManager({
               initial={{ opacity: 0, scale: 0.95, y: 100 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 100 }}
-              className="bg-white rounded-t-[32px] sm:rounded-[48px] p-6 sm:p-10 max-w-2xl w-full shadow-2xl overflow-y-auto max-h-[90vh] relative overscroll-contain"
+              className="bg-white rounded-t-[32px] sm:rounded-[48px] p-6 sm:p-10 max-w-2xl w-full shadow-2xl overflow-y-auto max-h-[85dvh] relative overscroll-contain"
             >
               <div className="flex justify-between items-center mb-6 sm:mb-10">
                 <div className="flex items-center gap-4">

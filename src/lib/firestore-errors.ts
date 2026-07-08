@@ -38,8 +38,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     throw error;
   }
 
+  let rawError = error instanceof Error ? error.message : String(error);
+  const lowerError = rawError.toLowerCase();
+  if (lowerError.includes('permission') || lowerError.includes('unauthorized') || lowerError.includes('insufficient_permissions') || lowerError.includes('permission-denied') || lowerError.includes('insufficient permissions')) {
+    rawError = 'Action not allowed';
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: rawError,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,

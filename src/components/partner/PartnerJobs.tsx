@@ -223,11 +223,29 @@ interface MiniMapProps {
   services: Record<string, Service>;
   onSelectBooking: (booking: Booking) => void;
   onUpdateStatus?: (id: string, update: Partial<Booking>) => Promise<void>;
+  activeMarkerId: string | null;
+  setActiveMarkerId: (id: string | null) => void;
+  onInitiateCall?: (booking: Booking) => void;
+  isCalling?: boolean;
+  onVerifyOTP?: (id: string) => void;
+  onCompleteJob?: (id: string) => void;
 }
 
-function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, onUpdateStatus }: MiniMapProps) {
+function AssignedTasksMiniMap({ 
+  bookings, 
+  customers, 
+  services, 
+  onSelectBooking, 
+  onUpdateStatus,
+  activeMarkerId,
+  setActiveMarkerId,
+  onInitiateCall,
+  isCalling,
+  onVerifyOTP,
+  onCompleteJob
+}: MiniMapProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
 
   const activeTasks = useMemo(() => {
     return bookings.map(b => {
@@ -248,7 +266,11 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
     if (activeTasks.length > 0 && !activeMarkerId) {
       setActiveMarkerId(activeTasks[0].id);
     }
-  }, [activeTasks, activeMarkerId]);
+  }, [activeTasks, activeMarkerId, setActiveMarkerId]);
+
+  useEffect(() => {
+    setIsDetailsExpanded(false);
+  }, [activeMarkerId]);
 
   const mapCenter = useMemo(() => {
     if (activeTasks.length === 0) {
@@ -284,6 +306,13 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
       setCurrentMapCenter(mapCenter);
     }
   }, [mapCenter]);
+
+  const getMaskedPhoneNumber = (phoneStr?: string) => {
+    if (!phoneStr) return "Protected by Zomindia 🔒";
+    const cleanPhone = phoneStr.replace(/[^0-9]/g, '');
+    const last4 = cleanPhone.slice(-4) || '----';
+    return `+91 •••••• ${last4}`;
+  };
 
   if (activeTasks.length === 0) return null;
 
@@ -369,70 +398,58 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 flex flex-col gap-2 relative shadow-xs font-sans animate-in fade-in"
+                className="bg-white border border-slate-150 rounded-3xl p-4 flex flex-col gap-3 relative shadow-md font-sans text-left animate-in fade-in"
               >
-                <div className="flex items-center justify-between leading-none">
-                  <span className="text-[9px] font-bold font-mono text-indigo-950 uppercase tracking-widest bg-indigo-100/70 px-2 py-1 rounded">
-                    Status: {highlightedBooking.status.replace('_', ' ')}
-                  </span>
-                  (
-                    <button 
-                      onClick={() => setActiveMarkerId(null)}
-                      className="text-slate-400 hover:text-slate-600 font-bold p-1 shrink-0 cursor-pointer text-xs"
-                    >
-                      ✕
-                    </button>
-                  )
-                </div>
-                
-                <div className="flex items-start justify-between gap-4 mt-1">
-                  <div>
-                    <h4 className="text-sm font-bold text-blue-950 leading-tight font-display">
+                {/* Header Row */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <span className="text-[9px] font-bold font-mono text-indigo-950 uppercase tracking-widest bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg shrink-0">
+                        Status: {highlightedBooking.status.replace('_', ' ')}
+                      </span>
+                      {activeTasks.length > 1 && (
+                        <button 
+                          onClick={() => setActiveMarkerId(null)}
+                          className="text-slate-400 hover:text-slate-600 font-bold p-1 shrink-0 cursor-pointer text-[10px]"
+                        >
+                          ✕ Deselect
+                        </button>
+                      )}
+                    </div>
+                    <h4 className="text-base font-black text-slate-900 leading-tight font-display uppercase tracking-tight italic">
                       {services[highlightedBooking.serviceId]?.name || 'Loading service...'}
                     </h4>
-                    <p className="text-xs text-indigo-950/70 mt-1 font-semibold flex items-center gap-1 font-sans">
-                      <User size={12} className="text-indigo-950/40" />
+                    <p className="text-xs text-slate-500 font-bold flex items-center gap-1 mt-1 font-sans">
+                      <User size={13} className="text-slate-400" />
                       Client: {customers[highlightedBooking.customerUid]?.displayName || 'Customer'}
                     </p>
-                    <p className="text-[11px] text-indigo-950/60 font-normal mt-1 leading-normal">
-                      📍 {highlightedBooking.address}
-                    </p>
                   </div>
+
                   <div className="text-right shrink-0">
-                    <span className="text-[9px] text-indigo-950/55 uppercase tracking-widest block font-bold">Payout</span>
-                    <span className="text-base font-bold text-emerald-600 font-display leading-tight">₹{highlightedBooking.totalPrice}</span>
+                    <div className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1.5 rounded-2xl flex flex-col items-end">
+                      <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600/70 leading-none mb-0.5">Net Payout</span>
+                      <span className="text-base font-black font-display leading-tight text-emerald-600">₹{highlightedBooking.totalPrice}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2.5 mt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectBooking(highlightedBooking);
-                    }}
-                    className="flex-1 bg-indigo-900 hover:bg-indigo-950 text-white text-[10px] font-black uppercase tracking-widest py-2.5 rounded-xl text-center active:scale-95 transition-all outline-none border-0 cursor-pointer"
-                  >
-                    Manage Job ⚡
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${highlightedBooking.lat},${highlightedBooking.lng}`;
-                      window.open(url, '_blank');
-                    }}
-                    className="bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-widest px-3.5 py-2.5 rounded-xl border border-slate-200 active:scale-95 transition-all outline-none cursor-pointer"
-                  >
-                    Navigate
-                  </button>
-                </div>
+                <hr className="border-slate-100" />
 
-                {/* Direct workflow triggers broadcast immediately */}
-                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Rapid Workflow Control</span>
-                    <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md uppercase font-mono tracking-wider animate-pulse">Syncing Active</span>
-                  </div>
-                  <div className="flex gap-2">
+                {/* Primary Sequential Actions */}
+                <div className="flex items-center gap-2.5">
+                  {/* CALL button */}
+                  <button
+                    type="button"
+                    disabled={isCalling}
+                    onClick={() => onInitiateCall?.(highlightedBooking)}
+                    className="w-1/3 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl flex items-center justify-center gap-1.5 active:scale-95 transition-all outline-none border-0 cursor-pointer disabled:opacity-50"
+                  >
+                    <Phone size={12} className="fill-white/10 shrink-0" />
+                    <span>{isCalling ? "Calling..." : "Call"}</span>
+                  </button>
+
+                  {/* Big Sequential Action Button (or "COMPLETE JOB") */}
+                  <div className="flex-1 min-w-0">
                     {['assigned', 'confirmed'].includes((highlightedBooking.status || 'assigned').toLowerCase()) && (
                       <button
                         type="button"
@@ -441,7 +458,7 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
                             await onUpdateStatus(highlightedBooking.id, { status: 'on_the_way' });
                           }
                         }}
-                        className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[9px] font-black uppercase tracking-widest py-3 rounded-xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-indigo-200 border-0"
+                        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-indigo-100 border-0"
                       >
                         🚀 On the Way
                       </button>
@@ -454,7 +471,7 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
                             await onUpdateStatus(highlightedBooking.id, { status: 'arrived' });
                           }
                         }}
-                        className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[9px] font-black uppercase tracking-widest py-3 rounded-xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-amber-250 border-0"
+                        className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-amber-100 border-0"
                       >
                         📍 Arrived
                       </button>
@@ -462,30 +479,90 @@ function AssignedTasksMiniMap({ bookings, customers, services, onSelectBooking, 
                     {(highlightedBooking.status || '').toLowerCase() === 'arrived' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (onUpdateStatus) {
-                            await onUpdateStatus(highlightedBooking.id, { status: 'in_progress', serviceOtp: '1234' });
-                          }
-                        }}
-                        className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[9px] font-black uppercase tracking-widest py-3 rounded-xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-emerald-250 border-0"
+                        onClick={() => onVerifyOTP?.(highlightedBooking.id)}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-indigo-100 border-0"
                       >
-                        ⚙️ In Progress
+                        🔑 Verify OTP to Start
                       </button>
                     )}
                     {(highlightedBooking.status || '').toLowerCase() === 'in_progress' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (onUpdateStatus) {
-                            await onUpdateStatus(highlightedBooking.id, { status: 'completed' });
-                          }
-                        }}
-                        className="flex-1 bg-gradient-to-r from-blue-700 to-blue-800 text-white text-[9px] font-black uppercase tracking-widest py-3 rounded-xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-blue-300 border-0"
+                        onClick={() => onCompleteJob?.(highlightedBooking.id)}
+                        className="w-full bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl text-center active:scale-95 transition-all cursor-pointer shadow-md shadow-blue-100 border-0"
                       >
                         ✅ Complete Job
                       </button>
                     )}
+                    {(highlightedBooking.status || '').toLowerCase() === 'payment_pending' && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectBooking(highlightedBooking)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl text-center active:scale-95 transition-all cursor-pointer shadow-md border-0"
+                      >
+                        💵 Confirm Cash Collected
+                      </button>
+                    )}
                   </div>
+                </div>
+
+                <hr className="border-slate-100" />
+
+                {/* Collapsible Accordion (Progressive Disclosure) */}
+                <div className="w-full">
+                  <button
+                    type="button"
+                    onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                    className="w-full py-2 text-[9px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/55 rounded-xl border border-indigo-100/40 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span>{isDetailsExpanded ? "Hide Details 🔼" : "View Details 🔽"}</span>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isDetailsExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-3 space-y-2 text-left text-xs font-medium text-slate-600 leading-relaxed font-sans border-t border-slate-50 mt-2">
+                          <p className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-slate-800 shrink-0 uppercase text-[9px] tracking-wider font-mono">Job ID:</span>
+                            <span className="font-mono text-slate-500 select-all">{highlightedBooking.id.toUpperCase()}</span>
+                          </p>
+                          <p className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-slate-800 shrink-0 uppercase text-[9px] tracking-wider font-mono">Schedule:</span>
+                            <span>
+                              {highlightedBooking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at{' '}
+                              {highlightedBooking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </p>
+                          <p className="flex items-start gap-1.5">
+                            <span className="font-extrabold text-slate-800 shrink-0 uppercase text-[9px] tracking-wider font-mono mt-0.5">Address:</span>
+                            <span className="text-slate-500">{highlightedBooking.address}</span>
+                          </p>
+                          <p className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-slate-800 shrink-0 uppercase text-[9px] tracking-wider font-mono">Customer Contact:</span>
+                            <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded text-[10px]">
+                              Protected: {getMaskedPhoneNumber(customers[highlightedBooking.customerUid]?.phoneNumber)}
+                            </span>
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = `https://www.google.com/maps/dir/?api=1&destination=${highlightedBooking.lat},${highlightedBooking.lng}`;
+                              window.open(url, '_blank');
+                            }}
+                            className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-[8.5px] font-black uppercase tracking-widest py-2 rounded-xl border border-slate-200/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 mt-1"
+                          >
+                            <Navigation size={10} />
+                            <span>Open Navigation (Google Maps)</span>
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             ) : (
@@ -811,6 +888,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [otpError, setOtpError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
   const [completionPhoto, setCompletionPhoto] = useState<string | null>(null);
   const [capturingCompletionPhoto, setCapturingCompletionPhoto] = useState(false);
   const [chatHidden, setChatHidden] = useState(false);
@@ -2255,30 +2333,49 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             setChatHidden(false);
           }} 
           onUpdateStatus={handleBookingUpdate}
+          activeMarkerId={activeMarkerId}
+          setActiveMarkerId={setActiveMarkerId}
+          onInitiateCall={handleInitiateCall}
+          isCalling={isCalling}
+          onVerifyOTP={(id) => {
+            setVerifyingOTPId(id);
+            const booking = bookings.find(b => b.id === id);
+            if (booking) setSelectedBooking(booking);
+          }}
+          onCompleteJob={(id) => {
+            setCompletingBookingId(id);
+            const booking = bookings.find(b => b.id === id);
+            if (booking) setSelectedBooking(booking);
+          }}
         />
 
         <AnimatePresence mode="wait">
-          {tab === 'ongoing' && (
-            <motion.div 
-              key="ongoing"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="space-y-4"
-            >
-               {ongoingJobs.length === 0 ? (
-                 <div className="p-12 text-center bg-white rounded-[40px] border border-slate-100 border-dashed">
-                    <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-200 mx-auto mb-6">
-                       <Zap size={32} />
-                    </div>
-                    <p className="font-black italic text-slate-700 text-sm font-display uppercase tracking-wider">Searching for New Jobs</p>
-                    <p className="text-[10px] text-slate-400 font-bold tracking-normal mt-1">Standby for incoming customer assignments near you.</p>
-                 </div>
-               ) : (
-                 ongoingJobs.map(j => renderJobCard(j))
-               )}
-            </motion.div>
-          )}
+          {tab === 'ongoing' && (() => {
+            const ongoingJobsFiltered = ongoingJobs.filter(b => b.id !== activeMarkerId);
+            return (
+              <motion.div 
+                key="ongoing"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="space-y-4"
+              >
+                 {ongoingJobsFiltered.length === 0 ? (
+                   ongoingJobs.length === 0 ? (
+                     <div className="p-12 text-center bg-white rounded-[40px] border border-slate-100 border-dashed">
+                        <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-200 mx-auto mb-6">
+                           <Zap size={32} />
+                        </div>
+                        <p className="font-black italic text-slate-700 text-sm font-display uppercase tracking-wider">Searching for New Jobs</p>
+                        <p className="text-[10px] text-slate-400 font-bold tracking-normal mt-1">Standby for incoming customer assignments near you.</p>
+                     </div>
+                   ) : null
+                 ) : (
+                   ongoingJobsFiltered.map(j => renderJobCard(j))
+                 )}
+              </motion.div>
+            );
+          })()}
 
           {tab === 'pending' && (
             <motion.div 

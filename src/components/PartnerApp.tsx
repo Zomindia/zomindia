@@ -46,7 +46,7 @@ interface Props {
 }
 
 export default function PartnerApp({ profile, initialTab = 'home', targetBookingId: initialTargetId, onNavigate: onAppNavigate }: Props) {
-  const [activeScreen, setActiveScreen] = useState<'home' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab as any);
+  const [activeTab, setActiveTab] = useState<'stats' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab === 'home' ? 'stats' : (initialTab as any));
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -149,7 +149,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   useEffect(() => {
     if (initialTargetId) {
       setTargetBookingId(initialTargetId);
-      setActiveScreen('jobs');
+      setActiveTab('jobs');
     }
   }, [initialTargetId]);
 
@@ -172,7 +172,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
        return;
     }
     setTargetBookingId(targetId);
-    setActiveScreen(screen);
+    setActiveTab(screen === 'home' ? 'stats' : screen);
   };
 
   useEffect(() => {
@@ -357,7 +357,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   // Lock active screen to home if partner application is pending review
   useEffect(() => {
     if (!partner && application) {
-      setActiveScreen('home');
+      setActiveTab('stats');
     }
   }, [partner, application]);
 
@@ -379,9 +379,10 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   };
 
   const renderScreen = () => {
-    switch (activeScreen) {
-      case 'home':
-        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
+    const homePartner = partner ? { ...partner, gracePeriodEnd: null } : null;
+    switch (activeTab) {
+      case 'stats':
+        return <PartnerHome partner={homePartner as any} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
       case 'jobs':
         return (
           <PartnerJobs 
@@ -404,7 +405,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'offers':
         return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} context="partner" />;
       default:
-        return <PartnerHome partner={partner} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
+        return <PartnerHome partner={homePartner as any} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
     }
   };
 
@@ -415,7 +416,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   );
 
   const navItems = (!partner && application) ? [] : [
-    { id: 'home', icon: BarChart3, label: 'Stats' },
+    { id: 'stats', icon: BarChart3, label: 'Stats' },
     { id: 'jobs', icon: Briefcase, label: 'Jobs' },
     { id: 'amc-leads', icon: Zap, label: 'AMC Leads' },
     { id: 'offers', icon: TicketPercent, label: 'Offers' },
@@ -477,7 +478,76 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
 
   // SCENARIO C (Approved)
   return (
-    <div className="min-h-[100dvh] bg-slate-50 pb-32 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200">
+    <div className="min-h-[100dvh] bg-slate-50 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200 pb-20">
+      <style>{`
+        /* Hide the duplicate KYC banner card completely if rendered */
+        .min-h-\\[100dvh\\] .bg-amber-500.text-slate-950.p-4.rounded-3xl {
+          display: none !important;
+        }
+
+        /* Shrink PartnerHome general container padding and spacing */
+        .min-h-\\[100dvh\\] .p-6.space-y-8 {
+          padding: 1rem !important;
+          gap: 1rem !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        
+        /* Adjust spacing of space-y-8 children */
+        .min-h-\\[100dvh\\] .p-6.space-y-8 > * {
+          margin-top: 0 !important;
+          margin-bottom: 0 !important;
+        }
+
+        /* Shrink Welcome header */
+        .min-h-\\[100dvh\\] h2.text-2xl {
+          font-size: 1.125rem !important; /* text-lg */
+          line-height: 1.25rem !important;
+        }
+        
+        .min-h-\\[100dvh\\] .text-\\[11px\\].text-slate-400 {
+          font-size: 9px !important;
+          margin-top: 2px !important;
+        }
+
+        /* Compact Stats cards: Side-by-side neat layout */
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 {
+          gap: 0.5rem !important; /* gap-2 */
+          display: grid !important;
+          grid-template-cols: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 > div {
+          padding: 0.75rem !important; /* p-3 */
+          border-radius: 1rem !important; /* rounded-2xl */
+        }
+
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .w-10.h-10 {
+          width: 2rem !important;
+          height: 2rem !important;
+          margin-bottom: 0.5rem !important;
+          border-radius: 0.5rem !important;
+        }
+        
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .w-10.h-10 svg {
+          width: 1rem !important;
+          height: 1rem !important;
+        }
+
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .pt-4 {
+          padding-top: 0.5rem !important;
+          margin-top: 0.25rem !important;
+        }
+
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .text-3xl {
+          font-size: 1.25rem !important; /* text-xl */
+          line-height: 1.75rem !important;
+        }
+        
+        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .text-\\[10px\\] {
+          font-size: 8px !important;
+        }
+      `}</style>
       {/* Sticky Countdown Banner */}
       {kycStatus === 'pending' && (
         <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 flex items-center justify-between text-left relative z-50 shadow-md">
@@ -528,7 +598,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
            {profile.walletBalance !== undefined && (
              <button 
                onClick={() => navigateWithTarget('wallet')}
-               className={`flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border transition-all active:scale-95 shrink-0 ${activeScreen === 'wallet' ? 'border-amber-500 bg-amber-50/20' : 'border-slate-100'}`}
+               className={`flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border transition-all active:scale-95 shrink-0 ${activeTab === 'wallet' ? 'border-amber-500 bg-amber-50/20' : 'border-slate-100'}`}
              >
                <Wallet size={13} className="text-amber-500" />
                <span className="text-[11px] font-black text-slate-800 tracking-tight">₹{profile.walletBalance}</span>
@@ -543,9 +613,13 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
            </button>
            <button 
              onClick={() => navigateWithTarget('settings')}
-             className={`w-8 h-8 rounded-full overflow-hidden bg-slate-100 border-2 transition-all shrink-0 ${activeScreen === 'settings' ? 'border-[#22c55e] ring-2 ring-[#22c55e]/10' : 'border-[#22c55e]'}`}
+             className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border-2 transition-all shrink-0 ${activeTab === 'settings' ? 'border-[#22c55e] ring-2 ring-[#22c55e]/15' : 'border-slate-200'}`}
            >
-              <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
+              {profile.photoURL && profile.photoURL.startsWith('http') && !profile.photoURL.includes('googleusercontent.com/image_collection') ? (
+                <img src={profile.photoURL} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <UserIcon size={14} className="text-slate-500 mx-auto" />
+              )}
            </button>
            <button 
              onClick={() => {
@@ -580,10 +654,10 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       </header>
 
       {/* Screen Content */}
-      <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
+      <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth pb-24">
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeScreen}
+            key={activeTab}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -595,27 +669,27 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         </AnimatePresence>
       </main>
 
-      {/* Bottom Tab Bar - Floating/Aligned across platform */}
+      {/* Bottom Tab Bar - Solid and Aligned at the absolute bottom */}
       {!(!partner && application) && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 px-6 pb-8 pointer-events-none max-w-md mx-auto safe-area-bottom">
-          <div className="bg-white/95 backdrop-blur-3xl border border-slate-200/60 rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.2)] flex items-center justify-around p-2 pointer-events-auto">
+        <div className="fixed bottom-0 left-0 right-0 w-full max-w-md mx-auto z-50 bg-white border-t border-slate-200/80 shadow-[0_-8px_24px_rgba(0,0,0,0.05)] pb-safe">
+          <div className="flex items-center justify-around p-2">
             {navItems.map((tab) => {
-              const isActive = activeScreen === tab.id;
+              const isActive = activeTab === tab.id;
               const Icon = tab.icon;
               
               return (
                 <button
                   key={tab.id}
                   onClick={() => navigateWithTarget(tab.id as any)}
-                  className="relative flex flex-col items-center justify-center pt-2 pb-1.5 px-1 transition-all flex-1"
+                  className="relative flex flex-col items-center justify-center pt-1 pb-1 transition-all flex-1"
                 >
-                  <div className={`relative p-2 rounded-2xl transition-all duration-500 mb-1 ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/30 scale-110' : 'text-slate-400 active:scale-90 hover:text-slate-600'}`}>
+                  <div className={`relative p-1.5 rounded-xl transition-all duration-300 ${isActive ? 'text-blue-700 bg-blue-50/80 font-bold scale-105' : 'text-slate-400 active:scale-95 hover:text-slate-600'}`}>
                     {tab.id === 'jobs' && hasUrgentPoolRequest && !isActive && (
                       <>
                         <motion.span
-                          className="absolute inset-0 rounded-2xl bg-amber-500/30 pointer-events-none"
+                          className="absolute inset-0 rounded-xl bg-amber-500/30 pointer-events-none"
                           animate={{
-                            scale: [1, 2.4],
+                            scale: [1, 2],
                             opacity: [0.7, 0],
                           }}
                           transition={{
@@ -624,33 +698,14 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                             ease: "easeOut",
                           }}
                         />
-                        <motion.span
-                          className="absolute inset-0 rounded-2xl bg-amber-500/20 pointer-events-none"
-                          animate={{
-                            scale: [1, 1.7],
-                            opacity: [0.5, 0],
-                          }}
-                          transition={{
-                            repeat: Infinity,
-                            duration: 2,
-                            delay: 0.6,
-                            ease: "easeOut",
-                          }}
-                        />
-                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full border-2 border-white animate-pulse" />
                       </>
                     )}
-                    <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
+                    <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                   </div>
-                  <span className={`text-[8px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-slate-900 opacity-100 transform translate-y-0' : 'text-slate-400 opacity-60 translate-y-0.5'}`}>
+                  <span className={`text-[8px] font-black uppercase tracking-widest transition-all duration-300 ${isActive ? 'text-blue-700 opacity-100' : 'text-slate-400 opacity-60'}`}>
                     {tab.label}
                   </span>
-                  {isActive && (
-                    <motion.span 
-                      layoutId="partner-nav-indicator"
-                      className="absolute -bottom-1.5 w-6 h-1 bg-blue-700 rounded-full" 
-                    />
-                  )}
                 </button>
               );
             })}
@@ -675,7 +730,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                exit={{ y: '100%' }}
                transition={{ type: "spring", damping: 26, stiffness: 240 }}
                onClick={(e) => e.stopPropagation()}
-               className="bg-white rounded-t-[32px] rounded-b-[24px] sm:rounded-[32px] w-full max-w-md p-6 sm:p-8 pb-10 sm:pb-12 shadow-2xl relative"
+               className="bg-white rounded-t-[32px] rounded-b-[24px] sm:rounded-[32px] w-full max-w-md p-6 sm:p-8 pb-10 sm:pb-12 shadow-2xl relative max-h-[85dvh] overflow-y-auto"
              >
                 {/* Visual Native Bottom-Sheet Notch Indicator */}
                 <div className="flex justify-center mb-4">

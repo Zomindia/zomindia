@@ -3820,7 +3820,7 @@ export default function CustomerDashboard({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 30 }}
               transition={{ type: "spring", damping: 20, stiffness: 120 }}
-              className="relative bg-white w-full max-w-xl rounded-[36px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col border border-slate-100"
+              className="relative bg-white w-full max-w-xl rounded-[36px] shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col border border-slate-100"
             >
               <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
                 

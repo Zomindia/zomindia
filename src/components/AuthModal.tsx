@@ -13,6 +13,7 @@ import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import LogoIcon from '../assets/logo-icon.png';
+import LogoHorizontal from '../assets/logo-horizontal.png';
 import { 
   X, 
   Smartphone, 
@@ -869,14 +870,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         {/* Dynamic Header */}
         {view !== 'success-transition' && (
           <div className="px-6 pt-6 pb-2 flex justify-between items-center bg-white border-b border-neutral-50/50">
-            <div className="flex items-center gap-1.5 select-none">
+            <div className="flex items-center select-none">
               <img 
-                src={LogoIcon} 
-                alt="zomindia" 
-                className="w-6 h-6 object-contain rounded-full border border-neutral-100"
+                src={LogoHorizontal} 
+                alt="Zomindia brand" 
+                className="h-5 w-auto object-contain object-left"
                 referrerPolicy="no-referrer"
               />
-              <span className="text-sm font-black tracking-tight text-slate-800">zomindia</span>
             </div>
             
             <button 
