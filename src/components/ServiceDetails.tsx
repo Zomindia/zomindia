@@ -40,12 +40,15 @@ import {
   ArrowRight,
   Share2,
   Sparkles,
+  Sliders,
+  Hourglass,
 } from "lucide-react";
 import BookingModal from "./BookingModal";
 import PartnerIdentityMarker from "./PartnerIdentityMarker";
 import { LoadingScreen } from "./LoadingIndicator";
 import { Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
 import FAQList from "./FAQ";
+import { getEstimatedDurationDetails } from "../lib/durationEstimator";
 
 interface ServiceDetailsProps {
   serviceId: string;
@@ -295,8 +298,19 @@ export default function ServiceDetails({
   const [activeDetailsTab, setActiveDetailsTab] = useState<
     "overview" | "experts" | "reviews"
   >("overview");
+  const [durationScale, setDurationScale] = useState<'small' | 'medium' | 'large'>('medium');
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [qrCodeValue, setQrCodeValue] = useState("");
+
+  const durationDetails = useMemo(() => {
+    if (!service) return null;
+    return getEstimatedDurationDetails(
+      service.name,
+      category?.name || "General",
+      service.duration,
+      durationScale
+    );
+  }, [service, category, durationScale]);
 
   // Proximity-based dynamic sorting and coordinate states
   const [selectedLocation, setSelectedLocation] = useState<{
@@ -551,6 +565,28 @@ export default function ServiceDetails({
     );
   }
 
+  const getScaleLabel = (scale: 'small' | 'medium' | 'large', categoryName: string) => {
+    const cat = (categoryName || "").toLowerCase();
+    if (cat.includes("cleaning") || cat.includes("painting")) {
+      if (scale === 'small') return "1 BHK / Small Area";
+      if (scale === 'medium') return "2 BHK (Standard)";
+      return "3+ BHK (Premium)";
+    }
+    if (cat.includes("appliance") || cat.includes("repair") || cat.includes("phone")) {
+      if (scale === 'small') return "Minor Fix / Quick Check";
+      if (scale === 'medium') return "Standard Repair & Clean";
+      return "Complex Overhaul";
+    }
+    if (cat.includes("beauty") || cat.includes("salon")) {
+      if (scale === 'small') return "Express / Mini Session";
+      if (scale === 'medium') return "Classic Package";
+      return "Deluxe Treatment";
+    }
+    if (scale === 'small') return "Basic / Express";
+    if (scale === 'medium') return "Standard Duration";
+    return "Premium / Extended";
+  };
+
   const serviceImages =
     service.images || (service.imageURL ? [service.imageURL] : []);
 
@@ -799,6 +835,172 @@ export default function ServiceDetails({
                       <FileText size={13} /> View Price Card
                     </a>
                   </section>
+                )}
+
+                {/* Dynamic Service Duration Estimator Card */}
+                {durationDetails && (
+                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-blue-700 tracking-[0.2em] block mb-1">
+                          ⏱️ Interactive Expectation Management
+                        </span>
+                        <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">
+                          Smart Duration Estimator
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                          Calculated service timeframe based on your specific requirements.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 rounded-2xl border border-slate-150/80 self-start sm:self-auto">
+                        <Clock size={16} className="text-blue-700 animate-pulse" />
+                        <div>
+                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none mb-0.5">
+                            Expected Time
+                          </p>
+                          <p className="text-xs font-black text-slate-900 leading-none">
+                            ~{durationDetails.displayText}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Scale Slider / Tab Selector */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1.5">
+                          <Sliders size={12} /> Select Service Scope / Scale:
+                        </label>
+                        <span className="text-[9px] font-extrabold text-blue-700 bg-blue-50/50 px-2 py-0.5 rounded-lg border border-blue-100">
+                          Interactive
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100/80 rounded-2xl border border-slate-150/50">
+                        {(['small', 'medium', 'large'] as const).map((scale) => {
+                          const isSelected = durationScale === scale;
+                          return (
+                            <button
+                              key={scale}
+                              type="button"
+                              onClick={() => setDurationScale(scale)}
+                              className={`py-2.5 px-2 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-center transition-all cursor-pointer select-none active:scale-95 flex flex-col items-center justify-center gap-0.5 ${
+                                isSelected
+                                  ? "bg-white text-blue-700 shadow-md border border-blue-100 font-extrabold"
+                                  : "text-slate-400 hover:text-slate-650 hover:bg-white/50"
+                              }`}
+                            >
+                              <span>{getScaleLabel(scale, category?.name || "")}</span>
+                              <span className={`text-[8px] font-normal lowercase ${isSelected ? "text-blue-600 font-medium" : "text-slate-400"}`}>
+                                {scale === 'small' ? '0.75x' : scale === 'medium' ? '1.0x' : '1.4x'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Proportional Stacked Progress Bar */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                        <span>Phase Breakdown Timeline</span>
+                        <span className="text-slate-600 font-black italic">
+                          Total: {durationDetails.totalMinutes} mins
+                        </span>
+                      </div>
+                      <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200">
+                        <div
+                          style={{ width: `${(durationDetails.setupMinutes / durationDetails.totalMinutes) * 100}%` }}
+                          className="h-full bg-indigo-500 hover:bg-indigo-600 transition-all duration-500 cursor-help"
+                          title={`Setup phase: ${durationDetails.setupMinutes} mins`}
+                        />
+                        <div
+                          style={{ width: `${(durationDetails.activeMinutes / durationDetails.totalMinutes) * 100}%` }}
+                          className="h-full bg-blue-500 hover:bg-blue-600 transition-all duration-500 cursor-help"
+                          title={`Core Active work: ${durationDetails.activeMinutes} mins`}
+                        />
+                        <div
+                          style={{ width: `${(durationDetails.cleanupMinutes / durationDetails.totalMinutes) * 100}%` }}
+                          className="h-full bg-emerald-500 hover:bg-emerald-600 transition-all duration-500 cursor-help"
+                          title={`Testing & Cleanup phase: ${durationDetails.cleanupMinutes} mins`}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[8px] font-extrabold text-slate-400 uppercase tracking-wider px-1">
+                        <span className="text-indigo-600">● Setup ({durationDetails.setupMinutes}m)</span>
+                        <span className="text-blue-600">● Core Job ({durationDetails.activeMinutes}m)</span>
+                        <span className="text-emerald-600">● Wrap-up ({durationDetails.cleanupMinutes}m)</span>
+                      </div>
+                    </div>
+
+                    {/* Step Timeline Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Setup Phase Card */}
+                      <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 hover:bg-indigo-50/70 transition-all duration-300">
+                        <div className="flex items-center justify-between text-indigo-950 font-black text-[9px] uppercase tracking-wider">
+                          <span className="flex items-center gap-1">🛠️ 1. Setup & Prep</span>
+                          <span className="bg-indigo-100/60 text-indigo-700 px-1.5 py-0.5 rounded-lg text-[8px]">
+                            {durationDetails.setupMinutes}m
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-indigo-900 font-semibold leading-relaxed">
+                          {durationDetails.phases[0]?.description}
+                        </p>
+                      </div>
+
+                      {/* Active Phase Card */}
+                      <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl bg-blue-50/40 border border-blue-100/50 hover:bg-blue-50/70 transition-all duration-300">
+                        <div className="flex items-center justify-between text-blue-950 font-black text-[9px] uppercase tracking-wider">
+                          <span className="flex items-center gap-1">⚡ 2. Core Execution</span>
+                          <span className="bg-blue-100/60 text-blue-750 px-1.5 py-0.5 rounded-lg text-[8px]">
+                            {durationDetails.activeMinutes}m
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-blue-900 font-semibold leading-relaxed">
+                          {durationDetails.phases[1]?.description}
+                        </p>
+                      </div>
+
+                      {/* Cleanup Phase Card */}
+                      <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl bg-emerald-50/40 border border-emerald-100/50 hover:bg-emerald-50/70 transition-all duration-300">
+                        <div className="flex items-center justify-between text-emerald-950 font-black text-[9px] uppercase tracking-wider">
+                          <span className="flex items-center gap-1">✨ 3. Finalization</span>
+                          <span className="bg-emerald-100/60 text-emerald-700 px-1.5 py-0.5 rounded-lg text-[8px]">
+                            {durationDetails.cleanupMinutes}m
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-emerald-900 font-semibold leading-relaxed">
+                          {durationDetails.phases[2]?.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Factors and Expectations */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-100">
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Factors Affecting Duration:
+                        </h4>
+                        <ul className="space-y-1.5">
+                          {durationDetails.affectingFactors.map((factor, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-[10px] text-slate-600 font-medium">
+                              <span className="text-blue-600 text-xs mt-0.5">•</span>
+                              <span>{factor}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="bg-amber-50/40 rounded-2xl p-4 border border-amber-100/50 flex items-start gap-3">
+                        <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <h5 className="text-[10px] font-black text-amber-800 uppercase tracking-wider mb-1">
+                            Expectation Agreement
+                          </h5>
+                          <p className="text-[10px] text-amber-700 leading-relaxed font-medium">
+                            {durationDetails.expectationNote}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
