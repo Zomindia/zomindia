@@ -3,7 +3,7 @@ import { collection, addDoc, Timestamp, query, where, getDocs, limit, doc, getDo
 import { db, auth } from '../lib/firebase';
 import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus, AMC } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { sendNotification } from '../lib/notifications';
+import { sendNotification, NotificationEngine } from '../lib/notifications';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
 import { handleMapsError } from '../lib/maps-errors';
 import AuthModal from './AuthModal';
@@ -1225,39 +1225,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         console.warn("REST fallback endpoint encountered an expected bypass response:", restErr.message);
       }
 
-      // Notify key stakeholders (wrapped inside safety block to ensure notification dispatch failure never halts booking completion)
+      // Notify key stakeholders & Dispatch SMS/WhatsApp via centralized NotificationEngine
       try {
-        await sendNotification(profile?.uid || auth.currentUser?.uid || '', 'Booking Placed!', assignedPartnerId ? `Your request for ${service.name} has been received and partner has been assigned.` : `Your request for ${service.name} has been received. Waiting for partner assignment.`, 'new_booking', bookingRef.id);
-        
-        if (assignedPartnerId) {
-          await sendNotification(assignedPartnerId, 'New Job Assigned', `You have been automatically matched for a ${service.name} booking at ${date} ${time}.`, 'new_booking', bookingRef.id);
-        } else {
-          await sendNotification('sarthakwebtech@gmail.com', 'New Booking Received', `Customer ${profile?.displayName || 'A User'} booked ${service.name}. No partner could be auto-assigned.`, 'new_booking', bookingRef.id);
-        }
-
-        // Notify other active, qualified partners nearby so they receive alerts for newly published booking requests
-        const matchingPartnersToNotify = eligiblePartnersList.filter(p => (p.userId || p.id) !== assignedPartnerId);
-        for (const pt of matchingPartnersToNotify) {
-          const partnerUid = pt.userId || pt.id;
-          if (partnerUid) {
-            await sendNotification(
-              partnerUid,
-              'New Booking Request Nearby!',
-              `A new request for ${service.name} has been published in your area. Accept it now!`,
-              'new_booking',
-              bookingRef.id
-            );
-          }
-        }
+        const assignedPartnerObj = eligiblePartnersList.find(p => (p.userId || p.id) === assignedPartnerId);
+        await NotificationEngine.sendBookingConfirmation({
+          bookingId: bookingRef.id,
+          customerId: profile?.uid || auth.currentUser?.uid || '',
+          customerName: profile?.displayName || resolvedFullName || 'Customer',
+          customerPhone: resolvedMobile || '',
+          serviceName: service.name,
+          date,
+          time,
+          assignedPartnerId,
+          partnerName: assignedPartnerObj?.fullName || 'Expert',
+          partnerPhone: assignedPartnerObj?.phone || '',
+          eligiblePartners: eligiblePartnersList,
+          basePrice: totalBill
+        });
       } catch (notifyErr) {
-        console.warn("Non-fatal booking notifications dispatch error:", notifyErr);
-      }
-
-      // Live SMS & WhatsApp Gateway trigger
-      try {
-        console.log("WhatsApp API trigger pending");
-      } catch (alertError) {
-        console.warn("SMS/WhatsApp gateway alert bypassed or offline:", alertError);
+        console.warn("[NotificationEngine] Non-fatal booking confirmation dispatch error:", notifyErr);
       }
       
       setShowFinalConfirmation(false);
