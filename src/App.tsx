@@ -76,8 +76,7 @@ import ElitePartnerModal from './components/ElitePartnerModal';
 import { useTranslation } from './lib/i18n';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
-import LogoHorizontal from './assets/logo-horizontal.png';
-import LogoIcon from './assets/logo-icon.png';
+import { LogoHorizontal, LogoIcon } from './components/BrandLogo';
 
 const teamMember1Img = "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400";
 const teamMember2Img = "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400";

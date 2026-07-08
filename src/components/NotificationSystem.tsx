@@ -6,7 +6,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info, CheckCircle, Smartphone, MapPin, ShieldCheck, Clock } from 'lucide-react';
 import { playSuccessChime } from '../lib/audio';
-import LogoIcon from '../assets/logo-icon.png';
+import { LogoIcon } from './BrandLogo';
 const logoImg = LogoIcon;
 
 interface Props {

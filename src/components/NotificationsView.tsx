@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, Clock, Info, ShieldCheck, Trash2, X, MapPin, Smartphone } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { LoadingScreen } from './LoadingIndicator';
-import LogoIcon from '../assets/logo-icon.png';
+import { LogoIcon } from './BrandLogo';
 const logoImg = LogoIcon;
 
 interface Notification {

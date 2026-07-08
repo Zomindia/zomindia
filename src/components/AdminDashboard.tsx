@@ -114,8 +114,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import LogoHorizontal from "../assets/logo-horizontal.png";
-import LogoIcon from "../assets/logo-icon.png";
+import { LogoHorizontal, LogoIcon } from "./BrandLogo";
 
 type AdminTab =
   | "overview"

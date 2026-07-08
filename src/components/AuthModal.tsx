@@ -12,8 +12,7 @@ import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, ge
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
-import LogoIcon from '../assets/logo-icon.png';
-import LogoHorizontal from '../assets/logo-horizontal.png';
+import { LogoIcon, LogoHorizontal } from './BrandLogo';
 import { 
   X, 
   Smartphone, 
