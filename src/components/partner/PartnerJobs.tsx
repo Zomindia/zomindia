@@ -1043,8 +1043,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       try {
         await updateDoc(doc(db, 'bookings', booking.id), {
           status: 'completed',
-          completedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          completedAt: serverTimestamp()
         });
       } catch (dbErr: any) {
         console.error("Firestore finalize job permission/network error:", dbErr);
@@ -1072,7 +1071,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          body: JSON.stringify({ bookingId: booking.id })
       }).catch(err => console.error('Failed to trigger bill email', err));
 
-      notifyBookingUpdate({ ...booking, status: 'completed', completedAt: Timestamp.now() }, 'completed', partner?.userId || '');
+      await notifyBookingUpdate({ ...booking, status: 'completed', completedAt: Timestamp.now() }, 'completed', partner?.userId || '');
       setCompletingBookingId(null);
       setCompletionPhoto(null);
       setServiceNotes('');
