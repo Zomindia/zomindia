@@ -28,24 +28,27 @@ export function generateGoogleCalendarUrl(params: {
   return url.toString();
 }
 
-/**
- * Downloads a standard .ics calendar file for Apple Calendar or Outlook
- */
-export function downloadIcsFile(params: {
+export interface ICSEvent {
   title: string;
-  startDate: Date;
-  endDate: Date;
   description: string;
   location: string;
-  filename: string;
-}) {
-  const startStr = formatToISO8601Basic(params.startDate);
-  const endStr = formatToISO8601Basic(params.endDate);
+  startTime: Date;
+  endTime: Date;
+}
+
+/**
+ * Native client-side iCalendar (.ics) generator for Zomindia bookings.
+ * RFC 5545 compliant, handles escaping, and triggers native client-side browser download.
+ */
+export function downloadICSFile(event: ICSEvent, filename: string = 'zomindia-booking.ics') {
+  const startStr = formatToISO8601Basic(event.startTime);
+  const endStr = formatToISO8601Basic(event.endTime);
   const stampStr = formatToISO8601Basic(new Date());
   const uid = `zomindia-${Date.now()}@zomindia.com`;
 
-  // Escape special ICS characters
-  const escapeIcsText = (text: string) => {
+  // Escape special ICS characters (RFC 5545)
+  const escapeIcsText = (text: string | undefined | null) => {
+    if (!text) return '';
     return text
       .replace(/\\/g, '\\\\')
       .replace(/;/g, '\\;')
@@ -64,9 +67,9 @@ export function downloadIcsFile(params: {
     `DTSTAMP:${stampStr}`,
     `DTSTART:${startStr}`,
     `DTEND:${endStr}`,
-    `SUMMARY:${escapeIcsText(params.title)}`,
-    `DESCRIPTION:${escapeIcsText(params.description)}`,
-    `LOCATION:${escapeIcsText(params.location)}`,
+    `SUMMARY:${escapeIcsText(event.title)}`,
+    `DESCRIPTION:${escapeIcsText(event.description)}`,
+    `LOCATION:${escapeIcsText(event.location)}`,
     'STATUS:CONFIRMED',
     'SEQUENCE:0',
     'BEGIN:VALARM',
@@ -84,9 +87,30 @@ export function downloadIcsFile(params: {
   
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', params.filename);
+  link.setAttribute('download', filename);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Downloads a standard .ics calendar file for Apple Calendar or Outlook (legacy adapter)
+ */
+export function downloadIcsFile(params: {
+  title: string;
+  startDate: Date;
+  endDate: Date;
+  description: string;
+  location: string;
+  filename: string;
+}) {
+  downloadICSFile({
+    title: params.title,
+    description: params.description,
+    location: params.location,
+    startTime: params.startDate,
+    endTime: params.endDate
+  }, params.filename);
+}
+

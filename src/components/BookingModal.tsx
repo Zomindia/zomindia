@@ -5,7 +5,7 @@ import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingSta
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { sendNotification, NotificationEngine } from '../lib/notifications';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
-import { generateGoogleCalendarUrl, downloadIcsFile } from '../utils/calendar';
+import { generateGoogleCalendarUrl, downloadICSFile } from '../utils/calendar';
 import { handleMapsError } from '../lib/maps-errors';
 import AuthModal from './AuthModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -2829,14 +2829,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         const description = `Your Zomindia home service booking is confirmed!\n\nService: ${service.name}\nScheduled Slot: ${date} at ${time}\nAddress: ${address}\nBooking ID: ${lastBookingId || 'N/A'}\n\nThank you for choosing Zomindia!`;
                         const location = address || 'Your home address';
 
-                        downloadIcsFile({
+                        downloadICSFile({
                           title,
-                          startDate: start,
-                          endDate: end,
                           description,
                           location,
-                          filename: `zomindia-booking-${lastBookingId || 'service'}.ics`
-                        });
+                          startTime: start,
+                          endTime: end
+                        }, `zomindia-booking-${lastBookingId || 'service'}.ics`);
                       }}
                       className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200/60 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95"
                     >
