@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
-import logoIcon from '../assets/images/logo-192.png';
+import logoIcon from '../assets/images/logo-icon.png';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 

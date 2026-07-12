@@ -99,7 +99,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
               try {
                 new Notification(title, {
                   body: message,
-                  icon: '/logo-icon.png',
+                  icon: '/logo-192.png',
                   tag: `status-change-${bookingId}`
                 });
               } catch (err) {
@@ -111,8 +111,8 @@ export default function NotificationSystem({ onNavigate }: Props) {
                 navigator.serviceWorker.ready.then((registration) => {
                   registration.showNotification(title, {
                     body: message,
-                    icon: '/logo-icon.png',
-                    badge: '/logo-icon.png',
+                    icon: '/logo-192.png',
+                    badge: '/logo-192.png',
                     tag: `status-change-${bookingId}`
                   });
                 }).catch(e => console.error('Service worker background notification failed:', e));
@@ -170,7 +170,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
             try {
               new Notification(notif.title || 'New Notification', {
                 body: notif.message,
-                icon: '/logo-icon.png'
+                icon: '/logo-192.png'
               });
             } catch (e) {
               console.error('Error showing native notification', e);
