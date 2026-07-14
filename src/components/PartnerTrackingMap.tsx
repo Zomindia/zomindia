@@ -389,7 +389,7 @@ function MapLogic({
           onClick={(e) => {
             if (e) {
               // Ensure we stop default behavior and toggle tooltip
-              e.domEvent?.stopPropagation();
+              (e as any).domEvent?.stopPropagation();
             }
             setShowTooltip(!showTooltip);
             if (onPartnerClick) {
