@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   User, 
   ShieldCheck, 
@@ -24,7 +25,7 @@ import {
 import { PartnerProfile, UserProfile, Category, WorkingHours, Booking, Service } from '../../types';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { db, auth } from '../../lib/firebase';
+import { db, auth, storage } from '../../lib/firebase';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import AdminUpload from '../AdminUpload';
 import { sendNotification } from '../../lib/notifications';
@@ -51,6 +52,101 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
   };
 
   const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>(profile.photoURL || '');
+
+  useEffect(() => {
+    if (profile.photoURL) {
+      setAvatarUrl(profile.photoURL);
+    }
+  }, [profile.photoURL]);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Instantly display a local Base64 preview inside the avatar
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Url = reader.result as string;
+        // Instantly display preview
+        setAvatarUrl(base64Url);
+        setEditForm(prev => ({ ...prev, photoURL: base64Url }));
+        window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: base64Url } }));
+
+        // Trigger background upload
+        setUploadingAvatar(true);
+        try {
+          const uid = auth.currentUser?.uid || profile.uid;
+          const storageRef = ref(storage, `partners/${uid}/avatar.jpg`);
+          
+          const snapshot = await uploadBytes(storageRef, file);
+          const downloadUrl = await getDownloadURL(snapshot.ref);
+
+          // Update states and databases with real URL
+          setAvatarUrl(downloadUrl);
+          setEditForm(prev => ({ ...prev, photoURL: downloadUrl }));
+
+          // Update Firestore 'users' collection
+          await updateDoc(doc(db, 'users', uid), {
+            photoURL: downloadUrl
+          });
+
+          // Update Firestore 'partners' collection if exists
+          if (partner?.id) {
+            await updateDoc(doc(db, 'partners', partner.id), {
+              photoURL: downloadUrl
+            });
+          }
+
+          // Update Firestore 'providers' collection
+          try {
+            await setDoc(doc(db, 'providers', uid), {
+              photoURL: downloadUrl,
+              updatedAt: Timestamp.now()
+            }, { merge: true });
+          } catch (providersErr) {
+            console.warn("Could not update providers collection:", providersErr);
+          }
+
+          // Dispatch event with final URL
+          window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: downloadUrl } }));
+          console.log("Profile picture successfully uploaded and saved to cloud.");
+        } catch (uploadErr: any) {
+          console.error("Upload failed details:", uploadErr);
+          // Fallback: update firestore documents with base64Url so it works instantly regardless of Storage configuration
+          try {
+            const uid = auth.currentUser?.uid || profile.uid;
+            await updateDoc(doc(db, 'users', uid), {
+              photoURL: base64Url
+            });
+            if (partner?.id) {
+              await updateDoc(doc(db, 'partners', partner.id), {
+                photoURL: base64Url
+              });
+            }
+            await setDoc(doc(db, 'providers', uid), {
+              photoURL: base64Url,
+              updatedAt: Timestamp.now()
+            }, { merge: true });
+          } catch (firestoreErr) {
+            console.error("Firestore update with base64 fallback failed:", firestoreErr);
+          }
+        } finally {
+          setUploadingAvatar(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (readerErr) {
+      console.error("FileReader failed:", readerErr);
+    }
+  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -159,9 +255,21 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
         <>
           {/* Profile Header */}
           <section className="flex items-center gap-6">
-             <div className="relative group italic">
-                <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner">
-                   <img src={profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+             <div 
+               onClick={handleAvatarClick} 
+               className="relative group italic cursor-pointer transition-all hover:scale-105 active:scale-95"
+               title="Click to change profile picture"
+             >
+                <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner flex items-center justify-center relative">
+                   {uploadingAvatar && (
+                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10 rounded-full">
+                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                     </div>
+                   )}
+                   <img src={avatarUrl || profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider rounded-full z-20">
+                     Change
+                   </div>
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-700 border-4 border-slate-50 rounded-full flex items-center justify-center text-white">
                    <Check size={12} />
@@ -171,6 +279,15 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
                 <h2 className="text-2xl font-black text-slate-900 leading-tight">{profile.displayName}</h2>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Verified Partner</p>
              </div>
+             <input 
+               type="file" 
+               accept="image/*" 
+               capture="user"
+               id="camera-input" 
+               ref={fileInputRef} 
+               style={{ display: 'none' }} 
+               onChange={handleAvatarChange} 
+             />
           </section>
 
           {/* KYC Status Banner */}

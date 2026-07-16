@@ -74,6 +74,24 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   // Active global background service that periodic/live updates coordinate markers in firebase
   const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
 
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string>(profile.photoURL || '');
+
+  useEffect(() => {
+    setCurrentPhotoUrl(profile.photoURL || '');
+  }, [profile.photoURL]);
+
+  useEffect(() => {
+    const handleAvatarUpdated = (e: Event) => {
+      const url = (e as CustomEvent)?.detail?.photoURL || '';
+      if (url) {
+        setCurrentPhotoUrl(url);
+        profile.photoURL = url;
+      }
+    };
+    window.addEventListener('partner-avatar-updated', handleAvatarUpdated);
+    return () => window.removeEventListener('partner-avatar-updated', handleAvatarUpdated);
+  }, [profile]);
+
   // Listen to open-kyc-modal event
   useEffect(() => {
     const handleOpenKyc = () => setShowKycForm(true);
@@ -614,8 +632,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
              onClick={() => navigateWithTarget('settings')}
              className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 border-2 transition-all shrink-0 ${activeTab === 'settings' ? 'border-[#22c55e] ring-2 ring-[#22c55e]/15' : 'border-slate-200'}`}
            >
-              {profile.photoURL && profile.photoURL.startsWith('http') && !profile.photoURL.includes('googleusercontent.com/image_collection') ? (
-                <img src={profile.photoURL} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
+              {currentPhotoUrl && (currentPhotoUrl.startsWith('http') || currentPhotoUrl.startsWith('data:image')) && !currentPhotoUrl.includes('googleusercontent.com/image_collection') ? (
+                <img src={currentPhotoUrl} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
               ) : (
                 <UserIcon size={14} className="text-slate-500 mx-auto" />
               )}

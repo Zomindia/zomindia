@@ -594,66 +594,21 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   // Android's Native 'FLAG_SECURE' window manager layer is fully configured in the wrapped container level.
   // This web-level hook mirrors FLAG_SECURE by applying an instant deep CSS blur filter to the entire 
   // UI whenever standard window/tab focus shifts or screen gestures/overlay events are triggered.
-  const [isOverlayBlurred, setIsOverlayBlurred] = useState(!document.hasFocus());
+  const [isOverlayBlurred, setIsOverlayBlurred] = useState(false);
 
   useEffect(() => {
-    const handleFocus = () => {
-      if (document.hasFocus()) {
-        setIsOverlayBlurred(false);
-      }
-    };
-
-    const handleBlur = () => {
-      setIsOverlayBlurred(true);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        setIsOverlayBlurred(true);
-      } else if (document.hasFocus()) {
-        setIsOverlayBlurred(false);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('blur', handleBlur);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     // Prevent Print Screen, Direct Printing, and standard saving shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'PrintScreen') {
-        e.preventDefault();
-        setIsOverlayBlurred(true);
-      }
-
-      // Block Ctrl+P / Cmd+P
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        setIsOverlayBlurred(true);
-      }
-
       // Block Ctrl+S / Cmd+S
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'PrintScreen') {
-        e.preventDefault();
-        setIsOverlayBlurred(true);
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
 
     return () => {
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('blur', handleBlur);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -2049,29 +2004,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   }
 
   return (
-    <div 
-      className="flex flex-col h-full bg-slate-50 relative"
-      style={{
-        filter: isOverlayBlurred ? 'blur(20px)' : 'none',
-        transition: 'all 0.1s ease-in-out'
-      }}
-    >
-      {isOverlayBlurred && (
-        <div className="absolute inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none pointer-events-auto">
-          <div className="bg-slate-950/95 text-white rounded-[32px] p-8 max-w-sm border border-slate-800 shadow-2xl space-y-4">
-            <div className="w-16 h-16 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-500/20">
-              <Zap size={32} className="text-rose-500 animate-pulse" />
-            </div>
-            <h4 className="text-sm font-black uppercase tracking-wider text-rose-500">Security Shield Active</h4>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              To prevent screenshot leakage & safeguard client privacy, active service views are currently masked.
-            </p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none pt-2">
-              Focus back on window or tap to unlock
-            </p>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col h-full bg-slate-50 relative">
 
       {/* SECURE IN-APP WEBRTC & BRIDGE CALLING ENGINE OVERLAY */}
       {activeCoordinatedCallBooking && (

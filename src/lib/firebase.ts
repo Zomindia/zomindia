@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { offlineSyncEngine } from './offlineQueue';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -17,6 +18,7 @@ export const db = initializeFirestore(app, {
 offlineSyncEngine.setDb(db);
 
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Connection Test with graceful error reporting after connection stabilizes
 async function testConnection() {
