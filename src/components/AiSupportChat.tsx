@@ -19,6 +19,8 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  addDoc,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
@@ -221,15 +223,41 @@ export default function AiSupportChat({
   userProfile,
   isPartner,
   bookings,
+  activeTab,
 }: {
   userProfile?: UserProfile;
   isPartner?: boolean;
   bookings?: Booking[];
+  activeTab?: string;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => {
+    try {
+      const savedOpen = sessionStorage.getItem("zomini_chat_open");
+      if (savedOpen === "true") {
+        sessionStorage.removeItem("zomini_chat_open");
+        return true;
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+    return false;
+  });
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
+
+  const saveContextBeforeLogin = () => {
+    try {
+      sessionStorage.setItem("zomini_pending_chat_history", JSON.stringify(messages));
+      sessionStorage.setItem("zomini_chat_open", "true");
+      if (activeTab) {
+        sessionStorage.setItem("zomini_saved_tab", activeTab);
+      }
+      console.log("[Zomini] Saved pending chat history, active tab, and active toggle in sessionStorage.");
+    } catch (err) {
+      console.warn("Failed to save pending chat history:", err);
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -243,6 +271,16 @@ export default function AiSupportChat({
   const [messages, setMessages] = useState<
     { role: "ai" | "user"; text: string }[]
   >(() => {
+    try {
+      const saved = sessionStorage.getItem("zomini_pending_chat_history");
+      if (saved) {
+        sessionStorage.removeItem("zomini_pending_chat_history");
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
     const defaultMsg = "Welcome to Zomindia! Please log in to chat with Zomini and track your active home services.";
     if (userProfile) {
       const userName = userProfile.fullName || userProfile.displayName || "User";
@@ -263,6 +301,8 @@ export default function AiSupportChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
+  const [allServices, setAllServices] = useState<any[]>([]);
+  const [showBookingSuccess, setShowBookingSuccess] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Multilingual voice configurations
@@ -342,6 +382,18 @@ export default function AiSupportChat({
         recognitionRef.current.stop();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const q = query(collection(db, "services"));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        setAllServices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Could not load services for AI Chat mapping:", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -465,11 +517,11 @@ export default function AiSupportChat({
             user: userProfile
               ? {
                   name: userProfile.displayName,
-                  role: userProfile.role,
+                  role: userProfile.role || "customer",
                   city: (userProfile as any).city,
                   isPartner: isPartner,
                 }
-              : { isPartner: isPartner },
+              : { isPartner: isPartner, role: 'Guest' },
             bookings: localBookings?.slice(0, 5).map((b) => ({
               id: b.id,
               status: b.status,
@@ -479,13 +531,90 @@ export default function AiSupportChat({
               totalPrice: b.totalPrice,
               address: b.address,
             })),
+            chatHistory: [...messages, { role: "user", text: queryText }],
           },
         }),
       });
 
       const data = await res.json();
-      if (res.ok && data.reply) {
-        setMessages((prev) => [...prev, { role: "ai", text: data.reply }]);
+      if (res.ok) {
+        const isGuest = !userProfile;
+        if (data.isReadyToBook === true && !isGuest) {
+          try {
+            // Map serviceType to real serviceId fuzzy-matching the names in database
+            const detectedType = data.serviceType || "AC Repair";
+            const matchedService = allServices.find(s => 
+              s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
+              detectedType.toLowerCase().includes(s.name?.toLowerCase() || "")
+            );
+            const resolvedServiceId = matchedService ? matchedService.id : "ac_repair_general";
+
+            const activeUid = userProfile!.uid;
+            const resolvedFullName = userProfile!.fullName || userProfile!.displayName || "Customer";
+            const resolvedMobile = userProfile!.mobile || userProfile!.phoneNumber || "9876543210";
+            const resolvedEmail = userProfile!.email || "";
+
+            // Create a randomized 4-digit service OTP
+            const serviceOtp = String(Math.floor(1000 + Math.random() * 9000));
+
+            const bookingPayload = {
+              customerUid: activeUid,
+              userId: activeUid,
+              customerId: activeUid,
+              serviceId: resolvedServiceId,
+              serviceType: detectedType,
+              issueDetails: data.issueDetails || "Zomini Diagnosed Issue",
+              visitationFee: 195,
+              totalPrice: 195,
+              status: "pending",
+              paymentStatus: "unpaid",
+              paymentMethod: "cash",
+              scheduledAt: Timestamp.now(),
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+              customerBookedEmail: resolvedEmail,
+              customerBookedPhone: resolvedMobile,
+              customerBookedName: resolvedFullName,
+              customerName: resolvedFullName,
+              customerMobile: resolvedMobile,
+              customerData: {
+                fullName: resolvedFullName,
+                mobile: resolvedMobile,
+                email: resolvedEmail
+              },
+              otpVerified: false,
+              serviceOtp
+            };
+
+            const docRef = await addDoc(collection(db, "bookings"), bookingPayload);
+            const newBookingId = docRef.id;
+
+            // Trigger success animation
+            setShowBookingSuccess(true);
+
+            // Insert custom timeline booking card message
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "ai",
+                text: "✅ Booking Confirmed",
+                bookingData: {
+                  id: newBookingId,
+                  serviceType: detectedType,
+                  visitationFee: 195
+                }
+              }
+            ]);
+
+          } catch (dbErr) {
+            console.error("AI automated booking Firestore write failed:", dbErr);
+            const replyText = data.nextQuestion || data.reply || (typeof data === "string" ? data : JSON.stringify(data));
+            setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
+          }
+        } else {
+          const replyText = data.nextQuestion || data.reply || (typeof data === "string" ? data : JSON.stringify(data));
+          setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
+        }
       } else {
         setMessages((prev) => [
           ...prev,
@@ -685,6 +814,22 @@ export default function AiSupportChat({
 
             {/* Messages Scroll Panel */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+              {!userProfile && (
+                <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 text-center mb-2 shadow-sm">
+                  <p className="text-[11.5px] text-slate-700 font-bold mb-2 leading-snug">
+                    You are currently browsing as a <span className="text-indigo-700 font-extrabold">Guest</span>. Speak to Zomini to diagnose issues, and log in to confirm your booking!
+                  </p>
+                  <button
+                    onClick={() => {
+                      saveContextBeforeLogin();
+                      window.dispatchEvent(new CustomEvent("open-auth-modal"));
+                    }}
+                    className="bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-black py-1.5 px-4 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>🔐 Login / Sign Up</span>
+                  </button>
+                </div>
+              )}
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
@@ -713,7 +858,56 @@ export default function AiSupportChat({
                     }`}
                   >
                     {/* Private masked telephone data rendered defensively */}
-                    {maskPhoneNumbers(msg.text)}
+                    {(msg as any).bookingData ? (
+                      <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 shadow-sm space-y-2.5 relative overflow-hidden">
+                        {/* Success background glow */}
+                        <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 bg-emerald-200/40 rounded-full blur-xl"></div>
+                        
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
+                            ✓
+                          </div>
+                          <span className="font-extrabold text-emerald-800 text-xs">✅ Booking Confirmed</span>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Service Type</p>
+                          <p className="text-[11.5px] font-black text-slate-800">{(msg as any).bookingData.serviceType}</p>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Inspection Fee</p>
+                          <p className="text-[11.5px] font-black text-slate-800">₹{(msg as any).bookingData.visitationFee}</p>
+                        </div>
+
+                        <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent("change-active-tab", { detail: { tab: "bookings", bookingId: (msg as any).bookingData?.id } }));
+                            }}
+                            className="text-[10.5px] font-extrabold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5 hover:underline cursor-pointer"
+                          >
+                            <span>Track Status ➔</span>
+                          </button>
+                          <span className="text-[9px] text-emerald-600/70 font-mono">ID: {(msg as any).bookingData.id.slice(0, 8)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>{maskPhoneNumbers(msg.text)}</div>
+                    )}
+                    {msg.role === "ai" && msg.text.includes("Please click the Login button") && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => {
+                            saveContextBeforeLogin();
+                            window.dispatchEvent(new CustomEvent("open-auth-modal"));
+                          }}
+                          className="w-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black py-2 px-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer text-center block animate-pulse"
+                        >
+                          Click Here to Login / Sign Up
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -870,6 +1064,84 @@ export default function AiSupportChat({
                 </button>
               </div>
             </div>
+
+            {/* Success Booking Popup Overlay */}
+            <AnimatePresence>
+              {showBookingSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute inset-0 bg-white/95 z-[120] flex flex-col items-center justify-center p-6 text-center select-none rounded-t-3xl sm:rounded-3xl"
+                >
+                  {/* Animated Checkmark */}
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.2, 1] }}
+                    transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
+                    className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-3 shadow-inner relative"
+                  >
+                    <motion.svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={4}
+                      stroke="currentColor"
+                      className="w-8 h-8"
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ delay: 0.3, duration: 0.4 }}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </motion.svg>
+                    {/* Floating confetti-like particles */}
+                    {[...Array(12)].map((_, i) => {
+                      const angle = (i * 30 * Math.PI) / 180;
+                      const x = Math.cos(angle) * 40;
+                      const y = Math.sin(angle) * 40;
+                      return (
+                        <motion.div
+                          key={i}
+                          initial={{ x: 0, y: 0, opacity: 1, scale: 0.5 }}
+                          animate={{ x, y, opacity: 0, scale: 1.2 }}
+                          transition={{ delay: 0.4, duration: 0.8, ease: "easeOut" }}
+                          className={`absolute w-1.5 h-1.5 rounded-full ${
+                            i % 3 === 0 ? "bg-yellow-400" : i % 3 === 1 ? "bg-emerald-500" : "bg-indigo-500"
+                          }`}
+                        />
+                      );
+                    })}
+                  </motion.div>
+
+                  <motion.h3
+                    initial={{ y: 8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.45 }}
+                    className="text-base font-black text-slate-800 mb-1"
+                  >
+                    Booking Confirmed!
+                  </motion.h3>
+                  <motion.p
+                    initial={{ y: 8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.55 }}
+                    className="text-[11.5px] text-slate-500 max-w-[220px] leading-relaxed mb-5"
+                  >
+                    We have successfully assigned an Elite Partner for your home service.
+                  </motion.p>
+                  
+                  <motion.button
+                    initial={{ y: 8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.65 }}
+                    onClick={() => setShowBookingSuccess(false)}
+                    className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] py-1.5 px-5 rounded-lg shadow-md transition-all cursor-pointer"
+                  >
+                    View Chat
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

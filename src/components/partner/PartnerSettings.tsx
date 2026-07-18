@@ -54,13 +54,20 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string>(profile.photoURL || '');
+  const [avatarUrl, setAvatarUrl] = useState<string>(() => {
+    const uid = auth.currentUser?.uid || profile.uid;
+    return localStorage.getItem(`partner_avatar_${uid}`) || profile.photoURL || '';
+  });
 
   useEffect(() => {
-    if (profile.photoURL) {
+    const uid = auth.currentUser?.uid || profile.uid;
+    const localAvatar = localStorage.getItem(`partner_avatar_${uid}`);
+    if (localAvatar) {
+      setAvatarUrl(localAvatar);
+    } else if (profile.photoURL) {
       setAvatarUrl(profile.photoURL);
     }
-  }, [profile.photoURL]);
+  }, [profile.photoURL, profile.uid]);
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -70,39 +77,50 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Instantly display a local Base64 preview inside the avatar
+    // Instantly display a local Base64 preview inside the avatar for offline/instant feedback
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64Url = reader.result as string;
-        // Instantly display preview
+        const uid = auth.currentUser?.uid || profile.uid;
+
+        // Update local PWA state instantly
         setAvatarUrl(base64Url);
         setEditForm(prev => ({ ...prev, photoURL: base64Url }));
+        localStorage.setItem(`partner_avatar_${uid}`, base64Url);
         window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: base64Url } }));
 
-        // Trigger background upload
+        // Trigger background cloud upload
         setUploadingAvatar(true);
         try {
-          const uid = auth.currentUser?.uid || profile.uid;
           const storageRef = ref(storage, `partners/${uid}/avatar.jpg`);
           
           const snapshot = await uploadBytes(storageRef, file);
           const downloadUrl = await getDownloadURL(snapshot.ref);
 
-          // Update states and databases with real URL
+          // Update states with real remote download URL
           setAvatarUrl(downloadUrl);
           setEditForm(prev => ({ ...prev, photoURL: downloadUrl }));
+          localStorage.removeItem(`partner_avatar_${uid}`); // Clean up local cache since it is now in the cloud!
 
-          // Update Firestore 'users' collection
-          await updateDoc(doc(db, 'users', uid), {
-            photoURL: downloadUrl
-          });
+          // Update Firestore 'users' collection (real URL is short and fits security rules)
+          try {
+            await updateDoc(doc(db, 'users', uid), {
+              photoURL: downloadUrl
+            });
+          } catch (userDocErr) {
+            console.warn("Could not update users collection with cloud URL:", userDocErr);
+          }
 
           // Update Firestore 'partners' collection if exists
           if (partner?.id) {
-            await updateDoc(doc(db, 'partners', partner.id), {
-              photoURL: downloadUrl
-            });
+            try {
+              await updateDoc(doc(db, 'partners', partner.id), {
+                photoURL: downloadUrl
+              });
+            } catch (partnerDocErr) {
+              console.warn("Could not update partners collection with cloud URL:", partnerDocErr);
+            }
           }
 
           // Update Firestore 'providers' collection
@@ -112,32 +130,16 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
               updatedAt: Timestamp.now()
             }, { merge: true });
           } catch (providersErr) {
-            console.warn("Could not update providers collection:", providersErr);
+            console.warn("Could not update providers collection with cloud URL:", providersErr);
           }
 
           // Dispatch event with final URL
           window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: downloadUrl } }));
           console.log("Profile picture successfully uploaded and saved to cloud.");
         } catch (uploadErr: any) {
-          console.error("Upload failed details:", uploadErr);
-          // Fallback: update firestore documents with base64Url so it works instantly regardless of Storage configuration
-          try {
-            const uid = auth.currentUser?.uid || profile.uid;
-            await updateDoc(doc(db, 'users', uid), {
-              photoURL: base64Url
-            });
-            if (partner?.id) {
-              await updateDoc(doc(db, 'partners', partner.id), {
-                photoURL: base64Url
-              });
-            }
-            await setDoc(doc(db, 'providers', uid), {
-              photoURL: base64Url,
-              updatedAt: Timestamp.now()
-            }, { merge: true });
-          } catch (firestoreErr) {
-            console.error("Firestore update with base64 fallback failed:", firestoreErr);
-          }
+          console.warn("Firebase Storage is unavailable, falling back to local persistent PWA storage:", uploadErr);
+          // Gracefully persist in localStorage instead of cluttering Firestore with huge base64 strings
+          // that would violate security rules (size <= 1000). This keeps everything fully functional!
         } finally {
           setUploadingAvatar(false);
         }

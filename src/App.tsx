@@ -224,6 +224,22 @@ export default function App() {
     }
   }, [profile?.uid, profile?.currentMode, profile?.role]);
 
+  useEffect(() => {
+    const handleOpenAuth = () => setIsAuthModalOpen(true);
+    const handleChangeTab = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.tab) {
+        setActiveTab(customEvent.detail.tab, customEvent.detail.bookingId || null);
+      }
+    };
+    window.addEventListener("open-auth-modal", handleOpenAuth);
+    window.addEventListener("change-active-tab", handleChangeTab);
+    return () => {
+      window.removeEventListener("open-auth-modal", handleOpenAuth);
+      window.removeEventListener("change-active-tab", handleChangeTab);
+    };
+  }, []);
+
   const handleSwitchMode = async (newMode: 'customer' | 'partner') => {
     if (!profile) return;
     
@@ -2161,6 +2177,23 @@ If you have any billing questions, or if your refund is delayed, please email us
             setUser({ ...auth.currentUser } as any);
           }
           setIsAuthModalOpen(false);
+
+          // Zomini post-login restoration
+          try {
+            const savedTab = sessionStorage.getItem("zomini_saved_tab");
+            if (savedTab) {
+              sessionStorage.removeItem("zomini_saved_tab");
+              setActiveTab(savedTab as any);
+            }
+            const shouldOpenChat = sessionStorage.getItem("zomini_chat_open") === "true";
+            if (shouldOpenChat) {
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("toggle-ai-chat", { detail: { open: true } }));
+              }, 300);
+            }
+          } catch (e) {
+            console.warn("[Zomini] Failed to restore chat state on login:", e);
+          }
         }}
       />
 
@@ -2266,7 +2299,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         hasActiveArrival={hasActiveArrival}
       />
 
-      <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} />
+      <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} activeTab={activeTab} />
 
       {/* Footer */}
       <motion.footer

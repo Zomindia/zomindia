@@ -74,11 +74,15 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   // Active global background service that periodic/live updates coordinate markers in firebase
   const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
 
-  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string>(profile.photoURL || '');
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string>(() => {
+    const local = localStorage.getItem(`partner_avatar_${profile.uid}`);
+    return local || profile.photoURL || '';
+  });
 
   useEffect(() => {
-    setCurrentPhotoUrl(profile.photoURL || '');
-  }, [profile.photoURL]);
+    const local = localStorage.getItem(`partner_avatar_${profile.uid}`);
+    setCurrentPhotoUrl(local || profile.photoURL || '');
+  }, [profile.photoURL, profile.uid]);
 
   useEffect(() => {
     const handleAvatarUpdated = (e: Event) => {

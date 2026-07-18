@@ -8,7 +8,7 @@ import PDFDocument from "pdfkit";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { readFileSync, writeFileSync } from "fs";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
@@ -587,7 +587,15 @@ async function startServer() {
   app.post("/api/support-chat", async (req, res) => {
     const { message, context } = req.body;
     try {
-      if (!message) return res.status(400).json({ error: "Message is required" });
+      if (!message) {
+        return res.status(400).json({
+          serviceType: "Unknown",
+          issueDetails: "Missing message",
+          confidence: 0,
+          nextQuestion: "Please provide a valid message.",
+          isReadyToBook: false
+        });
+      }
 
       const txt = (message || "").toLowerCase();
       // Strict Corporate Security Interceptor at the entry point
@@ -617,7 +625,13 @@ async function startServer() {
         txt.includes("company income");
 
       if (isSensitiveQuery) {
-        return res.json({ reply: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।" });
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Sensitive corporate query intercepted",
+          confidence: 100,
+          nextQuestion: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।",
+          isReadyToBook: false
+        });
       }
 
       const geminiKey = process.env.GEMINI_API_KEY;
@@ -625,21 +639,113 @@ async function startServer() {
         throw new Error("API key is not initialized in secrets");
       }
 
+      let chatTranscript = "";
+      if (context && Array.isArray(context.chatHistory)) {
+        chatTranscript = context.chatHistory.map((m: any) => `${m.role === "ai" ? "Zomini (AI)" : "User"}: ${m.text}`).join("\n");
+      } else {
+        chatTranscript = `User: ${message}`;
+      }
+
       const ai = getAi();
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Context: ${JSON.stringify(context || {})}\nUser: ${message}`,
+        contents: `Context: ${JSON.stringify(context || {})}\n\nCONVERSATION HISTORY:\n${chatTranscript}\n\nLatest User Message: ${message}`,
         config: {
-          systemInstruction: `You are Zomini, the smart AI assistant for Zomindia Home Services. Your ONLY job is to help customers identify their service category (e.g., AC Repair, RO Service, Plumbing) and guide them to book a verified expert.
-   
-          STRICT RULES FOR ZOMINI:
-          - NEVER diagnose the exact technical issue yourself (e.g., Do NOT say 'Your AC compressor is dead' or 'Freon gas needs refilling').
-          - NEVER give a final repair cost or quote (e.g., Do NOT say 'It will cost ₹2,000').
-          - If a customer asks about pricing or problems, ALWAYS say: 'This could be due to a few reasons (like a blocked filter or gas issue). I recommend booking our verified expert for just ₹149 inspection fee. They will inspect it live and give you the exact transparent rate card.'
-          - Keep your tone professional, helpful, and friendly. Answer in the language the user asks (Hindi/English Mix).`,
+          systemInstruction: `You are Zomini, the intelligent conversational lifecycle assistant for Zomindia. Your sole responsibility is to interact with users, diagnose their home service issues, and collect precise structured intent. 
+
+You operate strictly within a multi-turn diagnostic boundary. You do NOT have direct access to assign technicians or look up live database entries; your outputs will be parsed by the application backend to sync with the Firebase Realtime Database.
+
+TARGET HOUSEHOLD SERVICES (Strict Boundaries)
+You must ONLY categorize and assist with the following four core services. If an issue falls outside these, classify the service as "Unknown":
+1. "AC Repair" (e.g., cooling issues, water leakage, strange noises, installation)
+2. "Electrician" (e.g., short circuits, faulty switches, light installations, sockets)
+3. "Carpenter" (e.g., furniture repair, door fixing, wooden installations)
+4. "RO Service" (e.g., water purifier filter replacement, low water flow, taste issues)
+
+JAILBREAK & OUT-OF-SCOPE PROTECTION
+- If the user asks about topics completely unrelated to household services (e.g., politics, food, laptop recommendations, local Indore tourism like poha-jalebi, or generic conversations), you must NOT fulfill the request.
+- Keep serviceType as "Unknown" and isReadyToBook as false.
+- In nextQuestion, respond in a polite, charming Hinglish tone, redirecting them back to your core services. Example: "Bhaiya, Indore ke poha-jalebi toh laajawab hain hi! Lekin main aapke ghar ke AC, electrical ya plumbing ki dikkat dur karne mein zyada mahir hoon. Bataiye aaj ghar mein kya fix karna hai?"
+
+SYSTEM & DATABASE KNOWLEDGE CONSTRAINTS (DO NOT Hallucinate)
+1. ROLES & ENTITIES: 
+   - A user interacting with you is a Customer (identifiable in the backend database as role = "customer", differentiated internally by isPremium = true/false).
+   - The field technician or business fulfilling the service is a Partner (referred to in the database by their unique partnerId, mapped to their core role = "partner" profile).
+   - Assignments and matching are handled explicitly by the Admin backend (users with role = "admin").
+2. ABSOLUTE STRICT RULES:
+   - NEVER invent or mention any specific Partner names (e.g., do NOT say "Rajesh Cooling" or "Amit Electricals"). 
+   - NEVER quote an exact price, visitation fee, or cost range. Pricing schemas are dynamically generated by Admin logic.
+   - NEVER promise an exact arrival time or ETA (e.g., do NOT say "He will arrive in 15 minutes"). 
+   - State clearly that once their details are locked, an Admin will dispatch the best Elite Partner to their address.
+
+LEAD QUALIFICATION & CONVERSATIONAL STEERING
+- ACTIVE CONTEXT RETENTION: Retain customer context across turns. If they mention appliance details, symptoms, or previous context in the history/context provided, you must keep them in issueDetails and build upon them.
+- STRICT MULTI-TURN CONTEXT RETENTION: You must NEVER ask a question about what service category is needed if the user has already stated it or if it was identified in previous turns in the conversation history/context. For example, if the user already declared "my ac is not cooling", serviceType must immediately latch onto "AC Repair". If they say "ha kardo" or "yes" or "confirm" in the next turn, do NOT ask what service they need (e.g., do NOT ask "kis cheez me dikkat he ac, electrician, carpenter..."). Instantly recognize it's for the AC Repair service, populate the diagnosed issue, and set isReadyToBook to true for confirming the ₹195 booking.
+- DYNAMIC LANGUAGE MATCHING: You MUST strictly mirror the user's language. If the user asks or chats in clean English (e.g., "my ac is not cooling"), you MUST reply in clean, professional English in the nextQuestion field. If the user chats in Hinglish or Hindi, only then should you respond in friendly Hinglish/Hindi. Never force Hinglish/Hindi on an English-speaking user.
+- GUEST BOOKING BLOCKER: Check the user object in the provided Context. If the user's session role is 'Guest' (not logged in), you MUST NOT say "I have registered your request" or set isReadyToBook to true. When the conversation reaches the final booking or booking-consent step (where the user agrees or asks to confirm), you MUST set isReadyToBook to false. Instead, you must pause at this final step and clearly state in the nextQuestion field exactly: "I am completely ready to book your [Service Category]. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!" (where [Service Category] is replaced by the actual detected category name like AC Repair, Electrician, Carpenter, or RO Service).
+- SMART CLOSING: Do not stretch conversations past 2-3 turns. Once the core problem (symptom, type of appliance) is captured, pitch the ₹195 transparent inspection fee as the safest next step.
+- As soon as the user explicitly agrees or says "Haan book kar do", "yes, please book it", or "confirm", instantly flip isReadyToBook to true and populate issueDetails comprehensively so the frontend gateway can render the action components.
+
+OUTPUT FORMAT PROTOCOL
+You MUST respond strictly in a single, valid JSON object. Do not include markdown wrappers like \`\`\`json or trailing text outside the JSON block.
+Structure:
+{
+  "serviceType": "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown",
+  "issueDetails": "A concise, clear English summary of the specific problem diagnosed",
+  "confidence": 0-100,
+  "nextQuestion": "Your next conversational question or confirmation response written in the mirrored language (English or friendly Hinglish depending on user input)",
+  "isReadyToBook": true | false
+}
+
+STAGE-SPECIFIC BEHAVIOR
+- While collecting information (e.g., age of appliance, exact symptoms), keep isReadyToBook as false and continue asking targeted questions via nextQuestion.
+- The moment the customer explicitly agrees to proceed with the service, or the issue is completely understood and they say yes to booking, instantly set isReadyToBook to true and populate issueDetails fully so the Admin backend can process the ticket.`,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              serviceType: {
+                type: Type.STRING,
+                description: "One of: 'AC Repair', 'Electrician', 'Carpenter', 'RO Service', 'Unknown'"
+              },
+              issueDetails: {
+                type: Type.STRING,
+                description: "A concise, clear English summary of the specific problem diagnosed"
+              },
+              confidence: {
+                type: Type.INTEGER,
+                description: "Confidence level of classification, integer between 0 and 100"
+              },
+              nextQuestion: {
+                type: Type.STRING,
+                description: "Your next conversational question or confirmation response written in the mirrored language (English or friendly Hinglish depending on user input)"
+              },
+              isReadyToBook: {
+                type: Type.BOOLEAN,
+                description: "Set to true the moment the customer explicitly agrees to proceed with the service, or the issue is completely understood and they say yes to booking"
+              }
+            },
+            required: ["serviceType", "issueDetails", "confidence", "nextQuestion", "isReadyToBook"]
+          }
         }
       });
-      res.json({ reply: response.text });
+
+      let responseText = response.text || "";
+      if (responseText.startsWith("```")) {
+        responseText = responseText.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
+      }
+      const parsedJson = JSON.parse(responseText);
+
+      // Guest booking blocker backend enforcement
+      const isGuest = !context || !context.user || context.user.role === "Guest";
+      if (isGuest && parsedJson.isReadyToBook === true) {
+        parsedJson.isReadyToBook = false;
+        const category = parsedJson.serviceType && parsedJson.serviceType !== "Unknown" ? parsedJson.serviceType : "home service";
+        parsedJson.nextQuestion = `I am completely ready to book your ${category}. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!`;
+      }
+
+      res.json(parsedJson);
+
     } catch (err: any) {
       console.error("Gemini AI Error:", err);
       // Smart offline fallback to ensure chat always responds smoothly
@@ -671,7 +777,44 @@ async function startServer() {
         txt.includes("company income");
 
       if (isSensitiveQuery) {
-        return res.json({ reply: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।" });
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Sensitive corporate query intercepted",
+          confidence: 100,
+          nextQuestion: "क्षमा करें, मैं केवल Zomindia की घरेलू सेवाओं, बुकिंग और ऑफर्स से जुड़ी सहायता के लिए उपलब्ध हूँ। आंतरिक कंपनी नीतियों या डेटा की जानकारी साझा करने की अनुमति मुझे नहीं है।",
+          isReadyToBook: false
+        });
+      }
+
+      const isUnrelatedQuery = 
+        txt.includes("politics") ||
+        txt.includes("food") ||
+        txt.includes("laptop") ||
+        txt.includes("tourism") ||
+        txt.includes("poha") ||
+        txt.includes("jalebi") ||
+        txt.includes("bjp") ||
+        txt.includes("congress") ||
+        txt.includes("modi") ||
+        txt.includes("election") ||
+        txt.includes("restaurant") ||
+        txt.includes("recipe") ||
+        txt.includes("weather") ||
+        txt.includes("news") ||
+        txt.includes("hotel") ||
+        txt.includes("travel") ||
+        txt.includes("movie") ||
+        txt.includes("sport") ||
+        txt.includes("cricket");
+
+      if (isUnrelatedQuery) {
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Unrelated out-of-scope query intercepted",
+          confidence: 100,
+          nextQuestion: "Bhaiya, Indore ke poha-jalebi toh laajawab hain hi! Lekin main aapke ghar ke AC, electrical ya plumbing ki dikkat dur karne mein zyada mahir hoon. Bataiye aaj ghar mein kya fix karna hai?",
+          isReadyToBook: false
+        });
       }
 
       let replyMessage = "I am ZOMINI, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
@@ -697,16 +840,44 @@ async function startServer() {
       } else if (txt.includes("city") || txt.includes("availability") || txt.includes("indore")) {
         replyMessage = "ZomIndia is currently live in Indore! More cities like Bhopal, Pune, and Mumbai will be launched soon. Stay tuned!";
       } else if (txt.includes("price") || txt.includes("cost") || txt.includes("charge") || txt.includes("problem") || txt.includes("issue") || txt.includes("repair") || txt.includes("diagnose")) {
-        replyMessage = "This could be due to a few reasons (like a blocked filter or gas issue). I recommend booking our verified expert for just ₹149 inspection fee. They will inspect it live and give you the exact transparent rate card.";
+        replyMessage = "This could be due to a few reasons (like a blocked filter or electrical issue). I recommend booking our verified expert. Once your details are locked, an Admin will dispatch the best Elite Partner to your address to inspect it live.";
       } else if (txt.includes("book") || txt.includes("schedule")) {
-        replyMessage = "To schedule a service: select an active service categorised on the customer home page (like AC, Washing Machine, Refrigerator, RO Water Purifier or Electronics repair), choose your package, hit book, and confirm a preferred slot.";
+        replyMessage = "To schedule a service: select an active service categorised on the customer home page (like AC, Electrician, Carpenter, or RO Service), choose your package, hit book, and confirm a preferred slot.";
       } else if (txt.includes("partner") || txt.includes("earn") || txt.includes("job")) {
         replyMessage = "As a verified Pro partner, you can browse open jobs in the 'Available Jobs Pool', accept assignments, trace client locations, and earn reward credits on completing jobs successfully. Is there a specific job you need help with?";
       } else if (txt.includes("call") || txt.includes("phone") || txt.includes("contact")) {
         replyMessage = "You can make real-time in-app audio calls to your assigned customer or pro directly using the phone card buttons inside the specific active booking timeline detail space!";
       }
+
+      let detectedServiceType: "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown" = "Unknown";
+      let detectedIssueDetails = "";
+      let detectedIsReadyToBook = false;
+
+      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
+        detectedServiceType = "AC Repair";
+        detectedIssueDetails = "AC repair or cooling issue requested by the customer";
+      } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket")) {
+        detectedServiceType = "Electrician";
+        detectedIssueDetails = "Electrical or wiring service requested by the customer";
+      } else if (txt.includes("carp") || txt.includes("wood") || txt.includes("furniture") || txt.includes("door") || txt.includes("table") || txt.includes("sofa")) {
+        detectedServiceType = "Carpenter";
+        detectedIssueDetails = "Carpentry or furniture repair requested by the customer";
+      } else if (txt.includes("ro") || txt.includes("purifier") || txt.includes("filter") || txt.includes("water") || txt.includes("flow") || txt.includes("taste")) {
+        detectedServiceType = "RO Service";
+        detectedIssueDetails = "RO water purifier service requested by the customer";
+      }
+
+      if (txt.includes("book") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
+        detectedIsReadyToBook = true;
+      }
       
-      res.json({ reply: replyMessage });
+      res.json({
+        serviceType: detectedServiceType,
+        issueDetails: detectedIssueDetails || "Query from customer",
+        confidence: 100,
+        nextQuestion: replyMessage,
+        isReadyToBook: detectedIsReadyToBook
+      });
     }
   });
 
