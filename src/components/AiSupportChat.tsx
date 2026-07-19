@@ -21,9 +21,12 @@ import {
   onSnapshot,
   addDoc,
   Timestamp,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
+import confetti from "canvas-confetti";
 
 // =========================================================================
 // IMMUTABLE STATIC GRAPHICS: High-Fidelity Custom Vector SVG for ZOMI Avatar
@@ -305,17 +308,153 @@ export default function AiSupportChat({
   const [showBookingSuccess, setShowBookingSuccess] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Helper to dynamically detect if a string is English
-  const isEnglishText = (text: string): boolean => {
-    if (!text) return false;
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePayAfterService = async (bookingId: string) => {
+    try {
+      const bookingRef = doc(db, "bookings", bookingId);
+      await updateDoc(bookingRef, {
+        status: "confirmed_pay_after_service",
+        paymentMethod: "cash",
+        paymentStatus: "unpaid",
+        updatedAt: Timestamp.now()
+      });
+
+      setMessages((prev) =>
+        prev.map((m: any) => {
+          if (m.bookingData && m.bookingData.id === bookingId) {
+            return {
+              ...m,
+              text: "✅ Booking Confirmed - Cash on Service",
+              bookingData: {
+                ...m.bookingData,
+                status: "confirmed_pay_after_service",
+                paymentStatus: "unpaid",
+                paymentMethod: "cash"
+              }
+            };
+          }
+          return m;
+        })
+      );
+
+      setShowBookingSuccess(true);
+      confetti({
+        particleCount: 120,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    } catch (err) {
+      console.error("Error confirming Pay After Service:", err);
+    }
+  };
+
+  const handlePayOnline = async (bookingId: string) => {
+    try {
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        alert("Razorpay payment gateway failed to load. Please try again.");
+        return;
+      }
+
+      const options = {
+        key: "rzp_test_mock_key",
+        amount: 19500, // INR 195.00
+        currency: "INR",
+        name: "Zomindia",
+        description: "Zomini Home Service Inspection Fee",
+        handler: async function (response: any) {
+          const paymentId = response.razorpay_payment_id || "mock_pay_" + Math.random().toString(36).substring(7);
+          console.log("Razorpay mock success. Payment ID:", paymentId);
+
+          try {
+            const bookingRef = doc(db, "bookings", bookingId);
+            await updateDoc(bookingRef, {
+              status: "confirmed",
+              paymentStatus: "paid",
+              paymentIntentId: paymentId,
+              updatedAt: Timestamp.now()
+            });
+
+            setMessages((prev) =>
+              prev.map((m: any) => {
+                if (m.bookingData && m.bookingData.id === bookingId) {
+                  return {
+                    ...m,
+                    text: "✅ Booking Confirmed - Paid Online",
+                    bookingData: {
+                      ...m.bookingData,
+                      status: "confirmed",
+                      paymentStatus: "paid",
+                      paymentMethod: "online",
+                      paymentIntentId: paymentId
+                    }
+                  };
+                }
+                return m;
+              })
+            );
+
+            setShowBookingSuccess(true);
+            confetti({
+              particleCount: 150,
+              spread: 80,
+              origin: { y: 0.6 }
+            });
+          } catch (dbErr) {
+            console.error("Failed to update database after successful online payment:", dbErr);
+          }
+        },
+        prefill: {
+          name: userProfile?.fullName || userProfile?.displayName || "",
+          email: userProfile?.email || "",
+          contact: userProfile?.mobile || userProfile?.phoneNumber || ""
+        },
+        theme: {
+          color: "#059669"
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error("Error starting Razorpay payment:", err);
+    }
+  };
+
+  // Helper to dynamically detect if a string matches a specific language script
+  const detectLanguage = (text: string): string | null => {
+    if (!text) return null;
+    if (/[\u0A80-\u0AFF]/.test(text)) return "gu-IN"; // Gujarati
+    if (/[\u0980-\u09FF]/.test(text)) return "bn-IN"; // Bengali
+    if (/[\u0B80-\u0BFF]/.test(text)) return "ta-IN"; // Tamil
+    if (/[\u0C00-\u0C7F]/.test(text)) return "te-IN"; // Telugu
+    if (/[\u0C80-\u0CFF]/.test(text)) return "kn-IN"; // Kannada
+    if (/[\u0D00-\u0D7F]/.test(text)) return "ml-IN"; // Malayalam
+    if (/[\u0A00-\u0A7F]/.test(text)) return "pa-IN"; // Punjabi
+    if (/[\u0900-\u097F]/.test(text)) {
+      // If the current language is Marathi, don't overwrite with Hindi
+      if (selectedLang === "mr-IN") return "mr-IN";
+      return "hi-IN";
+    }
     const englishWordRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|a|an|to|in|on|at|by|with|for|about|against|between|into|through|during|before|after|above|below|from|up|down|out|off|over|under|again|further|then|once|here|there|when|where|why|how|all|any|both|each|few|more|most|other|some|such|no|nor|not|only|own|same|so|than|too|very|can|will|just|should|now|booking|repair|ac|service|plumber|electrician|cleaning|laundry|leak|water|pipe|wire|fan|switch|light|plug|issue|problem|broken|fix|hello|hi|yes|ok|okay|sure|thanks|thank|you|track|status|login|signup|partner)\b/i;
     const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
-    const devanagariChars = (text.match(/[\u0900-\u097F]/g) || []).length;
-    if (devanagariChars > 0) return false;
-    if (englishChars > text.length * 0.3 || englishWordRegex.test(text)) {
-      return true;
+    if (englishChars > text.length * 0.2 || englishWordRegex.test(text)) {
+      return "en-IN";
     }
-    return false;
+    return null;
   };
 
   // Multilingual voice configurations
@@ -327,25 +466,19 @@ export default function AiSupportChat({
 
   // Dynamic language detection based on current conversation context or user input
   useEffect(() => {
-    if (selectedLang !== "hi-IN" && selectedLang !== "en-IN") return;
-
     if (input.trim().length > 1) {
-      const isEng = isEnglishText(input);
-      if (isEng && selectedLang !== "en-IN") {
-        setSelectedLang("en-IN");
-      } else if (!isEng && selectedLang !== "hi-IN") {
-        setSelectedLang("hi-IN");
+      const detected = detectLanguage(input);
+      if (detected && detected !== selectedLang) {
+        setSelectedLang(detected);
       }
     } else if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
-      const isEng = isEnglishText(lastMsg.text);
-      if (isEng && selectedLang !== "en-IN") {
-        setSelectedLang("en-IN");
-      } else if (!isEng && selectedLang !== "hi-IN") {
-        setSelectedLang("hi-IN");
+      const detected = detectLanguage(lastMsg.text);
+      if (detected && detected !== selectedLang) {
+        setSelectedLang(detected);
       }
     }
-  }, [input, messages, selectedLang]);
+  }, [input, messages]);
 
   // Speech Recognition API
   const toggleListening = () => {
@@ -601,7 +734,7 @@ export default function AiSupportChat({
               issueDetails: data.issueDetails || "Zomini Diagnosed Issue",
               visitationFee: 195,
               totalPrice: 195,
-              status: "pending",
+              status: "pending_checkout",
               paymentStatus: "unpaid",
               paymentMethod: "cash",
               scheduledAt: Timestamp.now(),
@@ -624,19 +757,17 @@ export default function AiSupportChat({
             const docRef = await addDoc(collection(db, "bookings"), bookingPayload);
             const newBookingId = docRef.id;
 
-            // Trigger success animation
-            setShowBookingSuccess(true);
-
-            // Insert custom timeline booking card message
+            // Insert custom timeline booking card message in pending_checkout state
             setMessages((prev) => [
               ...prev,
               {
                 role: "ai",
-                text: "✅ Booking Confirmed",
+                text: "Please choose your payment option to complete your booking:",
                 bookingData: {
                   id: newBookingId,
                   serviceType: detectedType,
-                  visitationFee: 195
+                  visitationFee: 195,
+                  status: "pending_checkout"
                 }
               }
             ]);
@@ -895,39 +1026,89 @@ export default function AiSupportChat({
                   >
                     {/* Private masked telephone data rendered defensively */}
                     {(msg as any).bookingData ? (
-                      <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 shadow-sm space-y-2.5 relative overflow-hidden">
-                        {/* Success background glow */}
-                        <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 bg-emerald-200/40 rounded-full blur-xl"></div>
-                        
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
-                            ✓
+                      (msg as any).bookingData.status === "pending_checkout" ? (
+                        <div className="bg-slate-50 border border-indigo-200 rounded-xl p-3.5 shadow-md space-y-3 relative overflow-hidden text-left">
+                          {/* Pulsing subtle background indicator */}
+                          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-16 h-16 bg-indigo-100/60 rounded-full blur-xl animate-pulse"></div>
+
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5.5 h-5.5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                              💳
+                            </div>
+                            <span className="font-extrabold text-indigo-900 text-xs uppercase tracking-wider">Confirm Your Booking</span>
                           </div>
-                          <span className="font-extrabold text-emerald-800 text-xs">✅ Booking Confirmed</span>
-                        </div>
 
-                        <div className="space-y-0.5">
-                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Service Type</p>
-                          <p className="text-[11.5px] font-black text-slate-800">{(msg as any).bookingData.serviceType}</p>
-                        </div>
+                          <div className="grid grid-cols-2 gap-2 bg-white/80 backdrop-blur-xs p-2 rounded-lg border border-indigo-100/60">
+                            <div>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Service</p>
+                              <p className="text-[11px] font-black text-slate-800 leading-tight">{(msg as any).bookingData.serviceType}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Inspection Fee</p>
+                              <p className="text-[11.5px] font-black text-emerald-600">₹{(msg as any).bookingData.visitationFee}</p>
+                            </div>
+                          </div>
 
-                        <div className="space-y-0.5">
-                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Inspection Fee</p>
-                          <p className="text-[11.5px] font-black text-slate-800">₹{(msg as any).bookingData.visitationFee}</p>
+                          <div className="flex flex-col gap-1.5 pt-1">
+                            <button
+                              onClick={() => handlePayOnline((msg as any).bookingData.id)}
+                              className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <span>Pay Online ₹195 (UPI/Card)</span>
+                            </button>
+                            <button
+                              onClick={() => handlePayAfterService((msg as any).bookingData.id)}
+                              className="w-full bg-white hover:bg-slate-50 border border-slate-200 active:scale-95 text-slate-700 font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <span>Pay After Service (Cash/UPI)</span>
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 shadow-sm space-y-2.5 relative overflow-hidden text-left">
+                          {/* Success background glow */}
+                          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 bg-emerald-200/40 rounded-full blur-xl"></div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
+                              ✓
+                            </div>
+                            <span className="font-extrabold text-emerald-800 text-xs">
+                              {(msg as any).bookingData.status === "confirmed_pay_after_service" 
+                                ? "Cash Booking Confirmed" 
+                                : "Booking Paid & Confirmed"
+                              }
+                            </span>
+                          </div>
 
-                        <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
-                          <button
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent("change-active-tab", { detail: { tab: "bookings", bookingId: (msg as any).bookingData?.id } }));
-                            }}
-                            className="text-[10.5px] font-extrabold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5 hover:underline cursor-pointer"
-                          >
-                            <span>Track Status ➔</span>
-                          </button>
-                          <span className="text-[9px] text-emerald-600/70 font-mono">ID: {(msg as any).bookingData.id.slice(0, 8)}</span>
+                          <div className="space-y-0.5">
+                            <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Service Type</p>
+                            <p className="text-[11.5px] font-black text-slate-800">{(msg as any).bookingData.serviceType}</p>
+                          </div>
+
+                          <div className="space-y-0.5">
+                            <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Inspection Fee</p>
+                            <p className="text-[11.5px] font-black text-slate-800">
+                              ₹{(msg as any).bookingData.visitationFee} 
+                              <span className="ml-1.5 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                {(msg as any).bookingData.status === "confirmed_pay_after_service" ? "Pay After Service" : "Paid"}
+                              </span>
+                            </p>
+                          </div>
+
+                          <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => {
+                                window.dispatchEvent(new CustomEvent("change-active-tab", { detail: { tab: "bookings", bookingId: (msg as any).bookingData?.id } }));
+                              }}
+                              className="text-[10.5px] font-extrabold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5 hover:underline cursor-pointer"
+                            >
+                              <span>Track Status ➔</span>
+                            </button>
+                            <span className="text-[9px] text-emerald-600/70 font-mono">ID: {(msg as any).bookingData.id.slice(0, 8)}</span>
+                          </div>
                         </div>
-                      </div>
+                      )
                     ) : (
                       <div>{maskPhoneNumbers(msg.text)}</div>
                     )}

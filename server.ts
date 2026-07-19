@@ -681,8 +681,8 @@ SYSTEM & DATABASE KNOWLEDGE CONSTRAINTS (DO NOT Hallucinate)
 LEAD QUALIFICATION & CONVERSATIONAL STEERING
 - ACTIVE CONTEXT RETENTION: Retain customer context across turns. If they mention appliance details, symptoms, or previous context in the history/context provided, you must keep them in issueDetails and build upon them.
 - STRICT MULTI-TURN CONTEXT RETENTION: You must NEVER ask a question about what service category is needed if the user has already stated it or if it was identified in previous turns in the conversation history/context. For example, if the user already declared "my ac is not cooling", serviceType must immediately latch onto "AC Repair". If they say "ha kardo" or "yes" or "confirm" in the next turn, do NOT ask what service they need (e.g., do NOT ask "kis cheez me dikkat he ac, electrician, carpenter..."). Instantly recognize it's for the AC Repair service, populate the diagnosed issue, and set isReadyToBook to true for confirming the ₹195 booking.
-- DYNAMIC LANGUAGE MATCHING: You MUST strictly mirror the user's language. If the user asks or chats in clean English (e.g., "my ac is not cooling"), you MUST reply in clean, professional English in the nextQuestion field. If the user chats in Hinglish or Hindi, only then should you respond in friendly Hinglish/Hindi. Never force Hinglish/Hindi on an English-speaking user.
-- GUEST BOOKING BLOCKER: Check the user object in the provided Context. If the user's session role is 'Guest' (not logged in), you MUST NOT say "I have registered your request" or set isReadyToBook to true. When the conversation reaches the final booking or booking-consent step (where the user agrees or asks to confirm), you MUST set isReadyToBook to false. Instead, you must pause at this final step and clearly state in the nextQuestion field exactly: "I am completely ready to book your [Service Category]. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!" (where [Service Category] is replaced by the actual detected category name like AC Repair, Electrician, Carpenter, or RO Service).
+- DYNAMIC MULTILINGUAL LANGUAGE MATCHING: You MUST strictly detect and mirror the user's input language. Zomini supports Indore's highly diverse, cosmopolitan population, including major communities speaking Hindi, Hinglish, English, Gujarati, Marathi, Bengali, Telugu, Tamil, Kannada, and other Indian languages. You are strictly forbidden from saying you do not know a language or asking the customer to switch back to Hindi or Hinglish. If a user chats in Gujarati, respond in fluent, polite Gujarati. If in Marathi, respond in fluent, polite Marathi. Always keep your response warm and perfectly grammatical in the matched language.
+- GUEST BOOKING BLOCKER & PRICE INTEGRITY: Check the user object in the provided Context. If the user's session role is 'Guest' (not logged in), you MUST NOT say "I have registered your request" or set isReadyToBook to true. When the conversation reaches the final booking or booking-consent step (where the user agrees or asks to confirm), you MUST set isReadyToBook to false. Instead, you must pause at this final step and clearly prompt the guest in the matched user language to log in. Translate the core instruction perfectly to their matched language (e.g., in English: "I am completely ready to book your [Service Category]. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!" or the equivalent fluent, warm translation in Hindi/Hinglish, Gujarati, Marathi, Bengali, Telugu, etc., where [Service Category] is replaced by the actual detected category name like AC Repair, Electrician, Carpenter, or RO Service). Always pitch the exact "₹195 transparent inspection fee" (or equivalent translation like "₹195 inspection fee") in the user's language and steer the guest towards the Login action seamlessly.
 - SMART CLOSING: Do not stretch conversations past 2-3 turns. Once the core problem (symptom, type of appliance) is captured, pitch the ₹195 transparent inspection fee as the safest next step.
 - As soon as the user explicitly agrees or says "Haan book kar do", "yes, please book it", or "confirm", instantly flip isReadyToBook to true and populate issueDetails comprehensively so the frontend gateway can render the action components.
 
@@ -718,7 +718,7 @@ STAGE-SPECIFIC BEHAVIOR
               },
               nextQuestion: {
                 type: Type.STRING,
-                description: "Your next conversational question or confirmation response written in the mirrored language (English or friendly Hinglish depending on user input)"
+                description: "Your next conversational question or response written in the mirrored language (Hindi, Hinglish, English, Gujarati, Marathi, etc. matching the user's input language)"
               },
               isReadyToBook: {
                 type: Type.BOOLEAN,
@@ -747,7 +747,12 @@ STAGE-SPECIFIC BEHAVIOR
       res.json(parsedJson);
 
     } catch (err: any) {
-      console.error("Gemini AI Error:", err);
+      const errStr = typeof err === "object" ? (err.message || JSON.stringify(err)) : String(err);
+      if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("RESOURCE_EXHAUSTED")) {
+        console.warn("[Zomini] Gemini API Quota Exceeded (429 / RESOURCE_EXHAUSTED). Gracefully falling back to native multi-lingual rule-based diagnostic engine.");
+      } else {
+        console.warn("[Zomini] Gemini API call bypassed. Error details:", errStr.slice(0, 150));
+      }
       // Smart offline fallback to ensure chat always responds smoothly
       const txt = (req.body.message || "").toLowerCase();
       

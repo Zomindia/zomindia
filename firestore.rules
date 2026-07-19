@@ -472,7 +472,10 @@ service cloud.firestore {
           (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status in ['cancelled', 'finalized']) ||
           // Action: Pay Online
           (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'razorpayPaymentId', 'razorpayOrderId', 'razorpaySignature', 'status', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentIntentId', 'status', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
           (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentIntentId', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
+          // Action: Pay After Service (Cash/UPI) Selection
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentMethod', 'updatedAt']) && incoming().status == 'confirmed_pay_after_service' && incoming().paymentMethod == 'cash') ||
           // Action: Pay with Cash (Customer confirming cash handover)
           (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentMethod', 'updatedAt']) && incoming().status == 'completed' && incoming().paymentStatus == 'paid' && incoming().paymentMethod == 'cash') ||
           // Action: Reschedule

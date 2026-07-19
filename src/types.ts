@@ -218,7 +218,7 @@ export interface EarningsHistory {
   createdAt: any;
 }
 
-export type BookingStatus = 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending' | 'pending_acceptance' | 'Pending - Customer Unresponsive';
+export type BookingStatus = 'pending_checkout' | 'confirmed_pay_after_service' | 'pending' | 'pending_parts' | 'confirmed' | 'assigned' | 'on_the_way' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'finalized' | 'closed' | 'payment_pending' | 'pending_acceptance' | 'Pending - Customer Unresponsive';
 
 export interface AdditionalCharge {
   amount: number;
