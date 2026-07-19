@@ -305,12 +305,47 @@ export default function AiSupportChat({
   const [showBookingSuccess, setShowBookingSuccess] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Helper to dynamically detect if a string is English
+  const isEnglishText = (text: string): boolean => {
+    if (!text) return false;
+    const englishWordRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|a|an|to|in|on|at|by|with|for|about|against|between|into|through|during|before|after|above|below|from|up|down|out|off|over|under|again|further|then|once|here|there|when|where|why|how|all|any|both|each|few|more|most|other|some|such|no|nor|not|only|own|same|so|than|too|very|can|will|just|should|now|booking|repair|ac|service|plumber|electrician|cleaning|laundry|leak|water|pipe|wire|fan|switch|light|plug|issue|problem|broken|fix|hello|hi|yes|ok|okay|sure|thanks|thank|you|track|status|login|signup|partner)\b/i;
+    const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
+    const devanagariChars = (text.match(/[\u0900-\u097F]/g) || []).length;
+    if (devanagariChars > 0) return false;
+    if (englishChars > text.length * 0.3 || englishWordRegex.test(text)) {
+      return true;
+    }
+    return false;
+  };
+
   // Multilingual voice configurations
   const [selectedLang, setSelectedLang] = useState("hi-IN");
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Dynamic language detection based on current conversation context or user input
+  useEffect(() => {
+    if (selectedLang !== "hi-IN" && selectedLang !== "en-IN") return;
+
+    if (input.trim().length > 1) {
+      const isEng = isEnglishText(input);
+      if (isEng && selectedLang !== "en-IN") {
+        setSelectedLang("en-IN");
+      } else if (!isEng && selectedLang !== "hi-IN") {
+        setSelectedLang("hi-IN");
+      }
+    } else if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const isEng = isEnglishText(lastMsg.text);
+      if (isEng && selectedLang !== "en-IN") {
+        setSelectedLang("en-IN");
+      } else if (!isEng && selectedLang !== "hi-IN") {
+        setSelectedLang("hi-IN");
+      }
+    }
+  }, [input, messages, selectedLang]);
 
   // Speech Recognition API
   const toggleListening = () => {
@@ -706,39 +741,39 @@ export default function AiSupportChat({
                 : { maxHeight: "600px", height: "60vh" }
             }
           >
-            {/* OVERLAPPING AVATAR WITH STATIC IMMUTABLE GREETING LOCKED RIGIDLY */}
-            <div className="absolute -top-12 left-6 z-50 flex items-end gap-2.5 select-none pointer-events-none">
+            {/* OVERLAPPING AVATAR */}
+            <div className="absolute -top-12 left-6 z-50 flex items-end select-none pointer-events-none">
               <div className="w-20 h-20 rounded-full bg-white p-1 shadow-xl border border-slate-100 flex items-center justify-center relative active:scale-95 transition-all">
                 <span className="absolute bottom-1 right-1 w-4.5 h-4.5 bg-green-500 rounded-full border-2 border-white flex items-center justify-center shadow">
                   <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>
                 </span>
                 <ZomiAvatarSVG className="w-full h-full rounded-full" />
               </div>
-              <div className="mb-1 pointer-events-none">
-                {/* GLOBAL GREEN GREETING LOCK */}
-                <div className="bg-slate-900/90 text-white px-3 py-1.5 rounded-full text-[10px] font-black border border-slate-750 shadow-md flex items-center gap-1 backdrop-blur-sm animate-bounce">
-                  <span className="text-cyan-400 font-extrabold text-sm">
-                    •
-                  </span>
-                  <span>
-                    नमस्ते, <span className="text-blue-400">{userProfile ? (userProfile.fullName || userProfile.displayName || "User") : "Guest"}</span>
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* Header Controls */}
-            <div className="bg-indigo-900 text-white p-4 pl-28 flex items-center justify-between rounded-t-3xl border-b border-indigo-950 shrink-0 select-none">
-              <div className="flex flex-col text-left">
-                <h3 className="font-black text-sm leading-tight flex items-center gap-1 tracking-tight">
-                  <span>ZOMINI AI Chat</span>
+            <div className="bg-indigo-900 text-white p-4 pl-28 pr-4 flex items-center justify-between rounded-t-3xl border-b border-indigo-950 shrink-0 select-none">
+              <div className="flex flex-col text-left gap-0.5">
+                <h3 className="font-black text-sm leading-tight flex items-center gap-1.5 tracking-tight text-white">
+                  <span className="text-white font-black">ZOMINI AI Chat</span>
                   <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.2 rounded font-extrabold">
                     LIVE
                   </span>
                 </h3>
-                <p className="text-[9px] text-indigo-200 font-bold tracking-widest uppercase mt-0.5">
-                  Corporate Support
-                </p>
+                
+                {/* Greeting Badge placed inside the header beautifully to avoid overlapping */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                  <span className="text-[9px] text-indigo-200 font-bold tracking-widest uppercase">
+                    Support
+                  </span>
+                  <span className="text-indigo-400 font-bold">•</span>
+                  <div className="bg-slate-950/40 text-white px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border border-indigo-800/85 shadow-sm flex items-center gap-1 backdrop-blur-sm">
+                    <span className="text-cyan-400 font-black animate-pulse">•</span>
+                    <span>
+                      नमस्ते, <span className="text-cyan-300">{userProfile ? (userProfile.fullName || userProfile.displayName || "User") : "Guest"}</span>
+                    </span>
+                  </div>
+                </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
@@ -822,6 +857,7 @@ export default function AiSupportChat({
                   <button
                     onClick={() => {
                       saveContextBeforeLogin();
+                      setIsOpen(false);
                       window.dispatchEvent(new CustomEvent("open-auth-modal"));
                     }}
                     className="bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-black py-1.5 px-4 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-1.5"
@@ -900,6 +936,7 @@ export default function AiSupportChat({
                         <button
                           onClick={() => {
                             saveContextBeforeLogin();
+                            setIsOpen(false);
                             window.dispatchEvent(new CustomEvent("open-auth-modal"));
                           }}
                           className="w-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black py-2 px-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer text-center block animate-pulse"
@@ -1007,7 +1044,7 @@ export default function AiSupportChat({
                       >
                         <span>{lang.name}</span>
                         <span className="text-[9px] bg-slate-105 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">
-                          {lang.label}
+                          {lang.code === "en-IN" ? "Eng" : lang.code === "hi-IN" ? "हिं" : lang.label}
                         </span>
                       </button>
                     ))}
@@ -1025,7 +1062,7 @@ export default function AiSupportChat({
                 >
                   <Globe size={13} className="text-indigo-700" />
                   <span>
-                    {LANGUAGES.find((l) => l.code === selectedLang)?.label}
+                    {selectedLang === "en-IN" ? "Eng" : selectedLang === "hi-IN" ? "हिं" : (LANGUAGES.find((l) => l.code === selectedLang)?.label || "हिं")}
                   </span>
                 </button>
 
