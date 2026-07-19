@@ -1492,6 +1492,19 @@ STAGE-SPECIFIC BEHAVIOR
   // Start backer workers
   startUpcomingBookingReminderWorker();
 
+  // Explicit sitemap.xml and robots.txt routes to ensure they are served raw and allow Googlebot to read them freely.
+  app.get("/sitemap.xml", (req, res) => {
+    res.setHeader("Content-Type", "application/xml");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.sendFile(path.join(process.cwd(), "public", "sitemap.xml"));
+  });
+
+  app.get("/robots.txt", (req, res) => {
+    res.setHeader("Content-Type", "text/plain");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.sendFile(path.join(process.cwd(), "public", "robots.txt"));
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
