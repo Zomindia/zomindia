@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import cors from "cors";
 import Razorpay from "razorpay";
 import dotenv from "dotenv";
 import axios from "axios";
@@ -8,6 +9,7 @@ import PDFDocument from "pdfkit";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { readFileSync, writeFileSync } from "fs";
+import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
@@ -139,6 +141,10 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
 
   // Razorpay Client (Lazy initialization)
   let razorpayClient: any = null;
@@ -241,6 +247,16 @@ async function startServer() {
 
       if (!destinationPhone) {
         return res.status(400).json({ success: false, error: "User has no registered phone number" });
+      }
+
+      // Tighten phone number extraction regex to standard 10-digit Indian mobile formats to eliminate false positive matches
+      const indianPhoneRegex = /\+?91[-.\s]?[6-9]\d{3}[-.\s]?\d{4}[-.\s]?\d{3}(?!\d)/;
+      const exact10DigitRegex = /^[6-9]\d{9}$/;
+      const digitsOnly = destinationPhone.replace(/\D/g, "");
+      const isValidPhone = indianPhoneRegex.test(destinationPhone) || exact10DigitRegex.test(digitsOnly);
+
+      if (!isValidPhone) {
+        return res.status(400).json({ success: false, error: "Invalid Indian mobile number format. A standard 10-digit number starting with 6-9 is required." });
       }
 
       // Format E.164 phone number
@@ -354,6 +370,78 @@ async function startServer() {
     } catch (err: any) {
       console.error("Razorpay Error:", err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/verify-razorpay-signature", async (req, res) => {
+    try {
+      const { bookingId, bookingPayload, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+      if (!bookingId || !bookingPayload || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({ error: "Missing required verification data" });
+      }
+
+      // Verify signature cryptographically
+      const keySecret = process.env.RAZORPAY_KEY_SECRET || "rzp_test_mock_key_secret";
+      const text = razorpay_order_id + "|" + razorpay_payment_id;
+      const generatedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(text)
+        .digest("hex");
+
+      if (generatedSignature !== razorpay_signature) {
+        return res.status(400).json({ error: "Invalid Razorpay payment signature verification failed" });
+      }
+
+      // Safe Firestore Write: Create the document now that payment is verified!
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      // Create booking payload with confirmed status and paid paymentStatus
+      const confirmedPayload = {
+        ...bookingPayload,
+        status: "confirmed",
+        paymentStatus: "paid",
+        paymentIntentId: razorpay_payment_id,
+        paymentMethod: "online",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (bookingPayload.scheduledAt) {
+        if (typeof bookingPayload.scheduledAt === "object" && typeof bookingPayload.scheduledAt.seconds === "number") {
+          confirmedPayload.scheduledAt = new admin.firestore.Timestamp(
+            bookingPayload.scheduledAt.seconds,
+            bookingPayload.scheduledAt.nanoseconds || 0
+          );
+        } else if (typeof bookingPayload.scheduledAt === "string") {
+          confirmedPayload.scheduledAt = admin.firestore.Timestamp.fromDate(new Date(bookingPayload.scheduledAt));
+        } else {
+          confirmedPayload.scheduledAt = admin.firestore.Timestamp.now();
+        }
+      } else {
+        confirmedPayload.scheduledAt = admin.firestore.Timestamp.now();
+      }
+
+      await db.collection("bookings").doc(bookingId).set(confirmedPayload);
+
+      // Create transaction log
+      await db.collection("walletTransactions").add({
+        userId: bookingPayload.customerUid || bookingPayload.userId || "system",
+        amount: bookingPayload.totalPrice || 195,
+        type: "debit",
+        reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via Razorpay`,
+        referenceId: razorpay_payment_id,
+        status: "completed",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`[Signature Verified] Created Booking: ${bookingId} for Razorpay Payment: ${razorpay_payment_id}`);
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error("Signature verification error:", err);
+      return res.status(500).json({ error: err.message });
     }
   });
 
@@ -538,10 +626,32 @@ async function startServer() {
           console.log(`Email sent to ${userData.email}`);
         } catch (mailErr: any) {
           console.error("Failed to send email via SMTP:", mailErr.message);
-          // We don't throw here to allow the rest of the flow (push notifications, etc.) to complete
+          try {
+            await db.collection("failed_emails").add({
+              bookingId,
+              reason: mailErr.message || "Unknown SMTP error",
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+              recipient: userData.email || "Unknown"
+            });
+            console.log(`Log failure recorded in failed_emails for booking ${bookingId}`);
+          } catch (dbErr) {
+            console.error("Failed to write to failed_emails collection:", dbErr);
+          }
         }
       } else {
-        console.warn("SMTP not configured. Email not sent.");
+        const errMsg = "SMTP not configured. Email not sent.";
+        console.warn(errMsg);
+        try {
+          await db.collection("failed_emails").add({
+            bookingId,
+            reason: errMsg,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            recipient: userData.email || "Unknown"
+          });
+          console.log(`Log unconfigured SMTP recorded in failed_emails for booking ${bookingId}`);
+        } catch (dbErr) {
+          console.error("Failed to write to failed_emails collection:", dbErr);
+        }
       }
 
       // 3. Send Push Notification (SMS simulation or log)
@@ -736,6 +846,17 @@ STAGE-SPECIFIC BEHAVIOR
       }
       const parsedJson = JSON.parse(responseText);
 
+      // Backend enum service type validation
+      const STRICT_SERVICES = ["AC Repair", "Electrician", "Carpenter", "RO Service"];
+      if (parsedJson && parsedJson.serviceType && parsedJson.serviceType !== "Unknown") {
+        if (!STRICT_SERVICES.includes(parsedJson.serviceType)) {
+          console.warn(`[Zomini Backend Validation] serviceType "${parsedJson.serviceType}" is invalid. Falling back to Unknown.`);
+          parsedJson.serviceType = "Unknown";
+          parsedJson.isReadyToBook = false;
+          parsedJson.nextQuestion = "Please choose a valid service category from: AC Repair, Electrician, Carpenter, or RO Service.";
+        }
+      }
+
       // Guest booking blocker backend enforcement
       const isGuest = !context || !context.user || context.user.role === "Guest";
       if (isGuest && parsedJson.isReadyToBook === true) {
@@ -822,6 +943,28 @@ STAGE-SPECIFIC BEHAVIOR
         });
       }
 
+      let detectedServiceType: "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown" = "Unknown";
+      let detectedIssueDetails = "";
+      let detectedIsReadyToBook = false;
+
+      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
+        detectedServiceType = "AC Repair";
+        detectedIssueDetails = "AC repair or cooling issue requested by the customer";
+      } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket")) {
+        detectedServiceType = "Electrician";
+        detectedIssueDetails = "Electrical or wiring service requested by the customer";
+      } else if (txt.includes("carp") || txt.includes("wood") || txt.includes("furniture") || txt.includes("door") || txt.includes("table") || txt.includes("sofa")) {
+        detectedServiceType = "Carpenter";
+        detectedIssueDetails = "Carpentry or furniture repair requested by the customer";
+      } else if (txt.includes("ro") || txt.includes("purifier") || txt.includes("filter") || txt.includes("water") || txt.includes("flow") || txt.includes("taste")) {
+        detectedServiceType = "RO Service";
+        detectedIssueDetails = "RO water purifier service requested by the customer";
+      }
+
+      if (txt.includes("book") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
+        detectedIsReadyToBook = true;
+      }
+
       let replyMessage = "I am ZOMINI, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
       
       if (txt.includes("hello") || txt.includes("hi") || txt.includes("hey")) {
@@ -852,28 +995,6 @@ STAGE-SPECIFIC BEHAVIOR
         replyMessage = "As a verified Pro partner, you can browse open jobs in the 'Available Jobs Pool', accept assignments, trace client locations, and earn reward credits on completing jobs successfully. Is there a specific job you need help with?";
       } else if (txt.includes("call") || txt.includes("phone") || txt.includes("contact")) {
         replyMessage = "You can make real-time in-app audio calls to your assigned customer or pro directly using the phone card buttons inside the specific active booking timeline detail space!";
-      }
-
-      let detectedServiceType: "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown" = "Unknown";
-      let detectedIssueDetails = "";
-      let detectedIsReadyToBook = false;
-
-      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
-        detectedServiceType = "AC Repair";
-        detectedIssueDetails = "AC repair or cooling issue requested by the customer";
-      } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket")) {
-        detectedServiceType = "Electrician";
-        detectedIssueDetails = "Electrical or wiring service requested by the customer";
-      } else if (txt.includes("carp") || txt.includes("wood") || txt.includes("furniture") || txt.includes("door") || txt.includes("table") || txt.includes("sofa")) {
-        detectedServiceType = "Carpenter";
-        detectedIssueDetails = "Carpentry or furniture repair requested by the customer";
-      } else if (txt.includes("ro") || txt.includes("purifier") || txt.includes("filter") || txt.includes("water") || txt.includes("flow") || txt.includes("taste")) {
-        detectedServiceType = "RO Service";
-        detectedIssueDetails = "RO water purifier service requested by the customer";
-      }
-
-      if (txt.includes("book") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
-        detectedIsReadyToBook = true;
       }
       
       res.json({
@@ -1134,84 +1255,49 @@ STAGE-SPECIFIC BEHAVIOR
       if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
       
       const booking = bookingDoc.data()!;
-      console.log(`Verifying OTP for booking ${bookingId}. Expected values mapped: serviceOtp=${booking.serviceOtp}, otp=${booking.otp}, Got: ${otp}, Partner: ${partnerId}`);
       
+      // Brute-force protection: check attempts & block duration
+      let attempts = booking.otpAttempts || 0;
+      let blockedUntil = booking.otpBlockedUntil ? booking.otpBlockedUntil.toDate() : null;
+
+      if (blockedUntil && blockedUntil > new Date()) {
+        return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+      }
+
+      // If block has expired, reset the attempts
+      if (blockedUntil && blockedUntil <= new Date()) {
+        attempts = 0;
+      }
+
       const normalize = (val: any) => (val || "").toString().trim();
       const inputOtp = normalize(otp);
-      let matchFound = false;
+      
+      // Single source of truth verification
+      const expectedOtp = booking.serviceOtp ? normalize(booking.serviceOtp) : "";
 
-      // Check main document fields (serviceOtp and otp)
-      const rootOtpMatches = [booking.serviceOtp, booking.otp].some(
-        (fieldVal) => fieldVal && normalize(fieldVal) === inputOtp
-      );
-      if (rootOtpMatches) {
-        matchFound = true;
-        console.log(`OTP matched root document values!`);
-      }
-
-      // 3. Fallback: check secrets/otp document
-      if (!matchFound) {
-        try {
-          const secretsSnap = await db.collection("bookings").doc(bookingId).collection("secrets").doc("otp").get();
-          if (secretsSnap.exists) {
-            const secretData = secretsSnap.data() || {};
-            const secretMatched = [secretData.code, secretData.otp, secretData.serviceOtp].some(
-              (v) => v && normalize(v) === inputOtp
-            );
-            if (secretMatched) {
-              matchFound = true;
-              console.log(`OTP matched inside secrets subcollection doc!`);
-            }
-          }
-        } catch (e) {
-          console.error("Secrets subcollection fetch error:", e);
+      if (!expectedOtp || inputOtp !== expectedOtp) {
+        attempts += 1;
+        const updates: any = { otpAttempts: attempts };
+        if (attempts >= 5) {
+          const blockDate = new Date(Date.now() + 15 * 60 * 1000); // 15 mins block
+          updates.otpBlockedUntil = admin.firestore.Timestamp.fromDate(blockDate);
+          await bookingRef.update(updates);
+          return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+        } else {
+          await bookingRef.update(updates);
+          return res.status(400).json({ error: `Invalid OTP. ${5 - attempts} attempts remaining.` });
         }
       }
 
-      // 4. Fallback: Check inside 'otps' subcollection (where doc.id or nested fields contain the code)
-      if (!matchFound) {
-        try {
-          // Direct doc ID check first
-          const directOtpDoc = await db.collection("bookings").doc(bookingId).collection("otps").doc(inputOtp).get();
-          if (directOtpDoc.exists) {
-            matchFound = true;
-            console.log(`OTP matched direct document ID inside otps subcollection!`);
-          } else {
-            // Full scan of the otps subcollection
-            const otpsSnap = await db.collection("bookings").doc(bookingId).collection("otps").get();
-            if (!otpsSnap.empty) {
-              const anyDocMatches = otpsSnap.docs.some(doc => {
-                const data = doc.data() || {};
-                return (
-                  normalize(doc.id) === inputOtp || 
-                  (data.code && normalize(data.code) === inputOtp) || 
-                  (data.otp && normalize(data.otp) === inputOtp) ||
-                  (data.serviceOtp && normalize(data.serviceOtp) === inputOtp)
-                );
-              });
-              if (anyDocMatches) {
-                matchFound = true;
-                console.log(`OTP matched nested document field inside otps subcollection!`);
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Otps subcollection lookup error:", e);
-        }
-      }
-
-      if (!matchFound) {
-        console.warn(`OTP mismatch for booking ${bookingId}. Input: ${inputOtp}`);
-        return res.status(400).json({ error: "Invalid OTP" });
-      }
-
-      // Ensure partnerId is set to the verifying partner (protect against unlinked, un-updated states)
+      // Success: reset attempts & blocked values
       await bookingRef.update({
         status: 'in_progress',
         partnerId: partnerId,
         otpVerified: true,
-        arrivedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        otpAttempts: 0,
+        otpBlockedUntil: null,
+        arrivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       res.json({ success: true, message: "OTP verified" });

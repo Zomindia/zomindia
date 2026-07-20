@@ -23,6 +23,7 @@ import {
   Timestamp,
   doc,
   updateDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
@@ -203,10 +204,21 @@ export function ZomiAvatarSVG({
 
 // Masking system function for Indian phone numbers: formats explicitly as +91 •••••• [last 4] to maintain complete privacy
 const maskPhoneNumbers = (text: string): string => {
-  const phoneRegex = /(?:\+?91|0)?[-\s]?([6-9]\d{5})[-\s]?(\d{4})\b/g;
-  return text.replace(phoneRegex, (match, firstPart, last4) => {
+  // Tightened phone number extraction regex to standard 10-digit Indian mobile formats
+  const phoneRegex = /\+?91[-.\s]?[6-9]\d{3}[-.\s]?\d{4}[-.\s]?\d{3}(?!\d)/g;
+  const exact10DigitRegex = /(?:\+?91|0)?[-\s]?([6-9]\d{5})[-\s]?(\d{4})\b/g;
+
+  let formatted = text.replace(phoneRegex, (match) => {
+    const digits = match.replace(/\D/g, "");
+    const last4 = digits.slice(-4);
     return `+91 •••••• ${last4}`;
   });
+
+  formatted = formatted.replace(exact10DigitRegex, (match, firstPart, last4) => {
+    return `+91 •••••• ${last4}`;
+  });
+
+  return formatted;
 };
 
 const LANGUAGES = [
@@ -272,7 +284,7 @@ export default function AiSupportChat({
 
   // IMMUTABLE SYSTEM-SYNC STARTING MESSAGE: Context-aware of active bookings
   const [messages, setMessages] = useState<
-    { role: "ai" | "user"; text: string }[]
+    { role: "ai" | "user"; text: string; bookingData?: any }[]
   >(() => {
     try {
       const saved = sessionStorage.getItem("zomini_pending_chat_history");
@@ -306,6 +318,8 @@ export default function AiSupportChat({
   const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
   const [allServices, setAllServices] = useState<any[]>([]);
   const [showBookingSuccess, setShowBookingSuccess] = useState(false);
+  const [draftBookings, setDraftBookings] = useState<Record<string, any>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -323,14 +337,28 @@ export default function AiSupportChat({
   };
 
   const handlePayAfterService = async (bookingId: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
+      const bookingPayload = draftBookings[bookingId];
+      if (!bookingPayload) {
+        alert("Booking details not found in draft. Please start again.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const bookingRef = doc(db, "bookings", bookingId);
-      await updateDoc(bookingRef, {
+      const confirmedPayload = {
+        ...bookingPayload,
         status: "confirmed_pay_after_service",
         paymentMethod: "cash",
         paymentStatus: "unpaid",
+        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
-      });
+      };
+
+      await setDoc(bookingRef, confirmedPayload);
 
       setMessages((prev) =>
         prev.map((m: any) => {
@@ -358,16 +386,44 @@ export default function AiSupportChat({
       });
     } catch (err) {
       console.error("Error confirming Pay After Service:", err);
+      alert("Failed to confirm booking. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handlePayOnline = async (bookingId: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
+      const bookingPayload = draftBookings[bookingId];
+      if (!bookingPayload) {
+        alert("Booking details not found in draft. Please start again.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const isLoaded = await loadRazorpayScript();
       if (!isLoaded) {
         alert("Razorpay payment gateway failed to load. Please try again.");
+        setIsSubmitting(false);
         return;
       }
+
+      const orderRes = await fetch("/api/create-razorpay-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 195, bookingId })
+      });
+
+      if (!orderRes.ok) {
+        const errorText = await orderRes.text();
+        throw new Error(errorText || "Failed to initialize payment order");
+      }
+
+      const orderData = await orderRes.json();
+      const razorpayOrderId = orderData.id;
 
       const options = {
         key: "rzp_test_mock_key",
@@ -375,18 +431,31 @@ export default function AiSupportChat({
         currency: "INR",
         name: "Zomindia",
         description: "Zomini Home Service Inspection Fee",
+        order_id: razorpayOrderId,
         handler: async function (response: any) {
-          const paymentId = response.razorpay_payment_id || "mock_pay_" + Math.random().toString(36).substring(7);
-          console.log("Razorpay mock success. Payment ID:", paymentId);
+          const razorpayPaymentId = response.razorpay_payment_id || "mock_pay_" + Math.random().toString(36).substring(7);
+          const razorpaySignature = response.razorpay_signature || "mock_sig_" + Math.random().toString(36).substring(7);
+          const razorpayOrderIdValue = response.razorpay_order_id || razorpayOrderId;
+
+          console.log("Razorpay mock success. Verifying signature on server...");
 
           try {
-            const bookingRef = doc(db, "bookings", bookingId);
-            await updateDoc(bookingRef, {
-              status: "confirmed",
-              paymentStatus: "paid",
-              paymentIntentId: paymentId,
-              updatedAt: Timestamp.now()
+            const verifyRes = await fetch("/api/verify-razorpay-signature", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                bookingId,
+                bookingPayload,
+                razorpay_order_id: razorpayOrderIdValue,
+                razorpay_payment_id: razorpayPaymentId,
+                razorpay_signature: razorpaySignature
+              })
             });
+
+            if (!verifyRes.ok) {
+              const verifyErr = await verifyRes.json();
+              throw new Error(verifyErr.error || "Payment signature verification failed");
+            }
 
             setMessages((prev) =>
               prev.map((m: any) => {
@@ -399,7 +468,7 @@ export default function AiSupportChat({
                       status: "confirmed",
                       paymentStatus: "paid",
                       paymentMethod: "online",
-                      paymentIntentId: paymentId
+                      paymentIntentId: razorpayPaymentId
                     }
                   };
                 }
@@ -413,8 +482,17 @@ export default function AiSupportChat({
               spread: 80,
               origin: { y: 0.6 }
             });
-          } catch (dbErr) {
-            console.error("Failed to update database after successful online payment:", dbErr);
+          } catch (dbErr: any) {
+            console.error("Failed server verification and database creation:", dbErr);
+            alert(`Payment verification failed: ${dbErr.message}`);
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            console.log("Razorpay modal dismissed by user");
+            setIsSubmitting(false);
           }
         },
         prefill: {
@@ -429,8 +507,10 @@ export default function AiSupportChat({
 
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error starting Razorpay payment:", err);
+      alert(`Error initializing payment: ${err.message}`);
+      setIsSubmitting(false);
     }
   };
 
@@ -530,9 +610,17 @@ export default function AiSupportChat({
       };
 
       rec.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
-          setInput((prev) => (prev ? prev + " " + transcript : transcript));
+        if (
+          event &&
+          event.results &&
+          event.results[0] &&
+          event.results[0][0] &&
+          typeof event.results[0][0].transcript === "string"
+        ) {
+          const transcript = event.results[0][0].transcript.trim();
+          if (transcript) {
+            setInput((prev) => (prev ? prev + " " + transcript : transcript));
+          }
         }
       };
 
@@ -634,6 +722,69 @@ export default function AiSupportChat({
     }
   }, [userProfile?.uid, bookings]);
 
+  // Page Refresh Recovery: Restore active checkouts/confirmations dynamically
+  useEffect(() => {
+    if (!userProfile || localBookings.length === 0) return;
+
+    const recoverable = localBookings.filter(
+      (b) =>
+        b.status === "pending_checkout" ||
+        b.status === "confirmed" ||
+        b.status === "confirmed_pay_after_service"
+    );
+
+    if (recoverable.length === 0) return;
+
+    setMessages((prev) => {
+      let updated = [...prev];
+      let changed = false;
+
+      recoverable.forEach((booking) => {
+        const hasMsg = updated.some(
+          (m) => (m as any).bookingData?.id === booking.id
+        );
+        if (!hasMsg) {
+          changed = true;
+          const bAny = booking as any;
+          if (booking.status === "pending_checkout") {
+            // Restore draft details so offline/online actions work immediately
+            setDraftBookings((prevDrafts) => {
+              if (prevDrafts[booking.id]) return prevDrafts;
+              return { ...prevDrafts, [booking.id]: booking };
+            });
+
+            updated.push({
+              role: "ai",
+              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${bAny.serviceType || "Home Service"}:`,
+              bookingData: {
+                id: booking.id,
+                serviceType: bAny.serviceType || "Home Service",
+                visitationFee: bAny.visitationFee || 195,
+                status: "pending_checkout"
+              }
+            });
+          } else {
+            updated.push({
+              role: "ai",
+              text:
+                booking.status === "confirmed_pay_after_service"
+                  ? `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} has been successfully confirmed (Pay After Service).`
+                  : `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} is paid and fully confirmed.`,
+              bookingData: {
+                id: booking.id,
+                serviceType: bAny.serviceType || "Home Service",
+                visitationFee: bAny.visitationFee || 195,
+                status: booking.status
+              }
+            });
+          }
+        }
+      });
+
+      return changed ? updated : prev;
+    });
+  }, [userProfile, localBookings]);
+
   // Keep starting message context locked and updated dynamically
   useEffect(() => {
     let startingMessage = "Welcome to Zomindia! Please log in to chat with Zomini and track your active home services.";
@@ -659,7 +810,7 @@ export default function AiSupportChat({
 
   // Direct sending helper for suggest clicks to bypass multiple fields
   const sendQueryDirectly = async (queryText: string) => {
-    if (isLoading) return;
+    if (isSubmitting || isLoading) return;
 
     if (isListening && recognitionRef.current) {
       try {
@@ -709,14 +860,25 @@ export default function AiSupportChat({
         const isGuest = !userProfile;
         if (data.isReadyToBook === true && !isGuest) {
           try {
-            // Map serviceType to real serviceId fuzzy-matching the names in database
-            const detectedType = data.serviceType || "AC Repair";
-            const matchedService = allServices.find(s => 
+            // Strictly validate serviceType against catalog services
+            const detectedType = data.serviceType;
+            const matchedService = detectedType ? allServices.find(s => 
               s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
               detectedType.toLowerCase().includes(s.name?.toLowerCase() || "")
-            );
-            const resolvedServiceId = matchedService ? matchedService.id : "ac_repair_general";
+            ) : null;
 
+            if (!matchedService) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "ai",
+                  text: `I detected a request for "${detectedType || 'service'}". However, I couldn't find a direct match in our active service catalog. Could you please specify if you require one of the following services?\n\n${allServices.map(s => `• ${s.name}`).join("\n")}`
+                }
+              ]);
+              return;
+            }
+
+            const resolvedServiceId = matchedService.id;
             const activeUid = userProfile!.uid;
             const resolvedFullName = userProfile!.fullName || userProfile!.displayName || "Customer";
             const resolvedMobile = userProfile!.mobile || userProfile!.phoneNumber || "9876543210";
@@ -730,7 +892,7 @@ export default function AiSupportChat({
               userId: activeUid,
               customerId: activeUid,
               serviceId: resolvedServiceId,
-              serviceType: detectedType,
+              serviceType: matchedService.name,
               issueDetails: data.issueDetails || "Zomini Diagnosed Issue",
               visitationFee: 195,
               totalPrice: 195,
@@ -740,6 +902,7 @@ export default function AiSupportChat({
               scheduledAt: Timestamp.now(),
               createdAt: Timestamp.now(),
               updatedAt: Timestamp.now(),
+              address: (userProfile as any)?.address || "Delhi NCR (Zomindia Service Area)",
               customerBookedEmail: resolvedEmail,
               customerBookedPhone: resolvedMobile,
               customerBookedName: resolvedFullName,
@@ -754,8 +917,12 @@ export default function AiSupportChat({
               serviceOtp
             };
 
-            const docRef = await addDoc(collection(db, "bookings"), bookingPayload);
-            const newBookingId = docRef.id;
+            // Pre-generate unique client-side ID for the draft booking (preventing premature DB save)
+            const newBookingId = doc(collection(db, "bookings")).id;
+            setDraftBookings((prev) => ({
+              ...prev,
+              [newBookingId]: bookingPayload
+            }));
 
             // Insert custom timeline booking card message in pending_checkout state
             setMessages((prev) => [
@@ -765,7 +932,7 @@ export default function AiSupportChat({
                 text: "Please choose your payment option to complete your booking:",
                 bookingData: {
                   id: newBookingId,
-                  serviceType: detectedType,
+                  serviceType: matchedService.name,
                   visitationFee: 195,
                   status: "pending_checkout"
                 }
@@ -773,7 +940,7 @@ export default function AiSupportChat({
             ]);
 
           } catch (dbErr) {
-            console.error("AI automated booking Firestore write failed:", dbErr);
+            console.error("AI automated booking draft initialization failed:", dbErr);
             const replyText = data.nextQuestion || data.reply || (typeof data === "string" ? data : JSON.stringify(data));
             setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
           }
@@ -804,7 +971,7 @@ export default function AiSupportChat({
   };
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (isSubmitting || !input.trim()) return;
 
     const userMsg = input.trim();
     setInput("");
@@ -1052,15 +1219,17 @@ export default function AiSupportChat({
                           <div className="flex flex-col gap-1.5 pt-1">
                             <button
                               onClick={() => handlePayOnline((msg as any).bookingData.id)}
-                              className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                              disabled={isSubmitting}
+                              className={`w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5 ${isSubmitting ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}
                             >
-                              <span>Pay Online ₹195 (UPI/Card)</span>
+                              <span>{isSubmitting ? "Processing..." : "Pay Online ₹195 (UPI/Card)"}</span>
                             </button>
                             <button
                               onClick={() => handlePayAfterService((msg as any).bookingData.id)}
-                              className="w-full bg-white hover:bg-slate-50 border border-slate-200 active:scale-95 text-slate-700 font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                              disabled={isSubmitting}
+                              className={`w-full bg-white hover:bg-slate-50 border border-slate-200 active:scale-95 text-slate-700 font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${isSubmitting ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}
                             >
-                              <span>Pay After Service (Cash/UPI)</span>
+                              <span>{isSubmitting ? "Processing..." : "Pay After Service (Cash/UPI)"}</span>
                             </button>
                           </div>
                         </div>
@@ -1252,18 +1421,22 @@ export default function AiSupportChat({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  disabled={isSubmitting}
                   placeholder={
                     isListening
                       ? "Listening natively..."
+                      : isSubmitting
+                      ? "Processing booking..."
                       : "Type or speak to ZOMINI..."
                   }
-                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 text-xs py-2.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-700 font-semibold"
+                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 text-xs py-2.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 />
 
                 <button
                   type="button"
                   onClick={toggleListening}
-                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 border cursor-pointer active:scale-95 ${
+                  disabled={isSubmitting}
+                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 border cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isListening
                       ? "bg-red-500 border-red-500 text-white animate-pulse shadow"
                       : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600"
@@ -1275,7 +1448,7 @@ export default function AiSupportChat({
 
                 <button
                   onClick={sendMessage}
-                  disabled={!input.trim() || isLoading}
+                  disabled={!input.trim() || isLoading || isSubmitting}
                   className="bg-indigo-700 text-white p-2.5 rounded-xl hover:bg-indigo-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow active:scale-95 cursor-pointer"
                 >
                   <Send size={15} />
