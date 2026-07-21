@@ -248,6 +248,7 @@ export interface Booking {
   previousStatus?: BookingStatus;
   serviceOtp?: string;
   otpVerified?: boolean;
+  settledAt?: any;
   progressPercentage?: number;
   checklist?: string[];
   startOTP?: string;

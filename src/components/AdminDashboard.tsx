@@ -2523,38 +2523,96 @@ function BookingManager({
     }
     setLoading(true);
     try {
-      const booking = bookings.find((b) => b.id === cancellingBookingId);
-      if (!booking) return;
+      let bookingDataToNotify: any = null;
 
-      // Handle 50% penalty for No-Show (Removed/Purged)
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, "bookings", cancellingBookingId);
+        const bookingSnap = await transaction.get(bookingRef);
+        if (!bookingSnap.exists()) {
+          throw new Error("Booking not found");
+        }
+        const booking = bookingSnap.data() as Booking;
+        bookingDataToNotify = booking;
 
-      await updateDoc(doc(db, "bookings", cancellingBookingId), {
-        status: "cancelled",
-        cancellationReason: cancelReason,
-        updatedAt: Timestamp.now(),
+        // Update booking status
+        transaction.update(bookingRef, {
+          status: "cancelled",
+          cancellationReason: cancelReason,
+          updatedAt: Timestamp.now(),
+        });
+
+        // 1. If paymentStatus === "paid", execute refund logic to the customer's wallet
+        if (booking.paymentStatus === "paid") {
+          const customerRef = doc(db, "users", booking.customerUid);
+          const customerSnap = await transaction.get(customerRef);
+          if (customerSnap.exists()) {
+            const currentBalance = customerSnap.data()?.walletBalance || 0;
+            const refundAmount = booking.totalPrice || 0;
+            transaction.update(customerRef, {
+              walletBalance: currentBalance + refundAmount,
+              updatedAt: Timestamp.now(),
+            });
+
+            // Log wallet transaction
+            const txRef = doc(collection(db, "walletTransactions"));
+            transaction.set(txRef, {
+              userId: booking.customerUid,
+              amount: refundAmount,
+              type: "credit",
+              reason: `Refund for Cancelled Booking #${cancellingBookingId.slice(0, 8).toUpperCase()}`,
+              status: "completed",
+              createdAt: Timestamp.now(),
+            });
+          }
+        }
+
+        // 2. Clear active job counts and restore deposit/wallet for assigned partners atomically
+        if (booking.partnerId) {
+          const partnerUserRef = doc(db, "users", booking.partnerId);
+          const partnerUserSnap = await transaction.get(partnerUserRef);
+          if (partnerUserSnap.exists()) {
+            transaction.update(partnerUserRef, {
+              activeJobs: 0,
+              activeJobCount: 0,
+              updatedAt: Timestamp.now(),
+            });
+          }
+
+          const partnerProfileRef = doc(db, "partners", booking.partnerId);
+          const partnerProfileSnap = await transaction.get(partnerProfileRef);
+          if (partnerProfileSnap.exists()) {
+            transaction.update(partnerProfileRef, {
+              activeJobs: 0,
+              activeJobCount: 0,
+              updatedAt: Timestamp.now(),
+            });
+          }
+        }
       });
 
-      notifyBookingUpdate(
-        { ...booking, status: "cancelled", cancellationReason: cancelReason },
-        "cancelled",
-        "admin",
-      );
+      if (bookingDataToNotify) {
+        notifyBookingUpdate(
+          { ...bookingDataToNotify, status: "cancelled", cancellationReason: cancelReason },
+          "cancelled",
+          "admin",
+        );
 
-      const cancelPartner = partners.find((p) => p.userId === booking.partnerId);
-      const cancelService = services.find((s) => s.id === booking.serviceId);
-      sendEcosystemNotification(
-        "all",
-        "cancelled",
-        {
-          bookingId: cancellingBookingId,
-          customerId: booking.customerUid,
-          partnerId: booking.partnerId,
-          customerName: booking.customerName || booking.customerBookedName || "Customer",
-          partnerName: cancelPartner?.displayName || "Partner",
-          serviceName: cancelService?.name || "Service",
-          dateTime: booking.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
-        }
-      ).catch(e => console.error("Ecosystem notification failed:", e));
+        const cancelPartner = partners.find((p) => p.userId === bookingDataToNotify.partnerId);
+        const cancelService = services.find((s) => s.id === bookingDataToNotify.serviceId);
+        sendEcosystemNotification(
+          "all",
+          "cancelled",
+          {
+            bookingId: cancellingBookingId,
+            customerId: bookingDataToNotify.customerUid,
+            partnerId: bookingDataToNotify.partnerId,
+            customerName: bookingDataToNotify.customerName || bookingDataToNotify.customerBookedName || "Customer",
+            partnerName: cancelPartner?.displayName || "Partner",
+            serviceName: cancelService?.name || "Service",
+            dateTime: bookingDataToNotify.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+          }
+        ).catch(e => console.error("Ecosystem notification failed:", e));
+      }
 
       setCancellingBookingId(null);
       setCancelReason("");
@@ -2579,19 +2637,39 @@ function BookingManager({
     }
     try {
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
-      await updateDoc(doc(db, "bookings", bookingId), {
-        partnerId,
-        status: "pending_acceptance",
-        serviceOtp: otp,
-        otpVerified: false,
-        updatedAt: Timestamp.now(),
-      });
-      await setDoc(doc(db, `bookings/${bookingId}/otps`, otp), {
-        createdAt: Timestamp.now(),
-        createdBy: profile?.uid || auth.currentUser?.uid,
-      });
-      await setDoc(doc(db, `bookings/${bookingId}/secrets`, "otp"), {
-        code: otp,
+
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, "bookings", bookingId);
+        const bookingSnap = await transaction.get(bookingRef);
+        if (!bookingSnap.exists()) {
+          throw new Error("Booking does not exist!");
+        }
+
+        const bookingData = bookingSnap.data() as Booking;
+        // Verify it is still available
+        if (bookingData.status === "completed" || bookingData.status === "cancelled") {
+          throw new Error("This booking has already been completed or cancelled.");
+        }
+
+        // Apply atomic updates
+        transaction.update(bookingRef, {
+          partnerId,
+          status: "pending_acceptance",
+          serviceOtp: otp,
+          otpVerified: false,
+          updatedAt: Timestamp.now(),
+        });
+
+        const otpRef = doc(db, `bookings/${bookingId}/otps`, otp);
+        transaction.set(otpRef, {
+          createdAt: Timestamp.now(),
+          createdBy: profile?.uid || auth.currentUser?.uid,
+        });
+
+        const secretsRef = doc(db, `bookings/${bookingId}/secrets`, "otp");
+        transaction.set(secretsRef, {
+          code: otp,
+        });
       });
 
       const b = bookings.find((x) => x.id === bookingId);

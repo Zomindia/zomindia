@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource } from '@capacitor/camera';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { notifyBookingUpdate, sendEcosystemNotification } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
@@ -1050,47 +1050,68 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const handleConfirmCashCollectedByPartner = async (booking: Booking) => {
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'completed',
-        paymentStatus: 'paid',
-        paymentMethod: 'cash',
-        updatedAt: Timestamp.now()
-      });
+      const rewardPts = 10;
+      const creditAmount = booking.totalPrice;
 
-      // Update partner earnings because payment is now successfully received in cash!
-      if (partner) {
-        const rewardPts = 10;
-        
-        // Determine if 20% surge rate applies (Removed)
-        const creditAmount = booking.totalPrice;
-
-        await updateDoc(doc(db, 'partners', partner.id), {
-          totalEarnings: (partner.totalEarnings || 0) + creditAmount,
-          rewardCredits: (partner.rewardCredits || 0) + rewardPts,
-          updatedAt: Timestamp.now()
-        });
-
-        // Also update the partner's User profile walletBalance
-        if (partner.userId) {
-          const partnerUserRef = doc(db, 'users', partner.userId);
-          const partnerUserSnap = await getDoc(partnerUserRef);
-          if (partnerUserSnap.exists()) {
-            await updateDoc(partnerUserRef, {
-              walletBalance: (partnerUserSnap.data()?.walletBalance || 0) + creditAmount,
-              updatedAt: Timestamp.now()
-            });
-          }
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, 'bookings', booking.id);
+        const bookingSnap = await transaction.get(bookingRef);
+        if (!bookingSnap.exists()) {
+          throw new Error("Booking does not exist!");
         }
 
-        await addDoc(collection(db, 'partners', partner.id, 'earningsHistory'), {
-          type: 'booking_earning',
-          amount: creditAmount,
-          credits: rewardPts,
-          bookingId: booking.id,
-          reason: `Completed service (Cash Collected): ${services[booking.serviceId]?.name || 'Job'}`,
-          createdAt: Timestamp.now()
+        const bookingData = bookingSnap.data() as Booking;
+        if (bookingData.settledAt) {
+          throw new Error("This job has already been settled.");
+        }
+
+        // Apply booking update
+        transaction.update(bookingRef, {
+          status: 'completed',
+          paymentStatus: 'paid',
+          paymentMethod: 'cash',
+          settledAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
-      }
+
+        // Update partner earnings because payment is now successfully received in cash!
+        if (partner) {
+          const partnerRef = doc(db, 'partners', partner.id);
+          const partnerSnap = await transaction.get(partnerRef);
+          if (partnerSnap.exists()) {
+            const partnerData = partnerSnap.data();
+            transaction.update(partnerRef, {
+              totalEarnings: (partnerData.totalEarnings || 0) + creditAmount,
+              rewardCredits: (partnerData.rewardCredits || 0) + rewardPts,
+              updatedAt: serverTimestamp()
+            });
+          }
+
+          // Also update the partner's User profile walletBalance
+          if (partner.userId) {
+            const partnerUserRef = doc(db, 'users', partner.userId);
+            const partnerUserSnap = await transaction.get(partnerUserRef);
+            if (partnerUserSnap.exists()) {
+              const currentWalletBalance = partnerUserSnap.data()?.walletBalance || 0;
+              transaction.update(partnerUserRef, {
+                walletBalance: currentWalletBalance + creditAmount,
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+
+          // Generate earnings history record
+          const earningsHistoryRef = doc(collection(db, 'partners', partner.id, 'earningsHistory'));
+          transaction.set(earningsHistoryRef, {
+            type: 'booking_earning',
+            amount: creditAmount,
+            credits: rewardPts,
+            bookingId: booking.id,
+            reason: `Completed service (Cash Collected): ${services[booking.serviceId]?.name || 'Job'}`,
+            createdAt: serverTimestamp()
+          });
+        }
+      });
 
       // Check for user referral processing
       fetch('/api/process-referral-reward', {
@@ -1106,8 +1127,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         setSelectedBooking(updatedBooking);
       }
       alert("Success: Cash payment of ₹" + booking.totalPrice + " confirmed and service marked completed!");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+    } catch (err: any) {
+      console.error("Cash payment completion error:", err);
+      if (err.message === "This job has already been settled.") {
+        alert("This job has already been settled.");
+      } else {
+        handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -1213,7 +1239,35 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         `bookings/${id}`,
         { ...update },
         async () => {
-          await updateDoc(doc(db, 'bookings', id), { ...update, updatedAt: Timestamp.now() });
+          await runTransaction(db, async (transaction) => {
+            const docRef = doc(db, 'bookings', id);
+            const bookingSnap = await transaction.get(docRef);
+            if (!bookingSnap.exists()) {
+              throw new Error("Booking does not exist!");
+            }
+            const bookingData = bookingSnap.data() as Booking;
+            const currentStatus = bookingData.status;
+
+            // Verify status and ownership when claiming or modifying
+            if (update.status === 'assigned') {
+              // Abort if already claimed by someone else
+              const currentPartnerId = partner?.userId || profile?.uid;
+              if (bookingData.partnerId && bookingData.partnerId !== currentPartnerId) {
+                throw new Error("This job has already been claimed by another partner.");
+              }
+              // Verify status matches expected open/assigned states before modifying
+              const allowedStatuses = ['pending', 'pending_acceptance', 'assigned'];
+              if (!allowedStatuses.includes(currentStatus)) {
+                throw new Error("This job is no longer available to accept.");
+              }
+            } else if (update.status) {
+              if (currentStatus === 'completed' || currentStatus === 'cancelled') {
+                throw new Error(`Cannot update booking. Job is already completed or cancelled.`);
+              }
+            }
+
+            transaction.update(docRef, { ...update, updatedAt: Timestamp.now() });
+          });
         }
       );
       const b = bookings.find(x => x.id === id);

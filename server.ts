@@ -1251,54 +1251,65 @@ STAGE-SPECIFIC BEHAVIOR
       if (!bookingId || !partnerId || !otp) return res.status(400).json({ error: "Missing parameters" });
 
       const bookingRef = db.collection("bookings").doc(bookingId);
-      const bookingDoc = await bookingRef.get();
-      if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
-      
-      const booking = bookingDoc.data()!;
-      
-      // Brute-force protection: check attempts & block duration
-      let attempts = booking.otpAttempts || 0;
-      let blockedUntil = booking.otpBlockedUntil ? booking.otpBlockedUntil.toDate() : null;
 
-      if (blockedUntil && blockedUntil > new Date()) {
-        return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
-      }
-
-      // If block has expired, reset the attempts
-      if (blockedUntil && blockedUntil <= new Date()) {
-        attempts = 0;
-      }
-
-      const normalize = (val: any) => (val || "").toString().trim();
-      const inputOtp = normalize(otp);
-      
-      // Single source of truth verification
-      const expectedOtp = booking.serviceOtp ? normalize(booking.serviceOtp) : "";
-
-      if (!expectedOtp || inputOtp !== expectedOtp) {
-        attempts += 1;
-        const updates: any = { otpAttempts: attempts };
-        if (attempts >= 5) {
-          const blockDate = new Date(Date.now() + 15 * 60 * 1000); // 15 mins block
-          updates.otpBlockedUntil = admin.firestore.Timestamp.fromDate(blockDate);
-          await bookingRef.update(updates);
-          return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
-        } else {
-          await bookingRef.update(updates);
-          return res.status(400).json({ error: `Invalid OTP. ${5 - attempts} attempts remaining.` });
+      const result = await db.runTransaction(async (transaction) => {
+        const bookingDoc = await transaction.get(bookingRef);
+        if (!bookingDoc.exists) {
+          return { errorStatus: 404, error: "Booking not found" };
         }
-      }
 
-      // Success: reset attempts & blocked values
-      await bookingRef.update({
-        status: 'in_progress',
-        partnerId: partnerId,
-        otpVerified: true,
-        otpAttempts: 0,
-        otpBlockedUntil: null,
-        arrivedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        const booking = bookingDoc.data()!;
+
+        // Brute-force protection: check attempts & block duration
+        let attempts = booking.otpAttempts || 0;
+        let blockedUntil = booking.otpBlockedUntil ? booking.otpBlockedUntil.toDate() : null;
+
+        if (blockedUntil && blockedUntil > new Date()) {
+          return { errorStatus: 429, error: "Too many attempts. Try again in 15 minutes." };
+        }
+
+        // If block has expired, reset the attempts
+        if (blockedUntil && blockedUntil <= new Date()) {
+          attempts = 0;
+        }
+
+        const normalize = (val: any) => (val || "").toString().trim();
+        const inputOtp = normalize(otp);
+
+        // Single source of truth verification
+        const expectedOtp = booking.serviceOtp ? normalize(booking.serviceOtp) : "";
+
+        if (!expectedOtp || inputOtp !== expectedOtp) {
+          attempts += 1;
+          const updates: any = { otpAttempts: attempts };
+          if (attempts >= 5) {
+            const blockDate = new Date(Date.now() + 15 * 60 * 1000); // 15 mins block
+            updates.otpBlockedUntil = admin.firestore.Timestamp.fromDate(blockDate);
+            transaction.update(bookingRef, updates);
+            return { errorStatus: 429, error: "Too many attempts. Try again in 15 minutes." };
+          } else {
+            transaction.update(bookingRef, updates);
+            return { errorStatus: 400, error: `Invalid OTP. ${5 - attempts} attempts remaining.` };
+          }
+        }
+
+        // Success: reset attempts & blocked values
+        transaction.update(bookingRef, {
+          status: 'in_progress',
+          partnerId: partnerId,
+          otpVerified: true,
+          otpAttempts: 0,
+          otpBlockedUntil: null,
+          arrivedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { success: true };
       });
+
+      if (result.errorStatus) {
+        return res.status(result.errorStatus).json({ error: result.error });
+      }
 
       res.json({ success: true, message: "OTP verified" });
     } catch (err: any) {
@@ -1328,6 +1339,11 @@ STAGE-SPECIFIC BEHAVIOR
           throw new Error('User or Booking not found');
         }
 
+        const bookingData = bookingDoc.data()!;
+        if (bookingData.settledAt) {
+          throw new Error('This job has already been settled.');
+        }
+
         const walletBalance = userDoc.data()?.walletBalance || 0;
         const totalPrice = bookingDoc.data()?.totalPrice || 0;
 
@@ -1344,6 +1360,7 @@ STAGE-SPECIFIC BEHAVIOR
           paymentStatus: 'paid',
           paymentMethod: 'wallet',
           status: 'completed',
+          settledAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         
@@ -1397,6 +1414,9 @@ STAGE-SPECIFIC BEHAVIOR
       res.json({ success: true });
     } catch (err: any) {
       console.error('Wallet payment error:', err);
+      if (err.message === 'This job has already been settled.') {
+        return res.status(400).json({ error: err.message });
+      }
       res.status(500).json({ error: err.message });
     }
   });
