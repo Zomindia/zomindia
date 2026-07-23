@@ -23,6 +23,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, WorkingHours, Booking, Service } from '../../types';
+import { LogoIcon } from '../BrandLogo';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth, storage } from '../../lib/firebase';
@@ -268,7 +269,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
                      </div>
                    )}
-                   <img src={avatarUrl || profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+                   <img src={(avatarUrl || profile.photoURL) && !(avatarUrl || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (avatarUrl || profile.photoURL) : LogoIcon} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider rounded-full z-20">
                      Change
                    </div>
@@ -456,7 +457,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
             {/* Profile Photo Uploader */}
             <div className="p-5 bg-blue-50/40 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center gap-5">
               <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner shrink-0 relative group">
-                <img src={editForm.photoURL || profile.photoURL || "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
+                <img src={(editForm.photoURL || profile.photoURL) && !(editForm.photoURL || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (editForm.photoURL || profile.photoURL) : LogoIcon} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera size={14} />
                 </div>

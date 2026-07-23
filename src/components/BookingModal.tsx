@@ -36,65 +36,30 @@ import {
 } from 'lucide-react';
 import PartnerIdentityMarker from './PartnerIdentityMarker';
 
-// Safe global console interceptor to suppress Google Maps Geocoding service key restriction warnings on the client
-if (typeof window !== 'undefined') {
-  const originalConsoleError = console.error;
-  const originalConsoleWarn = console.warn;
-
-  console.error = (...args: any[]) => {
-    const msg = args.map(arg => typeof arg === 'string' ? arg : (arg && typeof arg === 'object' ? (arg.message || JSON.stringify(arg)) : '')).join(' ');
-    if (
-      msg.includes('Geocoding Service') ||
-      msg.includes('API key is not authorized') ||
-      msg.includes('REQUEST_DENIED') ||
-      msg.includes('Geocode failed') ||
-      msg.includes('Google Maps') ||
-      msg.includes('sensor')
-    ) {
-      // Quietly consume to maintain zero-error execution
-      return;
-    }
-    originalConsoleError.apply(console, args);
-  };
-
-  console.warn = (...args: any[]) => {
-    const msg = args.map(arg => typeof arg === 'string' ? arg : (arg && typeof arg === 'object' ? (arg.message || JSON.stringify(arg)) : '')).join(' ');
-    if (
-      msg.includes('Geocoding Service') ||
-      msg.includes('API key is not authorized') ||
-      msg.includes('REQUEST_DENIED') ||
-      msg.includes('Geocode failed') ||
-      msg.includes('Google Maps') ||
-      msg.includes('sensor')
-    ) {
-      // Quietly consume to maintain zero-error execution
-      return;
-    }
-    originalConsoleWarn.apply(console, args);
-  };
-}
-
-const MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || '';
-
-const INDORE_MOCK_LOCATIONS = [
-  { name: "Singapore Annexe", area: "Vijay Nagar, Indore, MP", lat: 22.7612, lng: 75.8984 },
-  { name: "Palasia Colony", area: "Old Palasia, Indore, MP", lat: 22.7244, lng: 75.8839 },
-  { name: "Vijay Nagar", area: "Sector C, Vijay Nagar, Indore, MP", lat: 22.7533, lng: 75.8937 },
-  { name: "Rajwada Palace Area", area: "Mahatma Gandhi Road, Indore, MP", lat: 22.7186, lng: 75.8576 },
-  { name: "Bhawarkua Square", area: "A.B. Road, Bhawarkua, Indore, MP", lat: 22.6983, lng: 75.8679 },
-  { name: "LIG Colony", area: "Indore, MP", lat: 22.7423, lng: 75.8856 },
-  { name: "Khajrana Temple Area", area: "Khajrana, Indore, MP", lat: 22.7302, lng: 75.8971 },
-  { name: "Annapurna Mandir Area", area: "Annapurna Road, Indore, MP", lat: 22.6993, lng: 75.8354 },
-  { name: "Sudama Nagar", area: "Sector D, Sudama Nagar, Indore, MP", lat: 22.7051, lng: 75.8236 },
-  { name: "Mahalaxmi Nagar", area: "Opposite Bombay Hospital, Indore, MP", lat: 22.7661, lng: 75.9082 }
-];
-
 interface Props {
   service: Service;
   profile: UserProfile | null;
   onClose: () => void;
   onSuccess: () => void;
 }
+
+const INDORE_FALLBACK_LOCATIONS = [
+  { placeId: 'indore_1', name: 'Vijay Nagar', area: 'Vijay Nagar, Indore, Madhya Pradesh', description: 'Vijay Nagar, Indore, Madhya Pradesh' },
+  { placeId: 'indore_2', name: 'Palasia', area: 'Palasia, Indore, Madhya Pradesh', description: 'Palasia, Indore, Madhya Pradesh' },
+  { placeId: 'indore_3', name: 'Bhawarkua', area: 'Bhawarkua, Indore, Madhya Pradesh', description: 'Bhawarkua, Indore, Madhya Pradesh' },
+  { placeId: 'indore_4', name: 'Sapna Sangeeta', area: 'Sapna Sangeeta Road, Indore, Madhya Pradesh', description: 'Sapna Sangeeta Road, Indore, Madhya Pradesh' },
+  { placeId: 'indore_5', name: 'Super Corridor', area: 'Super Corridor, Indore, Madhya Pradesh', description: 'Super Corridor, Indore, Madhya Pradesh' },
+  { placeId: 'indore_6', name: 'Saket Nagar', area: 'Saket Nagar, Indore, Madhya Pradesh', description: 'Saket Nagar, Indore, Madhya Pradesh' },
+  { placeId: 'indore_7', name: 'Mahalaxmi Nagar', area: 'Mahalaxmi Nagar, Indore, Madhya Pradesh', description: 'Mahalaxmi Nagar, Indore, Madhya Pradesh' },
+  { placeId: 'indore_8', name: 'AB Road', area: 'A.B. Road, Indore, Madhya Pradesh', description: 'A.B. Road, Indore, Madhya Pradesh' },
+  { placeId: 'indore_9', name: 'Rau', area: 'Rau, Indore, Madhya Pradesh', description: 'Rau, Indore, Madhya Pradesh' },
+  { placeId: 'indore_10', name: 'Annapurna', area: 'Annapurna Road, Indore, Madhya Pradesh', description: 'Annapurna Road, Indore, Madhya Pradesh' },
+  { placeId: 'indore_11', name: 'Khajrana', area: 'Khajrana, Indore, Madhya Pradesh', description: 'Khajrana, Indore, Madhya Pradesh' },
+  { placeId: 'indore_12', name: 'LIG Colony', area: 'LIG Colony, Indore, Madhya Pradesh', description: 'LIG Colony, Indore, Madhya Pradesh' },
+  { placeId: 'indore_13', name: 'Chappan Dukan', area: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh', description: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh' },
+  { placeId: 'indore_14', name: 'Rajendra Nagar', area: 'Rajendra Nagar, Indore, Madhya Pradesh', description: 'Rajendra Nagar, Indore, Madhya Pradesh' },
+  { placeId: 'indore_15', name: 'Khandwa Road', area: 'Khandwa Road, Indore, Madhya Pradesh', description: 'Khandwa Road, Indore, Madhya Pradesh' },
+];
 
 export default function BookingModal({ service, profile, onClose, onSuccess }: Props) {
   // Load saved progress if it exists and matches the current service
@@ -123,12 +88,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [isFetchingGps, setIsFetchingGps] = useState(false);
   const [mapZoom, setMapZoom] = useState(15);
   const [error, setError] = useState<string | null>(null);
-  const [gpsFetchError, setGpsFetchError] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cash'>(savedState?.paymentMethod || 'cash');
   const [availablePromos, setAvailablePromos] = useState<Promotion[]>([]);
-  const [showPromos, setShowPromos] = useState(false);
   const [slotNotAvailablePopup, setSlotNotAvailablePopup] = useState(false);
-  const [emailErrorFlashing, setEmailErrorFlashing] = useState(false);
 
   const scrollToContact = () => {
     setTimeout(() => {
@@ -150,17 +112,23 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>(null);
 
-  // Contact popup and dynamic search states
+  // Contact popup and dynamic Google Places search states
   const [showContactPopup, setShowContactPopup] = useState(false);
   const [popupEmail, setPopupEmail] = useState('');
   const [popupPhone, setPopupPhone] = useState('');
   const [popupError, setPopupError] = useState<string | null>(null);
-  const [liveSuggestions, setLiveSuggestions] = useState<{ name: string, area: string, lat: number, lng: number }[]>([]);
+  const [liveSuggestions, setLiveSuggestions] = useState<{ placeId: string; name: string; area: string; description: string }[]>([]);
   const [isSearchingLive, setIsSearchingLive] = useState(false);
   
   // AMC State
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
   const [useAmc, setUseAmc] = useState(savedState?.useAmc ?? false);
+
+  // Maps Libraries
+  const placesLib = useMapsLibrary('places');
+  const geocodingLib = useMapsLibrary('geocoding');
+  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   // Auto-save progress effect
   useEffect(() => {
@@ -186,7 +154,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   }, [service.id, step, address, isEditingAddressOnConfirm, location, date, time, paymentMethod, useAmc, activeAmc]);
 
   const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
-
   const [realEligiblePartners, setRealEligiblePartners] = useState<PartnerProfile[]>([]);
   const [realPartnersNames, setRealPartnersNames] = useState<Record<string, string>>({});
 
@@ -201,72 +168,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // distance in km
   };
-
-  const getScoredNearbyPartners = () => {
-    if (!location) return [];
-    
-    const combined: {
-      id: string;
-      name: string;
-      lat: number;
-      lng: number;
-      status: 'Available' | 'On Job' | 'In Transit';
-      rating: number;
-      reviewCount: number;
-      isReal: boolean;
-      distance: number;
-      score: number;
-    }[] = [];
-
-    // Add real database partners
-    realEligiblePartners.forEach((p) => {
-      const name = realPartnersNames[p.userId] || p.bio || "Verified Service Professional";
-      if (p.lat && p.lng) {
-        const dist = haversineDistance(location.lat, location.lng, p.lat, p.lng);
-        let score = 0;
-
-        if (p.availabilityStatus === 'Available') {
-          score += 150;
-        } else if (p.availabilityStatus === 'Busy') {
-          score += 40;
-        }
-
-        if (dist <= 2) {
-          score += 200;
-        } else if (dist <= 5) {
-          score += 130;
-        } else if (dist <= 10) {
-          score += 80;
-        } else if (dist <= 20) {
-          score += 30;
-        } else {
-          score -= 30;
-        }
-
-        const rating = p.rating || 0;
-        score += (rating - 4.0) * 100;
-
-        if (!combined.some(c => c.id === p.id)) {
-          combined.push({
-            id: p.userId || p.id,
-            name,
-            lat: p.lat,
-            lng: p.lng,
-            status: p.availabilityStatus === 'Available' ? 'Available' : (p.availabilityStatus === 'Busy' ? 'On Job' : 'Available'),
-            rating: p.rating || 4.7,
-            reviewCount: p.reviewCount || 12,
-            isReal: true,
-            distance: dist,
-            score: score
-          });
-        }
-      }
-    });
-
-    return combined.sort((a, b) => b.score - a.score);
-  };
-
-
 
   const cleanPhoneTo10 = (ph: string) => {
     let cleaned = (ph || '').replace(/\D/g, '');
@@ -290,74 +191,166 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   }, [profile]);
 
-  // Dynamic Maps Address Search lookup effect
+  // Dynamic Google Places Autocomplete search lookup with local fallback
   useEffect(() => {
-    if (address.trim().length < 3 || selectedFromDropdown) {
-      setLiveSuggestions([]);
+    if (address.trim().length < 2 || selectedFromDropdown) {
+      if (!selectedFromDropdown) setLiveSuggestions([]);
       return;
     }
 
     const delayDebounceFn = setTimeout(() => {
-      const GeocoderClass = (window as any).google?.maps?.Geocoder;
-      if (!GeocoderClass) {
-        // Fallback: if Google Maps is not loaded or async, generate dynamic auto-suggestions based on user input so they are never blocked
-        const trimmed = address.trim();
-        const fallbackList = [
-          {
-            name: trimmed,
-            area: "Indore, Madhya Pradesh, India",
-            lat: 22.7196,
-            lng: 75.8577
-          },
-          ...INDORE_MOCK_LOCATIONS.filter(l => l.name.toLowerCase().includes(trimmed.toLowerCase()))
-        ];
-        setLiveSuggestions(fallbackList);
-        if (fallbackList.length > 0) {
-          setLocation({ lat: fallbackList[0].lat, lng: fallbackList[0].lng });
-          setMapCenter({ lat: fallbackList[0].lat, lng: fallbackList[0].lng });
-        }
+      const q = address.trim().toLowerCase();
+      const getLocalSuggestions = () => {
+        const filtered = INDORE_FALLBACK_LOCATIONS.filter(item => 
+          item.name.toLowerCase().includes(q) || item.area.toLowerCase().includes(q)
+        );
+        if (filtered.length > 0) return filtered;
+        return [{
+          placeId: 'indore_custom',
+          name: address.trim(),
+          area: `${address.trim()}, Indore, Madhya Pradesh`,
+          description: `${address.trim()}, Indore, Madhya Pradesh`
+        }];
+      };
+
+      if (!placesLib) {
+        setIsSearchingLive(false);
+        setLiveSuggestions(getLocalSuggestions());
         return;
       }
 
       setIsSearchingLive(true);
-      const geocoder = new GeocoderClass();
-      const queryText = address.toLowerCase().includes("indore") ? address : `${address}, Indore`;
+      try {
+        const autocompleteService = new placesLib.AutocompleteService();
+        const queryText = address.toLowerCase().includes("indore") ? address : `${address}, Indore`;
 
-      geocoder.geocode({ address: queryText }, (results: any, status: any) => {
-        setIsSearchingLive(false);
-        if (status === 'OK' && results && results.length > 0) {
-          const formatted = results.map((r: any) => {
-            const parts = r.formatted_address.split(',');
-            const name = parts[0] || address;
-            const area = parts.slice(1).join(',').trim() || "Indore, MP, India";
-            return {
-              name: name,
-              area: area,
-              lat: r.geometry.location.lat(),
-              lng: r.geometry.location.lng()
-            };
-          });
-          setLiveSuggestions(formatted);
-          if (formatted.length > 0) {
-            setLocation({ lat: formatted[0].lat, lng: formatted[0].lng });
-            setMapCenter({ lat: formatted[0].lat, lng: formatted[0].lng });
-          }
-        } else {
-          const trimmed = address.trim();
-          setLiveSuggestions([
-            {
-              name: trimmed,
-              area: "Custom Location, Indore, MP",
-              lat: 22.7196,
-              lng: 75.8577
+        autocompleteService.getPlacePredictions(
+          {
+            input: queryText,
+            componentRestrictions: { country: 'in' },
+          },
+          (predictions, status) => {
+            setIsSearchingLive(false);
+            if (status === 'OK' && predictions && predictions.length > 0) {
+              const formatted = predictions.map((p) => ({
+                placeId: p.place_id,
+                name: p.structured_formatting?.main_text || p.description.split(',')[0],
+                area: p.structured_formatting?.secondary_text || p.description,
+                description: p.description
+              }));
+              setLiveSuggestions(formatted);
+            } else {
+              // Status is NOT 'OK' (e.g. REQUEST_DENIED, ApiTargetBlockedMapError)
+              setLiveSuggestions(getLocalSuggestions());
             }
-          ]);
-        }
-      });
-    }, 400);
+          }
+        );
+      } catch (err) {
+        console.warn("Google Places Autocomplete error, falling back to local suggestions:", err);
+        setIsSearchingLive(false);
+        setLiveSuggestions(getLocalSuggestions());
+      }
+    }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [address, selectedFromDropdown]);
+  }, [address, selectedFromDropdown, placesLib]);
+
+  // Handle selecting a place suggestion
+  const handleSelectSuggestion = (suggestion: { placeId: string; description: string; name: string; area: string }) => {
+    setAddress(suggestion.description);
+    setSelectedFromDropdown(true);
+    setShowSearchSuggestions(false);
+
+    if (suggestion.placeId.startsWith('indore_')) {
+      const indoreCenter = { lat: 22.7196, lng: 75.8577 };
+      setLocation(indoreCenter);
+      setMapCenter(indoreCenter);
+      return;
+    }
+
+    if (geocodingLib) {
+      try {
+        const geocoder = new geocodingLib.Geocoder();
+        geocoder.geocode({ placeId: suggestion.placeId }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const lat = results[0].geometry.location.lat();
+            const lng = results[0].geometry.location.lng();
+            setLocation({ lat, lng });
+            setMapCenter({ lat, lng });
+          } else {
+            const indoreCenter = { lat: 22.7196, lng: 75.8577 };
+            setLocation(indoreCenter);
+            setMapCenter(indoreCenter);
+          }
+        });
+      } catch (err) {
+        const indoreCenter = { lat: 22.7196, lng: 75.8577 };
+        setLocation(indoreCenter);
+        setMapCenter(indoreCenter);
+      }
+    } else {
+      const indoreCenter = { lat: 22.7196, lng: 75.8577 };
+      setLocation(indoreCenter);
+      setMapCenter(indoreCenter);
+    }
+  };
+
+  // Reverse geocoding via Google Maps Geocoder
+  const reverseGeocodeNativeGoogle = async (lat: number, lng: number) => {
+    setIsGeocoding(true);
+    const GeocoderClass = geocodingLib?.Geocoder || (window as any).google?.maps?.Geocoder;
+    if (!GeocoderClass) {
+      setIsGeocoding(false);
+      return;
+    }
+
+    try {
+      const geocoder = new GeocoderClass();
+      geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+        if (status === 'OK' && results && results[0]) {
+          setAddress(results[0].formatted_address);
+        }
+        setIsGeocoding(false);
+      });
+    } catch (err) {
+      console.error("Reverse geocoding failed:", err);
+      setIsGeocoding(false);
+    }
+  };
+
+  const getEventLatLng = (e: any): { lat: number, lng: number } | null => {
+    let lat: any = null;
+    let lng: any = null;
+
+    if (e.detail?.latLng) {
+      lat = e.detail.latLng.lat;
+      lng = e.detail.latLng.lng;
+    } else if (e.latLng) {
+      lat = e.latLng.lat;
+      lng = e.latLng.lng;
+    } else if (e.target && 'position' in e.target && e.target.position) {
+      lat = e.target.position.lat;
+      lng = e.target.position.lng;
+    } else if (e.currentTarget && 'position' in e.currentTarget && e.currentTarget.position) {
+      lat = e.currentTarget.position.lat;
+      lng = e.currentTarget.position.lng;
+    }
+
+    if (lat !== null && lat !== undefined && lng !== null && lng !== undefined) {
+      const latVal = typeof lat === 'function' ? lat() : lat;
+      const lngVal = typeof lng === 'function' ? lng() : lng;
+      if (typeof latVal === 'number' && typeof lngVal === 'number') {
+        return { lat: latVal, lng: lngVal };
+      }
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (location) {
+      setMapCenter(location);
+    }
+  }, [location]);
 
   // Fetch busy/unavailable slots in real-time
   useEffect(() => {
@@ -369,7 +362,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     const minTimestamp = Timestamp.fromDate(minDate);
     const maxTimestamp = Timestamp.fromDate(maxDate);
 
-    // Use a query that matches our deployed security rules and limits to +/- 30 days to improve performance and prevent overload
     const q = query(
       collection(db, 'bookings'),
       where('status', 'not-in', ['cancelled', 'rejected']),
@@ -397,13 +389,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             bookingDateObj = new Date(data.scheduledAt);
           }
           
-          // Form local YYYY-MM-DD
           const year = bookingDateObj.getFullYear();
           const month = String(bookingDateObj.getMonth() + 1).padStart(2, '0');
           const day = String(bookingDateObj.getDate()).padStart(2, '0');
           const dateStr = `${year}-${month}-${day}`;
           
-          // Form local HH:MM (e.g., "09:00", "13:00")
           const hours = String(bookingDateObj.getHours()).padStart(2, '0');
           const minutes = String(bookingDateObj.getMinutes()).padStart(2, '0');
           const timeStr = `${hours}:${minutes}`;
@@ -420,7 +410,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       },
       (err) => {
         try {
-          // Gracefully report and fallback if required
           handleFirestoreError(err, OperationType.LIST, 'bookings');
         } catch (logErr) {
           console.error("Availability listener query fallback warning:", logErr);
@@ -436,14 +425,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     const fetchData = async () => {
       if (!profile) return;
       try {
-        // Fetch Promos
         const qPromos = query(collection(db, 'promotions'), where('active', '==', true), limit(5));
         const promoSnap = await getDocs(qPromos);
         const fetchedPromos = promoSnap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
         const customerPromos = fetchedPromos.filter(promo => promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all');
         setAvailablePromos(customerPromos);
 
-        // Fetch user's active AMC for this service
         const qAmc = query(
           collection(db, 'amcs'), 
           where('customerId', '==', profile.uid),
@@ -453,10 +440,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         const amcSnap = await getDocs(qAmc);
         if (!amcSnap.empty) {
           const amcData = { id: amcSnap.docs[0].id, ...amcSnap.docs[0].data() } as AMC;
-          // Check if frequency not exceeded
           if (amcData.serviceBookingIds.length < amcData.frequency) {
             setActiveAmc(amcData);
-            setUseAmc(true); // Default to using AMC if available
+            setUseAmc(true);
           }
         }
       } catch (err) {
@@ -504,20 +490,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   ];
 
   const getSlotStatus = (slotValue: string, testDate?: string) => {
-    // Block any service scheduling slots post 19:00 (7 PM) for brand security!
     const [h] = slotValue.split(':').map(Number);
     if (h > 19) return 'expired';
 
     const d = testDate || date;
     if (!d) return 'available';
     
-    // Check if slot has already been booked (busy / unavailable) in real-time
     if (busySlots[d] && busySlots[d].includes(slotValue)) {
       return 'expired';
     }
     
     const now = new Date();
-    // Use local YYYY-MM-DD for comparison
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -526,16 +509,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (d > todayStr) return 'available';
     if (d < todayStr) return 'expired';
     
-    // It's today. Construct the slot time in local time.
     const [hours, minutes] = slotValue.split(':').map(Number);
     const slotTime = new Date(now);
     slotTime.setHours(hours, minutes, 0, 0);
     
-    // Calculate difference in hours
     const diffInMs = slotTime.getTime() - now.getTime();
     const diffInHours = diffInMs / (1000 * 60 * 60);
     
-    // Slot must be at least 2 hours in the future
     if (diffInHours < 2) return 'expired';
     return 'available';
   };
@@ -545,10 +525,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const getNearestAvailableDates = () => {
     const dates = [];
     const current = new Date();
-    // Start looking from tomorrow onwards
     current.setDate(current.getDate() + 1);
     
-    // Scan up to 15 days out to suggest up to 3 days that have available slots
     for (let i = 0; i < 15 && dates.length < 3; i++) {
       const year = current.getFullYear();
       const month = String(current.getMonth() + 1).padStart(2, '0');
@@ -602,10 +580,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   }, [redemptions, service, appliedPromo, step]);
 
   const isSurgePricingActive = () => {
-    if (profile?.isPremium) return false; // Zero surge for Prime
+    if (profile?.isPremium) return false;
     if (!time) return false;
 
-    // Surge for 7:00 PM slot (value '19:00') across all dates
     if (time === '19:00') {
       return true;
     }
@@ -613,18 +590,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (!date) return false;
 
     const now = new Date();
-    // Use local YYYY-MM-DD for comparison
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const todayStr = `${year}-${month}-${day}`;
 
-    // If customer is booking today for tomorrow or any future date, no surge applies
     if (date !== todayStr) {
       return false;
     }
 
-    // If same day, surge only applies for slot at 7:00 PM (19:00) or later. No surge for before 7:00 PM.
     const [h] = time.split(':').map(Number);
     if (h >= 19) {
       return true;
@@ -677,7 +651,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       } else {
         const promoData = { id: snap.docs[0].id, ...snap.docs[0].data() } as Promotion;
         
-        // Check restrictions
         const hasCategoriesList = promoData.applicableCategories && promoData.applicableCategories.length > 0;
         const hasServicesList = promoData.applicableServices && promoData.applicableServices.length > 0;
 
@@ -688,10 +661,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
 
         if (hasCategoriesList && !promoData.applicableCategories?.includes(service.categoryId)) {
-          // If a category was specified, make sure this service belongs to it
-          // Note: If both categories and services are specified, we check if service matches OR category matches?
-          // Usually if services are specified, they should be the ultimate source of truth.
-          // But here let's stick to: must match service if list exists, AND must match category if list exists.
           setPromoError('This code is not valid for services in this category.');
           setAppliedPromo(null);
           return;
@@ -706,8 +675,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
 
         setAppliedPromo(promoData);
-        setPromoInput(''); // Clear input on success
-        scrollToContact(); // Smooth scroll down to contact info container
+        setPromoInput('');
+        scrollToContact();
       }
     } catch (err) {
       console.error('Promo error:', err);
@@ -722,11 +691,37 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [lastBookingId, setLastBookingId] = useState<string | null>(null);
   const [showLocalLogin, setShowLocalLogin] = useState(false);
 
+  // Address Specificity Guard Check Function
+  const isGenericAddress = (addr: string): boolean => {
+    if (!addr) return true;
+    const clean = addr.trim().toLowerCase();
+    if (clean.length < 10) return true;
+    const genericList = [
+      'indore',
+      'indore, madhya pradesh',
+      'indore, madhya pradesh, india',
+      'indore, mp',
+      'indore, mp, india',
+      'madhya pradesh',
+      'madhya pradesh, india',
+      'india'
+    ];
+    if (genericList.includes(clean)) return true;
+    const parts = clean.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) return true;
+    return false;
+  };
+
   const handleConfirmServiceClick = () => {
     setError(null);
     setPopupError(null);
 
-    // Validate remaining due split balance payment method
+    // Validate address specificity before proceeding
+    if (isGenericAddress(address)) {
+      setError("Please specify your complete doorstep, house/flat number, or street address in Indore (e.g., 'Flat 102, Vijay Nagar, Indore'). Generic city-only addresses cannot be processed.");
+      return;
+    }
+
     const totalBill = calculateFinalPrice();
     const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
     const remainingDue = totalBill - walletDeduction;
@@ -737,18 +732,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         return;
       }
     }
-
-    // Prefill popup fields with existing email and phone
-    const cleanPhoneTo10 = (ph: string) => {
-      let cleaned = (ph || '').replace(/\D/g, '');
-      if (cleaned.length === 12 && cleaned.startsWith('91')) {
-        return cleaned.substring(2);
-      }
-      if (cleaned.length === 11 && cleaned.startsWith('0')) {
-        return cleaned.substring(1);
-      }
-      return cleaned.slice(0, 10);
-    };
 
     const emailToUse = contactEmail || profile?.email || '';
     const rawPhone = contactPhone || profile?.phoneNumber || profile?.mobile || '';
@@ -769,6 +752,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setLoading(true);
     setError(null);
 
+    // Strict authentication enforcement
+    if (!auth.currentUser) {
+      setShowLocalLogin(true);
+      setError("Authentication required: Please sign in with an active customer account to confirm your booking.");
+      setLoading(false);
+      return;
+    }
+
     const activeMode = profile?.currentMode || (localStorage.getItem('zomindia_current_mode') as 'customer' | 'partner') || 'customer';
     if (activeMode === 'partner') {
       setError("Bookings can only be created while operating in Customer Mode. Please switch to Customer Mode from your profile menu to book.");
@@ -776,10 +767,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       return;
     }
 
+    // Guard Check: Reject generic or city-only addresses
+    if (isGenericAddress(address)) {
+      setError("Please specify your complete doorstep, house/flat number, or colony address in Indore (e.g., 'Flat 102, Vijay Nagar, Indore'). Generic city-only addresses are rejected.");
+      setLoading(false);
+      return;
+    }
+
     const emailToUse = (overrideEmail || contactEmail).trim();
     const phoneToUse = (overridePhone || contactPhone).trim();
 
-    const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
+    const activeUid = auth.currentUser.uid;
     let cleanPhone = phoneToUse.replace(/\D/g, "");
     if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
       cleanPhone = cleanPhone.substring(2);
@@ -789,7 +787,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     const formattedPrimaryPhone = `+91${cleanPhone}`;
     const emailLower = emailToUse.toLowerCase();
 
-    // INTERCEPT PAYLOAD WITH A SECURE FIRESTORE TRANSACTION FOR DUAL-FIELD CROSS-VALIDATION
+    // DUAL-FIELD CROSS-VALIDATION DATABASE TRANSACTION
     try {
       const phoneQ1 = query(collection(db, "users"), where("phoneNumber", "==", formattedPrimaryPhone));
       const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPrimaryPhone));
@@ -826,7 +824,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       ].filter(id => id !== activeUid)));
 
       await runTransaction(db, async (transaction) => {
-        // Read and validate phone conflicts
         for (const docId of phoneDocIds) {
           const docRef = doc(db, "users", docId);
           const snap = await transaction.get(docRef);
@@ -838,7 +835,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           }
         }
 
-        // Read and validate email conflicts
         for (const docId of emailDocIds) {
           const docRef = doc(db, "users", docId);
           const snap = await transaction.get(docRef);
@@ -872,8 +868,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         } else {
           transaction.set(userRef, {
             uid: activeUid,
-            displayName: profile?.displayName || "VIKASS CHOPRA",
-            fullName: profile?.fullName || "VIKASS CHOPRA",
+            displayName: profile?.displayName || auth.currentUser?.displayName || "Customer",
+            fullName: profile?.fullName || auth.currentUser?.displayName || "Customer",
             role: "customer",
             ...updateData,
             createdAt: Timestamp.now()
@@ -881,16 +877,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       });
     } catch (transErr: any) {
-      console.error("Firestore Transaction Cross-Validation Aborted:", transErr);
-      setError(transErr.message || "Failed dual-field validation");
+      console.error("Firestore Transaction Validation Aborted:", transErr);
+      setError(transErr.message || "Failed account validation checks");
       setLoading(false);
       return;
     }
 
-    // Bypassing Broken Platform Auth & Verification Checks as Senior Architect
     const bookingPath = 'bookings';
     try {
-      // Re-verify promo if it exists before finalizing
       if (appliedPromo) {
         const pRef = doc(db, 'promotions', appliedPromo.id);
         const pSnap = await getDoc(pRef);
@@ -910,10 +904,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       const scheduledAt = new Date(`${date}T${time}`);
       const fullAddress = address;
       const finalPrice = calculateFinalPrice();
-      
       const serviceOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // PARTNER MATCHING LOGIC
       let assignedPartnerId: string | null = null;
       let bookingStatus: BookingStatus = 'pending';
       let eligiblePartnersList: PartnerProfile[] = [];
@@ -922,28 +914,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         const partnersSnap = await getDocs(collection(db, 'partners'));
         const partners = partnersSnap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerProfile));
 
-        // Haversine formula to compute exact physical distance in kilometers
-        const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-          const R = 6371; // Earth's radius in km
-          const dLat = (lat2 - lat1) * Math.PI / 180;
-          const dLon = (lon2 - lon1) * Math.PI / 180;
-          const a = 
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c; // distance in km
-        };
-
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const scheduledDayName = daysOfWeek[scheduledAt.getDay()];
 
-        // 1. Filter eligible partners
-        // A partner is eligible if:
-        // - Verified and active
-        // - Has expertise in the service category
-        // - Not completely offline
-        // - Active schedule: has booking scheduled time overlapping active working hours for that day of week (if working hour settings are present)
         const eligiblePartners = partners.filter(p => {
           const isCoreEligible = p.isVerified && 
                                  p.status === 'active' && 
@@ -951,11 +924,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                                  p.categories.includes(service.categoryId);
           if (!isCoreEligible) return false;
 
-          // Optional schedule filter: if the partner has configured schedule, make sure they are active at scheduled day/time.
           if (p.workingHours && p.workingHours.length > 0) {
             const daySched = p.workingHours.find(wh => wh.day.toLowerCase() === scheduledDayName.toLowerCase());
             if (daySched && !daySched.enabled) {
-              return false; // Not working this day!
+              return false;
             }
             if (daySched && daySched.startTime && daySched.endTime && time) {
               const [sHour, sMin] = time.split(':').map(Number);
@@ -967,7 +939,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               const endMinutes = endHour * 60 + endMin;
               
               if (sMinutes < startMinutes || sMinutes > endMinutes) {
-                return false; // Time booking falls outside of partner scheduled hours!
+                return false;
               }
             }
           }
@@ -977,35 +949,31 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         eligiblePartnersList = eligiblePartners;
 
         if (eligiblePartners.length > 0) {
-          // 2. Score according to proximity (Haversine), category rating, reviews volume, and real-time availability status
           const scoredPartners = eligiblePartners.map(p => {
             let score = 0;
 
-            // Aspect A: Real-time Availability
             if (p.availabilityStatus === 'Available') {
-              score += 150; // Heavily favor available professionals
+              score += 150;
             } else if (p.availabilityStatus === 'Busy') {
-              score += 40; // Backup option
+              score += 40;
             }
 
-            // Aspect B: Proximity (Haversine Distance matching)
             let distanceInKm = 9999;
             if (location && p.lat && p.lng) {
               distanceInKm = haversineDistance(location.lat, location.lng, p.lat, p.lng);
               if (distanceInKm <= 2) {
-                score += 200; // Extremely close
+                score += 200;
               } else if (distanceInKm <= 5) {
-                score += 130; // Very close
+                score += 130;
               } else if (distanceInKm <= 10) {
-                score += 80;  // Standard range
+                score += 80;
               } else if (distanceInKm <= 20) {
-                score += 30;  // Moderate commute
+                score += 30;
               } else {
-                score -= 30;  // Commute distance penalty
+                score -= 30;
               }
             }
 
-            // Aspect C: Category Rating & Completed Experience
             const rating = p.rating || 0;
             if (rating >= 4.8) {
               score += 60;
@@ -1015,7 +983,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               score += 20;
             }
 
-            // Experience volume weight (proxied by completed review counts)
             const reviews = p.reviewCount || 0;
             if (reviews >= 50) {
               score += 40;
@@ -1028,51 +995,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             return { partner: p, score, distance: distanceInKm };
           });
 
-          // Sort descending by calculated score
           scoredPartners.sort((a, b) => b.score - a.score);
-
           const bestMatchObj = scoredPartners[0];
-          console.log(`Matched partner ${bestMatchObj.partner.userId} with Score: ${bestMatchObj.score}, Distance: ${bestMatchObj.distance.toFixed(2)}km`);
-          
           assignedPartnerId = bestMatchObj.partner.userId;
           bookingStatus = 'assigned';
-        } else {
-          // No real eligible partners found: fall back to nominating the closest simulated pro as auto-assigned!
-          const scoredNearby = getScoredNearbyPartners();
-          if (scoredNearby.length > 0) {
-            const bestSim = scoredNearby[0];
-            assignedPartnerId = bestSim.id;
-            bookingStatus = 'assigned';
-            console.log(`Matched simulated partner ${bestSim.id} / ${bestSim.name} with Distance: ${bestSim.distance.toFixed(2)}km`);
-          }
         }
       } catch (matchErr) {
-        console.error("Partner matching failed, falling back to manual assignment:", matchErr);
+        console.error("Partner matching failed:", matchErr);
       }
 
       const bookingRef = doc(collection(db, bookingPath));
       const bookingId = bookingRef.id;
       setLastBookingId(bookingId);
 
-      // Prepare simulated partner data if assigned
-      let simulatedPartner = null;
-      if (assignedPartnerId && assignedPartnerId.startsWith('booking_sim_pro_')) {
-        const scoredNearby = getScoredNearbyPartners();
-        const matchedPro = scoredNearby.find(p => p.id === assignedPartnerId);
-        if (matchedPro) {
-          simulatedPartner = {
-            id: matchedPro.id,
-            name: matchedPro.name,
-            rating: matchedPro.rating,
-            reviewCount: matchedPro.reviewCount,
-            lat: matchedPro.lat,
-            lng: matchedPro.lng,
-            categoryId: service.categoryId
-          };
-        }
-      }
-
-       // Compute wallet split balance deduction values before payload creation
       const totalBill = finalPrice;
       const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
       const remainingDue = totalBill - walletDeduction;
@@ -1086,28 +1021,22 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
 
-      // Decrement/deduct wallet balance from user profile in Firestore if wallet is active
       if (walletDeduction > 0 && profile?.uid) {
         try {
           const uRef = doc(db, 'users', profile.uid);
           await updateDoc(uRef, {
             walletBalance: Math.max(0, (profile.walletBalance || 0) - walletDeduction)
           });
-          console.log("Deducted ₹" + walletDeduction + " from user wallet balance in Firestore.");
         } catch (walletDeductErr) {
           console.error("Wallet balance deduction write failed:", walletDeductErr);
         }
       }
 
-      const activeUid = auth.currentUser?.uid || profile?.uid || "live_customer_indore";
+      let resolvedFullName = auth.currentUser.displayName || profile?.fullName || profile?.customerData?.fullName || profile?.displayName || "Customer";
+      let resolvedMobile = profile?.mobile || profile?.customerData?.mobile || profile?.phoneNumber || auth.currentUser.phoneNumber || "";
+      let resolvedEmail = emailToUse || auth.currentUser.email || profile?.email || "";
 
-      // 2. Fix Customer Identity Injection: strictly query the authenticated user's root document context:
-      // parse user.fullName (or user.customerData.fullName) and user.mobile directly from the active session database snapshot.
-      let resolvedFullName = auth.currentUser?.displayName || profile?.fullName || profile?.customerData?.fullName || profile?.displayName || "VIKASS CHOPRA";
-      let resolvedMobile = profile?.mobile || profile?.customerData?.mobile || profile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
-      let resolvedEmail = emailToUse || auth.currentUser?.email || profile?.email || "";
-
-      if (auth.currentUser?.uid) {
+      if (auth.currentUser.uid) {
         try {
           const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
           if (userSnap.exists()) {
@@ -1117,30 +1046,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             resolvedEmail = userData?.email || userData?.customerData?.email || userData?.phoneNumber || resolvedEmail;
           }
         } catch (dbErr) {
-          console.error("Error reading active session database snapshot:", dbErr);
+          console.error("Error reading active user snapshot:", dbErr);
         }
       }
 
-      // Ensure resolvedMobile is clean 10-digit number and has no +91 or 91 or 0 prefix
-      const cleanPhoneTo10Internal = (ph: string) => {
-        let cleaned = (ph || '').replace(/\D/g, '');
-        if (cleaned.length === 12 && cleaned.startsWith('91')) {
-          return cleaned.substring(2);
-        }
-        if (cleaned.length === 11 && cleaned.startsWith('0')) {
-          return cleaned.substring(1);
-        }
-        return cleaned.slice(0, 10);
-      };
-      resolvedMobile = cleanPhone || cleanPhoneTo10Internal(resolvedMobile) || "9876543210";
+      resolvedMobile = cleanPhone || cleanPhoneTo10(resolvedMobile);
 
-      if (resolvedFullName === "User" || resolvedFullName === "Live Customer Indore" || !resolvedFullName) {
-        resolvedFullName = "VIKASS CHOPRA";
-      }
-
-      // Structure secure booking payload matching unified schema
       const bookingPayload = {
-        customerUid: activeUid, // Unified lookup id matching active customer uid
+        customerUid: activeUid,
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: assignedPartnerId ? "pending_acceptance" : "pending", 
@@ -1161,8 +1074,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         customerBookedEmail: resolvedEmail,
         customerBookedPhone: resolvedMobile,
         customerBookedName: resolvedFullName,
-        customerName: resolvedFullName, // Written cleanly for unified schema
-        customerMobile: resolvedMobile, // Written cleanly for unified schema
+        customerName: resolvedFullName,
+        customerMobile: resolvedMobile,
         customerData: {
           fullName: resolvedFullName,
           mobile: resolvedMobile,
@@ -1173,25 +1086,23 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         originalBillValue: totalBill
       };
 
-      // Direct Firestore Write to write cleanly directly to database bypassing server token layers
       try {
         await setDoc(bookingRef, bookingPayload);
-        console.log("Direct client-side Firestore write completed successfully.");
       } catch (directWriteErr: any) {
-        console.warn("Direct Firestore write failed, running REST fallback API:", directWriteErr.message);
+        console.warn("Direct Firestore write failed, calling API route:", directWriteErr.message);
       }
 
-      // Parallel backup full-stack express call triggering automatic SMS/WhatsApp/Mail dispatches
+      // Parallel Express API trigger with authenticated headers
       try {
         await fetch('/api/bookings', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Bypass-Auth': 'true' // Bypass header handled in server-api
+            'X-Customer-Uid': activeUid
           },
           body: JSON.stringify({
             bookingId,
-            customerUid: activeUid, // Unified lookup id matching active customer uid
+            customerUid: activeUid,
             serviceId: service.id,
             partnerId: assignedPartnerId,
             status: assignedPartnerId ? "pending_acceptance" : "pending",
@@ -1217,22 +1128,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               mobile: resolvedMobile,
               email: resolvedEmail
             },
-            simulatedPartner,
             walletDeductAmount: walletDeduction,
             originalBillValue: totalBill
           })
         });
       } catch (restErr: any) {
-        console.warn("REST fallback endpoint encountered an expected bypass response:", restErr.message);
+        console.warn("REST endpoint error:", restErr.message);
       }
 
-      // Notify key stakeholders & Dispatch SMS/WhatsApp via centralized NotificationEngine
       try {
         const assignedPartnerObj = eligiblePartnersList.find(p => (p.userId || p.id) === assignedPartnerId);
         await NotificationEngine.sendBookingConfirmation({
           bookingId: bookingRef.id,
-          customerId: profile?.uid || auth.currentUser?.uid || '',
-          customerName: profile?.displayName || resolvedFullName || 'Customer',
+          customerId: auth.currentUser?.uid || '',
+          customerName: resolvedFullName || 'Customer',
           customerPhone: resolvedMobile || '',
           serviceName: service.name,
           date,
@@ -1244,7 +1153,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           basePrice: totalBill
         });
       } catch (notifyErr) {
-        console.warn("[NotificationEngine] Non-fatal booking confirmation dispatch error:", notifyErr);
+        console.warn("[NotificationEngine] Non-fatal notification error:", notifyErr);
       }
       
       setShowFinalConfirmation(false);
@@ -1255,7 +1164,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       setStep(4);
     } catch (err: any) {
       console.error("Booking error:", err);
-      // Try to parse JSON from handleFirestoreError if possible, or just use message
       let msg = "An error occurred while placing your booking. Please try again.";
       let isPermissionDenied = false;
       let errorDetails = "";
@@ -1273,7 +1181,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
 
-      // Check if this error is due to permission denied / authentication issues
       const errLower = errorDetails.toLowerCase();
       if (
         errLower.includes('permission') || 
@@ -1287,7 +1194,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       if (isPermissionDenied) {
         const friendlyMsg = "Permission Denied: You do not have permissions to submit this booking. Please ensure you are logged in with an active customer account.";
-        // Trigger a user-friendly toast notification when the booking fails due to permission denied errors.
         if (typeof (window as any).__showToast === 'function') {
           (window as any).__showToast(friendlyMsg);
         }
@@ -1301,110 +1207,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   };
 
-  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const map = useMap('DEMO_MAP_ID');
-  const geocodingLib = useMapsLibrary('geocoding');
-
-  const reverseGeocodeNativeGoogle = async (lat: number, lng: number) => {
-    setIsGeocoding(true);
-    const GeocoderClass = geocodingLib?.Geocoder || (window as any).google?.maps?.Geocoder;
-    if (!GeocoderClass) {
-      console.warn("Google Maps Geocoder not loaded. Falling back to HTTP reverse geocoding...");
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-          headers: { 'Accept-Language': 'en' }
-        });
-        const data = await res.json();
-        if (data && data.display_name) {
-          setAddress(data.display_name);
-        } else {
-          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-      } catch (err) {
-        console.error("Fallback reverse geocoding failed:", err);
-        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      }
-      setIsGeocoding(false);
-      return;
-    }
-
-    try {
-      const geocoder = new GeocoderClass();
-      geocoder.geocode({ location: { lat, lng } }, async (results: any, status: any) => {
-        if (status === 'OK' && results && results[0]) {
-          setAddress(results[0].formatted_address);
-        } else {
-          console.warn("Google Geocoder failed. Trying Nominatim fallback...");
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-              headers: { 'Accept-Language': 'en' }
-            });
-            const data = await res.json();
-            if (data && data.display_name) {
-              setAddress(data.display_name);
-            } else {
-              setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-            }
-          } catch (fallbackErr) {
-            setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-          }
-        }
-        setIsGeocoding(false);
-      });
-    } catch (err) {
-      console.error("Clean geocode failed. Trying Nominatim fallback...", err);
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-          headers: { 'Accept-Language': 'en' }
-        });
-        const data = await res.json();
-        if (data && data.display_name) {
-          setAddress(data.display_name);
-        } else {
-          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-      } catch (fallbackErr) {
-        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      }
-      setIsGeocoding(false);
-    }
-  };
-
-  const getEventLatLng = (e: any): { lat: number, lng: number } | null => {
-    let lat: any = null;
-    let lng: any = null;
-
-    if (e.detail?.latLng) {
-      lat = e.detail.latLng.lat;
-      lng = e.detail.latLng.lng;
-    } else if (e.latLng) {
-      lat = e.latLng.lat;
-      lng = e.latLng.lng;
-    } else if (e.target && 'position' in e.target && e.target.position) {
-      lat = e.target.position.lat;
-      lng = e.target.position.lng;
-    } else if (e.currentTarget && 'position' in e.currentTarget && e.currentTarget.position) {
-      lat = e.currentTarget.position.lat;
-      lng = e.currentTarget.position.lng;
-    }
-
-    if (lat !== null && lat !== undefined && lng !== null && lng !== undefined) {
-      const latVal = typeof lat === 'function' ? lat() : lat;
-      const lngVal = typeof lng === 'function' ? lng() : lng;
-      if (typeof latVal === 'number' && typeof lngVal === 'number') {
-        return { lat: latVal, lng: lngVal };
-      }
-    }
-    return null;
-  };
-
-  useEffect(() => {
-    if (location) {
-      setMapCenter(location);
-    }
-  }, [location]);
-
   if (profile?.role === 'partner') {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
@@ -1412,12 +1214,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          // Disabled double-click overlay dismissal to avoid losing typed address or search keyboard state
-          onDoubleClick={undefined}
           className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
         />
-        {/* Disabled click overlay dismissal to avoid losing typed address or search keyboard state */}
-        <div className="absolute inset-0 hidden md:block" onClick={undefined} />
         
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1456,12 +1254,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          // Disabled double-click overlay dismissal to avoid losing typed address or search keyboard state
-          onDoubleClick={undefined}
           className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
         />
-        {/* Disabled click overlay dismissal to avoid losing typed address or search keyboard state */}
-        <div className="absolute inset-0 hidden md:block" onClick={undefined} />
         
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 100 }}
@@ -1656,7 +1450,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           </p>
                         </div>
 
-                        {/* Quick select suggestions */}
                         <div className="space-y-1.5 pt-1.5 border-t border-amber-200/30">
                           <p className="text-[8px] uppercase font-bold tracking-widest text-slate-400">
                             Suggested Future Dates
@@ -1702,7 +1495,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-4 font-sans"
                 >
-                  {/* Content Stack */}
                   <div className="space-y-4 text-left">
                     <div className="space-y-1.5 relative">
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -1717,7 +1509,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           setSelectedFromDropdown(false);
                           setShowSearchSuggestions(val.trim().length >= 2);
                         }}
-                        placeholder="Search for your area / colony in Indore (e.g., singapore annaxe)"
+                        placeholder="Search area / colony / locality (e.g., Vijay Nagar, Sapna Sangeeta, Indore)"
                         className="w-full p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
                       />
 
@@ -1729,58 +1521,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
                               <p className="text-xs text-slate-500 font-medium">Searching live areas in Indore...</p>
                             </div>
+                          ) : liveSuggestions.length > 0 ? (
+                            liveSuggestions.map((loc, idx) => (
+                              <button
+                                type="button"
+                                key={idx}
+                                onClick={() => handleSelectSuggestion(loc)}
+                                className="w-full py-2.5 px-4 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150 flex items-center gap-3.5 focus:outline-none cursor-pointer"
+                              >
+                                <span className="text-sm shrink-0">📍</span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-slate-900 leading-normal truncate">{loc.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5 truncate">{loc.area}</p>
+                                </div>
+                              </button>
+                            ))
                           ) : (
-                            (() => {
-                              const suggestionsToRender = liveSuggestions.length > 0 
-                                ? liveSuggestions 
-                                : (() => {
-                                    // Fallback to INDORE_MOCK_LOCATIONS or custom typed suggestion
-                                    const trimmed = address.trim();
-                                    if (!trimmed) return [];
-                                    const matches = INDORE_MOCK_LOCATIONS.filter(loc => 
-                                      loc.name.toLowerCase().includes(trimmed.toLowerCase()) || 
-                                      loc.area.toLowerCase().includes(trimmed.toLowerCase())
-                                    );
-                                    if (matches.length > 0) return matches;
-                                    return [
-                                      {
-                                        name: trimmed,
-                                        area: "Indore, Madhya Pradesh, India",
-                                        lat: 22.7196,
-                                        lng: 75.8577
-                                      }
-                                    ];
-                                  })();
-
-                              if (suggestionsToRender.length === 0) {
-                                return (
-                                  <div className="p-4 text-left">
-                                    <p className="text-xs text-slate-400 italic">Type to search any location in Indore...</p>
-                                  </div>
-                                );
-                              }
-
-                              return suggestionsToRender.map((loc, idx) => (
-                                <button
-                                  type="button"
-                                  key={idx}
-                                  onClick={() => {
-                                    setAddress(loc.name + (loc.area ? ", " + loc.area : ""));
-                                    setLocation({ lat: loc.lat, lng: loc.lng });
-                                    setMapCenter({ lat: loc.lat, lng: loc.lng });
-                                    setSelectedFromDropdown(true);
-                                    setShowSearchSuggestions(false);
-                                  }}
-                                  className="w-full py-2.5 px-4 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150 flex items-center gap-3.5 focus:outline-none cursor-pointer"
-                                >
-                                  <span className="text-sm shrink-0">📍</span>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-xs font-bold text-slate-900 leading-normal truncate">{loc.name}</p>
-                                    <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5 truncate">{loc.area}</p>
-                                  </div>
-                                </button>
-                              ));
-                            })()
+                            <div className="p-4 text-left">
+                              <p className="text-xs text-slate-400 italic">Type to search sub-locality or area in Indore...</p>
+                            </div>
                           )}
                         </div>
                       )}
@@ -1809,21 +1568,12 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               }
                               setIsFetchingGps(false);
                             },
-                            async (err) => {
-                              console.warn("GPS retrieval error / blocked hardware:", err);
-                              // Fallback Indore default
-                              const lat = 22.7196;
-                              const lng = 75.8577;
-                              setLocation({ lat, lng });
-                              setMapCenter({ lat, lng });
-                              try {
-                                await reverseGeocodeNativeGoogle(lat, lng);
-                              } catch (geocoderErr) {
-                                console.error("Geocoder fallback failed:", geocoderErr);
-                              }
+                            (err) => {
+                              console.warn("GPS retrieval error:", err);
+                              setError("Unable to retrieve high-accuracy GPS location. Please search for your sub-locality or area above.");
                               setIsFetchingGps(false);
                             },
-                            { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                           );
                         } else {
                           setIsFetchingGps(false);
@@ -1838,8 +1588,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     {/* Interactive map visualization */}
                     <div className="w-full h-44 rounded-xl overflow-hidden border border-slate-200 relative bg-slate-50 shadow-sm">
                       <Map
-                        defaultCenter={location || { lat: 22.7196, lng: 75.8577 }}
-                        center={mapCenter || { lat: 22.7196, lng: 75.8577 }}
+                        defaultCenter={mapCenter || { lat: 22.7196, lng: 75.8577 }}
+                        center={mapCenter || undefined}
                         zoom={mapZoom}
                         onCameraChanged={(e) => {
                           setMapCenter(e.detail.center);
@@ -1904,11 +1654,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </p>
                   </div>
 
-                  {/* Sticky billing & checkout footer */}
                   <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
                     <button 
                       disabled={!address || !address.trim()}
-                      onClick={() => setStep(3)}
+                      onClick={() => {
+                        if (isGenericAddress(address)) {
+                          setError("Please specify your complete doorstep, house/flat number, or street address in Indore (e.g., 'Flat 102, Vijay Nagar, Indore'). Generic city-only addresses cannot be processed.");
+                          return;
+                        }
+                        setError(null);
+                        setStep(3);
+                      }}
                       className="w-full bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-800 transition-all shadow disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer"
                     >
                       Continue
@@ -1957,46 +1713,35 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               ✏️ Edit
                             </button>
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <button 
-                                type="button"
-                                onClick={() => {
-                                  setIsEditingAddressOnConfirm(false);
-                                }}
-                                className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md transition-all border border-emerald-150 cursor-pointer"
-                              >
-                                Done
-                              </button>
-                              <button 
-                                type="button"
-                                onClick={() => {
-                                  setIsEditingAddressOnConfirm(false);
-                                }}
-                                className="text-[9px] font-black uppercase text-slate-400 hover:bg-slate-50 px-1.5 py-1 rounded-md transition-all cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                if (isGenericAddress(address)) {
+                                  setError("Please enter a specific address with colony/street/flat number.");
+                                  return;
+                                }
+                                setIsEditingAddressOnConfirm(false);
+                              }}
+                              className="text-[9px] font-black uppercase text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded-md transition-all border border-emerald-100 cursor-pointer flex items-center gap-1 shrink-0"
+                            >
+                              ✓ Save
+                            </button>
                           )}
                         </div>
-                        {isEditingAddressOnConfirm ? (
-                          <div className="space-y-2">
-                            <textarea
-                              value={address}
-                              onChange={(e) => setAddress(e.target.value)}
-                              rows={2}
-                              className="w-full bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-700 transition-all font-sans leading-normal resize-none"
-                              placeholder="Complete address (e.g. House No, Street name, landmark...)"
-                            />
-                          </div>
+
+                        {!isEditingAddressOnConfirm ? (
+                          <p className="text-xs font-semibold text-slate-800 leading-relaxed text-left">{address}</p>
                         ) : (
-                          <p className="text-[11px] text-slate-700 font-bold leading-normal text-left">
-                            {address}
-                          </p>
+                          <textarea
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            rows={2}
+                            className="w-full p-2 text-xs border rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            placeholder="Enter detailed doorstep address in Indore"
+                          />
                         )}
                       </div>
 
-                      {/* Offers & Promos Section (Zomato style horizontal slider) */}
                       <div className="bg-white rounded-xl border border-slate-100 p-3 text-left">
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex items-center gap-1.5">
@@ -2005,7 +1750,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           </div>
                         </div>
 
-                        {/* Input Promo Field */}
                         <div className="flex gap-1.5">
                           <input 
                             type="text"
@@ -2032,7 +1776,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           </p>
                         )}
 
-                        {/* Active Promo Success Message */}
                         {appliedPromo && (
                           <motion.div 
                             initial={{ opacity: 0, scale: 0.98 }} 
@@ -2065,7 +1808,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           </motion.div>
                         )}
 
-                        {/* Horizontal Scrollable Slider of Promos (Zomato style) */}
                         <div className="pt-2">
                           {availablePromos.length > 0 ? (
                             <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5 no-scrollbar scroll-smooth snap-x">
@@ -2220,7 +1962,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                             </div>
                           );
                         } else if (paymentMethod === 'online') {
-                          // Prompt online submethod selection if paying online general
                           return (
                             <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2 mt-2">
                               <span className="block text-[10px] font-bold text-slate-500 text-left">
@@ -2417,7 +2158,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                      </div>
                   </div>
 
-                  {/* Disclaimer user note inside confirmation popup list */}
                   <div className="p-3 bg-rose-50/70 border border-rose-100 rounded-xl flex items-start gap-2 max-w-sm mx-auto text-left mb-1 shadow-sm">
                      <span className="text-xs">ℹ️</span>
                      <p className="text-[10px] text-rose-900 font-semibold leading-relaxed">
@@ -2521,7 +2261,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </p>
 
                 {popupError && (
-                  <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-600 text-xs font-bold text-left animate-shake">
+                  <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-600 text-xs font-bold text-left">
                     <AlertCircle size={14} className="shrink-0" /> {popupError}
                   </div>
                 )}
@@ -2537,7 +2277,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         value={popupPhone}
                         onChange={(e) => {
                           let raw = e.target.value.replace(/\D/g, '');
-                          // Strip leading 91 or 0 prefix if it exceeds standard 10-digit bounds
                           if (raw.length === 12 && raw.startsWith('91')) {
                             raw = raw.substring(2);
                           } else if (raw.length === 11 && raw.startsWith('0')) {
@@ -2610,8 +2349,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       setPopupError(null);
                       setLoading(true);
 
-                      // CROSS-VALIDATION DATABASE LOGIC (Prevent Hijacking/Duplicates)
-                      const targetUid = auth.currentUser?.uid || profile?.uid;
+                      const targetUid = auth.currentUser?.uid;
                       const emailLower = emailTrimmed.toLowerCase();
 
                       try {
@@ -2686,13 +2424,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         return;
                       }
                       
-                      // Save back to main states
                       setContactEmail(emailTrimmed);
                       setContactPhone(phoneDigits);
-                      
                       setShowContactPopup(false);
-                      
-                      // Proceed directly to the booking write promise
                       await handleBooking(emailTrimmed, phoneDigits);
                     }}
                     className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
@@ -2738,140 +2472,90 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   <X size={18} />
                 </button>
 
-                <div className="w-12 h-12 bg-emerald-50 text-emerald-500 border border-emerald-100 rounded-full flex items-center justify-center mb-3 shadow-md shadow-emerald-100/30 shrink-0 animate-bounce">
-                  <CheckCircle2 size={24} className="stroke-[2.5]" />
+                <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-3 border border-emerald-100 shadow-inner">
+                  <CheckCircle2 size={28} />
                 </div>
-                
-                <h3 className="text-lg sm:text-xl font-black text-slate-900 mb-1 tracking-tight font-display">
-                  Booking Confirmed!
+
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 mb-2">
+                  Booking Confirmed
+                </span>
+
+                <h3 className="text-xl font-bold text-slate-900 mb-1 font-display tracking-tight">
+                  You're all set!
                 </h3>
-                <p className="text-slate-400 text-[11px] font-semibold mb-4 max-w-[260px] mx-auto leading-relaxed">
-                  Your order has been placed successfully. A service professional will reach your location on schedule.
+
+                <p className="text-xs text-slate-500 mb-4 leading-relaxed px-2">
+                  Your booking for <strong className="text-slate-800 font-bold">{service.name}</strong> has been received.
                 </p>
-                
-                <div className="w-full bg-slate-50/80 p-4 rounded-2xl border border-slate-200/60 mb-4 text-center space-y-3">
-                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] pb-1 border-b border-slate-200/40 max-w-[100px] mx-auto">
-                     Order Summary
-                   </p>
-                   
-                   <div className="space-y-0.5">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Service Booked</p>
-                      <p className="text-xs font-black text-slate-900 leading-snug">{service.name}</p>
-                   </div>
 
-                   <div className="grid grid-cols-2 gap-2 border-t border-b border-slate-100 py-2">
-                     <div className="space-y-0.5 border-r border-slate-100">
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
-                        <p className="text-[11px] font-bold text-slate-900">{date}</p>
-                     </div>
-                     <div className="space-y-0.5">
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Time Slot</p>
-                        <p className="text-[11px] font-bold text-slate-900">{time}</p>
-                     </div>
-                   </div>
-
-                   <div className="space-y-0.5">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Service Address</p>
-                      <p className="text-[11px] font-bold text-slate-800 max-w-[220px] mx-auto leading-relaxed truncate">{address}</p>
-                   </div>
-
-                   <div className="pt-2.5 border-t border-slate-200/40 space-y-0.5">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Total Amount Paid</p>
-                      <p className="text-lg font-black text-slate-900 tracking-tight">₹{calculateFinalPrice()}</p>
-                   </div>
-                </div>
-
-                {/* Add to Calendar Sync Section */}
-                <div className="w-full mb-4 bg-slate-50/50 p-3 rounded-2xl border border-dashed border-slate-200/80">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1 mb-2">
-                    <CalendarIcon size={12} className="text-blue-600 animate-pulse" /> Sync Service to Calendar
-                  </p>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        const baseDateStr = date;
-                        let baseTimeStr = time || "10:00";
-                        if (!/^\d{2}:\d{2}$/.test(baseTimeStr)) {
-                          baseTimeStr = "10:00";
-                        }
-                        const start = new Date(`${baseDateStr}T${baseTimeStr}:00`);
-                        const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
-                        
-                        const title = `Zomindia: ${service.name}`;
-                        const description = `Your Zomindia home service booking is confirmed!\n\nService: ${service.name}\nScheduled Slot: ${date} at ${time}\nAddress: ${address}\nBooking ID: ${lastBookingId || 'N/A'}\n\nThank you for choosing Zomindia!`;
-                        const location = address || 'Your home address';
-
-                        const url = generateGoogleCalendarUrl({
-                          title,
-                          startDate: start,
-                          endDate: end,
-                          description,
-                          location
-                        });
-                        window.open(url, '_blank');
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200/60 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" /> Google Calendar
-                    </button>
-                    <button
-                      onClick={() => {
-                        const baseDateStr = date;
-                        let baseTimeStr = time || "10:00";
-                        if (!/^\d{2}:\d{2}$/.test(baseTimeStr)) {
-                          baseTimeStr = "10:00";
-                        }
-                        const start = new Date(`${baseDateStr}T${baseTimeStr}:00`);
-                        const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
-                        
-                        const title = `Zomindia: ${service.name}`;
-                        const description = `Your Zomindia home service booking is confirmed!\n\nService: ${service.name}\nScheduled Slot: ${date} at ${time}\nAddress: ${address}\nBooking ID: ${lastBookingId || 'N/A'}\n\nThank you for choosing Zomindia!`;
-                        const location = address || 'Your home address';
-
-                        downloadICSFile({
-                          title,
-                          description,
-                          location,
-                          startTime: start,
-                          endTime: end
-                        }, `zomindia-booking-${lastBookingId || 'service'}.ics`);
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200/60 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-700 shrink-0" /> Apple / Outlook
-                    </button>
+                <div className="w-full bg-slate-50 rounded-2xl p-3.5 border border-slate-100 text-left space-y-2 mb-4 text-xs">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date & Time</span>
+                    <span className="font-bold text-slate-900">{date} @ {time}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Address</span>
+                    <span className="font-semibold text-slate-800 truncate max-w-[170px]" title={address}>{address}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Payable</span>
+                    <span className="font-bold text-blue-700">₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}</span>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2.5 w-full max-w-sm mx-auto">
-                  {lastBookingId && (
-                    <button 
-                      onClick={() => {
-                        const link = getWhatsAppBookingLink(lastBookingId, service.name, date, time);
-                        if (link) window.open(link, '_blank');
-                      }}
-                      className="w-full py-3 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-md shadow-emerald-500/10 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <MessageCircle size={14} className="shrink-0" /> Confirm via WhatsApp
-                    </button>
-                  )}
-                  
+                <div className="w-full space-y-2">
+                  {(() => {
+                    const startD = new Date(`${date}T${time}`);
+                    const endD = new Date(startD.getTime() + 60 * 60 * 1000);
+                    const calUrl = generateGoogleCalendarUrl({
+                      title: `ZomIndia: ${service.name}`,
+                      startDate: isNaN(startD.getTime()) ? new Date() : startD,
+                      endDate: isNaN(endD.getTime()) ? new Date(Date.now() + 3600000) : endD,
+                      description: `ZomIndia Service Booking for ${service.name}`,
+                      location: address
+                    });
+                    const waUrl = getWhatsAppBookingLink(lastBookingId || 'ZOMINDIA', service.name, date, time);
+
+                    return (
+                      <>
+                        <a 
+                          href={calUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-slate-200"
+                        >
+                          <CalendarIcon size={14} /> Add to Google Calendar
+                        </a>
+
+                        {waUrl && (
+                          <a 
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm"
+                          >
+                            <MessageCircle size={14} /> Share on WhatsApp
+                          </a>
+                        )}
+                      </>
+                    );
+                  })()}
+
                   <button 
                     onClick={() => {
                       setShowSuccessModal(false);
                       onSuccess();
                       onClose();
-                    }} 
-                    className="w-full py-3 rounded-full font-black text-[10px] uppercase tracking-[0.15em] bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-md shadow-blue-700/10 active:scale-[0.98] text-center cursor-pointer"
+                    }}
+                    className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md mt-1 cursor-pointer"
                   >
-                    TRACK MY ORDER
+                    Done & View Bookings
                   </button>
                 </div>
               </motion.div>
             </div>
           )}
         </AnimatePresence>
-      </div>
-    );
-  }
+    </div>
+  );
+}

@@ -1023,7 +1023,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       fetch('/api/send-final-bill', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ bookingId: booking.id })
+         body: JSON.stringify({ bookingId: booking.id, requesterUid: partner?.userId || profile?.uid })
       }).catch(err => console.error('Failed to trigger bill email', err));
 
       await notifyBookingUpdate({ ...booking, status: 'completed', completedAt: Timestamp.now() }, 'completed', partner?.userId || '');
@@ -1329,11 +1329,10 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
     // 2. Client-side fallback if server fails or is unreachable
     const cleanedInput = otpInput.trim();
-    const isMasterBypass = ['1234', '0000', '8888', '9999', '1111', '2222', '5555', '7777'].includes(cleanedInput);
     const bookingForOTP = bookings.find(b => b.id === verifyingOTPId);
     const isServiceOtpMatch = !!(bookingForOTP?.serviceOtp && bookingForOTP.serviceOtp.toString().trim() === cleanedInput);
 
-    if (isMasterBypass || isServiceOtpMatch) {
+    if (isServiceOtpMatch) {
       try {
         const bRef = doc(db, 'bookings', verifyingOTPId);
         await updateDoc(bRef, {
@@ -2450,9 +2449,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                           ) : (
                             <span>No OTP field present on this booking yet.</span>
                           )}
-                          <div className="mt-1 text-slate-400 text-[9px]">
-                            Or enter master bypass code <button type="button" onClick={() => setOtpInput('1234')} className="text-emerald-600 font-black hover:underline font-mono">1234</button> to proceed.
-                          </div>
                         </div>
                      </div>
                      

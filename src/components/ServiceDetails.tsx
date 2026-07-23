@@ -20,6 +20,7 @@ import {
   Category,
 } from "../types";
 import { handleMapsError } from "../lib/maps-errors";
+import { LogoIcon } from "./BrandLogo";
 import { motion, AnimatePresence } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -1155,8 +1156,9 @@ export default function ServiceDetails({
                               <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#22c55e] shadow-md transform group-hover:rotate-3 transition-transform">
                                 <img
                                   src={
-                                    partner.photoURL ||
-                                    "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                                    partner.photoURL && !partner.photoURL.includes("googleusercontent.com/image_collection")
+                                      ? partner.photoURL
+                                      : LogoIcon
                                   }
                                   alt={partner.displayName}
                                   className="w-full h-full object-cover rounded-full"

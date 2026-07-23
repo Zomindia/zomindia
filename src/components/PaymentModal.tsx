@@ -51,7 +51,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         await fetch('/api/send-final-bill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id }),
+          body: JSON.stringify({ bookingId: booking.id, requesterUid: profile.uid }),
         });
       } catch (billErr) {
         console.error("Failed to trigger final bill email:", billErr);
@@ -157,7 +157,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               await fetch('/api/send-final-bill', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId: booking.id }),
+                body: JSON.stringify({ bookingId: booking.id, requesterUid: profile.uid }),
               });
             } catch (billErr) {
               console.error("Failed to trigger final bill email:", billErr);

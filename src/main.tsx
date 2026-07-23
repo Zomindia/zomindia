@@ -70,6 +70,10 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 // Global listener with memory lock to capture `beforeinstallprompt` and persist globally
 if (typeof window !== 'undefined') {
+  (window as any).gm_authFailure = () => {
+    console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
+  };
+
   let activePrompt: any = (window as any).deferredPrompt || null;
 
   Object.defineProperty(window, 'deferredPrompt', {

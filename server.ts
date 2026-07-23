@@ -53,7 +53,7 @@ try {
 }
 
 const systemEmail = "system-worker@zomindia.com";
-const systemPassword = "SuperSecretSecureWorkerPassword123!!";
+const systemPassword = process.env.WORKER_SYSTEM_PASSWORD;
 
 let isWorkerAuthenticated = true;
 // Background worker connection runs directly under high-privilege Admin SDK, no client login required.
@@ -139,6 +139,10 @@ const adminDb: any = dbProxy;
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  if (process.env.NODE_ENV !== "development" && !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error("CRITICAL STARTUP ERROR: process.env.RAZORPAY_KEY_SECRET is required but undefined in non-development environments!");
+  }
 
   app.use(express.json());
   app.use(cors({
@@ -382,7 +386,11 @@ async function startServer() {
       }
 
       // Verify signature cryptographically
-      const keySecret = process.env.RAZORPAY_KEY_SECRET || "rzp_test_mock_key_secret";
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        return res.status(500).json({ error: "Razorpay secret key not configured on server" });
+      }
+
       const text = razorpay_order_id + "|" + razorpay_payment_id;
       const generatedSignature = crypto
         .createHmac("sha256", keySecret)
@@ -396,6 +404,21 @@ async function startServer() {
       // Safe Firestore Write: Create the document now that payment is verified!
       if (!db) {
         return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      // Validate that the amount matches expected service visitation fees (e.g., 195) before marking the booking doc as "paid" in Firestore.
+      let expectedPrice = 195;
+      if (bookingPayload && bookingPayload.serviceId) {
+        const serviceDoc = await db.collection("services").doc(bookingPayload.serviceId).get();
+        if (serviceDoc.exists) {
+          const serviceData = serviceDoc.data();
+          expectedPrice = typeof serviceData?.basePrice === "number" ? serviceData.basePrice : 195;
+        }
+      }
+
+      const clientPrice = Number(bookingPayload.totalPrice);
+      if (clientPrice !== expectedPrice) {
+        return res.status(400).json({ error: `Price validation failed. Expected ₹${expectedPrice} but received ₹${clientPrice}.` });
       }
 
       // Create booking payload with confirmed status and paid paymentStatus
@@ -429,7 +452,7 @@ async function startServer() {
       // Create transaction log
       await db.collection("walletTransactions").add({
         userId: bookingPayload.customerUid || bookingPayload.userId || "system",
-        amount: bookingPayload.totalPrice || 195,
+        amount: expectedPrice,
         type: "debit",
         reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via Razorpay`,
         referenceId: razorpay_payment_id,
@@ -447,7 +470,7 @@ async function startServer() {
 
   app.get("/api/download-invoice", async (req, res) => {
     try {
-      const { bookingId } = req.query;
+      const { bookingId, requesterUid } = req.query;
       if (!bookingId) return res.status(400).json({ error: "Booking ID is required" });
 
       if (!db) {
@@ -459,6 +482,23 @@ async function startServer() {
 
       if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
       const bookingData = bookingDoc.data()!;
+
+      const actualRequesterUid = (requesterUid || req.headers["x-requester-uid"]) as string;
+      if (!actualRequesterUid) {
+        return res.status(401).json({ error: "Unauthorized: Requester identity is required" });
+      }
+
+      const requesterDoc = await db.collection("users").doc(actualRequesterUid).get();
+      if (!requesterDoc.exists) {
+        return res.status(403).json({ error: "Access denied: Requester user not found" });
+      }
+      const requesterData = requesterDoc.data()!;
+      const isAdmin = requesterData.role === "admin" || requesterData.isAdmin === true;
+      const isAssociated = actualRequesterUid === bookingData.customerId || actualRequesterUid === bookingData.partnerId || isAdmin;
+
+      if (!isAssociated) {
+        return res.status(403).json({ error: "Access denied: You are not authorized to view this booking's invoice" });
+      }
 
       const userDoc = await db.collection("users").doc(bookingData.customerId).get();
       if (!userDoc.exists) return res.status(404).json({ error: "Customer not found" });
@@ -543,7 +583,7 @@ async function startServer() {
 
   app.post("/api/send-final-bill", async (req, res) => {
     try {
-      const { bookingId } = req.body;
+      const { bookingId, requesterUid } = req.body;
       if (!bookingId) return res.status(400).json({ error: "Booking ID is required" });
 
       const bookingRef = db.collection("bookings").doc(bookingId);
@@ -551,6 +591,23 @@ async function startServer() {
 
       if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
       const bookingData = bookingDoc.data()!;
+
+      const actualRequesterUid = (requesterUid || req.query.requesterUid || req.headers["x-requester-uid"]) as string;
+      if (!actualRequesterUid) {
+        return res.status(401).json({ error: "Unauthorized: Requester identity is required" });
+      }
+
+      const requesterDoc = await db.collection("users").doc(actualRequesterUid).get();
+      if (!requesterDoc.exists) {
+        return res.status(403).json({ error: "Access denied: Requester user not found" });
+      }
+      const requesterData = requesterDoc.data()!;
+      const isAdmin = requesterData.role === "admin" || requesterData.isAdmin === true;
+      const isAssociated = actualRequesterUid === bookingData.customerId || actualRequesterUid === bookingData.partnerId || isAdmin;
+
+      if (!isAssociated) {
+        return res.status(403).json({ error: "Access denied: You are not authorized to send this booking's final bill" });
+      }
 
       const userDoc = await db.collection("users").doc(bookingData.customerId).get();
       if (!userDoc.exists) return res.status(404).json({ error: "Customer not found" });
@@ -1009,12 +1066,29 @@ STAGE-SPECIFIC BEHAVIOR
 
   app.post("/api/add-funds", async (req, res) => {
     try {
-      const { paymentId, amount, userId } = req.body;
-      if (!paymentId || !amount || !userId) return res.status(400).json({ error: "Missing parameters" });
+      const { paymentId, amount, userId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+      if (!amount || !userId) return res.status(400).json({ error: "Missing parameters" });
 
-      // In a real app, verify Razorpay payment signature here
-      // const razorpay = getRazorpay();
-      // await razorpay.payments.fetch(paymentId);
+      const finalPaymentId = razorpay_payment_id || paymentId;
+      if (!razorpay_order_id || !finalPaymentId || !razorpay_signature) {
+        return res.status(400).json({ error: "Missing Razorpay verification data" });
+      }
+
+      // Verify signature cryptographically
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        return res.status(500).json({ error: "Razorpay secret key not configured on server" });
+      }
+
+      const text = razorpay_order_id + "|" + finalPaymentId;
+      const generatedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(text)
+        .digest("hex");
+
+      if (generatedSignature !== razorpay_signature) {
+        return res.status(400).json({ error: "Invalid Razorpay payment signature verification failed" });
+      }
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
@@ -1027,7 +1101,7 @@ STAGE-SPECIFIC BEHAVIOR
       // Update balance
       batch.update(userRef, {
          walletBalance: currentBalance + amount,
-         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       // Record transaction
@@ -1037,9 +1111,9 @@ STAGE-SPECIFIC BEHAVIOR
          amount,
          type: 'credit',
          reason: 'Added funds via Razorpay',
-         referenceId: paymentId,
+         referenceId: finalPaymentId,
          status: 'completed',
-         createdAt: firebase.firestore.FieldValue.serverTimestamp()
+         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       await batch.commit();
@@ -1167,8 +1241,28 @@ STAGE-SPECIFIC BEHAVIOR
 
   app.post("/api/subscribe-prime", async (req, res) => {
     try {
-      const { userId } = req.body;
+      const { userId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
       if (!userId) return res.status(400).json({ error: "Missing parameters" });
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({ error: "Missing Razorpay verification data" });
+      }
+
+      // Verify signature cryptographically
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        return res.status(500).json({ error: "Razorpay secret key not configured on server" });
+      }
+
+      const text = razorpay_order_id + "|" + razorpay_payment_id;
+      const generatedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(text)
+        .digest("hex");
+
+      if (generatedSignature !== razorpay_signature) {
+        return res.status(400).json({ error: "Invalid Razorpay payment signature verification failed" });
+      }
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
@@ -1185,12 +1279,12 @@ STAGE-SPECIFIC BEHAVIOR
       
       batch.update(userRef, {
          isPremium: true,
-         subscriptionExpiry: firebase.firestore.Timestamp.fromDate(expiry),
-         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+         subscriptionExpiry: admin.firestore.Timestamp.fromDate(expiry),
+         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       batch.set(db.collection("walletTransactions").doc(), {
-         userId, amount: 999, type: 'debit', reason: 'ZomIndia PRIME Subscription', status: 'completed', createdAt: firebase.firestore.FieldValue.serverTimestamp()
+         userId, amount: 999, type: 'debit', reason: 'ZomIndia PRIME Subscription', status: 'completed', createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       await batch.commit();

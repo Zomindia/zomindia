@@ -639,7 +639,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
               {currentPhotoUrl && (currentPhotoUrl.startsWith('http') || currentPhotoUrl.startsWith('data:image')) && !currentPhotoUrl.includes('googleusercontent.com/image_collection') ? (
                 <img src={currentPhotoUrl} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover rounded-full" />
               ) : (
-                <UserIcon size={14} className="text-slate-500 mx-auto" />
+                <img src={LogoIcon} referrerPolicy="no-referrer" alt="ZomIndia Partner Logo" className="w-full h-full object-contain rounded-full bg-slate-950 p-1" />
               )}
            </button>
            <button 

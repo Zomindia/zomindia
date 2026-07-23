@@ -16,6 +16,7 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
+import { LogoIcon } from "./BrandLogo";
 import {
   Booking,
   UserProfile,
@@ -2219,10 +2220,13 @@ export default function CustomerDashboard({
                               <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative mb-3">
                                 <img
                                   src={
-                                    (booking as any).assignedPartner?.profileImage ||
-                                    (booking as any).assignedPartner?.photoURL ||
-                                    partnerUser?.photoURL ||
-                                    "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                                    ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
+                                      ? (booking as any).assignedPartner?.profileImage
+                                      : ((booking as any).assignedPartner?.photoURL && !(booking as any).assignedPartner?.photoURL.includes("googleusercontent.com/image_collection"))
+                                      ? (booking as any).assignedPartner?.photoURL
+                                      : (partnerUser?.photoURL && !partnerUser?.photoURL.includes("googleusercontent.com/image_collection"))
+                                      ? partnerUser.photoURL
+                                      : LogoIcon
                                   }
                                   alt=""
                                   className="w-full h-full object-cover rounded-full"
@@ -2567,10 +2571,13 @@ export default function CustomerDashboard({
                             <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative">
                               <img
                                 src={
-                                  (booking as any).assignedPartner?.profileImage ||
-                                  (booking as any).assignedPartner?.photoURL ||
-                                  partnerUser?.photoURL ||
-                                  "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                                  ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
+                                    ? (booking as any).assignedPartner?.profileImage
+                                    : ((booking as any).assignedPartner?.photoURL && !(booking as any).assignedPartner?.photoURL.includes("googleusercontent.com/image_collection"))
+                                    ? (booking as any).assignedPartner?.photoURL
+                                    : (partnerUser?.photoURL && !partnerUser?.photoURL.includes("googleusercontent.com/image_collection"))
+                                    ? partnerUser.photoURL
+                                    : LogoIcon
                                 }
                                 alt=""
                                 className="w-full h-full object-cover rounded-full"
@@ -3065,10 +3072,13 @@ export default function CustomerDashboard({
                               <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e]">
                                 <img
                                   src={
-                                    (booking as any).assignedPartner?.profileImage ||
-                                    (booking as any).assignedPartner?.photoURL ||
-                                    partners[booking.partnerId]?.photoURL ||
-                                    "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                                    ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
+                                      ? (booking as any).assignedPartner?.profileImage
+                                      : ((booking as any).assignedPartner?.photoURL && !(booking as any).assignedPartner?.photoURL.includes("googleusercontent.com/image_collection"))
+                                      ? (booking as any).assignedPartner?.photoURL
+                                      : (partners[booking.partnerId]?.photoURL && !partners[booking.partnerId]?.photoURL.includes("googleusercontent.com/image_collection"))
+                                      ? partners[booking.partnerId]?.photoURL
+                                      : LogoIcon
                                   }
                                   alt=""
                                   className="w-full h-full object-cover rounded-full"
@@ -3720,7 +3730,7 @@ export default function CustomerDashboard({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const link = document.createElement("a");
-                                link.href = `/api/download-invoice?bookingId=${booking.id}`;
+                                link.href = `/api/download-invoice?bookingId=${booking.id}&requesterUid=${profile?.uid || ""}`;
                                 link.setAttribute("download", `invoice_${booking.id}.pdf`);
                                 document.body.appendChild(link);
                                 link.click();

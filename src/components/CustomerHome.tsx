@@ -15,6 +15,7 @@ import {
   or,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { LogoIcon } from "./BrandLogo";
 import {
   Category,
   Service,
@@ -1293,8 +1294,9 @@ export default function CustomerHome({
                   <div className="relative flex-shrink-0">
                     <img
                       src={
-                        partner.photoURL ||
-                        "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                        partner.photoURL && !partner.photoURL.includes("googleusercontent.com/image_collection")
+                          ? partner.photoURL
+                          : LogoIcon
                       }
                       alt={partner.displayName}
                       className="w-24 h-24 rounded-full object-cover bg-white border-2 border-[#22c55e]"

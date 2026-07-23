@@ -2301,7 +2301,7 @@ function BookingManager({
       const response = await fetch("/api/send-final-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId }),
+        body: JSON.stringify({ bookingId, requesterUid: profile?.uid }),
       });
       const data = await response.json();
       if (response.ok && data.success) {
@@ -5995,10 +5995,13 @@ function PartnerManager({
                 <div className="relative mb-6">
                   <img
                     src={
-                      p.profilePhoto ||
-                      p.photoURL ||
-                      user?.photoURL ||
-                      "http://googleusercontent.com/image_collection/image_retrieval/16433425957912595047"
+                      (p.profilePhoto && !p.profilePhoto.includes("googleusercontent.com/image_collection"))
+                        ? p.profilePhoto
+                        : (p.photoURL && !p.photoURL.includes("googleusercontent.com/image_collection"))
+                        ? p.photoURL
+                        : (user?.photoURL && !user?.photoURL.includes("googleusercontent.com/image_collection"))
+                        ? user.photoURL
+                        : LogoIcon
                     }
                     className="w-24 h-24 rounded-full object-cover bg-slate-50 border-2 border-[#22c55e]"
                     alt={user?.displayName}
