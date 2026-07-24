@@ -753,6 +753,11 @@ async function startServer() {
 
   app.post("/api/support-chat", async (req, res) => {
     const { message, context } = req.body;
+    const isGuest = !context || !context.user || context.user.role === "Guest";
+    const userName = context?.user?.name || context?.user?.fullName || "Customer";
+    const chatHistoryLength = (context && Array.isArray(context.chatHistory)) ? context.chatHistory.length : 0;
+    const cleanMessage = (message || "").toLowerCase().trim();
+
     try {
       if (!message) {
         return res.status(400).json({
@@ -764,7 +769,7 @@ async function startServer() {
         });
       }
 
-      const txt = (message || "").toLowerCase();
+      const txt = cleanMessage;
       // Strict Corporate Security Interceptor at the entry point
       const isSensitiveQuery = 
         txt.includes("business model") || 
@@ -802,6 +807,125 @@ async function startServer() {
       }
 
       const geminiKey = process.env.GEMINI_API_KEY;
+
+      // Priority direct intent interception for AC Cooling issues
+      const isAcCoolingQuery = 
+        (cleanMessage.includes("ac") && (cleanMessage.includes("thanda") || cleanMessage.includes("thandha") || cleanMessage.includes("cool") || cleanMessage.includes("cooling"))) ||
+        cleanMessage.includes("thanda nahi") || 
+        cleanMessage.includes("thandha nahi") || 
+        cleanMessage.includes("ac not cooling") ||
+        cleanMessage.includes("ac cooling nahi");
+
+      if (isAcCoolingQuery) {
+        return res.json({
+          serviceType: "AC Repair",
+          issueDetails: "AC not cooling - Gas leak, filter block or dust diagnostic",
+          confidence: 100,
+          nextQuestion: "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
+            { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
+          ]
+        });
+      }
+
+      // Interception for Unlisted / Unaccounted Home Services (Car Wash, Salon/Beauty, House Painting, Heavy Construction, Pest Control, Tiffin, Packers, Cleaning, Plumbing, etc.)
+      const isUnlistedServiceQuery = 
+        cleanMessage.includes("car wash") || cleanMessage.includes("car washing") || cleanMessage.includes("bike wash") || cleanMessage.includes("vehicle detailing") || cleanMessage.includes("car cleaning") ||
+        cleanMessage.includes("beauty") || cleanMessage.includes("salon") || cleanMessage.includes("parlor") || cleanMessage.includes("parlour") || cleanMessage.includes("haircut") || cleanMessage.includes("makeup") || cleanMessage.includes("spa") || cleanMessage.includes("massage") ||
+        cleanMessage.includes("painting") || cleanMessage.includes("painter") || cleanMessage.includes("wall paint") || cleanMessage.includes("house paint") || cleanMessage.includes("house painting") ||
+        cleanMessage.includes("construction") || cleanMessage.includes("civil work") || cleanMessage.includes("renovation") || cleanMessage.includes("interior design") ||
+        cleanMessage.includes("pest control") || cleanMessage.includes("termite") ||
+        cleanMessage.includes("tiffin") || cleanMessage.includes("cook") || cleanMessage.includes("maid") || cleanMessage.includes("house help") ||
+        cleanMessage.includes("packers") || cleanMessage.includes("movers") || cleanMessage.includes("house shifting") || cleanMessage.includes("shifting") ||
+        cleanMessage.includes("deep cleaning") || cleanMessage.includes("house cleaning") || cleanMessage.includes("sofa cleaning") || cleanMessage.includes("bathroom cleaning") || cleanMessage.includes("sanitization") ||
+        cleanMessage.includes("laundry") || cleanMessage.includes("dry cleaning") ||
+        cleanMessage.includes("gardening") || cleanMessage.includes("lawn") ||
+        cleanMessage.includes("cctv") || cleanMessage.includes("security system") ||
+        cleanMessage.includes("solar") || cleanMessage.includes("solar panel") ||
+        cleanMessage.includes("chimney") ||
+        cleanMessage.includes("plumbing") || cleanMessage.includes("plumber") || cleanMessage.includes("pipe leak") || cleanMessage.includes("tap repair");
+
+      if (isUnlistedServiceQuery) {
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Unlisted or out-of-scope home service requested",
+          confidence: 100,
+          nextQuestion: "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "View AC Services", action: "View AC Services" },
+            { label: "View Appliances Repair", action: "View Appliances Repair" },
+            { label: "Talk to Human Agent", action: "Talk to Human Agent" }
+          ]
+        });
+      }
+
+      // Quick Action Exploration Handlers
+      if (cleanMessage.includes("view ac services") || cleanMessage === "ac services") {
+        return res.json({
+          serviceType: "AC Repair",
+          issueDetails: "Browsing AC services catalog",
+          confidence: 100,
+          nextQuestion: "Zomindia is Indore's top choice for certified AC Services! Here are our available AC service packages:",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
+            { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
+          ]
+        });
+      }
+
+      if (cleanMessage.includes("view appliances repair") || cleanMessage === "appliances repair") {
+        return res.json({
+          serviceType: "Washing Machine Repair",
+          issueDetails: "Browsing home appliances repair catalog",
+          confidence: 100,
+          nextQuestion: "We offer top-notch repair & servicing for key home appliances in Indore:",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" },
+            { label: "Book RO Filter Service (₹399)", action: "Book RO Filter Service" }
+          ]
+        });
+      }
+
+      if (cleanMessage.includes("talk to human agent") || cleanMessage.includes("human agent") || cleanMessage.includes("human support")) {
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Customer requested human support agent",
+          confidence: 100,
+          nextQuestion: "Our dedicated support team is available to assist you! You can chat directly with our team on WhatsApp or call our support helpline directly using the buttons at the top of this chat.",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
+            { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" }
+          ]
+        });
+      }
+
+      // Priority direct intent interception for quick action button triggers
+      if (cleanMessage.includes("book split ac") || cleanMessage.includes("book window ac") || cleanMessage.includes("book washing machine") || cleanMessage.includes("book ro filter")) {
+        const catName = cleanMessage.includes("split ac") ? "Split AC Service" : cleanMessage.includes("window ac") ? "Window AC Service" : cleanMessage.includes("washing machine") ? "Washing Machine Service" : "RO Filter Service";
+        if (isGuest) {
+          return res.json({
+            serviceType: catName,
+            issueDetails: `Direct quick action booking for ${catName}`,
+            confidence: 100,
+            nextQuestion: `I am completely ready to book your ${catName}. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!`,
+            isReadyToBook: false
+          });
+        }
+        return res.json({
+          serviceType: catName,
+          issueDetails: `Direct quick action booking for ${catName}`,
+          confidence: 100,
+          nextQuestion: "Please choose your payment option to complete your booking:",
+          isReadyToBook: true
+        });
+      }
+
       if (!geminiKey || geminiKey === "YOUR_API_KEY" || geminiKey.trim() === "") {
         throw new Error("API key is not initialized in secrets");
       }
@@ -823,11 +947,39 @@ async function startServer() {
 You operate strictly within a multi-turn diagnostic boundary. You do NOT have direct access to assign technicians or look up live database entries; your outputs will be parsed by the application backend to sync with the Firebase Realtime Database.
 
 TARGET HOUSEHOLD SERVICES (Strict Boundaries)
-You must ONLY categorize and assist with the following four core services. If an issue falls outside these, classify the service as "Unknown":
-1. "AC Repair" (e.g., cooling issues, water leakage, strange noises, installation)
-2. "Electrician" (e.g., short circuits, faulty switches, light installations, sockets)
-3. "Carpenter" (e.g., furniture repair, door fixing, wooden installations)
-4. "RO Service" (e.g., water purifier filter replacement, low water flow, taste issues)
+You must categorize and assist with home service issues, including:
+1. "AC Repair" (e.g., cooling issues, gas leak, water leakage, strange noises, installation)
+2. "Washing Machine Repair" (e.g., spin issue, water drainage, noise, motor issue)
+3. "RO Service" (e.g., water purifier filter replacement, low water flow, bad taste)
+4. "Electrician" (e.g., short circuits, faulty switches, light installations, sockets)
+5. "Carpenter" (e.g., furniture repair, door fixing, wooden installations)
+
+REPETITIVE GREETING PREVENTION (CRITICAL):
+- You MUST NEVER repeat your full initial greeting or introduction ("Namaste ... I am Zomini ...") if the conversation history already contains previous user messages.
+- Directly address the user's issue or question without repeating generic welcome greetings.
+
+SPECIFIC INTENT HANDLING MAPPINGS:
+- If the user mentions "AC thanda nahi ho raha", "AC not cooling", "ac thandha nahi ho raha", or similar cooling symptoms:
+  - You MUST set serviceType as "AC Repair", issueDetails as "AC cooling issue - Gas leak, dust or filter block suspected", isReadyToBook as false.
+  - You MUST write nextQuestion in Hindi/Hinglish as:
+    "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।"
+  - You MUST supply quickActions as:
+    [
+      { "label": "Book Split AC Service (₹770)", "action": "Book Split AC Service" },
+      { "label": "Book Window AC Service (₹599)", "action": "Book Window AC Service" }
+    ]
+
+UNACCOUNTED / UNLISTED HOME SERVICES (Strict Handler)
+- If the user asks about home services NOT currently listed on Zomindia (e.g., Car Washing, Beauty/Salon at Home, Full House Painting, Heavy Civil Construction, Pest Control, Tiffin Service, Packers/Movers, House Cleaning, Plumbing, Laundry, etc.):
+  - You MUST set serviceType as "Unknown", isReadyToBook as false.
+  - You MUST write nextQuestion in Hinglish/Hindi strictly as:
+    "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀"
+  - You MUST supply quickActions as:
+    [
+      { "label": "View AC Services", "action": "View AC Services" },
+      { "label": "View Appliances Repair", "action": "View Appliances Repair" },
+      { "label": "Talk to Human Agent", "action": "Talk to Human Agent" }
+    ]
 
 JAILBREAK & OUT-OF-SCOPE PROTECTION
 - If the user asks about topics completely unrelated to household services (e.g., politics, food, laptop recommendations, local Indore tourism like poha-jalebi, or generic conversations), you must NOT fulfill the request.
@@ -836,44 +988,37 @@ JAILBREAK & OUT-OF-SCOPE PROTECTION
 
 SYSTEM & DATABASE KNOWLEDGE CONSTRAINTS (DO NOT Hallucinate)
 1. ROLES & ENTITIES: 
-   - A user interacting with you is a Customer (identifiable in the backend database as role = "customer", differentiated internally by isPremium = true/false).
-   - The field technician or business fulfilling the service is a Partner (referred to in the database by their unique partnerId, mapped to their core role = "partner" profile).
-   - Assignments and matching are handled explicitly by the Admin backend (users with role = "admin").
+   - A user interacting with you is a Customer (identifiable in the backend database as role = "customer").
+   - The field technician or business fulfilling the service is a Partner.
 2. ABSOLUTE STRICT RULES:
    - NEVER invent or mention any specific Partner names (e.g., do NOT say "Rajesh Cooling" or "Amit Electricals"). 
-   - NEVER quote an exact price, visitation fee, or cost range. Pricing schemas are dynamically generated by Admin logic.
+   - NEVER quote an exact price, visitation fee, or cost range unless returning official quick action button prices.
    - NEVER promise an exact arrival time or ETA (e.g., do NOT say "He will arrive in 15 minutes"). 
    - State clearly that once their details are locked, an Admin will dispatch the best Elite Partner to their address.
 
 LEAD QUALIFICATION & CONVERSATIONAL STEERING
 - ACTIVE CONTEXT RETENTION: Retain customer context across turns. If they mention appliance details, symptoms, or previous context in the history/context provided, you must keep them in issueDetails and build upon them.
-- STRICT MULTI-TURN CONTEXT RETENTION: You must NEVER ask a question about what service category is needed if the user has already stated it or if it was identified in previous turns in the conversation history/context. For example, if the user already declared "my ac is not cooling", serviceType must immediately latch onto "AC Repair". If they say "ha kardo" or "yes" or "confirm" in the next turn, do NOT ask what service they need (e.g., do NOT ask "kis cheez me dikkat he ac, electrician, carpenter..."). Instantly recognize it's for the AC Repair service, populate the diagnosed issue, and set isReadyToBook to true for confirming the ₹195 booking.
-- DYNAMIC MULTILINGUAL LANGUAGE MATCHING: You MUST strictly detect and mirror the user's input language. Zomini supports Indore's highly diverse, cosmopolitan population, including major communities speaking Hindi, Hinglish, English, Gujarati, Marathi, Bengali, Telugu, Tamil, Kannada, and other Indian languages. You are strictly forbidden from saying you do not know a language or asking the customer to switch back to Hindi or Hinglish. If a user chats in Gujarati, respond in fluent, polite Gujarati. If in Marathi, respond in fluent, polite Marathi. Always keep your response warm and perfectly grammatical in the matched language.
-- GUEST BOOKING BLOCKER & PRICE INTEGRITY: Check the user object in the provided Context. If the user's session role is 'Guest' (not logged in), you MUST NOT say "I have registered your request" or set isReadyToBook to true. When the conversation reaches the final booking or booking-consent step (where the user agrees or asks to confirm), you MUST set isReadyToBook to false. Instead, you must pause at this final step and clearly prompt the guest in the matched user language to log in. Translate the core instruction perfectly to their matched language (e.g., in English: "I am completely ready to book your [Service Category]. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!" or the equivalent fluent, warm translation in Hindi/Hinglish, Gujarati, Marathi, Bengali, Telugu, etc., where [Service Category] is replaced by the actual detected category name like AC Repair, Electrician, Carpenter, or RO Service). Always pitch the exact "₹195 transparent inspection fee" (or equivalent translation like "₹195 inspection fee") in the user's language and steer the guest towards the Login action seamlessly.
-- SMART CLOSING: Do not stretch conversations past 2-3 turns. Once the core problem (symptom, type of appliance) is captured, pitch the ₹195 transparent inspection fee as the safest next step.
-- As soon as the user explicitly agrees or says "Haan book kar do", "yes, please book it", or "confirm", instantly flip isReadyToBook to true and populate issueDetails comprehensively so the frontend gateway can render the action components.
+- DYNAMIC MULTILINGUAL LANGUAGE MATCHING: You MUST strictly detect and mirror the user's input language (Hindi, Hinglish, English, Gujarati, Marathi, etc.).
+- GUEST BOOKING BLOCKER: Check the user object in Context. If role is 'Guest', set isReadyToBook to false when booking is requested, and prompt them to click the Login button above.
 
 OUTPUT FORMAT PROTOCOL
-You MUST respond strictly in a single, valid JSON object. Do not include markdown wrappers like \`\`\`json or trailing text outside the JSON block.
+You MUST respond strictly in a single, valid JSON object.
 Structure:
 {
-  "serviceType": "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown",
+  "serviceType": "AC Repair" | "Washing Machine Repair" | "RO Service" | "Electrician" | "Carpenter" | "Unknown",
   "issueDetails": "A concise, clear English summary of the specific problem diagnosed",
   "confidence": 0-100,
-  "nextQuestion": "Your next conversational question or confirmation response written in the mirrored language (English or friendly Hinglish depending on user input)",
-  "isReadyToBook": true | false
-}
-
-STAGE-SPECIFIC BEHAVIOR
-- While collecting information (e.g., age of appliance, exact symptoms), keep isReadyToBook as false and continue asking targeted questions via nextQuestion.
-- The moment the customer explicitly agrees to proceed with the service, or the issue is completely understood and they say yes to booking, instantly set isReadyToBook to true and populate issueDetails fully so the Admin backend can process the ticket.`,
+  "nextQuestion": "Your next conversational question or confirmation response",
+  "isReadyToBook": true | false,
+  "quickActions": [ { "label": "string", "action": "string" } ]
+}`,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               serviceType: {
                 type: Type.STRING,
-                description: "One of: 'AC Repair', 'Electrician', 'Carpenter', 'RO Service', 'Unknown'"
+                description: "One of: 'AC Repair', 'Washing Machine Repair', 'RO Service', 'Electrician', 'Carpenter', 'Unknown'"
               },
               issueDetails: {
                 type: Type.STRING,
@@ -885,11 +1030,22 @@ STAGE-SPECIFIC BEHAVIOR
               },
               nextQuestion: {
                 type: Type.STRING,
-                description: "Your next conversational question or response written in the mirrored language (Hindi, Hinglish, English, Gujarati, Marathi, etc. matching the user's input language)"
+                description: "Your next conversational question or response written in the mirrored language"
               },
               isReadyToBook: {
                 type: Type.BOOLEAN,
-                description: "Set to true the moment the customer explicitly agrees to proceed with the service, or the issue is completely understood and they say yes to booking"
+                description: "Set to true the moment the customer explicitly agrees to proceed with the service"
+              },
+              quickActions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    label: { type: Type.STRING },
+                    action: { type: Type.STRING }
+                  },
+                  required: ["label", "action"]
+                }
               }
             },
             required: ["serviceType", "issueDetails", "confidence", "nextQuestion", "isReadyToBook"]
@@ -904,18 +1060,24 @@ STAGE-SPECIFIC BEHAVIOR
       const parsedJson = JSON.parse(responseText);
 
       // Backend enum service type validation
-      const STRICT_SERVICES = ["AC Repair", "Electrician", "Carpenter", "RO Service"];
+      const STRICT_SERVICES = ["AC Repair", "Washing Machine Repair", "Electrician", "Carpenter", "RO Service"];
       if (parsedJson && parsedJson.serviceType && parsedJson.serviceType !== "Unknown") {
         if (!STRICT_SERVICES.includes(parsedJson.serviceType)) {
           console.warn(`[Zomini Backend Validation] serviceType "${parsedJson.serviceType}" is invalid. Falling back to Unknown.`);
           parsedJson.serviceType = "Unknown";
           parsedJson.isReadyToBook = false;
-          parsedJson.nextQuestion = "Please choose a valid service category from: AC Repair, Electrician, Carpenter, or RO Service.";
+          if (!parsedJson.nextQuestion) {
+            parsedJson.nextQuestion = "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀";
+            parsedJson.quickActions = [
+              { label: "View AC Services", action: "View AC Services" },
+              { label: "View Appliances Repair", action: "View Appliances Repair" },
+              { label: "Talk to Human Agent", action: "Talk to Human Agent" }
+            ];
+          }
         }
       }
 
       // Guest booking blocker backend enforcement
-      const isGuest = !context || !context.user || context.user.role === "Guest";
       if (isGuest && parsedJson.isReadyToBook === true) {
         parsedJson.isReadyToBook = false;
         const category = parsedJson.serviceType && parsedJson.serviceType !== "Unknown" ? parsedJson.serviceType : "home service";
@@ -1000,13 +1162,55 @@ STAGE-SPECIFIC BEHAVIOR
         });
       }
 
-      let detectedServiceType: "AC Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown" = "Unknown";
+      const isUnlistedServiceInFallback = 
+        txt.includes("car wash") || txt.includes("car washing") || txt.includes("bike wash") || txt.includes("vehicle detailing") || txt.includes("car cleaning") ||
+        txt.includes("beauty") || txt.includes("salon") || txt.includes("parlor") || txt.includes("parlour") || txt.includes("haircut") || txt.includes("makeup") || txt.includes("spa") || txt.includes("massage") ||
+        txt.includes("painting") || txt.includes("painter") || txt.includes("wall paint") || txt.includes("house paint") || txt.includes("house painting") ||
+        txt.includes("construction") || txt.includes("civil work") || txt.includes("renovation") || txt.includes("interior design") ||
+        txt.includes("pest control") || txt.includes("termite") ||
+        txt.includes("tiffin") || txt.includes("cook") || txt.includes("maid") || txt.includes("house help") ||
+        txt.includes("packers") || txt.includes("movers") || txt.includes("house shifting") || txt.includes("shifting") ||
+        txt.includes("deep cleaning") || txt.includes("house cleaning") || txt.includes("sofa cleaning") || txt.includes("bathroom cleaning") || txt.includes("sanitization") ||
+        txt.includes("laundry") || txt.includes("dry cleaning") ||
+        txt.includes("gardening") || txt.includes("lawn") ||
+        txt.includes("cctv") || txt.includes("security system") ||
+        txt.includes("solar") || txt.includes("solar panel") ||
+        txt.includes("chimney") ||
+        txt.includes("plumbing") || txt.includes("plumber") || txt.includes("pipe leak") || txt.includes("tap repair");
+
+      if (isUnlistedServiceInFallback) {
+        return res.json({
+          serviceType: "Unknown",
+          issueDetails: "Unlisted or out-of-scope home service requested",
+          confidence: 100,
+          nextQuestion: "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀",
+          isReadyToBook: false,
+          quickActions: [
+            { label: "View AC Services", action: "View AC Services" },
+            { label: "View Appliances Repair", action: "View Appliances Repair" },
+            { label: "Talk to Human Agent", action: "Talk to Human Agent" }
+          ]
+        });
+      }
+
+      let detectedServiceType: "AC Repair" | "Washing Machine Repair" | "Electrician" | "Carpenter" | "RO Service" | "Unknown" = "Unknown";
       let detectedIssueDetails = "";
       let detectedIsReadyToBook = false;
+      let quickActionsList: { label: string; action: string }[] | undefined = undefined;
 
-      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
+      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("thanda") || txt.includes("thandha") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
         detectedServiceType = "AC Repair";
         detectedIssueDetails = "AC repair or cooling issue requested by the customer";
+        quickActionsList = [
+          { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
+          { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
+        ];
+      } else if (txt.includes("washing machine") || txt.includes("spin") || txt.includes("drainage")) {
+        detectedServiceType = "Washing Machine Repair";
+        detectedIssueDetails = "Washing machine repair requested by the customer";
+        quickActionsList = [
+          { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" }
+        ];
       } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket")) {
         detectedServiceType = "Electrician";
         detectedIssueDetails = "Electrical or wiring service requested by the customer";
@@ -1016,29 +1220,43 @@ STAGE-SPECIFIC BEHAVIOR
       } else if (txt.includes("ro") || txt.includes("purifier") || txt.includes("filter") || txt.includes("water") || txt.includes("flow") || txt.includes("taste")) {
         detectedServiceType = "RO Service";
         detectedIssueDetails = "RO water purifier service requested by the customer";
+        quickActionsList = [
+          { label: "Book RO Filter Service (₹399)", action: "Book RO Filter Service" },
+          { label: "Book Complete RO Servicing (₹649)", action: "Book Complete RO Servicing" }
+        ];
       }
 
       if (txt.includes("book") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
-        detectedIsReadyToBook = true;
+        detectedIsReadyToBook = !isGuest;
       }
 
-      let replyMessage = "I am ZOMINI, here to help you coordinate your zomindia services. You can message our human Support Team anytime on WhatsApp or call us directly using the support buttons on top of your chat window!";
+      let replyMessage = "I am ZOMINI, here to help you coordinate your Zomindia services. What specific home service issue can I help you fix today?";
       
-      if (txt.includes("hello") || txt.includes("hi") || txt.includes("hey")) {
-        const hasBookings = context && context.bookings && context.bookings.length > 0;
-        const b = hasBookings ? context.bookings[0] : null;
-        if (b) {
-          replyMessage = `नमस्ते VIKASS! I am ZOMINI, your zomindia AI Chat assistant. I see you have an active ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}) currently in status: '${b.status}'. How can I assist you with this or other queries today?`;
+      if (txt.includes("thanda") || txt.includes("thandha") || txt.includes("cool") || txt.includes("cooling")) {
+        replyMessage = "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।";
+      } else if (txt.includes("washing machine")) {
+        replyMessage = "वाशिंग मशीन में स्पिन न होना, पानी न निकलना या आवाज़ आना आम समस्याएँ हैं। Zomindia के एक्सपर्ट तकनीशियन आपके घर आकर तुरंत डायग्नोस और रिपेयर करेंगे।";
+      } else if (txt.includes("purifier") || txt.includes("water purifier") || (txt.includes("ro") && txt.includes("issue"))) {
+        replyMessage = "वाटर प्यूरीफायर का पानी खराब आना या फ्लो कम होना फ़िल्टर ब्लॉक या TDS इश्यू हो सकता है। Zomindia से फ़िल्टर चेकिंग और सर्विसिंग तुरंत बुक करें।";
+      } else if (txt.includes("hello") || txt.includes("hi") || txt.includes("hey")) {
+        if (chatHistoryLength > 1) {
+          replyMessage = "I am right here! How can I assist you further with your home service request?";
         } else {
-          replyMessage = "नमस्ते VIKASS! I am ZOMINI, your zomindia AI Chat assistant. How can I assist you with your home service bookings or other queries today?";
+          const hasBookings = context && context.bookings && context.bookings.length > 0;
+          const b = hasBookings ? context.bookings[0] : null;
+          if (b) {
+            replyMessage = `Namaste ${userName}! I am ZOMINI, your Zomindia AI assistant. I see you have an active ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}) currently in status: '${b.status}'. How can I assist you with this or other home services today?`;
+          } else {
+            replyMessage = `Namaste ${userName}! I am ZOMINI, your Zomindia AI assistant. How can I assist you with your home service bookings or other queries today?`;
+          }
         }
       } else if (txt.includes("status")) {
         const hasBookings = context && context.bookings && context.bookings.length > 0;
         const b = hasBookings ? context.bookings[0] : null;
         if (b) {
-          replyMessage = `नमस्ते VIKASS, for your ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}), the current status is '${b.status}'. Our background-verified pro is assigned.`;
+          replyMessage = `Namaste ${userName}, for your ${b.serviceId ? b.serviceId.replace(/_/g, ' ') : 'service'} booking (#${b.id}), the current status is '${b.status}'. Our background-verified pro is assigned.`;
         } else {
-          replyMessage = "नमस्ते VIKASS, you do not have any active service bookings under way right now. Feel free to browse our home services catalog!";
+          replyMessage = `Namaste ${userName}, you do not have any active service bookings underway right now. Feel free to browse our home services catalog!`;
         }
       } else if (txt.includes("refund")) {
         replyMessage = "For details about refunds or cancellations, please contact our helpline. All cancellations made up to 2 hours before the scheduled time slot qualify for a 100% immediate wallet credit refund!";
@@ -1059,7 +1277,8 @@ STAGE-SPECIFIC BEHAVIOR
         issueDetails: detectedIssueDetails || "Query from customer",
         confidence: 100,
         nextQuestion: replyMessage,
-        isReadyToBook: detectedIsReadyToBook
+        isReadyToBook: detectedIsReadyToBook,
+        quickActions: quickActionsList
       });
     }
   });

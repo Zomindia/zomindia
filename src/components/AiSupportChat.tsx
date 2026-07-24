@@ -791,20 +791,23 @@ export default function AiSupportChat({
     if (userProfile) {
       const userName = userProfile.fullName || userProfile.displayName || "User";
       const activeBooking = localBookings.find(b => b.status !== 'completed' && b.status !== 'cancelled');
-      const serviceLabel = (activeBooking as any)?.serviceName || "refrigerator";
-      startingMessage = `Namaste ${userName}, your ${serviceLabel.toLowerCase()} service expert is on the way.`;
+      if (activeBooking) {
+        const serviceLabel = (activeBooking as any)?.serviceName || "active home";
+        startingMessage = `Namaste ${userName}, your ${serviceLabel.toLowerCase()} service expert is on the way.`;
+      } else {
+        startingMessage = `Namaste ${userName}! I am Zomini, your Zomindia AI Assistant. How can I help you with your home services today?`;
+      }
     }
 
     setMessages((prev) => {
       if (prev.length === 0) {
         return [{ role: "ai", text: startingMessage }];
       }
-      // Replace the first message if it's an AI greeting
-      const updated = [...prev];
-      if (updated[0] && updated[0].role === "ai") {
-        updated[0] = { ...updated[0], text: startingMessage };
+      // ONLY update the initial greeting message if conversation has NOT started (i.e. prev has only 1 message)
+      if (prev.length === 1 && prev[0].role === "ai") {
+        return [{ role: "ai", text: startingMessage }];
       }
-      return updated;
+      return prev;
     });
   }, [userProfile, localBookings, isPartner]);
 
@@ -835,7 +838,7 @@ export default function AiSupportChat({
               LANGUAGES.find((l) => l.code === selectedLang)?.name || "Hindi",
             user: userProfile
               ? {
-                  name: userProfile.displayName,
+                  name: userProfile.displayName || userProfile.fullName,
                   role: userProfile.role || "customer",
                   city: (userProfile as any).city,
                   isPartner: isPartner,
@@ -860,22 +863,23 @@ export default function AiSupportChat({
         const isGuest = !userProfile;
         if (data.isReadyToBook === true && !isGuest) {
           try {
-            // Strictly validate serviceType against catalog services
-            const detectedType = data.serviceType;
-            const matchedService = detectedType ? allServices.find(s => 
+            // Strictly validate serviceType against catalog services with resilient fallback
+            const detectedType = data.serviceType || "AC Repair";
+            let matchedService = allServices.find(s => 
               s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
-              detectedType.toLowerCase().includes(s.name?.toLowerCase() || "")
-            ) : null;
+              detectedType.toLowerCase().includes(s.name?.toLowerCase() || "") ||
+              (detectedType.toLowerCase().includes("ac") && s.name?.toLowerCase().includes("ac")) ||
+              (detectedType.toLowerCase().includes("washing") && s.name?.toLowerCase().includes("washing")) ||
+              (detectedType.toLowerCase().includes("ro") && s.name?.toLowerCase().includes("ro"))
+            );
 
             if (!matchedService) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  role: "ai",
-                  text: `I detected a request for "${detectedType || 'service'}". However, I couldn't find a direct match in our active service catalog. Could you please specify if you require one of the following services?\n\n${allServices.map(s => `• ${s.name}`).join("\n")}`
-                }
-              ]);
-              return;
+              matchedService = {
+                id: `service_${detectedType.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+                name: detectedType,
+                basePrice: 195,
+                categoryId: "cat_home_service"
+              };
             }
 
             const resolvedServiceId = matchedService.id;
@@ -902,7 +906,7 @@ export default function AiSupportChat({
               scheduledAt: Timestamp.now(),
               createdAt: Timestamp.now(),
               updatedAt: Timestamp.now(),
-              address: (userProfile as any)?.address || "Delhi NCR (Zomindia Service Area)",
+              address: (userProfile as any)?.address || "Indore (Zomindia Service Area)",
               customerBookedEmail: resolvedEmail,
               customerBookedPhone: resolvedMobile,
               customerBookedName: resolvedFullName,
@@ -918,36 +922,32 @@ export default function AiSupportChat({
             };
 
             // Pre-generate unique client-side ID for the draft booking (preventing premature DB save)
-            const newBookingId = doc(collection(db, "bookings")).id;
-            setDraftBookings((prev) => ({
-              ...prev,
-              [newBookingId]: bookingPayload
-            }));
+            const draftBookingId = `ZOM_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+            const fullDraftBooking = { id: draftBookingId, ...bookingPayload };
 
-            // Insert custom timeline booking card message in pending_checkout state
             setMessages((prev) => [
               ...prev,
               {
                 role: "ai",
-                text: "Please choose your payment option to complete your booking:",
-                bookingData: {
-                  id: newBookingId,
-                  serviceType: matchedService.name,
-                  visitationFee: 195,
-                  status: "pending_checkout"
-                }
-              }
+                text: data.nextQuestion || "Your booking details are ready! Please choose your preferred payment option below to confirm:",
+                bookingData: fullDraftBooking,
+                quickActions: data.quickActions || undefined
+              },
             ]);
-
-          } catch (dbErr) {
-            console.error("AI automated booking draft initialization failed:", dbErr);
-            const replyText = data.nextQuestion || data.reply || (typeof data === "string" ? data : JSON.stringify(data));
-            setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
+            return;
+          } catch (e) {
+            console.error("Error creating draft booking card in AI Chat:", e);
           }
-        } else {
-          const replyText = data.nextQuestion || data.reply || (typeof data === "string" ? data : JSON.stringify(data));
-          setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
         }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: data.nextQuestion || data.reply || "I am ZOMINI, here to assist with your home services.",
+            quickActions: data.quickActions || undefined
+          },
+        ]);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -1279,7 +1279,23 @@ export default function AiSupportChat({
                         </div>
                       )
                     ) : (
-                      <div>{maskPhoneNumbers(msg.text)}</div>
+                      <div>
+                        <div>{maskPhoneNumbers(msg.text)}</div>
+                        {(msg as any).quickActions && (msg as any).quickActions.length > 0 && (
+                          <div className="flex flex-col gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
+                            {(msg as any).quickActions.map((btn: any, bIdx: number) => (
+                              <button
+                                key={bIdx}
+                                onClick={() => sendQueryDirectly(btn.action)}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-[11px] font-extrabold py-2 px-3 rounded-xl transition-all shadow-sm cursor-pointer flex items-center justify-between gap-1.5"
+                              >
+                                <span>⚡ {btn.label}</span>
+                                <span>➔</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                     {msg.role === "ai" && msg.text.includes("Please click the Login button") && (
                       <div className="mt-3">
