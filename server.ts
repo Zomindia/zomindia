@@ -150,6 +150,16 @@ async function startServer() {
     credentials: true
   }));
 
+  // 301 Redirect www.zomindia.com to zomindia.com
+  app.use((req, res, next) => {
+    const host = req.headers.host || "";
+    if (host.startsWith("www.zomindia.com")) {
+      const redirectUrl = `https://zomindia.com${req.url}`;
+      return res.redirect(301, redirectUrl);
+    }
+    next();
+  });
+
   // Razorpay Client (Lazy initialization)
   let razorpayClient: any = null;
   const getRazorpay = () => {
