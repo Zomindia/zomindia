@@ -767,6 +767,8 @@ async function startServer() {
     const userName = context?.user?.name || context?.user?.fullName || "Customer";
     const chatHistoryLength = (context && Array.isArray(context.chatHistory)) ? context.chatHistory.length : 0;
     const cleanMessage = (message || "").toLowerCase().trim();
+    const contextLang = (context?.language || "").toLowerCase();
+    const isHindiRequest = /[\u0900-\u097F]/.test(message || "") || contextLang.includes("hindi") || contextLang.includes("hi");
 
     try {
       if (!message) {
@@ -824,16 +826,24 @@ async function startServer() {
         cleanMessage.includes("thanda nahi") || 
         cleanMessage.includes("thandha nahi") || 
         cleanMessage.includes("ac not cooling") ||
-        cleanMessage.includes("ac cooling nahi");
+        cleanMessage.includes("ac cooling nahi") ||
+        cleanMessage.includes("पानी टपक") ||
+        cleanMessage.includes("pani tapak") ||
+        cleanMessage.includes("water leakage");
 
       if (isAcCoolingQuery) {
         return res.json({
           serviceType: "AC Repair",
-          issueDetails: "AC not cooling - Gas leak, filter block or dust diagnostic",
+          issueDetails: "AC not cooling or leakage issue - Gas leak, filter block or dust diagnostic",
           confidence: 100,
-          nextQuestion: "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।",
+          nextQuestion: isHindiRequest 
+            ? "AC कूलिंग न करने या पानी टपकने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।" 
+            : "AC cooling issues or water leakage can occur due to gas leaks or clogged filters. You can book a verified technician instantly on Zomindia.",
           isReadyToBook: false,
-          quickActions: [
+          quickActions: isHindiRequest ? [
+            { label: "स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+            { label: "विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+          ] : [
             { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
             { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
           ]
@@ -864,7 +874,11 @@ async function startServer() {
           confidence: 100,
           nextQuestion: "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀",
           isReadyToBook: false,
-          quickActions: [
+          quickActions: isHindiRequest ? [
+            { label: "AC सर्विसेज देखें", action: "AC सर्विसेज देखें" },
+            { label: "एप्लायंसेज रिपेयर देखें", action: "एप्लायंसेज रिपेयर देखें" },
+            { label: "एजेंट से बात करें", action: "एजेंट से बात करें" }
+          ] : [
             { label: "View AC Services", action: "View AC Services" },
             { label: "View Appliances Repair", action: "View Appliances Repair" },
             { label: "Talk to Human Agent", action: "Talk to Human Agent" }
@@ -873,42 +887,74 @@ async function startServer() {
       }
 
       // Quick Action Exploration Handlers
-      if (cleanMessage.includes("view ac services") || cleanMessage === "ac services") {
+      if (
+        cleanMessage.includes("view ac services") || 
+        cleanMessage === "ac services" || 
+        cleanMessage.includes("ac सर्विसेज देखें") || 
+        cleanMessage.includes("एसी सर्विस") || 
+        cleanMessage.includes("ac सर्विस")
+      ) {
         return res.json({
           serviceType: "AC Repair",
           issueDetails: "Browsing AC services catalog",
           confidence: 100,
-          nextQuestion: "Zomindia is Indore's top choice for certified AC Services! Here are our available AC service packages:",
+          nextQuestion: isHindiRequest 
+            ? "Zomindia इंदौर में certified AC Services के लिए आपकी पहली पसंद है! यहाँ हमारी उपलब्ध AC सर्विस पैकेज हैं:" 
+            : "Zomindia is Indore's top choice for certified AC Services! Here are our available AC service packages:",
           isReadyToBook: false,
-          quickActions: [
+          quickActions: isHindiRequest ? [
+            { label: "स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+            { label: "विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+          ] : [
             { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
             { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
           ]
         });
       }
 
-      if (cleanMessage.includes("view appliances repair") || cleanMessage === "appliances repair") {
+      if (
+        cleanMessage.includes("view appliances repair") || 
+        cleanMessage === "appliances repair" || 
+        cleanMessage.includes("एप्लायंसेज रिपेयर देखें") || 
+        cleanMessage.includes("होम एप्लायंसेज")
+      ) {
         return res.json({
           serviceType: "Washing Machine Repair",
           issueDetails: "Browsing home appliances repair catalog",
           confidence: 100,
-          nextQuestion: "We offer top-notch repair & servicing for key home appliances in Indore:",
+          nextQuestion: isHindiRequest 
+            ? "हम इंदौर में प्रमुख होम एप्लायंसेज की टॉप-नॉच रिपेयर और सर्विसिंग प्रदान करते हैं:" 
+            : "We offer top-notch repair & servicing for key home appliances in Indore:",
           isReadyToBook: false,
-          quickActions: [
+          quickActions: isHindiRequest ? [
+            { label: "वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" },
+            { label: "आरओ फ़िल्टर सर्विस बुक करें (₹399)", action: "आरओ फ़िल्टर सर्विस बुक करें" }
+          ] : [
             { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" },
             { label: "Book RO Filter Service (₹399)", action: "Book RO Filter Service" }
           ]
         });
       }
 
-      if (cleanMessage.includes("talk to human agent") || cleanMessage.includes("human agent") || cleanMessage.includes("human support")) {
+      if (
+        cleanMessage.includes("talk to human agent") || 
+        cleanMessage.includes("human agent") || 
+        cleanMessage.includes("human support") || 
+        cleanMessage.includes("एजेंट से बात करें") || 
+        cleanMessage.includes("बात करें")
+      ) {
         return res.json({
           serviceType: "Unknown",
           issueDetails: "Customer requested human support agent",
           confidence: 100,
-          nextQuestion: "Our dedicated support team is available to assist you! You can chat directly with our team on WhatsApp or call our support helpline directly using the buttons at the top of this chat.",
+          nextQuestion: isHindiRequest 
+            ? "हमारी सहायता टीम आपकी मदद के लिए उपलब्ध है! आप चैट के ऊपर दिए गए बटन से व्हाट्सएप या कॉल हेल्पलाइन पर सीधे बात कर सकते हैं।" 
+            : "Our dedicated support team is available to assist you! You can chat directly with our team on WhatsApp or call our support helpline directly using the buttons at the top of this chat.",
           isReadyToBook: false,
-          quickActions: [
+          quickActions: isHindiRequest ? [
+            { label: "स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+            { label: "वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
+          ] : [
             { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
             { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" }
           ]
@@ -916,14 +962,23 @@ async function startServer() {
       }
 
       // Priority direct intent interception for quick action button triggers
-      if (cleanMessage.includes("book split ac") || cleanMessage.includes("book window ac") || cleanMessage.includes("book washing machine") || cleanMessage.includes("book ro filter")) {
-        const catName = cleanMessage.includes("split ac") ? "Split AC Service" : cleanMessage.includes("window ac") ? "Window AC Service" : cleanMessage.includes("washing machine") ? "Washing Machine Service" : "RO Filter Service";
+      if (
+        cleanMessage.includes("book split ac") || cleanMessage.includes("book window ac") || 
+        cleanMessage.includes("book washing machine") || cleanMessage.includes("book ro filter") ||
+        cleanMessage.includes("स्प्लिट ac") || cleanMessage.includes("विंडो ac") || 
+        cleanMessage.includes("वाशिंग मशीन") || cleanMessage.includes("आरओ") || cleanMessage.includes("ro filter")
+      ) {
+        const catName = (cleanMessage.includes("split ac") || cleanMessage.includes("स्प्लिट ac")) ? "Split AC Service" : 
+                        (cleanMessage.includes("window ac") || cleanMessage.includes("विंडो ac")) ? "Window AC Service" : 
+                        (cleanMessage.includes("washing machine") || cleanMessage.includes("वाशिंग मशीन")) ? "Washing Machine Service" : "RO Filter Service";
         if (isGuest) {
           return res.json({
             serviceType: catName,
             issueDetails: `Direct quick action booking for ${catName}`,
             confidence: 100,
-            nextQuestion: `I am completely ready to book your ${catName}. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!`,
+            nextQuestion: isHindiRequest
+              ? `मैं आपकी ${catName} बुक करने के लिए तैयार हूँ। कृपया पहले ऊपर दिए गए लॉगिन बटन पर क्लिक करें ताकि हम इसे आपके मोबाइल नंबर से लिंक कर सकें!`
+              : `I am completely ready to book your ${catName}. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!`,
             isReadyToBook: false
           });
         }
@@ -931,7 +986,7 @@ async function startServer() {
           serviceType: catName,
           issueDetails: `Direct quick action booking for ${catName}`,
           confidence: 100,
-          nextQuestion: "Please choose your payment option to complete your booking:",
+          nextQuestion: isHindiRequest ? "कृपया अपनी बुकिंग पूरी करने के लिए भुगतान का विकल्प चुनें:" : "Please choose your payment option to complete your booking:",
           isReadyToBook: true
         });
       }

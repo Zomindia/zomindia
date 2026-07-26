@@ -812,7 +812,7 @@ export default function AiSupportChat({
   }, [userProfile, localBookings, isPartner]);
 
   // Direct sending helper for suggest clicks to bypass multiple fields
-  const sendQueryDirectly = async (queryText: string) => {
+  const sendQueryDirectly = async (displayText: string, queryActionOverride?: string) => {
     if (isSubmitting || isLoading) return;
 
     if (isListening && recognitionRef.current) {
@@ -824,15 +824,19 @@ export default function AiSupportChat({
       setIsListening(false);
     }
 
-    setMessages((prev) => [...prev, { role: "user", text: queryText }]);
+    // Always render the exact text of the clicked button/pill on the screen
+    setMessages((prev) => [...prev, { role: "user", text: displayText }]);
     setIsLoading(true);
+
+    // Send exact display text (or override) to maintain language consistency in chat stream
+    const queryToSend = displayText;
 
     try {
       const res = await fetch("/api/support-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: queryText,
+          message: queryToSend,
           context: {
             language:
               LANGUAGES.find((l) => l.code === selectedLang)?.name || "Hindi",
@@ -853,7 +857,7 @@ export default function AiSupportChat({
               totalPrice: b.totalPrice,
               address: b.address,
             })),
-            chatHistory: [...messages, { role: "user", text: queryText }],
+            chatHistory: [...messages, { role: "user", text: displayText }],
           },
         }),
       });
@@ -1286,7 +1290,7 @@ export default function AiSupportChat({
                             {(msg as any).quickActions.map((btn: any, bIdx: number) => (
                               <button
                                 key={bIdx}
-                                onClick={() => sendQueryDirectly(btn.action)}
+                                onClick={() => sendQueryDirectly(btn.label, btn.action)}
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-[11px] font-extrabold py-2 px-3 rounded-xl transition-all shadow-sm cursor-pointer flex items-center justify-between gap-1.5"
                               >
                                 <span>⚡ {btn.label}</span>
@@ -1334,21 +1338,37 @@ export default function AiSupportChat({
 
             {/* Quick Suggestion Pills Section */}
             <div className="flex gap-2 p-2 bg-slate-50 border-t border-slate-100 overflow-x-auto scrollbar-none shrink-0 select-none">
-              {[
-                {
-                  label: "Booking Status",
-                  query:
-                    "Can you check my active booking status for refrigerator service?",
-                },
-                {
-                  label: "Refund Help",
-                  query: "I need help with refunds for my cancellation.",
-                },
-                {
-                  label: "City Availability",
-                  query: "Which cities are you currently available in?",
-                },
-              ].map((pill, pIdx) => (
+              {(selectedLang === "hi-IN" || selectedLang === "hi"
+                ? [
+                    {
+                      label: "बुकिंग स्टेटस",
+                      query: "क्या आप मेरी एक्टिव सर्विस बुकिंग का स्टेटस चेक कर सकते हैं?",
+                    },
+                    {
+                      label: "रिफंड सहायता",
+                      query: "मुझे कैंसिलेशन और रिफंड की जानकारी चाहिए।",
+                    },
+                    {
+                      label: "शहर में उपलब्धता",
+                      query: "Zomindia अभी किन-किन शहरों में उपलब्ध है?",
+                    },
+                  ]
+                : [
+                    {
+                      label: "Booking Status",
+                      query:
+                        "Can you check my active booking status for refrigerator service?",
+                    },
+                    {
+                      label: "Refund Help",
+                      query: "I need help with refunds for my cancellation.",
+                    },
+                    {
+                      label: "City Availability",
+                      query: "Which cities are you currently available in?",
+                    },
+                  ]
+              ).map((pill, pIdx) => (
                 <button
                   key={pIdx}
                   type="button"
