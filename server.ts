@@ -751,8 +751,12 @@ async function startServer() {
 
   // Gemini AI Support Chat
   const getAi = () => {
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey.trim()) {
+      throw new Error("GEMINI_API_KEY is missing or empty.");
+    }
     return new GoogleGenAI({ 
-      apiKey: process.env.GEMINI_API_KEY!,
+      apiKey: apiKey,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
@@ -761,7 +765,7 @@ async function startServer() {
     });
   };
 
-  app.post("/api/support-chat", async (req, res) => {
+  app.post(["/api/support-chat", "/api/chat", "/api/zomini"], async (req, res) => {
     const { message, context } = req.body;
     const isGuest = !context || !context.user || context.user.role === "Guest";
     const userName = context?.user?.name || context?.user?.fullName || "Customer";
