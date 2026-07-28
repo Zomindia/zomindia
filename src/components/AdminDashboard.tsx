@@ -166,8 +166,8 @@ const handleAdminBridgeCall = async (
   );
 
   try {
-    const targetPhone = targetUser.phoneNumber || "9424456606";
-    const adminPhone = "9424456606"; // Designated admin anchor phone or fallback
+    const targetPhone = targetUser.phoneNumber || "9630234563";
+    const adminPhone = "9630234563"; // Designated admin anchor phone or fallback
 
     const response = await fetch("/api/call/mask", {
       method: "POST",
@@ -1870,7 +1870,7 @@ export default function AdminDashboard({
                                     customer?.phoneNumber ||
                                     customer?.mobile ||
                                     b.customerPhone ||
-                                    "+91 9424456606"}
+                                    "+91 9630234563"}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -1969,7 +1969,7 @@ export default function AdminDashboard({
                           </div>
                           <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                             <a
-                              href={`https://wa.me/918517071009?text=Hi%20Vikas%20ZomIndia%20Support`}
+                              href={`https://wa.me/919630234563?text=Hi%20Vikas%20ZomIndia%20Support`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex-1 sm:flex-none text-center bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs transition-transform active:scale-95"
@@ -3791,7 +3791,7 @@ function BookingRow({
                       (booking as any).customerPhone ||
                       user?.phoneNumber ||
                       user?.mobile ||
-                      "+91 9424456606"}
+                      "+91 9630234563"}
                   </p>
                 </div>
               </div>

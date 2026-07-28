@@ -250,7 +250,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   Track Live Status
                 </button>
                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-1">
-                  Helpdesk: 9424456606
+                  Helpdesk: 9630234563
                 </div>
               </div>
             </div>

@@ -1500,15 +1500,15 @@ router.post("/make-secure-call", async (req: any, res: any) => {
     } catch (dbErr: any) {
       console.warn("[Sandbox Mode] Bypassing Firestore fetch due to IAM limits. Using fallback testing numbers.", dbErr.message || dbErr);
       // Provide fallback testing numbers so telephony flow doesn't break in Sandbox environment
-      initiatorPhone = "+919424456606";
-      recipientPhone = "+918517071009";
+      initiatorPhone = "+919630234563";
+      recipientPhone = "+919630234563";
     }
 
     if (!initiatorPhone) {
-      initiatorPhone = "+919424456606";
+      initiatorPhone = "+919630234563";
     }
     if (!recipientPhone) {
-      recipientPhone = "+918517071009";
+      recipientPhone = "+919630234563";
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;

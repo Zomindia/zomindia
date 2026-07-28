@@ -1105,7 +1105,7 @@ export default function AiSupportChat({
               <div className="flex flex-wrap gap-2 justify-center items-center w-full px-1">
                 {/* Click-to-WhatsApp support */}
                 <a
-                  href="https://wa.me/918517071009?text=Hi%20ZOMINI%20zomindia"
+                  href="https://wa.me/919630234563?text=Hi%20ZOMINI%20zomindia"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 min-w-[75px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl border border-emerald-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 text-[11px] font-extrabold select-none"

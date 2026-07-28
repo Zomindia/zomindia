@@ -1095,7 +1095,7 @@ export default function App() {
                   </span>
                 </div>
                 <p className="text-xs text-[#334155] mt-1">
-                  Your Elite Partner application was not approved. For appeal requests, please call 9424456606.
+                  Your Elite Partner application was not approved. For appeal requests, please call 9630234563.
                 </p>
               </div>
             </div>
@@ -1265,7 +1265,7 @@ Why Choose Us?
                 <div className="space-y-5 w-full mt-auto">
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Customer Care No</span>
-                    <a href="tel:+919424456606" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9424456606</a>
+                    <a href="tel:+919630234563" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9630234563</a>
                   </div>
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Support Email</span>
@@ -1273,11 +1273,11 @@ Why Choose Us?
                   </div>
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Official WhatsApp</span>
-                    <a href="https://wa.me/919424456606" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-full text-sm font-bold transition-all duration-200 mt-1">
+                    <a href="https://wa.me/919630234563" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 hover:bg-green-100 rounded-full text-sm font-bold transition-all duration-200 mt-1">
                       <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.022-.014-.507-.25-1.011-.5-.505-.25-.769-.373-.979-.373-.208 0-.323.014-.554.25-.23.238-.883.882-1.083 1.056-.195.176-.411.205-.71.07-.3-.13-1.264-.47-2.405-1.466-.883-.756-1.488-1.74-1.66-2.01-.19-.29-.02-.45.1-.56.1-.1.2-.23.3-.35.1-.09.136-.2.2-.3.06-.1.03-.207-.01-.3-.04-.09-.373-.89-.512-1.22-.136-.319-.277-.27-.373-.27-.08-.004-.2-.004-.32-.004-.12 0-.319.043-.487.217-.168.174-.658.643-.658 1.57s.676 1.83.77 1.96c.094.12 1.35 2.056 3.27 2.88.459.195.82.312 1.096.398.461.147.88.127 1.21.078.36-.054 1.107-.453 1.263-.89.156-.434.156-.807.11-1.056-.046-.248-.19-.372-.36-.453zm-5.452 7.618H12c-2.14 0-4.22-.57-6.04-1.66L1 22l1.69-4.94A11.93 11.93 0 0 1 1.05 12C1.05 5.4 6.4 0 13 0s11.95 5.4 11.95 12c0 6.6-5.4 12-11.93 12z"/>
                       </svg>
-                      +91 9424456606
+                      +91 9630234563
                     </a>
                   </div>
                 </div>
@@ -1299,7 +1299,7 @@ Why Choose Us?
                 <div className="space-y-5 w-full mt-auto">
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Partner Helpline</span>
-                    <a href="tel:+919993655574" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9993655574</a>
+                    <a href="tel:+919630234563" className="text-slate-900 text-lg font-extrabold hover:text-blue-700 transition-colors">+91 9630234563</a>
                   </div>
                   <div>
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">General Inquiries Email</span>
@@ -1354,7 +1354,7 @@ How do you make sure the partner is safe to enter my home?
 Your safety is our top priority. Every single service partner on ${COMPANY_NAME} goes through a professional background verification, identity check, and intensive customer care training before they can take any orders.
 
 What if I am not happy with the service?
-We offer a 100% Satisfaction Guarantee! If the work isn't done correctly, let us know via the "My Support Tickets" chat or call +91 9424456606 within 24 hours. We will investigate and send a professional to redo the job completely free of charge.
+We offer a 100% Satisfaction Guarantee! If the work isn't done correctly, let us know via the "My Support Tickets" chat or call +91 9630234563 within 24 hours. We will investigate and send a professional to redo the job completely free of charge.
 
 Can I cancel or change my booking?
 Yes, absolutely! You can cancel or reschedule any booking up to 4 hours before the service time for free. We will issue a full refund with no questions asked.`}
@@ -1426,7 +1426,7 @@ You have full control over your details. You can view, update, or ask us to dele
 • Cash on Delivery (COD): If we owe you a refund for a COD order (for example, if you had fewer laundry clothes than expected), the difference is added instantly to your Zomindia wallet for your future bookings.
 
 3. Need Help?
-If you have any billing questions, or if your refund is delayed, please email us at support@zomindia.com or call Customer Care at +91 9424456606. We are always happy to help!`}
+If you have any billing questions, or if your refund is delayed, please email us at support@zomindia.com or call Customer Care at +91 9630234563. We are always happy to help!`}
             onBack={() => setActiveTab('home')}
           />
         );
@@ -2255,7 +2255,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
                 <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-1">
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Indore Verification Helpdesk</p>
-                  <p className="text-xs font-bold text-slate-700">Phone: <span className="text-[#1B4D3E]">+91 9424456606</span></p>
+                  <p className="text-xs font-bold text-slate-700">Phone: <span className="text-[#1B4D3E]">+91 9630234563</span></p>
                   <p className="text-[10px] text-slate-500 font-medium">Email: support@zomindia.com</p>
                 </div>
 

@@ -18,7 +18,7 @@ initSecurityShield();
  * 
  * Truecaller Business SDK & FCM Web Push Configuration Whitelisting Meta:
  * To bypass Truecaller, Jio, and Airtel spam filter engines on cellular networks,
- * we registers our virtual masking numbers (+919424456606) via Verified Business ID.
+ * we registers our virtual masking numbers (+919630234563) via Verified Business ID.
  * 
  * Meta Reference:
  * - TRUECALLER_BUSINESS_SDK_PARTNER_KEY: "zom_tc_biz_prod_fcf89c32-b7e1-4bd4-bf26-a07ea1f344fc"
