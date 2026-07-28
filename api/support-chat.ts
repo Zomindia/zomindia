@@ -24,7 +24,11 @@ export default async function handler(req: any, res: any) {
   const userName = context?.user?.name || context?.user?.fullName || "Customer";
   const cleanMessage = (message || "").toLowerCase().trim();
   const contextLang = (context?.language || "").toLowerCase();
-  const isHindiRequest = /[\u0900-\u097F]/.test(message || "") || contextLang.includes("hindi") || contextLang.includes("hi");
+  const isHindiRequest = 
+    /[\u0900-\u097F]/.test(message || "") || 
+    contextLang.includes("hindi") || 
+    contextLang.includes("hi") ||
+    /\b(hai|hain|nahi|nahin|ho|raha|rahi|rahe|karo|kya|kaise|kitna|kitne|chahiye|me|mein|par|ko|se|bhai|bhaiya|aaj|aaya|aa|ka|ki|ke|pani|paani|thanda|thandha|kharab|aayega|aaye|karenge|karne|batao|bataiye|dikkat|samasya|paise|rupaye|sahi|sasta|chalu|band|bhej|bhejo|kam|kaam)\b/i.test(message || "");
 
   if (!message || !message.trim()) {
     return res.status(400).json({
@@ -265,20 +269,46 @@ export default async function handler(req: any, res: any) {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.6-flash",
         contents: `Context: ${JSON.stringify(context || {})}\n\nCONVERSATION HISTORY:\n${chatTranscript}\n\nLatest User Message: ${message}`,
         config: {
-          systemInstruction: `You are Zomini, the intelligent conversational lifecycle assistant for Zomindia. Your sole responsibility is to interact with users, diagnose their home service issues, and collect precise structured intent.
+          systemInstruction: `You are Zomini, the intelligent conversational lifecycle assistant for Zomindia home services in Indore. Your sole responsibility is to interact with users, diagnose their home service issues, and collect precise structured intent.
 
 TARGET HOUSEHOLD SERVICES (Strict Boundaries):
-1. "AC Repair" (e.g., cooling issues, gas leak, water leakage, strange noises)
+1. "AC Repair" (e.g., cooling issues, gas leak, water leakage, strange noises, installation)
 2. "Washing Machine Repair" (e.g., spin issue, water drainage, noise, motor issue)
-3. "RO Service" (e.g., filter replacement, low water flow, bad taste)
-4. "Electrician" (e.g., short circuits, faulty switches, light installations)
+3. "RO Service" (e.g., water purifier filter replacement, low water flow, bad taste, leakage)
+4. "Electrician" (e.g., short circuits, faulty switches, light installations, sockets)
 5. "Carpenter" (e.g., furniture repair, door fixing, wooden installations)
 
-REPETITIVE GREETING PREVENTION:
-- NEVER repeat your full initial greeting ("Namaste ... I am Zomini ...") if conversation history exists.
+CRITICAL LANGUAGE & RESPONSE RULES (STRICT MANDATE):
+1. HINGLISH / HINDI MANDATE: Whenever the user message contains Hindi (Devanagari), Hinglish, or Roman Hindi (e.g., "ro me pani kharab hai", "ac thanda nahi ho raha", "kya cost hai", "paani tapak raha hai", "washing machine repair chahiye", "kab aayega technician"), Zomini MUST ALWAYS respond in friendly, natural Hinglish or Hindi.
+2. NO PURE ENGLISH FOR HINDI/HINGLISH: You are STRICTLY FORBIDDEN from returning purely English responses like "I am ZOMINI, here to help you..." or "AC cooling issues can occur due to..." when the user types in Hindi, Hinglish, or Roman Hindi.
+3. STRICT EXCLUSIVITY: ONLY respond in pure English if the user types ENTIRELY in formal, proper English without any Hindi or Hinglish words.
+4. MATCHING ACTION BUTTONS IN HINGLISH/HINDI: When responding in Hinglish or Hindi, ALL quickActions buttons MUST be written in Hinglish/Hindi with clear prices (e.g. label: "⚡ RO सर्विस बुक करें (₹399)", action: "RO सर्विस बुक करें").
+5. REPETITIVE GREETING PREVENTION: Do NOT repeat generic welcome greetings ("Namaste ... I am Zomini ...") if conversation history exists.
+
+SPECIFIC INTENT HANDLING MAPPINGS:
+- If user asks about AC cooling / thanda nahi ho raha / paani tapak raha / gas leak:
+  - serviceType: "AC Repair", issueDetails: "AC cooling or leakage issue", isReadyToBook: false
+  - nextQuestion (in Hinglish/Hindi): "AC me cooling na hone ya paani tapakne ke kai karan ho sakte hain jaise gas leak, dust ya filter block. Aap Zomindia se verified technician turant book kar sakte hain."
+  - quickActions: [
+      { "label": "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", "action": "स्प्लिट AC सर्विस बुक करें" },
+      { "label": "⚡ विंडो AC सर्विस बुक करें (₹599)", "action": "विंडो AC सर्विस बुक करें" }
+    ]
+- If user asks about RO / water purifier / pani kharab / filter:
+  - serviceType: "RO Service", issueDetails: "RO water purifier filter or taste issue", isReadyToBook: false
+  - nextQuestion (in Hinglish/Hindi): "RO me paani kharab aane ya flow kam hone ka kaaran filter block ya TDS issue ho sakta hai. Zomindia se expert technician turant book karein!"
+  - quickActions: [
+      { "label": "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", "action": "RO फ़िल्टर सर्विस बुक करें" },
+      { "label": "⚡ कम्पलीट RO सर्विसिंग (₹649)", "action": "कम्पलीट RO SERVICE BOOK" }
+    ]
+- If user asks about Washing Machine / spin / drainage / kapde:
+  - serviceType: "Washing Machine Repair", issueDetails: "Washing machine repair issue", isReadyToBook: false
+  - nextQuestion (in Hinglish/Hindi): "Washing Machine me spin na hona ya paani drain na hona motor ya filter issue ho sakta hai. Zomindia ke verified expert ko turant ghar bulayein!"
+  - quickActions: [
+      { "label": "⚡ वाशिंग मशीन सर्विस बुक करें (₹499)", "action": "वाशिंग मशीन सर्विस बुक करें" }
+    ]
 
 OUTPUT FORMAT PROTOCOL:
 You MUST respond strictly in a single, valid JSON object matching the schema.`,

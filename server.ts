@@ -772,7 +772,11 @@ async function startServer() {
     const chatHistoryLength = (context && Array.isArray(context.chatHistory)) ? context.chatHistory.length : 0;
     const cleanMessage = (message || "").toLowerCase().trim();
     const contextLang = (context?.language || "").toLowerCase();
-    const isHindiRequest = /[\u0900-\u097F]/.test(message || "") || contextLang.includes("hindi") || contextLang.includes("hi");
+    const isHindiRequest = 
+      /[\u0900-\u097F]/.test(message || "") || 
+      contextLang.includes("hindi") || 
+      contextLang.includes("hi") ||
+      /\b(hai|hain|nahi|nahin|ho|raha|rahi|rahe|karo|kya|kaise|kitna|kitne|chahiye|me|mein|par|ko|se|bhai|bhaiya|aaj|aaya|aa|ka|ki|ke|pani|paani|thanda|thandha|kharab|aayega|aaye|karenge|karne|batao|bataiye|dikkat|samasya|paise|rupaye|sahi|sasta|chalu|band|bhej|bhejo|kam|kaam)\b/i.test(message || "");
 
     try {
       if (!message) {
@@ -1008,7 +1012,7 @@ async function startServer() {
 
       const ai = getAi();
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.6-flash",
         contents: `Context: ${JSON.stringify(context || {})}\n\nCONVERSATION HISTORY:\n${chatTranscript}\n\nLatest User Message: ${message}`,
         config: {
           systemInstruction: `You are Zomini, the intelligent conversational lifecycle assistant for Zomindia. Your sole responsibility is to interact with users, diagnose their home service issues, and collect precise structured intent. 
@@ -1028,15 +1032,31 @@ REPETITIVE GREETING PREVENTION (CRITICAL):
 - Directly address the user's issue or question without repeating generic welcome greetings.
 
 SPECIFIC INTENT HANDLING MAPPINGS:
-- If the user mentions "AC thanda nahi ho raha", "AC not cooling", "ac thandha nahi ho raha", or similar cooling symptoms:
-  - You MUST set serviceType as "AC Repair", issueDetails as "AC cooling issue - Gas leak, dust or filter block suspected", isReadyToBook as false.
-  - You MUST write nextQuestion in Hindi/Hinglish as:
-    "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।"
+- If the user mentions "AC thanda nahi ho raha", "AC not cooling", "ac thandha nahi ho raha", "paani tapak raha hai", "water leak" or similar AC symptoms:
+  - You MUST set serviceType as "AC Repair", issueDetails as "AC cooling or leakage issue", isReadyToBook as false.
+  - You MUST write nextQuestion in Hinglish/Hindi as:
+    "AC me cooling na hone ya paani tapakne ke kai karan ho sakte hain jaise gas leak, dust ya filter block. Aap Zomindia se verified technician turant book kar sakte hain."
   - You MUST supply quickActions as:
     [
-      { "label": "Book Split AC Service (₹770)", "action": "Book Split AC Service" },
-      { "label": "Book Window AC Service (₹599)", "action": "Book Window AC Service" }
+      { "label": "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", "action": "स्प्लिट AC सर्विस बुक करें" },
+      { "label": "⚡ विंडो AC सर्विस बुक करें (₹599)", "action": "विंडो AC सर्विस बुक करें" }
     ]
+- If the user mentions "RO", "water purifier", "ro me pani kharab hai", "pani kharab aana", "filter change":
+  - You MUST set serviceType as "RO Service", issueDetails as "RO water purifier filter or taste issue", isReadyToBook as false.
+  - You MUST write nextQuestion in Hinglish/Hindi as:
+    "RO me paani kharab aane ya flow kam hone ka kaaran filter block ya TDS issue ho sakta hai. Zomindia se expert technician turant book karein!"
+  - You MUST supply quickActions as:
+    [
+      { "label": "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", "action": "RO फ़िल्टर सर्विस बुक करें" },
+      { "label": "⚡ कम्पलीट RO सर्विसिंग (₹649)", "action": "कम्पलीट RO SERVICE BOOK" }
+    ]
+
+CRITICAL LANGUAGE & RESPONSE RULES (STRICT MANDATE):
+1. HINGLISH / HINDI MANDATE: Whenever the user message is written in Hindi (Devanagari), Hinglish, or Roman Hindi (e.g., "ro me pani kharab hai", "ac thanda nahi ho raha", "kya cost hai", "paani tapak raha hai", "washing machine repair", "kab aayega technician"), Zomini MUST ALWAYS respond in friendly, natural Hinglish or Hindi.
+2. NO PURE ENGLISH FOR HINDI/HINGLISH: You are STRICTLY FORBIDDEN from returning purely English responses like "I am ZOMINI, here to help you..." or "AC cooling issues can occur due to..." when the user writes in Hindi, Hinglish, or Roman Hindi.
+3. STRICT EXCLUSIVITY: ONLY respond in pure English if the user types ENTIRELY in formal, proper English without any Hindi or Hinglish words.
+4. MATCHING ACTION BUTTONS: When responding in Hinglish/Hindi, ALL quickActions buttons MUST be written in Hinglish/Hindi with clear prices (e.g. label: "⚡ RO सर्विस बुक करें (₹399)", action: "RO सर्विस बुक करें").
+5. REPETITIVE GREETING PREVENTION: Do NOT repeat generic welcome greetings ("Namaste ... I am Zomini ...") if conversation history exists.
 
 UNACCOUNTED / UNLISTED HOME SERVICES (Strict Handler)
 - If the user asks about home services NOT currently listed on Zomindia (e.g., Car Washing, Beauty/Salon at Home, Full House Painting, Heavy Civil Construction, Pest Control, Tiffin Service, Packers/Movers, House Cleaning, Plumbing, Laundry, etc.):

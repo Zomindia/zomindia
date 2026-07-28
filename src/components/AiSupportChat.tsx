@@ -514,7 +514,7 @@ export default function AiSupportChat({
     }
   };
 
-  // Helper to dynamically detect if a string matches a specific language script
+  // Helper to dynamically detect if a string matches a specific language script or Hinglish
   const detectLanguage = (text: string): string | null => {
     if (!text) return null;
     if (/[\u0A80-\u0AFF]/.test(text)) return "gu-IN"; // Gujarati
@@ -529,9 +529,13 @@ export default function AiSupportChat({
       if (selectedLang === "mr-IN") return "mr-IN";
       return "hi-IN";
     }
-    const englishWordRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|a|an|to|in|on|at|by|with|for|about|against|between|into|through|during|before|after|above|below|from|up|down|out|off|over|under|again|further|then|once|here|there|when|where|why|how|all|any|both|each|few|more|most|other|some|such|no|nor|not|only|own|same|so|than|too|very|can|will|just|should|now|booking|repair|ac|service|plumber|electrician|cleaning|laundry|leak|water|pipe|wire|fan|switch|light|plug|issue|problem|broken|fix|hello|hi|yes|ok|okay|sure|thanks|thank|you|track|status|login|signup|partner)\b/i;
-    const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
-    if (englishChars > text.length * 0.2 || englishWordRegex.test(text)) {
+    // Check if the text contains Hinglish / Roman Hindi words or phrases
+    const hinglishRegex = /\b(hai|hain|nahi|nahin|ho|raha|rahi|rahe|karo|kya|kaise|kitna|kitne|chahiye|me|mein|par|ko|se|bhai|bhaiya|aaj|aaya|aa|ka|ki|ke|pani|paani|thanda|thandha|kharab|aayega|aaye|karenge|karne|batao|bataiye|dikkat|samasya|paise|rupaye|sahi|sasta|chalu|band|bhej|bhejo|kam|kaam)\b/i;
+    if (hinglishRegex.test(text)) {
+      return "hi-IN";
+    }
+    const pureEnglishRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|where|why|how|what|which|who|whom|when|please|help|could|would|should|can|will|service|booking|repair|check|status|cancel|refund)\b/i;
+    if (pureEnglishRegex.test(text) && !hinglishRegex.test(text)) {
       return "en-IN";
     }
     return null;
