@@ -1792,7 +1792,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           {!isHistory && (
             <div className="bg-white p-6 border-t border-slate-100 fixed bottom-0 left-0 right-0 z-20">
               {booking.status === 'pending_acceptance' && (
-                <div className="flex gap-4">
+                <div className="space-y-2">
                   <button 
                     disabled={acceptingBookingId === booking.id}
                     onClick={async () => {
@@ -1808,22 +1808,19 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                         setAcceptingBookingId(null);
                       }, 120);
                     }}
-                    className={`flex-[2] bg-emerald-500 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all duration-300 origin-center ${acceptingBookingId === booking.id ? 'opacity-80 scale-95' : 'hover:scale-[1.01] active:scale-95'}`}
+                    className={`w-full bg-emerald-500 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all duration-300 origin-center ${acceptingBookingId === booking.id ? 'opacity-80 scale-95' : 'hover:scale-[1.01] active:scale-95'}`}
                   >
                     {acceptingBookingId === booking.id ? (
                       <>
                         <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Accepting...
                       </>
-                    ) : 'Accept Job'}
+                    ) : 'Accept Job Assignment'}
                   </button>
-                  <button 
-                    disabled={acceptingBookingId === booking.id}
-                    onClick={() => handleBookingUpdate(booking.id, { status: 'pending', partnerId: deleteField() as any })}
-                    className="flex-1 bg-slate-100 text-slate-400 py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] transition-all duration-200"
-                  >
-                    Reject
-                  </button>
+                  <p className="text-[10px] text-slate-400 font-bold text-center flex items-center justify-center gap-1">
+                    <ShieldCheck size={12} className="text-emerald-500" />
+                    Admin Direct Allocation • Rejection Disabled
+                  </p>
                 </div>
               )}
 

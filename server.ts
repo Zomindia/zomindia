@@ -239,131 +239,302 @@ async function startServer() {
     }
   });
 
+  // Core Unified WhatsApp Dispatcher Engine
+  const sendWhatsAppNotificationEngine = async (opts: {
+    phone: string;
+    type: "BOOKING_CONFIRMED" | "EXPERT_ASSIGNED" | "SERVICE_COMPLETED" | "OTP_DISPATCH" | string;
+    name?: string;
+    params?: Record<string, any>;
+    customMessage?: string;
+  }) => {
+    const { phone, type, name = "Valued Customer", params = {}, customMessage } = opts;
+    let cleanPhone = phone.replace(/\D/g, "");
+    if (cleanPhone.length === 10) {
+      cleanPhone = "91" + cleanPhone;
+    }
+    const formattedPhone = cleanPhone.startsWith("+") ? cleanPhone : "+" + cleanPhone;
+
+    let messageText = customMessage || "";
+    if (!messageText) {
+      switch (type.toUpperCase()) {
+        case "BOOKING_CONFIRMED":
+        case "BOOKING_RECEIVED":
+        case "NEW_BOOKING":
+          messageText = `✅ *ORDER CONFIRMED - ZOMINDIA HOME SERVICES*\n` +
+            `Hi ${name}, your booking has been placed successfully!\n\n` +
+            `📦 *Service:* ${params.serviceName || "Home Service"}\n` +
+            `📅 *Scheduled:* ${params.date || "Today"} ${params.time || ""}\n` +
+            `📍 *Address:* ${params.address || "Selected Location"}\n` +
+            `💰 *Total Estimate:* ₹${params.price || params.totalPrice || "499"}\n\n` +
+            `🧾 *Itemized Bill Summary:*\n` +
+            `${params.lineItems && Array.isArray(params.lineItems) ? params.lineItems.map((item: any) => `• ${item.name || item.title}: ₹${item.price}`).join("\n") : `• Base Service Fee: ₹${params.price || params.totalPrice || "499"}`}\n\n` +
+            `🔗 *Track Expert Live:* ${params.trackingUrl || `https://zomindia.com/track/${params.bookingId || "new"}`}`;
+          break;
+
+        case "EXPERT_ASSIGNED":
+        case "PARTNER_ASSIGNED":
+          messageText = `🚀 *EXPERT ASSIGNED TO YOUR BOOKING*\n` +
+            `Hi ${name}, a certified professional has been assigned to your service request!\n\n` +
+            `👨‍🔧 *Expert Name:* ${params.partnerName || "Verified Technician"}\n` +
+            `📞 *Contact:* ${params.partnerPhone || "Available via Masked Call"}\n` +
+            `⭐ *Rating:* ${params.partnerRating || "4.9"}★\n\n` +
+            `🔒 *JOB START OTP:* *${params.otp || "7951"}*\n` +
+            `_(Share this OTP with the technician on site to start work safely)_\n\n` +
+            `📍 *Live Tracking Link:* ${params.trackingUrl || `https://zomindia.com/track/${params.bookingId || "new"}`}`;
+          break;
+
+        case "SERVICE_COMPLETED":
+        case "SERVICE_COMPLETE":
+        case "JOB_COMPLETED":
+          messageText = `🎉 *SERVICE COMPLETED - ZOMINDIA*\n` +
+            `Hi ${name}, your service is successfully completed!\n\n` +
+            `📦 *Service:* ${params.serviceName || "Home Service"}\n` +
+            `💳 *Final Settlement:* ₹${params.totalPrice || params.price || "0"}\n\n` +
+            `📄 *Download Digital GST Invoice & Receipt:*\n` +
+            `${params.invoiceUrl || `https://zomindia.com/api/download-invoice?bookingId=${params.bookingId || "new"}`}`;
+          break;
+
+        case "OTP_DISPATCH":
+        case "SERVICE_OTP":
+        case "AUTH_OTP":
+        case "WHATSAPP_OTP":
+          messageText = `🔑 *ZOMINDIA VERIFICATION CODE*\n` +
+            `Your WhatsApp OTP code is: *${params.otp || "7951"}*\n\n` +
+            `Use this code to verify your action or securely start your service. Valid for 10 minutes. Do not share with anyone.`;
+          break;
+
+        default:
+          messageText = `*Zomindia Notification*\n\nHi ${name}, ${params.message || "Your service status has been updated."}`;
+          break;
+      }
+    }
+
+    const metaToken = process.env.META_WHATSAPP_TOKEN || process.env.WHATSAPP_BUSINESS_TOKEN;
+    const metaPhoneId = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID;
+    const gupshupKey = process.env.GUPSHUP_API_KEY;
+    const gupshupSrc = process.env.GUPSHUP_WHATSAPP_SOURCE || "919000000000";
+
+    let dispatchSuccess = false;
+    let gatewayUsed = "Sandbox Simulation";
+    let metaResult = null;
+    let gupshupResult = null;
+
+    if (metaToken && metaPhoneId) {
+      try {
+        const metaUrl = `https://graph.facebook.com/v18.0/${metaPhoneId}/messages`;
+        const metaRes = await axios.post(
+          metaUrl,
+          {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: cleanPhone,
+            type: "text",
+            text: { body: messageText }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${metaToken}`,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+        dispatchSuccess = true;
+        gatewayUsed = "Meta WhatsApp Cloud API";
+        metaResult = metaRes.data;
+        console.log(`[Meta WhatsApp API] Delivered to ${cleanPhone}:`, metaRes.data);
+      } catch (metaErr: any) {
+        console.warn("[Meta WhatsApp API Notice]: Production key pending or sandbox mode. Running zero-break fallback.", metaErr.response?.data || metaErr.message);
+      }
+    }
+
+    if (!dispatchSuccess && gupshupKey) {
+      try {
+        const waUrl = "https://api.gupshup.io/sm/api/v1/msg";
+        const form = new URLSearchParams();
+        form.append("channel", "whatsapp");
+        form.append("source", gupshupSrc);
+        form.append("destination", cleanPhone);
+        form.append("message", JSON.stringify({
+          type: "text",
+          text: messageText
+        }));
+
+        const waRes = await axios.post(waUrl, form, {
+          headers: {
+            apikey: gupshupKey,
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
+        });
+        dispatchSuccess = true;
+        gatewayUsed = "Gupshup WhatsApp API";
+        gupshupResult = waRes.data;
+        console.log(`[Gupshup WhatsApp API] Delivered to ${cleanPhone}:`, waRes.data);
+      } catch (gupshupErr: any) {
+        console.warn("[Gupshup WhatsApp API Notice]: Production key pending. Running zero-break fallback.", gupshupErr.response?.data || gupshupErr.message);
+      }
+    }
+
+    if (!dispatchSuccess) {
+      console.log(`[WhatsApp Engine] Zero-break simulation dispatched for ${formattedPhone} | Type: ${type}`);
+    }
+
+    if (db) {
+      try {
+        await db.collection("whatsapp_alerts").add({
+          recipientPhone: formattedPhone,
+          recipientName: name,
+          type,
+          status: dispatchSuccess ? "delivered" : "simulated",
+          gateway: gatewayUsed,
+          messageText,
+          timestamp: admin.firestore.Timestamp.now()
+        });
+      } catch (dbErr) {
+        console.warn("[WhatsApp Log Warning]: Could not store alert trace in DB", dbErr);
+      }
+    }
+
+    return {
+      success: true,
+      isSimulated: !dispatchSuccess,
+      gateway: gatewayUsed,
+      recipient: formattedPhone,
+      messageText,
+      metaResult,
+      gupshupResult
+    };
+  };
+
+  // Legacy compatibility endpoint: /api/send-gupshup-notification routed to Unified Engine
   app.post("/api/send-gupshup-notification", async (req, res) => {
     try {
       const { userId, title, message, phoneNumber } = req.body;
-      if (!userId && !phoneNumber) {
-        return res.status(400).json({ error: "Either userId or phoneNumber is required" });
-      }
+      let targetPhone = phoneNumber;
 
-      if (!db && !phoneNumber) {
-        return res.status(500).json({ error: "Firestore Admin Database is not yet initialized on the server." });
-      }
-
-      let destinationPhone = phoneNumber;
-      if (!destinationPhone && userId) {
+      if (!targetPhone && userId && db) {
         const userSnap = await db.collection("users").doc(userId).get();
         if (userSnap.exists) {
-          const userData = userSnap.data();
-          destinationPhone = userData.phoneNumber;
+          targetPhone = userSnap.data()?.phoneNumber;
         }
       }
 
-      if (!destinationPhone) {
-        return res.status(400).json({ success: false, error: "User has no registered phone number" });
+      if (!targetPhone) {
+        return res.status(400).json({ success: false, error: "Recipient phone number required" });
       }
 
-      // Tighten phone number extraction regex to standard 10-digit Indian mobile formats to eliminate false positive matches
-      const indianPhoneRegex = /\+?91[-.\s]?[6-9]\d{3}[-.\s]?\d{4}[-.\s]?\d{3}(?!\d)/;
-      const exact10DigitRegex = /^[6-9]\d{9}$/;
-      const digitsOnly = destinationPhone.replace(/\D/g, "");
-      const isValidPhone = indianPhoneRegex.test(destinationPhone) || exact10DigitRegex.test(digitsOnly);
-
-      if (!isValidPhone) {
-        return res.status(400).json({ success: false, error: "Invalid Indian mobile number format. A standard 10-digit number starting with 6-9 is required." });
-      }
-
-      // Format E.164 phone number
-      let cleanPhone = destinationPhone.replace(/\D/g, "");
-      if (cleanPhone.length === 10) {
-        cleanPhone = "91" + cleanPhone;
-      }
-
-      const gupshupApiKey = process.env.GUPSHUP_API_KEY;
-      const gupshupSource = process.env.GUPSHUP_WHATSAPP_SOURCE || "919000000000";
-      const gupshupSmsUserid = process.env.GUPSHUP_SMS_USERID;
-      const gupshupSmsPassword = process.env.GUPSHUP_SMS_PASSWORD;
-
-      let whatsappSent = false;
-      let smsSent = false;
-      let whatsappStatus = "Not Configured";
-      let smsStatus = "Not Configured";
-
-      // 1. WhatsApp API via Gupshup (api.gupshup.io)
-      if (gupshupApiKey) {
-        try {
-          const waUrl = "https://api.gupshup.io/sm/api/v1/msg";
-          const form = new URLSearchParams();
-          form.append("channel", "whatsapp");
-          form.append("source", gupshupSource);
-          form.append("destination", cleanPhone);
-          form.append("message", JSON.stringify({
-            type: "text",
-            text: `*${title}*\n\n${message}\n\n_Delivered via zomindia Live Sync_`
-          }));
-
-          const waRes = await axios.post(waUrl, form, {
-            headers: {
-              "apikey": gupshupApiKey,
-              "Content-Type": "application/x-www-form-urlencoded"
-            }
-          });
-          whatsappSent = true;
-          whatsappStatus = JSON.stringify(waRes.data);
-          console.log(`[Gupshup WhatsApp] Delivered to ${cleanPhone}:`, waRes.data);
-        } catch (waErr: any) {
-          whatsappStatus = `Error: ${waErr.message}`;
-          const errData = waErr.response?.data;
-          const errMsg = typeof errData === "object" ? JSON.stringify(errData) : String(errData || waErr.message);
-          if (errMsg.includes("Portal User Not Found With APIKey")) {
-            console.warn(`[Gupshup WhatsApp Integration] Warning: Your GUPSHUP_API_KEY is configured on the server, but the portal user associated with it wasn't found or is currently inactive on Gupshup side.`);
-          } else {
-            console.error("[Gupshup WhatsApp Error]:", errData || waErr.message);
-          }
-        }
-      }
-
-      // 2. SMS API via Gupshup Gateway
-      if (gupshupSmsUserid && gupshupSmsPassword) {
-        try {
-          const smsUrl = "https://enterprise.smsgupshup.com/GatewayAPI/rest";
-          const smsRes = await axios.get(smsUrl, {
-            params: {
-              method: "SendMessage", // Using proper case-sensitive "SendMessage" for standard Gupshup Enterprise API compliance
-              send_to: cleanPhone,
-              msg: `${title}: ${message}`,
-              msg_type: "TEXT",
-              userid: gupshupSmsUserid,
-              auth_scheme: "plain",
-              password: gupshupSmsPassword,
-              v: "1.1",
-              format: "text"
-            }
-          });
-          smsStatus = String(smsRes.data);
-          if (smsStatus.includes("error") || smsStatus.includes("106") || smsStatus.toLowerCase().includes("not supported")) {
-            smsSent = false;
-            console.warn(`[Gupshup SMS Integration] Warning: Gupshup SMS gateway responded with error payload '${smsStatus}'. This usually means either your Gateway Account userid/password does not support SMS dispatch or the method name casing is restricted on this enterprise account tier.`);
-          } else {
-            smsSent = true;
-            console.log(`[Gupshup SMS] Delivered to ${cleanPhone}:`, smsRes.data);
-          }
-        } catch (smsErr: any) {
-          smsStatus = `Error: ${smsErr.message}`;
-          console.error("[Gupshup SMS Error]:", smsErr.response?.data || smsErr.message);
-        }
-      }
-
-      res.json({
-        success: true,
-        whatsapp: { sent: whatsappSent, status: whatsappStatus },
-        sms: { sent: smsSent, status: smsStatus },
-        recipient: cleanPhone
+      const result = await sendWhatsAppNotificationEngine({
+        phone: targetPhone,
+        type: "CUSTOM",
+        customMessage: `*${title || "Zomindia Update"}*\n\n${message || ""}`
       });
 
+      return res.json(result);
     } catch (err: any) {
-      console.error("[Gupshup Server Proxy Error]:", err);
-      res.status(500).json({ error: err.message });
+      console.error("[Gupshup Legacy Proxy Error]:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/send-twilio-sms", async (req, res) => {
+    try {
+      const { phoneNumber, message } = req.body;
+      if (!phoneNumber || !message) {
+        return res.status(400).json({ error: "phoneNumber and message are required" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
+
+      if (!accountSid || !authToken || !twilioNumber || accountSid.trim() === "" || accountSid === "YOUR_ACCOUNT_SID") {
+        console.log("[Twilio SMS] Credentials not fully configured. Running SMS dispatch simulation.");
+        return res.json({
+          success: true,
+          isSimulated: true,
+          message: "Twilio SMS simulated dispatch successful.",
+          recipient: phoneNumber
+        });
+      }
+
+      let formattedPhone = phoneNumber.replace(/\D/g, "");
+      if (formattedPhone.length === 10) {
+        formattedPhone = "+91" + formattedPhone;
+      } else if (!formattedPhone.startsWith("+")) {
+        formattedPhone = "+" + formattedPhone;
+      }
+
+      const twilio = (await import("twilio")).default;
+      const client = twilio(accountSid, authToken);
+
+      const smsRes = await client.messages.create({
+        body: message,
+        from: twilioNumber,
+        to: formattedPhone
+      });
+
+      console.log(`[Twilio SMS] Message sent to ${formattedPhone}, SID: ${smsRes.sid}`);
+      return res.json({
+        success: true,
+        isSimulated: false,
+        sid: smsRes.sid,
+        recipient: formattedPhone
+      });
+    } catch (err: any) {
+      console.error("[Twilio SMS Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to dispatch SMS via Twilio." });
+    }
+  });
+
+  // POST /api/send-whatsapp-notification
+  // Universal WhatsApp Business API dispatch endpoint
+  app.post("/api/send-whatsapp-notification", async (req, res) => {
+    try {
+      const { phone, phoneNumber, type = "BOOKING_CONFIRMED", name, customerName, params = {}, customMessage } = req.body;
+      const targetPhone = phone || phoneNumber;
+      if (!targetPhone) {
+        return res.status(400).json({ error: "Phone number is required" });
+      }
+
+      const result = await sendWhatsAppNotificationEngine({
+        phone: targetPhone,
+        type,
+        name: name || customerName,
+        params,
+        customMessage
+      });
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[WhatsApp Notification Error]:", err);
+      return res.status(500).json({ error: err.message || "WhatsApp dispatch error" });
+    }
+  });
+
+  // POST /api/send-whatsapp-otp
+  // Auth & Transactional WhatsApp OTP dispatch helper
+  app.post("/api/send-whatsapp-otp", async (req, res) => {
+    try {
+      const { phoneNumber, otp } = req.body;
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "phoneNumber is required" });
+      }
+
+      const generatedOtp = otp || Math.floor(1000 + Math.random() * 9000).toString();
+
+      const result = await sendWhatsAppNotificationEngine({
+        phone: phoneNumber,
+        type: "OTP_DISPATCH",
+        params: { otp: generatedOtp }
+      });
+
+      return res.json({
+        success: true,
+        otp: generatedOtp,
+        details: result
+      });
+    } catch (err: any) {
+      console.error("[WhatsApp OTP Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to dispatch WhatsApp OTP" });
     }
   });
 
@@ -1032,6 +1203,22 @@ REPETITIVE GREETING PREVENTION (CRITICAL):
 - Directly address the user's issue or question without repeating generic welcome greetings.
 
 SPECIFIC INTENT HANDLING MAPPINGS:
+- DIRECT BOOKING OPTION SELECTION MAPPING (CRITICAL MANDATE):
+  If the user explicitly selects or sends a message choosing a specific booking package or option (e.g. contains "स्प्लिट AC", "विंडो AC", "RO फ़िल्टर", "कम्पलीट RO", "वाशिंग मशीन", "बुक करें", "book", "⚡", "स्प्लिट AC सर्विस बुक करें", "विंडो AC सर्विस बुक करें", "RO फ़िल्टर सर्विस बुक करें", "वाशिंग मशीन सर्विस बुक करें"):
+  1. You MUST NOT ask "यहाँ हमारी उपलब्ध AC सर्विस पैकेज हैं" or return diagnostic questions or package option buttons again!
+  2. You MUST set isReadyToBook to true (unless context.user.role is 'Guest', in which case set isReadyToBook to false).
+  3. You MUST set serviceType appropriately ("AC Repair", "RO Service", "Washing Machine Repair", "Electrician", "Carpenter").
+  4. You MUST set issueDetails to the exact requested package name and price (e.g., "स्प्लिट AC सर्विस (₹770)", "विंडो AC सर्विस (₹599)", "RO फ़िल्टर सर्विस (₹399)", "कम्पलीट RO सर्विसिंग (₹649)", "वाशिंग मशीन सर्विस (₹499)").
+  5. You MUST write nextQuestion strictly in Hindi/Hinglish as:
+     "बहुत बढ़िया! [Package Name] के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     Examples:
+     - "बहुत बढ़िया! स्प्लिट AC सर्विस (₹770) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! विंडो AC सर्विस (₹599) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! RO फ़िल्टर सर्विस (₹399) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! कम्पलीट RO सर्विसिंग (₹649) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! वाशिंग मशीन सर्विस (₹499) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+  6. Do NOT return quickActions array when isReadyToBook is true.
+
 - If the user mentions "AC thanda nahi ho raha", "AC not cooling", "ac thandha nahi ho raha", "paani tapak raha hai", "water leak" or similar AC symptoms:
   - You MUST set serviceType as "AC Repair", issueDetails as "AC cooling or leakage issue", isReadyToBook as false.
   - You MUST write nextQuestion in Hinglish/Hindi as:
@@ -1287,18 +1474,60 @@ Structure:
       let detectedIsReadyToBook = false;
       let quickActionsList: { label: string; action: string }[] | undefined = undefined;
 
-      if (txt.includes("ac") || txt.includes("cooling") || txt.includes("thanda") || txt.includes("thandha") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
+      if (txt.includes("स्प्लिट ac") || txt.includes("split ac")) {
+        detectedServiceType = "AC Repair";
+        detectedIssueDetails = "स्प्लिट AC सर्विस (₹770)";
+        if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+          detectedIsReadyToBook = !isGuest;
+        } else {
+          quickActionsList = [
+            { label: "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+            { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+          ];
+        }
+      } else if (txt.includes("विंडो ac") || txt.includes("window ac")) {
+        detectedServiceType = "AC Repair";
+        detectedIssueDetails = "विंडो AC सर्विस (₹599)";
+        if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+          detectedIsReadyToBook = !isGuest;
+        } else {
+          quickActionsList = [
+            { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+          ];
+        }
+      } else if (txt.includes("ro फ़िल्टर") || txt.includes("ro filter") || txt.includes("कम्पलीट ro") || txt.includes("complete ro") || txt.includes("आरओ")) {
+        detectedServiceType = "RO Service";
+        detectedIssueDetails = txt.includes("कम्पलीट") ? "कम्पलीट RO सर्विसिंग (₹649)" : "RO फ़िल्टर सर्विस (₹399)";
+        if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+          detectedIsReadyToBook = !isGuest;
+        } else {
+          quickActionsList = [
+            { label: "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", action: "RO फ़िल्टर सर्विस बुक करें" },
+            { label: "⚡ कम्पलीट RO सर्विसिंग (₹649)", action: "कम्पलीट RO SERVICE BOOK" }
+          ];
+        }
+      } else if (txt.includes("washing machine") || txt.includes("वाशिंग मशीन")) {
+        detectedServiceType = "Washing Machine Repair";
+        detectedIssueDetails = "वाशिंग मशीन सर्विस (₹499)";
+        if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+          detectedIsReadyToBook = !isGuest;
+        } else {
+          quickActionsList = [
+            { label: "⚡ वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
+          ];
+        }
+      } else if (txt.includes("ac") || txt.includes("cooling") || txt.includes("thanda") || txt.includes("thandha") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas")) {
         detectedServiceType = "AC Repair";
         detectedIssueDetails = "AC repair or cooling issue requested by the customer";
         quickActionsList = [
-          { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
-          { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
+          { label: "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+          { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
         ];
-      } else if (txt.includes("washing machine") || txt.includes("spin") || txt.includes("drainage")) {
+      } else if (txt.includes("spin") || txt.includes("drainage")) {
         detectedServiceType = "Washing Machine Repair";
         detectedIssueDetails = "Washing machine repair requested by the customer";
         quickActionsList = [
-          { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" }
+          { label: "⚡ वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
         ];
       } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket")) {
         detectedServiceType = "Electrician";
@@ -1310,18 +1539,23 @@ Structure:
         detectedServiceType = "RO Service";
         detectedIssueDetails = "RO water purifier service requested by the customer";
         quickActionsList = [
-          { label: "Book RO Filter Service (₹399)", action: "Book RO Filter Service" },
-          { label: "Book Complete RO Servicing (₹649)", action: "Book Complete RO Servicing" }
+          { label: "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", action: "RO फ़िल्टर सर्विस बुक करें" },
+          { label: "⚡ कम्पलीट RO सर्विसिंग (₹649)", action: "कम्पलीट RO SERVICE BOOK" }
         ];
       }
 
-      if (txt.includes("book") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
+      if (txt.includes("book") || txt.includes("बुक") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
         detectedIsReadyToBook = !isGuest;
       }
 
       let replyMessage = "I am ZOMINI, here to help you coordinate your Zomindia services. What specific home service issue can I help you fix today?";
       
-      if (txt.includes("thanda") || txt.includes("thandha") || txt.includes("cool") || txt.includes("cooling")) {
+      if (detectedIsReadyToBook) {
+        replyMessage = `बहुत बढ़िया! ${detectedIssueDetails || "चुनी गई सर्विस"} के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:`;
+        quickActionsList = undefined;
+      } else if (isGuest && (txt.includes("book") || txt.includes("बुक"))) {
+        replyMessage = "मैं आपकी सर्विस बुक करने के लिए तैयार हूँ। कृपया पहले ऊपर दिए गए लॉगिन बटन पर क्लिक करें!";
+      } else if (txt.includes("thanda") || txt.includes("thandha") || txt.includes("cool") || txt.includes("cooling")) {
         replyMessage = "AC कूलिंग न करने के कई कारण हो सकते हैं जैसे गैस लीक, डस्ट या फ़िल्टर ब्लॉक। आप Zomindia से तुरंत verified technician बुक कर सकते हैं।";
       } else if (txt.includes("washing machine")) {
         replyMessage = "वाशिंग मशीन में स्पिन न होना, पानी न निकलना या आवाज़ आना आम समस्याएँ हैं। Zomindia के एक्सपर्ट तकनीशियन आपके घर आकर तुरंत डायग्नोस और रिपेयर करेंगे।";

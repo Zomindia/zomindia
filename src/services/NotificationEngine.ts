@@ -187,6 +187,23 @@ export async function dispatchAutomatedWhatsAppAlert(
   };
 
   try {
+    // Dispatch to server WhatsApp Business API proxy
+    fetch('/api/send-whatsapp-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumber: recipientPhone,
+        name,
+        type,
+        params,
+        customMessage: messageText
+      })
+    }).then(res => res.json()).then(data => {
+      console.log('[NotificationEngine] Backend WhatsApp API dispatch result:', data);
+    }).catch(err => {
+      console.warn('[NotificationEngine] Backend WhatsApp API dispatch warning:', err);
+    });
+
     const docRef = await addDoc(collection(db, 'whatsapp_alerts'), alertLog);
     alertLog.id = docRef.id;
 

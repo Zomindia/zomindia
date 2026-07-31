@@ -289,6 +289,22 @@ CRITICAL LANGUAGE & RESPONSE RULES (STRICT MANDATE):
 5. REPETITIVE GREETING PREVENTION: Do NOT repeat generic welcome greetings ("Namaste ... I am Zomini ...") if conversation history exists.
 
 SPECIFIC INTENT HANDLING MAPPINGS:
+- DIRECT BOOKING OPTION SELECTION MAPPING (CRITICAL MANDATE):
+  If the user explicitly selects or sends a message choosing a specific booking package or option (e.g. contains "स्प्लिट AC", "विंडो AC", "RO फ़िल्टर", "कम्पलीट RO", "वाशिंग मशीन", "बुक करें", "book", "⚡", "स्प्लिट AC सर्विस बुक करें", "विंडो AC सर्विस बुक करें", "RO फ़िल्टर सर्विस बुक करें", "वाशिंग मशीन सर्विस बुक करें"):
+  1. You MUST NOT ask "यहाँ हमारी उपलब्ध AC सर्विस पैकेज हैं" or return diagnostic questions or package option buttons again!
+  2. You MUST set isReadyToBook to true (unless context.user.role is 'Guest', in which case set isReadyToBook to false).
+  3. You MUST set serviceType appropriately ("AC Repair", "RO Service", "Washing Machine Repair", "Electrician", "Carpenter").
+  4. You MUST set issueDetails to the exact requested package name and price (e.g., "स्प्लिट AC सर्विस (₹770)", "विंडो AC सर्विस (₹599)", "RO फ़िल्टर सर्विस (₹399)", "कम्पलीट RO सर्विसिंग (₹649)", "वाशिंग मशीन सर्विस (₹499)").
+  5. You MUST write nextQuestion strictly in Hindi/Hinglish as:
+     "बहुत बढ़िया! [Package Name] के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     Examples:
+     - "बहुत बढ़िया! स्प्लिट AC सर्विस (₹770) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! विंडो AC सर्विस (₹599) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! RO फ़िल्टर सर्विस (₹399) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! कम्पलीट RO सर्विसिंग (₹649) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+     - "बहुत बढ़िया! वाशिंग मशीन सर्विस (₹499) के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:"
+  6. Do NOT return quickActions array when isReadyToBook is true.
+
 - If user asks about AC cooling / thanda nahi ho raha / paani tapak raha / gas leak:
   - serviceType: "AC Repair", issueDetails: "AC cooling or leakage issue", isReadyToBook: false
   - nextQuestion (in Hinglish/Hindi): "AC me cooling na hone ya paani tapakne ke kai karan ho sakte hain jaise gas leak, dust ya filter block. Aap Zomindia se verified technician turant book kar sakte hain."
@@ -389,23 +405,60 @@ You MUST respond strictly in a single, valid JSON object matching the schema.`,
   let detectedIsReadyToBook = false;
   let quickActionsList: { label: string; action: string }[] | undefined = undefined;
 
-  if (txt.includes("ac") || txt.includes("cooling") || txt.includes("thanda") || txt.includes("thandha") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas") || txt.includes("पानी") || txt.includes("tapak")) {
+  if (txt.includes("स्प्लिट ac") || txt.includes("split ac")) {
+    detectedServiceType = "AC Repair";
+    detectedIssueDetails = "स्प्लिट AC सर्विस (₹770)";
+    if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+      detectedIsReadyToBook = !isGuest;
+    } else {
+      quickActionsList = [
+        { label: "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+        { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+      ];
+    }
+  } else if (txt.includes("विंडो ac") || txt.includes("window ac")) {
+    detectedServiceType = "AC Repair";
+    detectedIssueDetails = "विंडो AC सर्विस (₹599)";
+    if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+      detectedIsReadyToBook = !isGuest;
+    } else {
+      quickActionsList = [
+        { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
+      ];
+    }
+  } else if (txt.includes("ro फ़िल्टर") || txt.includes("ro filter") || txt.includes("कम्पलीट ro") || txt.includes("complete ro") || txt.includes("आरओ")) {
+    detectedServiceType = "RO Service";
+    detectedIssueDetails = txt.includes("कम्पलीट") ? "कम्पलीट RO सर्विसिंग (₹649)" : "RO फ़िल्टर सर्विस (₹399)";
+    if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+      detectedIsReadyToBook = !isGuest;
+    } else {
+      quickActionsList = [
+        { label: "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", action: "RO फ़िल्टर सर्विस बुक करें" },
+        { label: "⚡ कम्पलीट RO सर्विसिंग (₹649)", action: "कम्पलीट RO SERVICE BOOK" }
+      ];
+    }
+  } else if (txt.includes("washing machine") || txt.includes("वाशिंग मशीन")) {
+    detectedServiceType = "Washing Machine Repair";
+    detectedIssueDetails = "वाशिंग मशीन सर्विस (₹499)";
+    if (txt.includes("book") || txt.includes("बुक") || txt.includes("⚡") || txt.includes("सर्विस")) {
+      detectedIsReadyToBook = !isGuest;
+    } else {
+      quickActionsList = [
+        { label: "⚡ वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
+      ];
+    }
+  } else if (txt.includes("ac") || txt.includes("cooling") || txt.includes("thanda") || txt.includes("thandha") || txt.includes("leakage") || txt.includes("noise") || txt.includes("compressor") || txt.includes("gas") || txt.includes("पानी") || txt.includes("tapak")) {
     detectedServiceType = "AC Repair";
     detectedIssueDetails = "AC repair or cooling/leakage issue requested";
-    quickActionsList = isHindiRequest ? [
-      { label: "स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
-      { label: "विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
-    ] : [
-      { label: "Book Split AC Service (₹770)", action: "Book Split AC Service" },
-      { label: "Book Window AC Service (₹599)", action: "Book Window AC Service" }
+    quickActionsList = [
+      { label: "⚡ स्प्लिट AC सर्विस बुक करें (₹770)", action: "स्प्लिट AC सर्विस बुक करें" },
+      { label: "⚡ विंडो AC सर्विस बुक करें (₹599)", action: "विंडो AC सर्विस बुक करें" }
     ];
-  } else if (txt.includes("washing machine") || txt.includes("spin") || txt.includes("drainage") || txt.includes("कपड़े")) {
+  } else if (txt.includes("spin") || txt.includes("drainage") || txt.includes("कपड़े")) {
     detectedServiceType = "Washing Machine Repair";
     detectedIssueDetails = "Washing machine repair requested";
-    quickActionsList = isHindiRequest ? [
-      { label: "वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
-    ] : [
-      { label: "Book Washing Machine Service (₹499)", action: "Book Washing Machine Service" }
+    quickActionsList = [
+      { label: "⚡ वाशिंग मशीन सर्विस बुक करें (₹499)", action: "वाशिंग मशीन सर्विस बुक करें" }
     ];
   } else if (txt.includes("electr") || txt.includes("short circuit") || txt.includes("switch") || txt.includes("wire") || txt.includes("light") || txt.includes("socket") || txt.includes("बिजली")) {
     detectedServiceType = "Electrician";
@@ -416,16 +469,26 @@ You MUST respond strictly in a single, valid JSON object matching the schema.`,
   } else if (txt.includes("ro") || txt.includes("purifier") || txt.includes("filter") || txt.includes("water") || txt.includes("flow") || txt.includes("taste") || txt.includes("फ़िल्टर")) {
     detectedServiceType = "RO Service";
     detectedIssueDetails = "RO water purifier service requested";
-    quickActionsList = isHindiRequest ? [
-      { label: "आरओ फ़िल्टर सर्विस बुक करें (₹399)", action: "आरओ फ़िल्टर सर्विस बुक करें" }
-    ] : [
-      { label: "Book RO Filter Service (₹399)", action: "Book RO Filter Service" }
+    quickActionsList = [
+      { label: "⚡ RO फ़िल्टर सर्विस बुक करें (₹399)", action: "RO फ़िल्टर सर्विस बुक करें" },
+      { label: "⚡ कम्पलीट RO सर्विसिंग (₹649)", action: "कम्पलीट RO SERVICE BOOK" }
     ];
   }
 
-  const replyMessage = isHindiRequest
+  if (txt.includes("book") || txt.includes("बुक") || txt.includes("confirm") || txt.includes("yes") || txt.includes("proceed")) {
+    detectedIsReadyToBook = !isGuest;
+  }
+
+  let replyMessage = isHindiRequest
     ? `नमस्ते ${userName}! मैं ZOMINI हूँ। मैं आपकी ${detectedServiceType !== "Unknown" ? detectedServiceType : "घरेलू समस्या"} में मदद कर सकती हूँ। क्या आप तुरंत टेक्नीशियन बुक करना चाहेंगे?`
     : `Hello ${userName}! I am ZOMINI. I can help with your ${detectedServiceType !== "Unknown" ? detectedServiceType : "home service issue"}. Would you like to schedule a technician now?`;
+
+  if (detectedIsReadyToBook) {
+    replyMessage = `बहुत बढ़िया! ${detectedIssueDetails || "चुनी गई सर्विस"} के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:`;
+    quickActionsList = undefined;
+  } else if (isGuest && (txt.includes("book") || txt.includes("बुक"))) {
+    replyMessage = "मैं आपकी सर्विस बुक करने के लिए तैयार हूँ। कृपया पहले ऊपर दिए गए लॉगिन बटन पर क्लिक करें!";
+  }
 
   return res.status(200).json({
     serviceType: detectedServiceType,

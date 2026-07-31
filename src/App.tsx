@@ -53,6 +53,7 @@ import AuthModal from './components/AuthModal';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
+import ZomatoPageEndMarker, { getPageDisplayName } from './components/ZomatoPageEndMarker';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
@@ -1123,7 +1124,7 @@ export default function App() {
     return null;
   };
 
-  const renderContent = () => {
+  const renderContentInner = () => {
     if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
@@ -1615,6 +1616,21 @@ If you have any billing questions, or if your refund is delayed, please email us
       >
         <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
       </motion.div>
+    );
+  };
+
+  const renderContent = () => {
+    const content = renderContentInner();
+    if (activeTab === 'home' || activeTab === 'admin' || activeTab === 'partner') {
+      return content;
+    }
+    return (
+      <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between">
+        <div className="flex-1 w-full">
+          {content}
+        </div>
+        <ZomatoPageEndMarker pageName={getPageDisplayName(activeTab)} isDark={true} />
+      </div>
     );
   };
 
@@ -2302,7 +2318,8 @@ If you have any billing questions, or if your refund is delayed, please email us
       <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} activeTab={activeTab} />
 
       {/* Footer */}
-      <motion.footer
+      {activeTab === 'home' && (
+        <motion.footer
         initial={{ opacity: 0, y: 15 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
@@ -2423,6 +2440,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           </div>
         </div>
       </motion.footer>
+      )}
       <OfflineSyncIndicator />
 
 

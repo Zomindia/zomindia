@@ -19,7 +19,8 @@ import {
   ArrowRight, 
   CheckCircle2, 
   AlertCircle,
-  ChevronLeft
+  ChevronLeft,
+  MessageCircle
 } from 'lucide-react';
 
 interface Props {
@@ -315,6 +316,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         friendlyMessage = err.message;
       }
       setError(friendlyMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Dispatch WhatsApp OTP
+  const handleWhatsAppOTP = async () => {
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      await fetch('/api/send-whatsapp-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: `+91${cleanPhone}`, otp: generatedOtp })
+      });
+      (window as any).__lastWhatsAppOtp = generatedOtp;
+      setView('otp-entry');
+      setTimer(30);
+    } catch (err: any) {
+      console.error("WhatsApp OTP dispatch error:", err);
+      setError("Failed to dispatch WhatsApp OTP. Trying SMS instead.");
     } finally {
       setLoading(false);
     }
@@ -1018,20 +1046,32 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={loading || phoneNumber.length < 10}
-                    className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 text-sm shadow-[0_12px_24px_-4px_rgba(5,12,166,0.15)]"
-                  >
-                    {loading ? (
-                      <BrandedButtonSpinner className="w-4 h-4" />
-                    ) : (
-                      <>
-                        <span>Send OTP</span>
-                        <ArrowRight size={15} />
-                      </>
-                    )}
-                  </button>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="submit"
+                      disabled={loading || phoneNumber.length < 10}
+                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 text-xs shadow-[0_12px_24px_-4px_rgba(5,12,166,0.15)]"
+                    >
+                      {loading ? (
+                        <BrandedButtonSpinner className="w-4 h-4" />
+                      ) : (
+                        <>
+                          <span>SMS OTP</span>
+                          <ArrowRight size={14} />
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleWhatsAppOTP}
+                      disabled={loading || phoneNumber.length < 10}
+                      className="w-full bg-[#25D366] text-white p-3.5 rounded-2xl font-bold hover:bg-[#20bd5a] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 text-xs shadow-[0_12px_24px_-4px_rgba(37,211,102,0.15)]"
+                    >
+                      <MessageCircle size={15} />
+                      <span>WhatsApp OTP</span>
+                    </button>
+                  </div>
                 </form>
 
                 <p className="text-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">

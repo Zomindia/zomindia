@@ -221,6 +221,53 @@ const maskPhoneNumbers = (text: string): string => {
   return formatted;
 };
 
+// Time slots definition matching main app standards (2-hour advance booking required for Today)
+export const TIME_SLOTS = [
+  { label: "10:00 AM - 12:00 PM", shortLabel: "10:00 AM", startHour: 10, startMin: 0 },
+  { label: "02:00 PM - 04:00 PM", shortLabel: "02:00 PM", startHour: 14, startMin: 0 },
+  { label: "05:00 PM - 07:00 PM", shortLabel: "05:00 PM", startHour: 17, startMin: 0 },
+];
+
+export const getISTNow = (): Date => {
+  const now = new Date();
+  try {
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    return new Date(istString);
+  } catch (e) {
+    return now;
+  }
+};
+
+export const isSlotAvailable = (dateType: "today" | "tomorrow", slotLabel: string): boolean => {
+  if (dateType === "tomorrow") return true;
+
+  const slot = TIME_SLOTS.find((s) => s.label === slotLabel || s.shortLabel === slotLabel);
+  if (!slot) return true;
+
+  const nowIST = getISTNow();
+  const slotTime = new Date(nowIST);
+  slotTime.setHours(slot.startHour, slot.startMin, 0, 0);
+
+  const diffInMs = slotTime.getTime() - nowIST.getTime();
+  const diffInHours = diffInMs / (1000 * 60 * 60);
+
+  // Require at least 2 hours advance booking for Today
+  return diffInHours >= 2;
+};
+
+export const getFirstAvailableSlot = (dateType: "today" | "tomorrow"): string | null => {
+  for (const slot of TIME_SLOTS) {
+    if (isSlotAvailable(dateType, slot.label)) {
+      return slot.label;
+    }
+  }
+  return null;
+};
+
+export const isDateFullyBooked = (dateType: "today" | "tomorrow"): boolean => {
+  return getFirstAvailableSlot(dateType) === null;
+};
+
 const LANGUAGES = [
   { code: "hi-IN", name: "हिंदी (Hindi)", label: "हिं" },
   { code: "en-IN", name: "English (India)", label: "EN" },
@@ -319,8 +366,38 @@ export default function AiSupportChat({
   const [allServices, setAllServices] = useState<any[]>([]);
   const [showBookingSuccess, setShowBookingSuccess] = useState(false);
   const [draftBookings, setDraftBookings] = useState<Record<string, any>>({});
+  const [selectedSlots, setSelectedSlots] = useState<Record<string, { date: string; slot: string }>>({});
+  const [selectedAddresses, setSelectedAddresses] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const updateBookingSlot = (bookingId: string, date: string, slot: string) => {
+    setSelectedSlots((prev) => ({ ...prev, [bookingId]: { date, slot } }));
+    setDraftBookings((prev) => {
+      const existing = prev[bookingId] || {};
+      return {
+        ...prev,
+        [bookingId]: {
+          ...existing,
+          scheduledSlot: `${date === "today" ? "Today" : "Tomorrow"}, ${slot}`
+        }
+      };
+    });
+  };
+
+  const updateBookingAddress = (bookingId: string, address: string) => {
+    setSelectedAddresses((prev) => ({ ...prev, [bookingId]: address }));
+    setDraftBookings((prev) => {
+      const existing = prev[bookingId] || {};
+      return {
+        ...prev,
+        [bookingId]: {
+          ...existing,
+          address
+        }
+      };
+    });
+  };
 
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -815,6 +892,150 @@ export default function AiSupportChat({
     });
   }, [userProfile, localBookings, isPartner]);
 
+  const handleInlineLogin = (pendingPackageText?: string) => {
+    if (pendingPackageText) {
+      try {
+        sessionStorage.setItem("zomini_pending_booking_action", pendingPackageText);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    saveContextBeforeLogin();
+    window.dispatchEvent(new CustomEvent("open-auth-modal"));
+  };
+
+  const triggerDirectBookingFlow = (actionText: string, currentUser: UserProfile) => {
+    let packageName = "स्प्लिट AC सर्विस (₹770)";
+    let detectedType = "AC Repair";
+
+    const textCheck = actionText.toLowerCase();
+
+    if (textCheck.includes("स्प्लिट") || textCheck.includes("split")) {
+      packageName = "स्प्लिट AC सर्विस (₹770)";
+      detectedType = "AC Repair";
+    } else if (textCheck.includes("विंडो") || textCheck.includes("window")) {
+      packageName = "विंडो AC सर्विस (₹599)";
+      detectedType = "AC Repair";
+    } else if (textCheck.includes("कम्पलीट ro") || textCheck.includes("complete ro")) {
+      packageName = "कम्पलीट RO सर्विसिंग (₹649)";
+      detectedType = "RO Service";
+    } else if (textCheck.includes("ro") || textCheck.includes("आरओ") || textCheck.includes("फ़िल्टर") || textCheck.includes("filter")) {
+      packageName = "RO फ़िल्टर सर्विस (₹399)";
+      detectedType = "RO Service";
+    } else if (textCheck.includes("वाशिंग") || textCheck.includes("washing")) {
+      packageName = "वाशिंग मशीन सर्विस (₹499)";
+      detectedType = "Washing Machine Repair";
+    } else {
+      packageName = actionText.replace(/⚡/g, "").trim() || "होम सर्विस पैकेज (₹195)";
+    }
+
+    let matchedService = allServices.find(s => 
+      s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
+      detectedType.toLowerCase().includes(s.name?.toLowerCase() || "") ||
+      (detectedType.toLowerCase().includes("ac") && s.name?.toLowerCase().includes("ac")) ||
+      (detectedType.toLowerCase().includes("washing") && s.name?.toLowerCase().includes("washing")) ||
+      (detectedType.toLowerCase().includes("ro") && s.name?.toLowerCase().includes("ro"))
+    );
+
+    if (!matchedService) {
+      matchedService = {
+        id: `service_${detectedType.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+        name: detectedType,
+        basePrice: 195,
+        categoryId: "cat_home_service"
+      };
+    }
+
+    const resolvedServiceId = matchedService.id;
+    const activeUid = currentUser.uid;
+    const resolvedFullName = currentUser.fullName || currentUser.displayName || "Customer";
+    const resolvedMobile = currentUser.mobile || currentUser.phoneNumber || "9876543210";
+    const resolvedEmail = currentUser.email || "";
+    const serviceOtp = String(Math.floor(1000 + Math.random() * 9000));
+
+    const draftBookingId = `ZOM_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const defaultDate = isDateFullyBooked("today") ? "tomorrow" : "today";
+    const defaultSlot = getFirstAvailableSlot(defaultDate as any) || "10:00 AM - 12:00 PM";
+    const initialScheduledSlot = `${defaultDate === "today" ? "Today" : "Tomorrow"}, ${defaultSlot}`;
+
+    setSelectedSlots((prev) => ({
+      ...prev,
+      [draftBookingId]: { date: defaultDate, slot: defaultSlot }
+    }));
+
+    const bookingPayload = {
+      customerUid: activeUid,
+      userId: activeUid,
+      customerId: activeUid,
+      serviceId: resolvedServiceId,
+      serviceType: packageName,
+      issueDetails: packageName,
+      visitationFee: 195,
+      totalPrice: 195,
+      status: "pending_checkout",
+      paymentStatus: "unpaid",
+      paymentMethod: "cash",
+      scheduledSlot: initialScheduledSlot,
+      scheduledAt: Timestamp.now(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      address: (currentUser as any)?.address || "Indore (Zomindia Service Area)",
+      customerBookedEmail: resolvedEmail,
+      customerBookedPhone: resolvedMobile,
+      customerBookedName: resolvedFullName,
+      customerName: resolvedFullName,
+      customerMobile: resolvedMobile,
+      customerData: {
+        fullName: resolvedFullName,
+        mobile: resolvedMobile,
+        email: resolvedEmail
+      },
+      otpVerified: false,
+      serviceOtp
+    };
+
+    const fullDraftBooking = { id: draftBookingId, ...bookingPayload };
+
+    setDraftBookings((prev) => ({
+      ...prev,
+      [draftBookingId]: fullDraftBooking
+    }));
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        text: `बहुत बढ़िया! ${packageName} के लिए अपना स्लॉट चुनें:`,
+        bookingData: fullDraftBooking,
+        quickActions: undefined
+      }
+    ]);
+  };
+
+  // Auto-resume pending booking after login/OTP verification
+  useEffect(() => {
+    if (!userProfile) return;
+
+    let pendingAction = "";
+    try {
+      pendingAction = sessionStorage.getItem("zomini_pending_booking_action") || "";
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (pendingAction) {
+      try {
+        sessionStorage.removeItem("zomini_pending_booking_action");
+      } catch (e) {
+        console.warn(e);
+      }
+
+      setIsOpen(true);
+      triggerDirectBookingFlow(pendingAction, userProfile);
+    }
+  }, [userProfile?.uid, allServices]);
+
   // Direct sending helper for suggest clicks to bypass multiple fields
   const sendQueryDirectly = async (displayText: string, queryActionOverride?: string) => {
     if (isSubmitting || isLoading) return;
@@ -830,10 +1051,60 @@ export default function AiSupportChat({
 
     // Always render the exact text of the clicked button/pill on the screen
     setMessages((prev) => [...prev, { role: "user", text: displayText }]);
-    setIsLoading(true);
 
-    // Send exact display text (or override) to maintain language consistency in chat stream
-    const queryToSend = displayText;
+    const queryToSend = queryActionOverride || displayText;
+    const isBookingAction =
+      queryToSend.includes("बुक") ||
+      queryToSend.includes("Book") ||
+      queryToSend.includes("book") ||
+      queryToSend.includes("⚡") ||
+      displayText.includes("बुक") ||
+      displayText.includes("Book") ||
+      displayText.includes("book") ||
+      displayText.includes("⚡");
+
+    if (isBookingAction) {
+      if (!userProfile) {
+        let packageName = "स्प्लिट AC सर्विस (₹770)";
+        const textCheck = (queryToSend + " " + displayText).toLowerCase();
+
+        if (textCheck.includes("स्प्लिट") || textCheck.includes("split")) {
+          packageName = "स्प्लिट AC सर्विस (₹770)";
+        } else if (textCheck.includes("विंडो") || textCheck.includes("window")) {
+          packageName = "विंडो AC सर्विस (₹599)";
+        } else if (textCheck.includes("कम्पलीट ro") || textCheck.includes("complete ro")) {
+          packageName = "कम्पलीट RO सर्विसिंग (₹649)";
+        } else if (textCheck.includes("ro") || textCheck.includes("आरओ") || textCheck.includes("फ़िल्टर") || textCheck.includes("filter")) {
+          packageName = "RO फ़िल्टर सर्विस (₹399)";
+        } else if (textCheck.includes("वाशिंग") || textCheck.includes("washing")) {
+          packageName = "वाशिंग मशीन सर्विस (₹499)";
+        } else {
+          packageName = displayText.replace(/⚡/g, "").trim() || "होम सर्विस पैकेज (₹195)";
+        }
+
+        try {
+          sessionStorage.setItem("zomini_pending_booking_action", displayText);
+        } catch (e) {
+          console.warn(e);
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: `मैं आपकी ${packageName} बुक करने के लिए तैयार हूँ। कृपया सर्विस कन्फर्म करने के लिए अभी लॉगिन करें:`,
+            showLoginBtn: true,
+            pendingPackage: displayText
+          }
+        ]);
+        return;
+      }
+
+      triggerDirectBookingFlow(displayText, userProfile);
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const res = await fetch("/api/support-chat", {
@@ -904,7 +1175,7 @@ export default function AiSupportChat({
               userId: activeUid,
               customerId: activeUid,
               serviceId: resolvedServiceId,
-              serviceType: matchedService.name,
+              serviceType: data.issueDetails || matchedService.name,
               issueDetails: data.issueDetails || "Zomini Diagnosed Issue",
               visitationFee: 195,
               totalPrice: 195,
@@ -933,13 +1204,18 @@ export default function AiSupportChat({
             const draftBookingId = `ZOM_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
             const fullDraftBooking = { id: draftBookingId, ...bookingPayload };
 
+            setDraftBookings((prev) => ({
+              ...prev,
+              [draftBookingId]: fullDraftBooking
+            }));
+
             setMessages((prev) => [
               ...prev,
               {
                 role: "ai",
-                text: data.nextQuestion || "Your booking details are ready! Please choose your preferred payment option below to confirm:",
+                text: data.nextQuestion || "बहुत बढ़िया! चुनी गई सर्विस के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:",
                 bookingData: fullDraftBooking,
-                quickActions: data.quickActions || undefined
+                quickActions: undefined
               },
             ]);
             return;
@@ -1202,44 +1478,166 @@ export default function AiSupportChat({
                     {/* Private masked telephone data rendered defensively */}
                     {(msg as any).bookingData ? (
                       (msg as any).bookingData.status === "pending_checkout" ? (
-                        <div className="bg-slate-50 border border-indigo-200 rounded-xl p-3.5 shadow-md space-y-3 relative overflow-hidden text-left">
+                        <div className="bg-slate-50 border border-indigo-200 rounded-xl p-3 shadow-md space-y-2.5 relative overflow-hidden text-left">
                           {/* Pulsing subtle background indicator */}
                           <div className="absolute top-0 right-0 -mr-4 -mt-4 w-16 h-16 bg-indigo-100/60 rounded-full blur-xl animate-pulse"></div>
 
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-5.5 h-5.5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
-                              💳
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                                ⚡
+                              </div>
+                              <span className="font-extrabold text-indigo-900 text-[11px] uppercase tracking-wider">डायरेक्ट बुक करें (Direct Booking)</span>
                             </div>
-                            <span className="font-extrabold text-indigo-900 text-xs uppercase tracking-wider">Confirm Your Booking</span>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full">
+                              ₹{(msg as any).bookingData.visitationFee || 195} Inspection
+                            </span>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 bg-white/80 backdrop-blur-xs p-2 rounded-lg border border-indigo-100/60">
+                          <div className="bg-white p-2 rounded-lg border border-indigo-100 space-y-2">
                             <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Service</p>
-                              <p className="text-[11px] font-black text-slate-800 leading-tight">{(msg as any).bookingData.serviceType}</p>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">चुनी गई सर्विस पैकेज</p>
+                              <p className="text-[11.5px] font-black text-slate-900">
+                                {(msg as any).bookingData.issueDetails || (msg as any).bookingData.serviceType}
+                              </p>
                             </div>
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Inspection Fee</p>
-                              <p className="text-[11.5px] font-black text-emerald-600">₹{(msg as any).bookingData.visitationFee}</p>
+
+                            {/* Slot Selection */}
+                            <div className="pt-1.5 border-t border-slate-100 space-y-1">
+                              <span className="text-[9.5px] font-extrabold text-slate-700 block">📅 टाइम व स्लॉट चुनें (Choose Slot):</span>
+                              
+                              {(() => {
+                                const bookingId = (msg as any).bookingData.id;
+                                const todayFullyBooked = isDateFullyBooked("today");
+                                const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
+                                const curDate = selectedSlots[bookingId]?.date || defaultDateVal;
+                                const curSlot = selectedSlots[bookingId]?.slot || getFirstAvailableSlot(curDate as any) || "";
+
+                                return (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-1">
+                                      {["today", "tomorrow"].map((dVal) => {
+                                        const isToday = dVal === "today";
+                                        const isSel = curDate === dVal;
+                                        const isFull = isToday && todayFullyBooked;
+                                        const labelText = isToday ? (isFull ? "आज (Full)" : "आज (Today)") : "कल (Tomorrow)";
+
+                                        return (
+                                          <button
+                                            key={dVal}
+                                            type="button"
+                                            onClick={() => {
+                                              if (isToday && isFull) {
+                                                updateBookingSlot(bookingId, "today", "");
+                                                return;
+                                              }
+                                              const nextSlot = isToday
+                                                ? (isSlotAvailable("today", curSlot) ? curSlot : (getFirstAvailableSlot("today") || ""))
+                                                : (curSlot || "10:00 AM - 12:00 PM");
+                                              updateBookingSlot(bookingId, dVal, nextSlot);
+                                            }}
+                                            className={`py-1 px-1.5 rounded-md text-[10px] font-extrabold transition-all border cursor-pointer ${
+                                              isSel
+                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                                : isFull
+                                                ? "bg-slate-100 text-slate-400 border-slate-200"
+                                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                                            }`}
+                                          >
+                                            {labelText}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {curDate === "today" && todayFullyBooked && (
+                                      <p className="text-[9px] font-bold text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 text-center leading-tight">
+                                        ⚠️ आज के सभी स्लॉट समाप्त हो चुके हैं। केवल 'कल (Tomorrow)' का स्लॉट उपलब्ध है।
+                                      </p>
+                                    )}
+
+                                    <div className="grid grid-cols-3 gap-1 pt-0.5">
+                                      {TIME_SLOTS.map((slotObj, tIdx) => {
+                                        const isAvail = isSlotAvailable(curDate as any, slotObj.label);
+                                        const isSelected = isAvail && curSlot === slotObj.label;
+
+                                        return (
+                                          <button
+                                            key={tIdx}
+                                            type="button"
+                                            disabled={!isAvail}
+                                            onClick={() => {
+                                              if (isAvail) {
+                                                updateBookingSlot(bookingId, curDate, slotObj.label);
+                                              }
+                                            }}
+                                            className={`py-1 px-0.5 text-center rounded-md text-[9px] font-bold border transition-all cursor-pointer ${
+                                              !isAvail
+                                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 line-through"
+                                                : isSelected
+                                                ? "bg-emerald-600 text-white border-emerald-600 font-black shadow-xs ring-2 ring-emerald-300 ring-offset-1"
+                                                : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            {slotObj.shortLabel}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Service Address Input */}
+                            <div className="pt-1.5 border-t border-slate-100">
+                              <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block mb-0.5">📍 सर्विस एड्रेस (Address)</span>
+                              <input
+                                type="text"
+                                value={selectedAddresses[(msg as any).bookingData.id] ?? ((msg as any).bookingData.address || "Indore (Zomindia Service Area)")}
+                                onChange={(e) => updateBookingAddress((msg as any).bookingData.id, e.target.value)}
+                                className="w-full text-[10.5px] font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:border-indigo-500"
+                                placeholder="Enter address in Indore"
+                              />
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-1.5 pt-1">
-                            <button
-                              onClick={() => handlePayOnline((msg as any).bookingData.id)}
-                              disabled={isSubmitting}
-                              className={`w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5 ${isSubmitting ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}
-                            >
-                              <span>{isSubmitting ? "Processing..." : "Pay Online ₹195 (UPI/Card)"}</span>
-                            </button>
-                            <button
-                              onClick={() => handlePayAfterService((msg as any).bookingData.id)}
-                              disabled={isSubmitting}
-                              className={`w-full bg-white hover:bg-slate-50 border border-slate-200 active:scale-95 text-slate-700 font-extrabold text-[11px] py-2 px-3 rounded-lg transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${isSubmitting ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}
-                            >
-                              <span>{isSubmitting ? "Processing..." : "Pay After Service (Cash/UPI)"}</span>
-                            </button>
-                          </div>
+                          {(() => {
+                            const bookingId = (msg as any).bookingData.id;
+                            const todayFullyBooked = isDateFullyBooked("today");
+                            const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
+                            const curDate = selectedSlots[bookingId]?.date || defaultDateVal;
+                            const curSlot = selectedSlots[bookingId]?.slot || getFirstAvailableSlot(curDate as any) || "";
+                            const isValidSlotSelected = Boolean(curSlot && isSlotAvailable(curDate as any, curSlot));
+
+                            return (
+                              <div className="flex flex-col gap-1.5 pt-0.5">
+                                {!isValidSlotSelected && (
+                                  <p className="text-[9.5px] font-bold text-amber-600 text-center leading-tight py-0.5">
+                                    ⚠️ कृपया ऊपर से एक सक्रिय टाइम स्लॉट चुनें
+                                  </p>
+                                )}
+                                <button
+                                  onClick={() => handlePayAfterService(bookingId)}
+                                  disabled={isSubmitting || !isValidSlotSelected}
+                                  className={`w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] py-2 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
+                                  }`}
+                                >
+                                  <span>{isSubmitting ? "Processing..." : "⚡ तुरंत बुक करें (Pay After Service)"}</span>
+                                </button>
+                                <button
+                                  onClick={() => handlePayOnline(bookingId)}
+                                  disabled={isSubmitting || !isValidSlotSelected}
+                                  className={`w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[10.5px] py-1.5 px-3 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
+                                  }`}
+                                >
+                                  <span>{isSubmitting ? "Processing..." : "Pay Online ₹195 (UPI/Card)"}</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 shadow-sm space-y-2.5 relative overflow-hidden text-left">
@@ -1289,6 +1687,18 @@ export default function AiSupportChat({
                     ) : (
                       <div>
                         <div>{maskPhoneNumbers(msg.text)}</div>
+                        {((msg as any).showLoginBtn || (msg.role === "ai" && (msg.text.includes("लॉगिन") || msg.text.includes("Login") || msg.text.includes("login")))) && !userProfile && (
+                          <div className="mt-3 pt-2 border-t border-slate-100">
+                            <button
+                              onClick={() => {
+                                handleInlineLogin((msg as any).pendingPackage || msg.text);
+                              }}
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11.5px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <span>🔐 अभी मोबाइल नंबर से लॉगिन करें (OTP)</span>
+                            </button>
+                          </div>
+                        )}
                         {(msg as any).quickActions && (msg as any).quickActions.length > 0 && (
                           <div className="flex flex-col gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
                             {(msg as any).quickActions.map((btn: any, bIdx: number) => (
@@ -1303,20 +1713,6 @@ export default function AiSupportChat({
                             ))}
                           </div>
                         )}
-                      </div>
-                    )}
-                    {msg.role === "ai" && msg.text.includes("Please click the Login button") && (
-                      <div className="mt-3">
-                        <button
-                          onClick={() => {
-                            saveContextBeforeLogin();
-                            setIsOpen(false);
-                            window.dispatchEvent(new CustomEvent("open-auth-modal"));
-                          }}
-                          className="w-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black py-2 px-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer text-center block animate-pulse"
-                        >
-                          Click Here to Login / Sign Up
-                        </button>
                       </div>
                     )}
                   </div>

@@ -1234,7 +1234,7 @@ export default function ProfileSettings({
   };
 
   return (
-    <div className="fixed inset-0 z-50 min-h-screen h-full w-full bg-[#0a2540] overflow-y-auto">
+    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between">
       {/* Absolute Back Header inside our full screen layout */}
       <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
         <button

@@ -47,6 +47,7 @@ import ReferralLifecycleManager from "./ReferralLifecycleManager";
 import ChatWindow from "./ChatWindow";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import UnifiedKYCForm from "./partner/UnifiedKYCForm";
+import UnassignedJobDispatcher from "./UnassignedJobDispatcher";
 import {
   triggerTelephonyBridge,
   CORPORATE_LANDLINE_GATEWAY,
@@ -71,6 +72,7 @@ import {
   XCircle,
   Clock,
   UserPlus,
+  UserCheck,
   Lock,
   MapPin,
   Tag,
@@ -118,6 +120,7 @@ import { LogoHorizontal, LogoIcon } from "./BrandLogo";
 
 type AdminTab =
   | "overview"
+  | "unassigned-dispatch"
   | "analytics"
   | "bookings"
   | "categories"
@@ -892,6 +895,7 @@ export default function AdminDashboard({
   const sidebarItems: { id: AdminTab; icon: any; label: string }[] = (
     [
       { id: "overview", icon: LayoutDashboard, label: "Overview" },
+      { id: "unassigned-dispatch", icon: UserCheck, label: "Unassigned Jobs & Dispatch" },
       { id: "analytics", icon: BarChart3, label: "Analytics" },
       { id: "bookings", icon: FileText, label: "Bookings" },
       { id: "categories", icon: Tag, label: "Categories" },
@@ -2019,6 +2023,15 @@ export default function AdminDashboard({
                   );
                 })()}
 
+              {activeAdminTab === "unassigned-dispatch" && (
+                <UnassignedJobDispatcher
+                  bookings={bookings}
+                  partners={partners}
+                  users={users}
+                  services={services}
+                  categories={categories}
+                />
+              )}
               {activeAdminTab === "analytics" &&
                 isAdminAuthorized("analytics") && (
                   <AnalyticsView

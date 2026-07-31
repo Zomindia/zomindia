@@ -28,6 +28,7 @@ import PaymentModal from "./PaymentModal";
 import { QRCodeSVG } from "qrcode.react";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
+import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
 import BookingModal from "./BookingModal";
@@ -4452,6 +4453,7 @@ export default function CustomerHome({
           </motion.div>
         )}
       </AnimatePresence>
+      <ZomatoPageEndMarker pageName="Zomindia Home" isDark={false} />
       <PWAUpdateRegister />
     </div>
   );
