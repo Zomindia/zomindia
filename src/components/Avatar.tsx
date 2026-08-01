@@ -51,28 +51,28 @@ export default function Avatar({
       )}
 
       {/* Inner Image/Fallback container (keeps face photo 100% sharp and clear) */}
-      <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-900 flex items-center justify-center z-20">
+      <div className="relative w-full h-full rounded-full overflow-hidden bg-white flex items-center justify-center z-20">
         {isValidPhoto ? (
           <img
             src={photoURL!}
             alt={displayName || "Avatar"}
-            className="w-full h-full object-cover rounded-full"
+            className="w-full h-full object-cover rounded-full bg-white"
             referrerPolicy="no-referrer"
           />
         ) : isPartnerRole ? (
           /* Partner fallback: Default to ZomIndia Logo Icon */
-          <div className="w-full h-full bg-slate-950 flex items-center justify-center p-1">
+          <div className="w-full h-full bg-white flex items-center justify-center p-1">
             <img
               src={LogoIcon}
               alt="Partner Logo"
-              className="w-full h-full object-contain rounded-full"
+              className="w-full h-full object-contain rounded-full bg-white"
               referrerPolicy="no-referrer"
             />
           </div>
         ) : (
           /* Customer fallback: Default Customer Avatar */
-          <div className="w-full h-full bg-gradient-to-br from-emerald-600 to-teal-800 text-white flex items-center justify-center font-black text-xs uppercase tracking-wider">
-            {displayName ? displayName.trim().slice(0, 2).toUpperCase() : <User size={16} className="text-white/90" />}
+          <div className="w-full h-full bg-white text-emerald-700 flex items-center justify-center font-black text-xs uppercase tracking-wider border border-emerald-100">
+            {displayName ? displayName.trim().slice(0, 2).toUpperCase() : <User size={16} className="text-emerald-700" />}
           </div>
         )}
       </div>

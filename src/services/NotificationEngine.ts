@@ -133,7 +133,7 @@ export async function dispatchAutomatedWhatsAppAlert(
   switch (type) {
     case 'booking_received':
       templateName = 'zom_cust_booking_confirmed';
-      messageText = `Namaste ${name}, your zomindia booking is confirmed! We are matching a verified professional, standard service starts at ₹${params.price || '499'}. Tracking link: https://zomindia.com/track/${params.bookingId || 'new'}`;
+      messageText = `Namaste ${name}, your booking with Zomindia Internet Technology is confirmed! We are matching a verified professional, standard service starts at ₹${params.price || '499'}. Tracking link: https://zomindia.com/track/${params.bookingId || 'new'}`;
       break;
     case 'partner_assigned':
       templateName = 'zom_cust_partner_assigned';
@@ -434,7 +434,7 @@ export const NotificationEngine = {
     await sendNotification(
       data.customerId,
       'Booking Finalized',
-      'Payment received. Thank you for choosing zomindia!',
+      'Payment received. Thank you for choosing Zomindia Internet Technology!',
       'payment_received',
       data.bookingId
     );

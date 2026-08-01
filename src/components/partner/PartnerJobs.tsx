@@ -1938,7 +1938,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                     )}
                     <button 
                       onClick={() => {
-                        const upiUrl = `upi://pay?pa=zomindia@oksbi&pn=ZomatoHomeServices&am=${booking.totalPrice}&cu=INR&tn=Invoice_${booking.id.slice(-6).toUpperCase()}`;
+                        const upiUrl = `upi://pay?pa=zomindia@oksbi&pn=ZomindiaInternetTechnology&am=${booking.totalPrice}&cu=INR&tn=Invoice_${booking.id.slice(-6).toUpperCase()}`;
                         setPartnerQRValue(upiUrl);
                         setShowPartnerQRId(showPartnerQRId === booking.id ? null : booking.id);
                       }}

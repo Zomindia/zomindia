@@ -697,7 +697,9 @@ async function startServer() {
       });
 
       // PDF Content (mirrors the original PDFKit logic in server.ts but adapted for invoice downloading)
-      docPdf.fontSize(24).font('Helvetica-Bold').text("INVOICE / BILL", { align: "center", underline: true });
+      docPdf.fontSize(18).font('Helvetica-Bold').text("Zomindia Internet Technology", { align: "center" });
+      docPdf.moveDown(0.3);
+      docPdf.fontSize(14).font('Helvetica-Bold').text("TAX INVOICE / SERVICE BILL", { align: "center", underline: true });
       docPdf.moveDown();
       docPdf.fontSize(12).font('Helvetica').text(`Invoice Reference: INV-${(bookingId as string).slice(0, 8).toUpperCase()}`);
       
@@ -748,7 +750,7 @@ async function startServer() {
       docPdf.moveDown();
       docPdf.fontSize(16).font('Helvetica-Bold').text(`Grand Total Paid: ₹${bookingData.totalPrice}`);
       docPdf.moveDown(2);
-      docPdf.fontSize(10).font('Helvetica-Oblique').text("Thank you for using zomindia! Generated electronically.", { align: "center" });
+      docPdf.fontSize(10).font('Helvetica-Bold').text("Thank you for choosing Zomindia Internet Technology! Generated electronically.", { align: "center" });
       
       docPdf.end();
       const pdfBuffer = await pdfBufferPromise;
@@ -806,7 +808,9 @@ async function startServer() {
       });
 
       // PDF Content
-      docPdf.fontSize(25).text("FINAL BILL", { align: "center" });
+      docPdf.fontSize(18).font('Helvetica-Bold').text("Zomindia Internet Technology", { align: "center" });
+      docPdf.moveDown(0.3);
+      docPdf.fontSize(14).font('Helvetica-Bold').text("FINAL BILL & RECEIPT", { align: "center" });
       docPdf.moveDown();
       docPdf.fontSize(12).text(`Booking ID: ${bookingId}`);
       docPdf.text(`Date: ${bookingData.scheduledAt?.toDate?.()?.toLocaleDateString() || new Date(bookingData.scheduledAt._seconds * 1000).toLocaleDateString()}`);
@@ -845,10 +849,10 @@ async function startServer() {
       });
 
       const mailOptions = {
-        from: process.env.SMTP_FROM || '"zomindia Billing" <billing@zomindia.com>',
+        from: process.env.SMTP_FROM || '"Zomindia Internet Technology Billing" <billing@zomindia.com>',
         to: userData.email,
-        subject: `Final Bill for Booking #${bookingId.slice(0, 8).toUpperCase()}`,
-        text: `Hello ${userData.displayName},\n\nPlease find your final bill for booking #${bookingId} attached.\n\nTotal Paid: ₹${bookingData.totalPrice}\n\nThank you for choosing zomindia!`,
+        subject: `Final Bill for Booking #${bookingId.slice(0, 8).toUpperCase()} - Zomindia Internet Technology`,
+        text: `Hello ${userData.displayName},\n\nPlease find your final bill from Zomindia Internet Technology for booking #${bookingId} attached.\n\nTotal Paid: ₹${bookingData.totalPrice}\n\nThank you for choosing Zomindia Internet Technology!`,
         attachments: [
           {
             filename: `bill_${bookingId}.pdf`,
@@ -893,7 +897,7 @@ async function startServer() {
       }
 
       // 3. Send Push Notification (SMS simulation or log)
-      const message = `Hello ${userData.displayName}, your bill for booking #${bookingId.slice(0, 8).toUpperCase()} of amount ₹${bookingData.totalPrice} has been sent to your email. Team zomindia.`;
+      const message = `Hello ${userData.displayName}, your bill for booking #${bookingId.slice(0, 8).toUpperCase()} of amount ₹${bookingData.totalPrice} has been sent to your email. Team Zomindia Internet Technology.`;
       
       if (process.env.SMS_API_KEY && userData.phoneNumber) {
         try {

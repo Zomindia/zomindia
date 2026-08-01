@@ -172,11 +172,8 @@ export default function ProfileSettings({
   }, []);
 
   useEffect(() => {
-    // Body scroll lock active profile sheet
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "unset";
-    };
+    // Standard page scroll retention for profile section
+    return () => {};
   }, []);
 
   // Security OTP Interceptor for basic information / delivery parameters editing

@@ -97,7 +97,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         key: RAZORPAY_KEY_ID,
         amount: order.amount,
         currency: order.currency,
-        name: "zomindia",
+        name: "Zomindia Internet Technology",
         description: `Service Booking: ${booking.serviceId}`,
         order_id: order.id,
         handler: async function (response: any) {

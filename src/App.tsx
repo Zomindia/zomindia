@@ -54,6 +54,8 @@ import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
 import ZomatoPageEndMarker, { getPageDisplayName } from './components/ZomatoPageEndMarker';
+import AboutUs from './components/AboutUs';
+import Footer from './components/Footer';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
@@ -143,7 +145,7 @@ function isVersionHigher(newVer: string, oldVer: string): boolean {
 
 export type ActiveTabType = 'home' | 'bookings' | 'profile' | 'admin' | 'partner' | 'partner-signup' | 'about' | 'contact' | 'help' | 'terms' | 'privacy' | 'refund' | 'service-details' | 'notifications' | 'offers' | 'tickets' | 'wallet' | 'amcs' | 'referrals';
 
-export const getTabFromUrl = (): ActiveTabType => {
+export const getTabFromUrl = (): ActiveTabType | null => {
   if (typeof window === 'undefined') return 'home';
   const path = window.location.pathname;
   if (path === '/about-us') return 'about';
@@ -160,7 +162,18 @@ export const getTabFromUrl = (): ActiveTabType => {
   if (hash === 'terms-and-conditions' || hash === 'terms-of-service' || hash === 'terms') return 'terms';
   if (hash === 'refund-policy' || hash === 'cancellation-and-refund' || hash === 'refund') return 'refund';
   if (hash === 'help-center' || hash === 'help') return 'help';
-  return (hash as ActiveTabType) || 'home';
+
+  const validTabs: ActiveTabType[] = [
+    'home', 'bookings', 'profile', 'admin', 'partner', 'partner-signup',
+    'about', 'contact', 'help', 'terms', 'privacy', 'refund',
+    'service-details', 'notifications', 'offers', 'tickets', 'wallet', 'amcs', 'referrals'
+  ];
+
+  if (validTabs.includes(hash as ActiveTabType)) {
+    return hash as ActiveTabType;
+  }
+
+  return null;
 };
 
 export default function App() {
@@ -198,7 +211,13 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
-  const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => getTabFromUrl());
+  const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => {
+    const urlTab = getTabFromUrl();
+    if (urlTab) return urlTab;
+    const savedTab = localStorage.getItem('zomindia_last_active_tab') as ActiveTabType | null;
+    if (savedTab) return savedTab;
+    return 'home';
+  });
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -445,7 +464,9 @@ export default function App() {
   useEffect(() => {
     const handleUrlChange = () => {
       const tab = getTabFromUrl();
-      setActiveTabState(tab);
+      if (tab) {
+        setActiveTabState(tab);
+      }
     };
 
     const isStandalone =
@@ -1137,112 +1158,7 @@ export default function App() {
     // Public SEO/Footer Pages accessible without authentication
     if (['about', 'contact', 'help', 'terms', 'privacy', 'refund'].includes(activeTab)) {
       if (activeTab === 'about') {
-        return (
-          <StaticPage
-            title="About us"
-            content={`Welcome to Zomindia! We are Indore's most loved app for on-demand home services and laundry. Officially registered as ${COMPANY_NAME}, we are based right here in Indore, MP, INDIA. Our goal is simple: to make your life easy. Whether you need deep home cleaning, laundry and dry cleaning, plumbing, repairs, or appliance maintenance, we bring skilled, verified professionals straight to your doorstep.
-
-Our brand, Zomindia, is built upon a simple promise: providing absolute trust, high-quality work, and complete safety with instant, secure OTP-based logins. We recognize that your home or business is sacred, which is why we meticulously train, verify, and monitor every service partner. No compromises, no hidden charges, and absolute on-time execution every single day.
-
-Our Mission
-At ${COMPANY_NAME}, our mission is to make home services simple and reliable. By supporting local service providers with technology, safety guidelines, and professional training, we help them earn better while giving you an unmatched, hassle-free booking experience. We strive to make laundry, cleaning, painting, and repairs as simple as turning on a faucet.
-
-Why Choose Us?
-• 100% Safe & Trusted: Every helper is background-checked and professionally trained. All logins and bookings are secured with instant mobile OTPs.
-• Gold Standard Quality: We use safe, eco-friendly cleaning detergents and professional equipment to make sure you get premium results for your laundry, cleaning, and repairs.
-• Always On Time: We respect your time. If our professional partner gets delayed, we'll track them live and make it up to you.
-• Proudly Indore-First: Being based in Indore, MP, INDIA, we understand Indori homes, garments care, and local needs perfectly!`}
-            onBack={() => setActiveTab('home')}
-          >
-            {/* Team Leadership Section */}
-            <div className="mt-16 border-t border-slate-100 pt-16">
-              <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">Meet Our Leadership</h2>
-              <p className="text-slate-500 mb-10 text-base max-w-xl">
-                Our core team in Indore drives operational excellence, tech coordination, and robust partner management to deliver flawless home services daily.
-              </p>
-
-              <div className="grid grid-cols-1 gap-8 md:gap-10">
-                {/* Member 1: Ranu */}
-                <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
-                  {/* Image Column */}
-                  <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
-                    <img
-                      src={teamMember1Img}
-                      alt="Ranu - Head in charge management"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
-                  </div>
-
-                  {/* Details Column */}
-                  <div className="flex-1 space-y-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                        <h3 className="text-2xl font-bold text-slate-900">Ranu</h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 27</span>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
-                      </div>
-                      <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Head in charge management</p>
-                    </div>
-
-                    <p className="text-slate-600 text-base leading-relaxed">
-                      A dynamic leader with a strong track record in operations, Ranu oversees our service quality assurance, scheduling integrity, and partner coordination programs, ensuring seamless service delivery across Central India.
-                    </p>
-
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                      <span>Department: Operations &amp; Management</span>
-                      <span>•</span>
-                      <span>Indore HQ</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Member 2: Vikass Chopra */}
-                <div className="bg-slate-50/60 rounded-3xl border border-slate-100/85 p-6 sm:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start hover:border-blue-100 hover:shadow-lg hover:shadow-slate-100/50 transition-all duration-300">
-                  {/* Image Column */}
-                  <div className="w-full md:w-44 h-56 sm:h-64 md:h-44 shrink-0 rounded-2xl overflow-hidden bg-slate-200 relative group shadow-sm">
-                    <img
-                      src={teamMember2Img}
-                      alt="Vikass Chopra - Chief Incharge"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=400";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-60 md:hidden" />
-                  </div>
-
-                  {/* Details Column */}
-                  <div className="flex-1 space-y-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                        <h3 className="text-2xl font-bold text-slate-900">Vikass Chopra</h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 text-slate-700">Age: 35</span>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Indore</span>
-                      </div>
-                      <p className="text-blue-700 font-bold uppercase tracking-wider text-xs">Chief Incharge</p>
-                    </div>
-
-                    <p className="text-slate-600 text-base leading-relaxed">
-                      With over a decade of hands-on expertise in field services and customer experience management, Vikass orchestrates our prime support lines, technical dispatch protocols, and system reliability, driving our team focus toward gold standards.
-                    </p>
-
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                      <span>Department: Executive Direction</span>
-                      <span>•</span>
-                      <span>Indore HQ</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </StaticPage>
-        );
+        return <AboutUs onNavigate={(tab) => setActiveTab(tab as any)} />;
       }
 
       if (activeTab === 'contact') {
@@ -2318,128 +2234,17 @@ If you have any billing questions, or if your refund is delayed, please email us
       <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} activeTab={activeTab} />
 
       {/* Footer */}
-      {activeTab === 'home' && (
-        <motion.footer
-        initial={{ opacity: 0, y: 15 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="bg-white border-t border-slate-200/60 pt-20 pb-12 mt-28 relative z-10"
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 md:gap-16 mb-16 items-start">
-            <div className="col-span-1 md:col-span-2 space-y-6">
-              <motion.div
-                whileHover={{ scale: 1.03 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className="mb-6 inline-block cursor-pointer"
-                onClick={() => setActiveTab('home')}
-                id="footer-logo-container"
-              >
-                <Logo size={25} />
-              </motion.div>
-              <p className="text-slate-500 text-sm max-w-sm leading-relaxed font-medium">
-                India's highly trusted home services ecosystem. We seamlessly connect verified, elite service professionals with households for a superior, convenient lifestyle experience.
-              </p>
-
-              {/* Real-time Administrative Showcase: Most Recently Added Service */}
-              {mostRecentAppService && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                  onClick={() => {
-                    setSelectedServiceId(mostRecentAppService.id);
-                    setActiveTab('service-details');
-                  }}
-                  className="p-5 rounded-[24px] bg-gradient-to-br from-indigo-50/50 via-slate-50 to-slate-50 border border-slate-100 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-100 hover:border-indigo-100 hover:shadow-md transition-all group max-w-sm mt-8 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-500/10 transition-colors" />
-
-                  <div className="flex items-center gap-3.5 relative z-10">
-                    {mostRecentAppService.imageURL ? (
-                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-200 border border-slate-150 shrink-0">
-                        <img
-                          src={mostRecentAppService.imageURL}
-                          alt=""
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-11 h-11 rounded-xl bg-indigo-600 font-black text-white flex items-center justify-center text-sm shrink-0">
-                        {mostRecentAppService.name.charAt(0)}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 mr-1" />
-                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                        </span>
-                        <span className="text-[8px] font-black uppercase tracking-widest text-indigo-500 font-mono">Recent Launch</span>
-                      </div>
-                      <h5 className="text-xs font-black text-slate-900 group-hover:text-blue-700 transition-colors truncate max-w-[180px]">{mostRecentAppService.name}</h5>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0 relative z-10">
-                    <span className="text-xs font-black text-slate-900 block">₹{mostRecentAppService.basePrice}</span>
-                    <span className="text-[8px] font-black uppercase text-blue-700 tracking-wider">Book ⚡</span>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-widest font-mono">Quick Links</h4>
-              <ul className="space-y-2.5 text-sm font-semibold text-slate-500">
-                {['about', 'contact', 'offers'].map((tabKey) => (
-                  <li key={tabKey}>
-                    <button
-                      onClick={() => setActiveTab(tabKey as any)}
-                      className="hover:text-blue-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-bold cursor-pointer"
-                    >
-                      {tabKey === 'about' ? 'About Us' : tabKey === 'contact' ? 'Contact Support' : 'Exclusive Offers'}
-                    </button>
-                  </li>
-                ))}
-                <li>
-                  <button
-                    onClick={() => setIsPartnerModalOpen(true)}
-                    className="text-emerald-600 hover:text-emerald-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-extrabold cursor-pointer"
-                    id="footer-join-partner-link"
-                  >
-                    Join as Elite Partner
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-widest font-mono">Support</h4>
-              <ul className="space-y-2.5 text-sm font-semibold text-slate-500">
-                {['help', 'terms', 'privacy', 'refund'].map((tabKey) => (
-                  <li key={tabKey}>
-                    <button
-                      onClick={() => setActiveTab(tabKey as any)}
-                      className="hover:text-blue-700 hover:translate-x-1 hover:underline transition-all duration-200 flex items-center font-bold"
-                    >
-                      {tabKey === 'help' ? 'Help Center' : tabKey === 'terms' ? 'Terms & Conditions' : tabKey === 'privacy' ? 'Privacy Policy' : 'Cancellation & Refund'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 pt-10 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs font-bold text-slate-400">© 2026 {COMPANY_NAME}. All rights reserved.</p>
-            <div className="flex gap-6">
-              {/* Optional footer social link decoration */}
-            </div>
-          </div>
-        </div>
-      </motion.footer>
+      {(['home', 'about', 'contact', 'help', 'terms', 'privacy', 'refund', 'offers'].includes(activeTab)) && (
+        <Footer
+          activeTab={activeTab}
+          onNavigate={(tab) => setActiveTab(tab as any)}
+          onOpenPartnerModal={() => setIsPartnerModalOpen(true)}
+          mostRecentAppService={mostRecentAppService}
+          onSelectService={(id) => {
+            setSelectedServiceId(id);
+            setActiveTab('service-details');
+          }}
+        />
       )}
       <OfflineSyncIndicator />
 
