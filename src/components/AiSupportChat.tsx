@@ -399,6 +399,15 @@ export default function AiSupportChat({
     });
   };
 
+  const handleNavigateToBooking = (bookingId?: string) => {
+    setIsOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("change-active-tab", {
+        detail: { tab: "bookings", bookingId: bookingId || null }
+      })
+    );
+  };
+
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
       if ((window as any).Razorpay) {
@@ -1673,9 +1682,7 @@ export default function AiSupportChat({
 
                           <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
                             <button
-                              onClick={() => {
-                                window.dispatchEvent(new CustomEvent("change-active-tab", { detail: { tab: "bookings", bookingId: (msg as any).bookingData?.id } }));
-                              }}
+                              onClick={() => handleNavigateToBooking((msg as any).bookingData?.id)}
                               className="text-[10.5px] font-extrabold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5 hover:underline cursor-pointer"
                             >
                               <span>Track Status ➔</span>

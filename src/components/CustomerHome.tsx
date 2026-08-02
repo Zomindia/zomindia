@@ -601,6 +601,7 @@ export default function CustomerHome({
       
       setRatedBookings(prev => ({ ...prev, [activeBooking.id]: true }));
       setRecentCardDismissed(true);
+      setTickerDismissed(true);
       localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
       
       setHomeRating(0);
@@ -639,6 +640,7 @@ export default function CustomerHome({
       
       setRatedBookings(prev => ({ ...prev, [activeBooking.id]: true }));
       setRecentCardDismissed(true);
+      setTickerDismissed(true);
       localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
       setShowForceFeedbackPopup(false);
       
@@ -678,6 +680,7 @@ export default function CustomerHome({
       setShowForceFeedbackPopup(true);
     } else {
       setRecentCardDismissed(true);
+      setTickerDismissed(true);
       localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
     }
   };
@@ -1604,7 +1607,7 @@ export default function CustomerHome({
       )}
 
       {/* Hero Section */}
-      <section className={`relative min-h-[400px] md:min-h-[500px] py-12 flex items-center justify-center bg-blue-700 transition-all ${searchQuery ? 'z-[45] overflow-visible' : 'z-10 overflow-hidden'}`}>
+      <section className={`relative transition-all duration-500 ease-in-out ${activeBooking && !recentCardDismissed ? 'min-h-[400px] md:min-h-[500px] py-10 md:py-12' : 'min-h-[320px] md:min-h-[380px] py-8 md:py-10'} flex items-center justify-center bg-blue-700 ${searchQuery ? 'z-[45] overflow-visible' : 'z-10 overflow-hidden'}`}>
         <div className="absolute inset-0 z-0">
           <img
             src={heroImage}
@@ -2218,7 +2221,7 @@ export default function CustomerHome({
         <motion.section
           layout="position"
           transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          className={`mb-12 animate-fade-in ${(activeBooking && !tickerDismissed) || (mostRecentService && !spotlightDismissed) ? "mt-4" : "-mt-24 sm:-mt-28 md:-mt-32 relative z-30"}`}
+          className={`mb-12 animate-fade-in ${(activeBooking && !recentCardDismissed) || (mostRecentService && !spotlightDismissed) ? "mt-4" : "-mt-24 sm:-mt-28 md:-mt-32 relative z-30"}`}
           id="categories-grid"
         >
           <div className="bg-white rounded-[40px] border border-slate-100/90 shadow-[0_24px_50px_-12px_rgba(15,23,42,0.03),0_8px_20px_-6px_rgba(15,23,42,0.01)] pt-3 sm:pt-6 md:pt-6 px-4 sm:px-8 md:px-10 pb-16 sm:pb-24 relative overflow-hidden group">

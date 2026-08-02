@@ -450,6 +450,15 @@ export default function CustomerDashboard({
   useEffect(() => {
     if (initialExpandedBookingId) {
       setExpandedBookingId(initialExpandedBookingId);
+      const timer = setTimeout(() => {
+        const el =
+          document.getElementById(`booking-${initialExpandedBookingId}`) ||
+          document.getElementById(`booking-card-${initialExpandedBookingId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 350);
+      return () => clearTimeout(timer);
     }
   }, [initialExpandedBookingId]);
 
@@ -1689,6 +1698,7 @@ export default function CustomerDashboard({
               return (
                 <motion.div
                   key={booking.id}
+                  id={`booking-${booking.id}`}
                   initial="hidden"
                   animate="visible"
                   variants={{
@@ -2790,6 +2800,7 @@ export default function CustomerDashboard({
                   <motion.div
                     layout
                     key={booking.id}
+                    id={`booking-card-${booking.id}`}
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? "border-blue-700 shadow-xl" : "border-slate-100 shadow-sm hover:border-slate-200"} rounded-2xl p-4 sm:p-6 cursor-pointer relative overflow-hidden`}
