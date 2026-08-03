@@ -103,47 +103,47 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
     if (t.includes('success') || t === 'job_completed' || t === 'payment_received' || t === 'job_finalized' || t === 'booking_confirmed') {
       return {
         label: t === 'booking_confirmed' ? 'CONFIRMED' : t === 'payment_received' ? 'PAID' : 'COMPLETED',
-        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200/80 font-bold',
-        iconBg: 'bg-emerald-100 text-emerald-800',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
+        iconBg: 'bg-emerald-100 text-emerald-700',
         Icon: CheckCircle2,
       };
     }
     if (t.includes('booking') || t === 'job_started' || t === 'on_the_way' || t === 'arrived' || t === 'job_assigned') {
       return {
         label: t === 'job_assigned' ? 'ASSIGNED' : t === 'on_the_way' ? 'ON THE WAY' : t === 'job_started' ? 'IN PROGRESS' : 'UPDATED',
-        badgeClass: 'bg-blue-50 text-blue-800 border-blue-200/80 font-bold',
-        iconBg: 'bg-blue-700 text-amber-300',
+        badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/60',
+        iconBg: 'bg-blue-100 text-blue-700',
         Icon: ShieldCheck,
       };
     }
     if (t.includes('warning') || t === 'booking_pending' || t === 'pending_parts' || t === 'amc_lead') {
       return {
         label: 'PENDING',
-        badgeClass: 'bg-amber-50 text-amber-800 border-amber-200/80 font-bold',
-        iconBg: 'bg-amber-100 text-amber-800',
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/60',
+        iconBg: 'bg-amber-100 text-amber-700',
         Icon: Clock,
       };
     }
     if (t.includes('error') || t === 'booking_cancelled' || t === 'job_cancelled') {
       return {
         label: 'CANCELLED',
-        badgeClass: 'bg-rose-50 text-rose-800 border-rose-200/80 font-bold',
-        iconBg: 'bg-rose-100 text-rose-800',
+        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200/60',
+        iconBg: 'bg-rose-100 text-rose-700',
         Icon: X,
       };
     }
     if (t === 'promotional' || t === 'offer_active') {
       return {
-        label: 'SPECIAL OFFER',
-        badgeClass: 'bg-amber-500/15 text-amber-900 border-amber-300/80 font-bold',
-        iconBg: 'bg-amber-500 text-slate-950',
+        label: 'OFFER',
+        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/60',
+        iconBg: 'bg-purple-100 text-purple-700',
         Icon: Sparkles,
       };
     }
     return {
       label: 'INFO',
-      badgeClass: 'bg-slate-100 text-slate-800 border-slate-200/80 font-bold',
-      iconBg: 'bg-slate-800 text-amber-300',
+      badgeClass: 'bg-slate-100 text-slate-700 border-slate-200/60',
+      iconBg: 'bg-slate-100 text-slate-700',
       Icon: Info,
     };
   };
@@ -153,45 +153,44 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="min-h-screen bg-white pb-20 pt-6 sm:pt-8 px-3 sm:px-6">
+    <div className="min-h-screen bg-slate-50/70 pb-20 pt-6 sm:pt-10 px-3 sm:px-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8 pb-4 border-b border-blue-100/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8 pb-4 border-b border-slate-200/60">
           <div>
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-6 bg-blue-700 rounded-full shrink-0" />
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">Notifications</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Notifications</h1>
               {unreadCount > 0 && (
-                <span className="bg-blue-700 text-white font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs border border-blue-600">
-                  {unreadCount} New
+                <span className="bg-blue-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+                  {unreadCount} new
                 </span>
               )}
             </div>
-            <p className="text-blue-900/70 text-xs sm:text-sm font-medium mt-1">
-              Stay updated with real-time service requests, status alerts, and activity
+            <p className="text-slate-500 text-xs sm:text-sm font-medium mt-1">
+              Stay updated with your service requests, booking status, and activity
             </p>
           </div>
 
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="self-start sm:self-auto text-xs font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100/80 border border-blue-200/80 px-3.5 py-1.75 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="self-start sm:self-auto text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              <Check size={14} className="text-blue-700 stroke-[3]" />
+              <Check size={14} />
               Mark all as read
             </button>
           )}
         </div>
 
         {/* Notifications List */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {notifications.length === 0 ? (
-            <div className="bg-blue-50/40 p-12 sm:p-16 rounded-2xl border border-blue-100 text-center shadow-sm">
-              <div className="w-14 h-14 bg-white text-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
+            <div className="bg-white p-12 sm:p-16 rounded-2xl border border-slate-200/80 shadow-sm text-center">
+              <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
                 <Bell size={24} />
               </div>
-              <h3 className="text-blue-950 font-bold text-base sm:text-lg mb-1">No notifications yet</h3>
-              <p className="text-blue-900/70 text-xs sm:text-sm max-w-sm mx-auto font-medium">
+              <h3 className="text-slate-800 font-bold text-base sm:text-lg mb-1">No notifications yet</h3>
+              <p className="text-slate-500 text-xs sm:text-sm max-w-sm mx-auto">
                 When you book a service or receive updates from your partner, notifications will appear here.
               </p>
             </div>
@@ -219,76 +218,76 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
                         else if (n.bookingId) onNavigate('bookings', n.bookingId);
                       }
                     }}
-                    className={`group relative rounded-2xl transition-all cursor-pointer p-4 sm:p-4.5 ${
+                    className={`group relative bg-white rounded-xl shadow-sm border transition-all cursor-pointer p-3.5 sm:p-4 hover:shadow-md ${
                       !n.read
-                        ? 'bg-blue-50/70 border-l-4 border-l-blue-700 border-y border-r border-blue-200 shadow-[0_4px_20px_-2px_rgba(29,78,216,0.12)] hover:shadow-[0_8px_25px_-2px_rgba(29,78,216,0.18)]'
-                        : 'bg-white border border-slate-200/90 shadow-[0_4px_16px_-2px_rgba(15,23,42,0.06)] hover:shadow-[0_8px_24px_-2px_rgba(15,23,42,0.12)] hover:border-blue-200'
+                        ? 'border-blue-200/90 bg-blue-50/20 ring-1 ring-blue-500/10'
+                        : 'border-slate-200/80 hover:border-slate-300'
                     }`}
                   >
                     {/* Top Row: Service Icon + Status Badge + Timestamp */}
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
                         {/* Service/Notification Icon */}
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${config.iconBg}`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${config.iconBg}`}>
                           <BadgeIcon size={14} strokeWidth={2.5} />
                         </div>
 
                         {/* Status Badge Pill */}
-                        <span className={`px-2 py-0.5 text-[10px] rounded-md uppercase tracking-wider border ${config.badgeClass}`}>
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider border ${config.badgeClass}`}>
                           {config.label}
                         </span>
 
-                        {/* Unread Indicator */}
+                        {/* Unread Dot */}
                         {!n.read && (
-                          <span className="w-2 h-2 rounded-full bg-blue-700 ring-2 ring-blue-300 animate-pulse shrink-0" title="Unread notification" />
+                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0" title="Unread" />
                         )}
                       </div>
 
                       {/* Timestamp */}
-                      <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-900/60 shrink-0">
-                        <Clock size={12} className="text-blue-700/60" />
+                      <div className="flex items-center gap-1 text-[11px] font-medium text-slate-400 shrink-0">
+                        <Clock size={12} className="text-slate-400" />
                         <span>{formattedTime}</span>
                       </div>
                     </div>
 
                     {/* Middle Row: Title & Message */}
                     <div className="pl-9 pr-2">
-                      <h3 className={`text-sm sm:text-base font-bold leading-snug tracking-tight mb-0.5 ${
-                        !n.read ? 'text-blue-950' : 'text-slate-900'
+                      <h3 className={`text-sm sm:text-base font-semibold leading-snug tracking-tight mb-0.5 ${
+                        !n.read ? 'text-slate-900' : 'text-slate-800'
                       }`}>
                         {n.title}
                       </h3>
-                      <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed">
                         {n.message}
                       </p>
                     </div>
 
                     {/* Bottom Row: Concise Details & Actions */}
                     <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 pl-9">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-slate-600">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-slate-500">
                         {n.bookingId && (
-                          <span className="bg-blue-100/60 text-blue-950 px-2 py-0.5 rounded font-mono text-[11px] font-bold border border-blue-200/60">
+                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono text-[11px]">
                             ID: #{n.bookingId.slice(0, 8)}
                           </span>
                         )}
                         {n.serviceName && (
-                          <span className="text-blue-950 font-bold">{n.serviceName}</span>
+                          <span className="text-slate-700 font-semibold">{n.serviceName}</span>
                         )}
                         {n.partnerName && (
-                          <span className="text-slate-600">Partner: <strong className="text-blue-950 font-bold">{n.partnerName}</strong></span>
+                          <span className="text-slate-500">Partner: <strong className="text-slate-700">{n.partnerName}</strong></span>
                         )}
                         {n.customerName && (
-                          <span className="text-slate-600">Customer: <strong className="text-blue-950 font-bold">{n.customerName}</strong></span>
+                          <span className="text-slate-500">Customer: <strong className="text-slate-700">{n.customerName}</strong></span>
                         )}
                         {n.scheduledSlot && (
-                          <span className="text-slate-600">Slot: <strong className="text-blue-950 font-bold">{n.scheduledSlot}</strong></span>
+                          <span className="text-slate-500">Slot: <strong className="text-slate-700">{n.scheduledSlot}</strong></span>
                         )}
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0 ml-auto">
                         {n.bookingId && (
-                          <span className="text-xs font-bold text-blue-700 group-hover:text-blue-900 flex items-center gap-0.5 mr-2">
-                            View <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform stroke-[2.5]" />
+                          <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 flex items-center gap-0.5 mr-2">
+                            View <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
                         )}
 

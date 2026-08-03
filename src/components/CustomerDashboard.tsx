@@ -1711,37 +1711,32 @@ export default function CustomerDashboard({
                       }
                     }
                   }}
-                  className="bg-white border border-blue-100 text-slate-900 rounded-[32px] overflow-hidden shadow-[0_12px_40px_-8px_rgba(29,78,216,0.14)] hover:shadow-[0_16px_50px_-8px_rgba(29,78,216,0.20)] transition-all duration-300 mb-8 flex flex-col w-full relative"
+                  className="bg-white border border-slate-200 text-slate-900 rounded-[32px] overflow-hidden shadow-xl mb-8 flex flex-col w-full relative"
                 >
                   {routingCallBookingId === booking.id && (
-                    <div className="absolute inset-0 bg-blue-950/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-6 rounded-[32px]">
+                    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-6 rounded-[32px]">
                       <div className="w-16 h-16 bg-emerald-500/20 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-4 animate-bounce">
                         <Phone size={24} className="text-emerald-400" />
                       </div>
                       <h4 className="text-white font-black text-xs uppercase tracking-widest mb-2">Routing call securely...</h4>
-                      <p className="text-blue-200 text-[10px] max-w-xs leading-relaxed">
+                      <p className="text-slate-400 text-[10px] max-w-xs leading-relaxed">
                         ZomIndia's Twilio privacy shield is active. Connecting you safely with our service professional.
                       </p>
                     </div>
                   )}
 
                   {/* Visual Ambient Blur Accent */}
-                  <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
 
                   {/* 1. Header/Status Segment */}
-                  <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-white border-b border-blue-100/80 relative z-10 w-full">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      {/* Prominent Blue 'Booking' indicator */}
-                      <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200/90 rounded-xl shadow-2xs">
-                        <Calendar size={13} className="text-blue-700 stroke-[2.5]" />
-                        <span className="text-xs font-black uppercase tracking-wider text-blue-700">Booking</span>
-                      </div>
+                  <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-slate-50/20 border-b border-slate-100 relative z-10 w-full">
+                    <div className="flex items-center gap-3">
                       {(() => {
                         const isConfirmedOrAssigned = bookingStatus.toLowerCase() === 'confirmed' || bookingStatus.toLowerCase() === 'assigned';
-                        const badgeColorText = isConfirmedOrAssigned ? 'text-blue-900' : 'text-[#22c55e]';
-                        const badgeBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-[#22c55e]/10';
-                        const badgeBorder = isConfirmedOrAssigned ? 'border-blue-200/80' : 'border-[#22c55e]/20';
-                        const statusBg = isConfirmedOrAssigned ? 'bg-blue-100/80' : 'bg-emerald-50';
+                        const badgeColorText = isConfirmedOrAssigned ? 'text-[#0a2540]' : 'text-[#22c55e]';
+                        const badgeBg = isConfirmedOrAssigned ? 'bg-[#0a2540]/10' : 'bg-[#22c55e]/10';
+                        const badgeBorder = isConfirmedOrAssigned ? 'border-[#0a2540]/20' : 'border-[#22c55e]/20';
+                        const statusBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-emerald-50';
 
                         return (
                           <>
@@ -1763,7 +1758,7 @@ export default function CustomerDashboard({
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Estimated Total</p>
-                      <p className="text-xl font-black text-blue-700">₹{booking.totalPrice}</p>
+                      <p className="text-xl font-black text-[#22c55e]">₹{booking.totalPrice}</p>
                     </div>
                   </motion.div>
 
@@ -1932,14 +1927,14 @@ export default function CustomerDashboard({
 
                           {/* 2. Prominent OTP display for Assigned state */}
                           {otpCode && (bookingStatus.toLowerCase() === 'assigned' || bookingStatus.toLowerCase() === 'confirmed') && (
-                            <div className="bg-gradient-to-r from-blue-900 to-blue-950 border border-blue-800 p-4 rounded-2xl flex items-center justify-between shadow-md">
+                            <div className="bg-gradient-to-r from-slate-900 to-slate-950 p-4 rounded-2xl flex items-center justify-between shadow-md">
                               <div>
                                 <span className="text-[8px] font-black uppercase tracking-wider text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/25 px-2 py-0.5 rounded-full inline-block">Security OTP</span>
-                                <p className="text-[10px] text-blue-200 mt-1 font-bold">Share on expert arrival only</p>
+                                <p className="text-[10px] text-slate-400 mt-1 font-bold">Share on expert arrival only</p>
                               </div>
                               <div className="flex gap-1.5">
                                 {(otpCode || "").toString().split("").map((digit, i) => (
-                                  <div key={i} className="w-8 h-8 bg-white border border-blue-200 text-blue-950 rounded-lg flex items-center justify-center text-sm font-black italic shadow-inner">
+                                  <div key={i} className="w-8 h-8 bg-white border border-slate-250 text-slate-950 rounded-lg flex items-center justify-center text-sm font-black italic shadow-inner">
                                     {digit}
                                   </div>
                                 ))}
@@ -1974,19 +1969,19 @@ export default function CustomerDashboard({
                               <div className="grid grid-cols-3 gap-1.5 w-full">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setBookingToPay(booking); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-700 hover:bg-blue-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
+                                  className="text-[8px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0"
                                 >
                                   Online
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setIsPaymentScannerOpen(true); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-blue-950 bg-white border border-blue-200 hover:bg-blue-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                                  className="text-[8px] font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <QrCode size={10} /> QR
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handlePayWithCashByCustomer(booking); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center shadow-2xs"
+                                  className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center"
                                 >
                                   Cash
                                 </button>
@@ -1997,7 +1992,7 @@ export default function CustomerDashboard({
                           {/* Detailed Accordion Launcher */}
                           <button
                             onClick={() => setExpandedBookingId(booking.id)}
-                            className="w-full py-2.5 bg-blue-50/70 hover:bg-blue-100/80 text-blue-900 font-black text-[10px] uppercase tracking-widest rounded-xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-slate-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
                           >
                             <span>View Details 🔽</span>
                           </button>
@@ -2006,19 +2001,19 @@ export default function CustomerDashboard({
                         <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-400">
                           {/* 5. Security Verification OTP Segment */}
                           {otpCode && (bookingStatus.toLowerCase() !== "in_progress") && (
-                            <motion.div variants={itemVariants} className="bg-gradient-to-r from-blue-900 to-blue-950 border border-blue-800 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-md">
+                            <motion.div variants={itemVariants} className="bg-gradient-to-r from-slate-900 to-slate-950 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-md">
                               <div className="text-center sm:text-left">
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#22c55e] px-2.5 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/20 rounded-full inline-block mb-1.5">
                                   Security Verification OTP
                                 </span>
-                                <p className="text-[11px] text-blue-200 font-medium max-w-sm leading-tight text-left">
+                                <p className="text-[11px] text-slate-400 font-medium max-w-sm leading-tight text-left">
                                   Provide this secure 4-digit token to your service professional ONLY when they arrive.
                                 </p>
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="flex gap-1.5">
                                   {(otpCode || "").toString().split("").map((digit, i) => (
-                                    <div key={i} className="w-10 h-10 bg-white border border-blue-200 text-blue-950 rounded-xl flex items-center justify-center text-xl font-black italic shadow-sm">
+                                    <div key={i} className="w-10 h-10 bg-white border border-slate-200 text-slate-900 rounded-xl flex items-center justify-center text-xl font-black italic shadow-sm">
                                       {digit}
                                     </div>
                                   ))}
@@ -2145,7 +2140,7 @@ export default function CustomerDashboard({
                                           e.stopPropagation();
                                           setBookingToPay(booking);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-700 hover:bg-blue-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
+                                        className="text-[8px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0"
                                       >
                                         Online
                                       </button>
@@ -2154,7 +2149,7 @@ export default function CustomerDashboard({
                                           e.stopPropagation();
                                           setIsPaymentScannerOpen(true);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-blue-950 bg-white border border-blue-200 hover:bg-blue-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                                        className="text-[8px] font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
                                       >
                                         <QrCode size={10} /> QR
                                       </button>
@@ -2163,7 +2158,7 @@ export default function CustomerDashboard({
                                           e.stopPropagation();
                                           handlePayWithCashByCustomer(booking);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center shadow-2xs"
+                                        className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center"
                                       >
                                         Cash
                                       </button>
@@ -2176,7 +2171,7 @@ export default function CustomerDashboard({
 
                           {/* Live Tracking Map Segment */}
                           {isLiveTrackingAvailable && hasPartner && (
-                            <motion.div variants={itemVariants} className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl relative z-10 w-full">
+                            <motion.div variants={itemVariants} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl relative z-10 w-full">
                               <button
                                 onClick={() =>
                                   setExpandedTrackerId(
@@ -2185,7 +2180,7 @@ export default function CustomerDashboard({
                                       : booking.id,
                                   )
                                 }
-                                className="w-full text-[10px] font-black uppercase tracking-widest bg-blue-700 hover:bg-blue-800 text-white transition-all px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer border-0 font-display"
+                                className="w-full text-[10px] font-black uppercase tracking-widest bg-slate-900 hover:bg-slate-800 text-white transition-all px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer border-0 font-display"
                               >
                                 <Compass size={12} className="text-white shrink-0" />
                                 {expandedTrackerId === booking.id
@@ -2193,14 +2188,13 @@ export default function CustomerDashboard({
                                   : "View Live Location Map"}
                               </button>
 
-                              <AnimatePresence mode="wait">
+                              <AnimatePresence>
                                 {expandedTrackerId === booking.id && (
                                   <motion.div
-                                    initial={{ height: 0, opacity: 0, scale: 0.98 }}
-                                    animate={{ height: "auto", opacity: 1, scale: 1 }}
-                                    exit={{ height: 0, opacity: 0, scale: 0.98 }}
-                                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                                    className="overflow-hidden border-2 border-blue-200/90 rounded-2xl bg-white p-3 shadow-[0_12px_36px_-6px_rgba(29,78,216,0.18)] mt-3"
+                                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                                    animate={{ height: "auto", opacity: 1, marginTop: 10 }}
+                                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                                    className="overflow-hidden border border-slate-200 rounded-xl bg-slate-50"
                                   >
                                     <PartnerTrackingMap
                                       partnerId={booking.partnerId!}
@@ -2217,7 +2211,7 @@ export default function CustomerDashboard({
                           {/* Collapse Accordion Button */}
                           <button
                             onClick={() => setExpandedBookingId(null)}
-                            className="w-full py-2.5 bg-blue-50/70 hover:bg-blue-100/80 text-blue-900 font-black text-[10px] uppercase tracking-widest rounded-xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-slate-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
                           >
                             <span>Hide Details 🔼</span>
                           </button>
@@ -2229,8 +2223,8 @@ export default function CustomerDashboard({
                     {/* Right/Expert Column (Col span: md:1, lg:1) */}
                     <div className="md:col-span-1">
                       {hasPartner ? (
-                        <div className="bg-gradient-to-br from-blue-950 via-blue-900 to-blue-950 text-white p-5 rounded-[28px] border border-blue-800/80 shadow-xl flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px]">
-                          <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-500/20 rounded-full blur-2xl group-hover:bg-blue-500/30 transition-all duration-500 pointer-events-none" />
+                        <div className="bg-slate-900 text-white p-5 rounded-[28px] border border-slate-850 shadow-xl flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px]">
+                          <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/10 rounded-full blur-2xl group-hover:bg-blue-600/20 transition-all duration-500 pointer-events-none" />
                           <div className="space-y-4">
                             <div className="flex flex-col items-center text-center">
                               <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative mb-3">
@@ -2258,23 +2252,23 @@ export default function CustomerDashboard({
                                   {partnerUser?.displayName || "Vikas Chopra"}
                                   <CheckCircle2 size={12} className="text-[#22c55e]" fill="currentColor" />
                                 </h5>
-                                <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-blue-200 font-bold">
-                                  <span className="flex items-center gap-0.5 text-white">
+                                <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-slate-400 font-bold">
+                                  <span className="flex items-center gap-0.5 text-slate-200">
                                     <Star size={10} className="text-amber-500 fill-amber-500" />
                                     <span>{(partnerDetail?.rating || 4.9).toFixed(1)}</span>
                                   </span>
                                   <span>•</span>
-                                  <span className="text-emerald-300 bg-[#22c55e]/10 border border-[#22c55e]/20 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
+                                  <span className="text-emerald-450 bg-[#22c55e]/10 border border-[#22c55e]/20 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
                                     {partnerDetail?.reviewCount || 184} reviews
                                   </span>
                                 </div>
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-2 mt-4 pt-4 border-t border-blue-800/80">
+                          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-800">
                             <button
                               onClick={() => setActiveBookingChat(booking)}
-                              className="flex-1 bg-white hover:bg-blue-50 text-blue-950 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
+                              className="flex-1 bg-white hover:bg-slate-100 text-slate-900 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
                             >
                               <MessageSquare size={12} /> Chat
                             </button>
@@ -2283,7 +2277,7 @@ export default function CustomerDashboard({
                                 id="customer-booking-secure-call-btn-1"
                                 disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-blue-800 hover:bg-blue-700 active:bg-blue-900 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm border border-blue-700/60"
+                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm"
                               >
                                 <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                               </button>
@@ -2759,14 +2753,13 @@ export default function CustomerDashboard({
                               : "View Team Live Location Map"}
                           </button>
 
-                          <AnimatePresence mode="wait">
+                          <AnimatePresence>
                             {expandedTrackerId === booking.id && (
                               <motion.div
-                                initial={{ height: 0, opacity: 0, scale: 0.98 }}
-                                animate={{ height: "auto", opacity: 1, scale: 1 }}
-                                exit={{ height: 0, opacity: 0, scale: 0.98 }}
-                                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                                className="overflow-hidden border-2 border-blue-200/90 rounded-[32px] bg-white p-4 shadow-[0_12px_36px_-6px_rgba(29,78,216,0.18)] mt-3"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden border border-slate-800 rounded-[32px] bg-slate-900 p-4"
                               >
                                 <PartnerTrackingMap
                                   partnerId={booking.partnerId!}
@@ -2810,7 +2803,7 @@ export default function CustomerDashboard({
                     id={`booking-card-${booking.id}`}
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? "border-blue-700 shadow-[0_12px_35px_-5px_rgba(29,78,216,0.22)] scale-[1.01]" : "border-blue-100/80 shadow-[0_6px_20px_-4px_rgba(15,23,42,0.08)] hover:border-blue-300 hover:shadow-[0_12px_30px_-5px_rgba(29,78,216,0.15)]"} rounded-2xl p-4 sm:p-6 cursor-pointer relative overflow-hidden`}
+                    className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? "border-blue-700 shadow-xl" : "border-slate-100 shadow-sm hover:border-slate-200"} rounded-2xl p-4 sm:p-6 cursor-pointer relative overflow-hidden`}
                     onClick={() =>
                       setExpandedBookingId(
                         expandedBookingId === booking.id ? null : booking.id,
@@ -3085,7 +3078,7 @@ export default function CustomerDashboard({
 
                           {/* Technician Card or Assignment Status */}
                           {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) ? (
-                            <div className="booking-details-modal flex gap-4 p-5 rounded-[28px] bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 text-white items-center relative overflow-hidden group border border-blue-800 shadow-xl">
+                            <div className="booking-details-modal flex gap-4 p-5 rounded-[28px] bg-slate-900 text-white items-center relative overflow-hidden group border border-slate-800 shadow-xl">
                               <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/15 rounded-full blur-2xl group-hover:bg-blue-600/25 transition-all duration-500 pointer-events-none" />
                               <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e]">
                                 <img
