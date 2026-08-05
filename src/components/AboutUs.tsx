@@ -26,9 +26,6 @@ interface AboutUsProps {
   onNavigate: (tab: string) => void;
 }
 
-const teamMember1Img = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400";
-const teamMember2Img = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=400";
-
 export default function AboutUs({ onNavigate }: AboutUsProps) {
   return (
     <motion.div 
@@ -234,15 +231,7 @@ export default function AboutUs({ onNavigate }: AboutUsProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Leader 1: Ranu */}
-          <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-6 items-start hover:border-blue-200 transition-all">
-            <div className="w-full sm:w-36 h-48 sm:h-36 rounded-2xl overflow-hidden bg-slate-100 shrink-0 relative group">
-              <img
-                src={teamMember1Img}
-                alt="Ranu - Head of Operations & Management"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                referrerPolicy="no-referrer"
-              />
-            </div>
+          <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-200/80 shadow-xs flex flex-col gap-6 items-start hover:border-blue-200 transition-all">
             <div className="space-y-3 flex-1">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -259,15 +248,7 @@ export default function AboutUs({ onNavigate }: AboutUsProps) {
           </div>
 
           {/* Leader 2: Vikass Chopra */}
-          <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-6 items-start hover:border-blue-200 transition-all">
-            <div className="w-full sm:w-36 h-48 sm:h-36 rounded-2xl overflow-hidden bg-slate-100 shrink-0 relative group">
-              <img
-                src={teamMember2Img}
-                alt="Vikass Chopra - Chief Incharge"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                referrerPolicy="no-referrer"
-              />
-            </div>
+          <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-200/80 shadow-xs flex flex-col gap-6 items-start hover:border-blue-200 transition-all">
             <div className="space-y-3 flex-1">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
