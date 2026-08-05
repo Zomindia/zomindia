@@ -242,7 +242,7 @@ export default function AdminUpload({
                   setPreview(url);
                 }
               }}
-              className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-lg cursor-pointer"
+              className="w-full bg-[#1e3a8a] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#172554] transition-colors shadow-md cursor-pointer"
             >
               Verify & Sync
             </button>

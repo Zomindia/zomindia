@@ -1231,23 +1231,23 @@ export default function ProfileSettings({
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between">
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900 flex flex-col justify-between">
       {/* Absolute Back Header inside our full screen layout */}
       <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
         <button
           onClick={() => setActiveTab("home")}
-          className="inline-flex items-center gap-2 text-xs font-black uppercase text-white bg-white/10 hover:bg-white/20 px-4.5 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+          className="inline-flex items-center gap-2 text-xs font-black uppercase text-slate-800 bg-slate-200/80 hover:bg-slate-200 px-4.5 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
         >
           <ArrowLeft size={14} />
           <span>Back to Home</span>
         </button>
         <span className="text-[10px] font-black uppercase tracking-widest text-[#22c55e] flex items-center gap-1.5 bg-[#22c55e]/10 border border-[#22c55e]/20 px-3.5 py-1.5 rounded-xl">
-          <span className="text-cyan-400 font-extrabold text-sm animate-pulse">
+          <span className="text-cyan-600 font-extrabold text-sm animate-pulse">
             •
           </span>
           <span>नमस्ते{profile?.displayName || profile?.fullName || auth.currentUser?.displayName ? ", " : ""}</span>
           {(profile?.displayName || profile?.fullName || auth.currentUser?.displayName) && (
-            <span className="text-white">{profile.displayName || profile.fullName || auth.currentUser?.displayName}</span>
+            <span className="text-slate-900">{profile.displayName || profile.fullName || auth.currentUser?.displayName}</span>
           )}
         </span>
       </div>

@@ -239,40 +239,40 @@ export default function CustomerAmcView({ profile, onBack }: CustomerAmcViewProp
                   <div 
                     key={plan.name} 
                     className={`relative p-8 rounded-[40px] border flex flex-col transition-all ${
-                      idx === 1 ? 'bg-slate-900 text-white border-transparent shadow-2xl scale-105' : 'bg-white text-slate-900 border-slate-100'
+                      idx === 1 ? 'bg-[#1e3a8a] text-white border-transparent shadow-2xl scale-105' : 'bg-white text-slate-900 border-slate-200/80 shadow-sm'
                     }`}
                   >
                     {idx === 1 && (
-                      <div className="absolute top-0 right-12 -translate-y-1/2 px-4 py-1.5 bg-blue-700 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">
+                      <div className="absolute top-0 right-12 -translate-y-1/2 px-4 py-1.5 bg-[#f97316] text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
                         Popular Choice
                       </div>
                     )}
                     
                     <div className="mb-8">
-                       <h5 className={`text-lg font-bold mb-2 ${idx === 1 ? 'text-blue-400' : 'text-blue-700'}`}>{plan.name}</h5>
-                       <p className={`text-[10px] font-black uppercase tracking-widest ${idx === 1 ? 'text-white/40' : 'text-slate-400'}`}>Yearly Coverage</p>
+                       <h5 className={`text-lg font-bold mb-2 ${idx === 1 ? 'text-[#f97316]' : 'text-[#1e3a8a]'}`}>{plan.name}</h5>
+                       <p className={`text-[10px] font-black uppercase tracking-widest ${idx === 1 ? 'text-white/60' : 'text-slate-400'}`}>Yearly Coverage</p>
                     </div>
 
                     <div className="mb-8">
                        <div className="flex items-baseline gap-1">
                           <span className="text-4xl font-black tracking-tighter">₹{plan.price.toLocaleString()}</span>
-                          <span className={`text-xs font-bold ${idx === 1 ? 'text-white/40' : 'text-slate-400'}`}>/ year</span>
+                          <span className={`text-xs font-bold ${idx === 1 ? 'text-white/60' : 'text-slate-400'}`}>/ year</span>
                        </div>
                     </div>
 
                     <ul className="space-y-5 mb-10 flex-1">
                        {plan.benefits.map((benefit, bIdx) => (
                          <li key={bIdx} className="flex items-start gap-3">
-                            <CheckCircle2 size={16} className={idx === 1 ? 'text-emerald-400 shrink-0' : 'text-blue-700 shrink-0'} />
-                            <span className={`text-[11px] font-bold ${idx === 1 ? 'text-white/80' : 'text-slate-600'}`}>{benefit}</span>
+                            <CheckCircle2 size={16} className={idx === 1 ? 'text-[#f97316] shrink-0' : 'text-[#1e3a8a] shrink-0'} />
+                            <span className={`text-[11px] font-bold ${idx === 1 ? 'text-white/90' : 'text-slate-600'}`}>{benefit}</span>
                          </li>
                        ))}
                     </ul>
 
                     <button 
                       onClick={() => handlePurchaseAmc(plan, bookingAmc)}
-                      className={`w-full py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[10px] transition-all flex items-center justify-center gap-3 ${
-                        idx === 1 ? 'bg-blue-700 text-white hover:bg-blue-600 shadow-xl shadow-blue-700/20' : 'bg-slate-900 text-white hover:bg-black'
+                      className={`w-full py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[10px] transition-all flex items-center justify-center gap-3 cursor-pointer ${
+                        idx === 1 ? 'bg-[#f97316] hover:bg-[#ea580c] text-white shadow-lg shadow-orange-500/20' : 'bg-[#1e3a8a] hover:bg-[#172554] text-white shadow-md'
                       }`}
                     >
                       <Zap size={14} fill="currentColor" />

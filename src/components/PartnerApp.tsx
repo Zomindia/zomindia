@@ -450,7 +450,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   // 1. BLACKLISTED CHECK
   if (approvalStatus === 'blacklisted') {
     return (
-      <div className="min-h-[100dvh] bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-800 text-white">
+      <div className="min-h-[100dvh] bg-slate-50 flex flex-col justify-between p-6 max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200 text-slate-900">
         <header className="flex justify-between items-center py-4 select-none shrink-0">
           <div className="flex items-center gap-2 select-none">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-red-900 bg-red-950/20 p-1">
@@ -832,7 +832,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             initial={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
             animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
             exit={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
-            className="fixed top-6 left-1/2 z-[110] flex items-center gap-2.5 bg-slate-900 border border-slate-850 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold whitespace-nowrap"
+            className="fixed top-6 left-1/2 z-[110] flex items-center gap-2.5 bg-white border border-slate-200 text-slate-900 px-5 py-3 rounded-2xl shadow-xl text-xs font-bold whitespace-nowrap"
           >
             <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
                <CheckCircle2 size={12} />
@@ -847,7 +847,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         {showOnboardingModal && (
           <div 
             id="partner-kyc-onboarding-modal"
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-xs animate-fade-in"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}

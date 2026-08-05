@@ -1442,7 +1442,8 @@ If you have any billing questions, or if your refund is delayed, please email us
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeInOut" }}
-          className="w-full"
+          className="w-full bg-slate-50 min-h-screen text-slate-900"
+          style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}
         >
           <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />
         </motion.div>
@@ -1568,7 +1569,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
   return (
     <APIProvider apiKey={API_KEY} version="weekly">
-      <div className="min-h-screen bg-white text-slate-900 font-sans">
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
       <NotificationSystem onNavigate={setActiveTab} />
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
@@ -2143,7 +2144,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -2207,7 +2208,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       {/* Main Content */}
       {renderPartnerNotificationBanner()}
-      <main className="pb-24 md:pb-0 relative min-h-[500px]">
+      <main className="pb-24 md:pb-0 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -2255,19 +2256,19 @@ If you have any billing questions, or if your refund is delayed, please email us
       {/* Dynamic Ecosystem Hot-Update Premium Modal Overlay across Platforms */}
       <AnimatePresence>
         {systemUpdate && (
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-950/85 backdrop-blur-md">
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/20 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               transition={{ type: "spring", duration: 0.5 }}
-              className="relative w-full max-w-lg bg-slate-900 border border-slate-800/80 rounded-[32px] p-6 sm:p-8 text-center shadow-[0_0_50px_rgba(30,50,150,0.25)] text-white overflow-hidden"
+              className="relative w-full max-w-lg bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 text-center shadow-2xl text-slate-900 overflow-hidden"
             >
               {/* Skip button on top right */}
               {updateProgress === null && (
                 <button
                   onClick={handleSkipUpdate}
-                  className="absolute top-5 right-5 p-2 bg-slate-800/50 hover:bg-slate-750 text-slate-300 hover:text-white rounded-full transition-all border-0 cursor-pointer"
+                  className="absolute top-5 right-5 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-full transition-all border-0 cursor-pointer"
                   title="Skip update"
                 >
                   <X size={16} />
@@ -2275,29 +2276,29 @@ If you have any billing questions, or if your refund is delayed, please email us
               )}
 
               {/* Decorative background grid and glow */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-blue-700/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
               <div className="relative space-y-6">
                 {/* Visual Icon Refresh */}
-                <div className="relative w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto border border-blue-500/10">
-                  <RefreshCw size={28} className="animate-spin text-blue-400" style={{ animationDuration: '4s' }} />
+                <div className="relative w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
+                  <RefreshCw size={28} className="animate-spin text-blue-600" style={{ animationDuration: '4s' }} />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-center gap-2">
-                    <span className="bg-blue-500/10 text-blue-400 text-xs font-semibold px-3 py-1 rounded-full border border-blue-500/20 flex items-center gap-1.5 leading-none">
+                    <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1.5 leading-none">
                       <Sparkles size={12} className="animate-pulse" />
                       New Update
                     </span>
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white font-sans">
+                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 font-sans">
                     Update Available
                   </h3>
-                  <div className="bg-slate-950/30 border border-slate-800/60 rounded-2xl p-4 mt-3 max-w-sm mx-auto text-center">
-                    <p className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider block font-sans">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 mt-3 max-w-sm mx-auto text-center">
+                    <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider block font-sans">
                       What's New
                     </p>
-                    <p className="text-sm text-slate-200 font-medium leading-relaxed font-sans">
+                    <p className="text-sm text-slate-800 font-medium leading-relaxed font-sans">
                       {systemUpdate.reason ? systemUpdate.reason.replace("Ecosystem Hard-Sync: ", "") : "We've made some improvements to give you a better service experience."}
                     </p>
                   </div>
@@ -2306,17 +2307,17 @@ If you have any billing questions, or if your refund is delayed, please email us
                 {updateProgress !== null ? (
                   /* Loading Patch Execution bar */
                   <div className="space-y-4 max-w-sm mx-auto">
-                    <div className="flex justify-between items-center text-xs font-semibold text-slate-400 font-sans">
+                    <div className="flex justify-between items-center text-xs font-semibold text-slate-600 font-sans">
                       <span className="flex items-center gap-1.5 animate-pulse">
-                        <Download size={12} className="text-blue-400 font-bold" />
+                        <Download size={12} className="text-blue-600 font-bold" />
                         {updateStep}
                       </span>
-                      <span className="text-blue-400 font-bold">{updateProgress}%</span>
+                      <span className="text-blue-600 font-bold">{updateProgress}%</span>
                     </div>
 
-                    <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
                       <motion.div
-                        className="h-full bg-gradient-to-r from-blue-600 via-blue-700 to-emerald-400 rounded-full"
+                        className="h-full bg-gradient-to-r from-blue-600 via-blue-700 to-emerald-500 rounded-full"
                         style={{ width: `${updateProgress}%` }}
                         transition={{ ease: "easeInOut" }}
                       />
@@ -2329,7 +2330,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                   <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto pt-2">
                     <button
                       onClick={handleStartUpdateProgress}
-                      className="flex-1 bg-blue-600 text-white hover:bg-blue-700 font-semibold py-3.5 px-6 rounded-2xl text-xs active:scale-98 transition-all hover:scale-102 flex items-center justify-center gap-2 cursor-pointer border-0 shadow-lg shadow-blue-600/10"
+                      className="flex-1 bg-orange-500 text-white hover:bg-orange-600 font-semibold py-3.5 px-6 rounded-2xl text-xs active:scale-98 transition-all hover:scale-102 flex items-center justify-center gap-2 cursor-pointer border-0 shadow-md shadow-orange-500/20"
                     >
                       <RefreshCw size={13} className="animate-spin" style={{ animationDuration: '4s' }} />
                       Update Now
@@ -2337,7 +2338,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
                     <button
                       onClick={handleSkipUpdate}
-                      className="px-5 py-3.5 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white font-semibold rounded-2xl text-xs border border-slate-700/50 transition-all cursor-pointer"
+                      className="px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-2xl text-xs border border-slate-200 transition-all cursor-pointer"
                     >
                       Skip For Now
                     </button>
@@ -2359,11 +2360,11 @@ If you have any billing questions, or if your refund is delayed, please email us
             transition={{ type: "spring", stiffness: 350, damping: 25 }}
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none px-4 w-full max-w-md"
           >
-            <div className="bg-slate-950/95 backdrop-blur-md border border-slate-800 text-white px-5 py-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3.5 select-text pointer-events-auto hover:bg-black/95 transition-all">
-              <div className="w-6 h-6 bg-emerald-500/15 rounded-full flex items-center justify-center shrink-0 border border-emerald-500/20">
-                <Check size={13} className="text-emerald-400 stroke-[3]" />
+            <div className="bg-white/95 backdrop-blur-md border border-slate-200 text-slate-900 px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3.5 select-text pointer-events-auto transition-all">
+              <div className="w-6 h-6 bg-emerald-50 rounded-full flex items-center justify-center shrink-0 border border-emerald-200">
+                <Check size={13} className="text-emerald-600 stroke-[3]" />
               </div>
-              <span className="text-[12px] font-semibold font-sans tracking-wide leading-relaxed text-slate-100 break-words flex-1">
+              <span className="text-[12px] font-semibold font-sans tracking-wide leading-relaxed text-slate-800 break-words flex-1">
                 {toastMessage}
               </span>
             </div>

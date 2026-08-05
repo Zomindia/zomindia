@@ -125,7 +125,7 @@ export function LoadingScreen({
   const isMainLogoGlowing = phase === 7 || phase === 8;
 
   return (
-    <div className="fixed inset-0 min-h-screen bg-slate-950 flex flex-col items-center justify-center overflow-hidden z-[9999] select-none">
+    <div className="fixed inset-0 min-h-screen bg-slate-50 flex flex-col items-center justify-center overflow-hidden z-[9999] select-none">
       <style>{`
         @keyframes steadyPulseBlue {
           0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
@@ -147,12 +147,12 @@ export function LoadingScreen({
 
       {/* Blurred Background Image - Rajwada Palace Indore */}
       <div 
-        className="absolute inset-0 bg-cover bg-center scale-105 filter blur-[12px] opacity-35 mix-blend-lighten"
+        className="absolute inset-0 bg-cover bg-center scale-105 filter blur-[12px] opacity-15 mix-blend-multiply"
         style={{ 
           backgroundImage: `url('https://images.unsplash.com/photo-1627308595229-7830a5c91f9f?q=80&w=1200&auto=format&fit=crop')` 
         }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-slate-950/40" />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-50 via-slate-50/80 to-slate-50/40" />
 
       <div className="relative flex flex-col items-center justify-center font-sans text-center z-10 max-w-md w-full px-6">
         
@@ -169,7 +169,7 @@ export function LoadingScreen({
             duration: isMainLogoGlowing ? 0.8 : 0.8,
             ease: "easeInOut"
           }}
-          className="w-24 h-24 rounded-3xl bg-slate-900 border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
+          className="w-24 h-24 rounded-3xl bg-white border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
         >
           <div className="absolute inset-0.5 rounded-[22px] border border-amber-500/25 pointer-events-none" />
           <img 
@@ -214,7 +214,7 @@ export function LoadingScreen({
           <motion.div
             animate={getJumperAnimation()}
             transition={getJumperTransition()}
-            className="absolute w-10 h-10 rounded-xl bg-slate-900/95 border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
+            className="absolute w-10 h-10 rounded-xl bg-white border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
           >
             <img 
               src={logoIcon} 
@@ -227,11 +227,11 @@ export function LoadingScreen({
 
         {/* Brand Shield & Info */}
         <div className="space-y-2 mt-4 text-center">
-          <h2 className="text-white text-sm font-black uppercase tracking-[0.25em] flex items-center justify-center gap-2">
+          <h2 className="text-slate-900 text-sm font-black uppercase tracking-[0.25em] flex items-center justify-center gap-2">
             <Shield className="text-[#ffd700] w-4 h-4 fill-[#ffd700]/15" />
             Zomindia Trust Shield
           </h2>
-          <p className="text-slate-400 text-[9px] font-black uppercase tracking-[0.2em] opacity-80 min-h-[16px]">
+          <p className="text-slate-600 text-[9px] font-black uppercase tracking-[0.2em] min-h-[16px]">
             {message}
           </p>
         </div>

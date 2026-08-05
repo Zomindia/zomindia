@@ -1131,13 +1131,13 @@ export default function PartnerTrackingMap({
       )}
 
       {/* Dynamic Real-time Distance & ETA Header Panel (ABOVE the Map) */}
-      <div className="bg-slate-900 text-white rounded-[28px] p-5 border border-slate-800 shadow-lg flex items-center justify-between gap-4 select-none">
+      <div className="bg-[#1e3a8a] text-white rounded-[28px] p-5 border border-[#1e3a8a] shadow-lg flex items-center justify-between gap-4 select-none">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+          <div className="w-10 h-10 rounded-2xl bg-[#f97316]/20 border border-[#f97316]/30 flex items-center justify-center text-[#f97316]">
             <Radio size={18} className="animate-pulse" />
           </div>
           <div>
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#f97316]">
               Real-Time Distance
             </span>
             <h4 className="text-lg font-black italic mt-0.5 tracking-tight text-white flex items-center gap-2">
@@ -1288,24 +1288,24 @@ export default function PartnerTrackingMap({
         {/* Dynamic High Contrast ETA Overlay with 30s Countdown loader */}
         <div
           id="dynamic-eta-overlay"
-          className="absolute top-18 sm:top-4 left-1/2 -translate-x-1/2 z-25 bg-slate-950/95 backdrop-blur-md text-white px-4 py-2.5 rounded-[22px] shadow-2xl border border-slate-800/90 flex items-center gap-3.5 select-none animate-in fade-in slide-in-from-top-3 duration-300 pointer-events-auto"
+          className="absolute top-18 sm:top-4 left-1/2 -translate-x-1/2 z-25 bg-white text-slate-900 px-4 py-2.5 rounded-[22px] shadow-xl border border-slate-200 flex items-center gap-3.5 select-none animate-in fade-in slide-in-from-top-3 duration-300 pointer-events-auto"
         >
           <div className="relative flex items-center justify-center">
             {/* Pulsing broadcast radar animation */}
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#f97316] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#f97316]"></span>
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-400 shrink-0">
+            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#1e3a8a] shrink-0">
               Assigned Pro ETA:
             </span>
-            <span className="text-xs sm:text-sm font-black italic tracking-tight text-white">
+            <span className="text-xs sm:text-sm font-black italic tracking-tight text-[#1e3a8a]">
               {eta}
             </span>
           </div>
-          <div className="h-4 w-[1px] bg-slate-800" />
+          <div className="h-4 w-[1px] bg-slate-200" />
           <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400">
             <Clock
               size={11}

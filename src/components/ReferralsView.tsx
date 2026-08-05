@@ -1013,7 +1013,7 @@ ${profile.displayName || 'Your Friend'}`;
               <button
                 type="button"
                 onClick={copyEmailTemplate}
-                className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3.5 px-4 rounded-2xl text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-4 rounded-2xl text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-orange-500/20"
               >
                 <Copy size={14} />
                 Copy Pre-filled Email Text

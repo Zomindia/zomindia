@@ -326,7 +326,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={handleClose}
-        className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+        className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
       />
 
       <motion.div
@@ -335,7 +335,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="relative w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 z-10 flex flex-col text-slate-800"
       >
-        <div className="p-6 bg-blue-900 border-b border-white/10 relative shrink-0 flex justify-between items-start text-white">
+        <div className="p-6 bg-[#1e3a8a] border-b border-white/10 relative shrink-0 flex justify-between items-start text-white">
           <div>
             <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Zomindia Indore</span>
             <h3 className="text-xl font-black tracking-tight mt-1">Partner Registration</h3>

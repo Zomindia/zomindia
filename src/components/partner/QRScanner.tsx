@@ -182,7 +182,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}

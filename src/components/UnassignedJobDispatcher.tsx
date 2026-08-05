@@ -453,13 +453,13 @@ export default function UnassignedJobDispatcher({
         <div className="lg:col-span-7 space-y-5">
           {/* Selected Booking Highlight Banner */}
           {selectedBooking ? (
-            <div className="bg-slate-900 text-white p-6 rounded-[28px] shadow-xl space-y-4 border border-slate-800 relative overflow-hidden">
+            <div className="bg-white text-slate-900 p-6 rounded-[28px] shadow-md space-y-4 border border-slate-200/80 relative overflow-hidden">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2.5 py-1 rounded-full">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                     Target Booking for Dispatch
                   </span>
-                  <h3 className="text-lg font-black text-white mt-2">
+                  <h3 className="text-lg font-black text-slate-900 mt-2">
                     {services.find(s => s.id === selectedBooking.serviceId)?.name || "Home Service Request"}
                   </h3>
                   <p className="text-xs text-slate-300 font-medium mt-1">

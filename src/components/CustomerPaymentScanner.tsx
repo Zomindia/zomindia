@@ -196,7 +196,7 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}

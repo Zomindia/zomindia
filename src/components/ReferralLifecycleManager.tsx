@@ -476,7 +476,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
         <button
           onClick={() => setActiveSubTab('connections')}
           className={`flex-1 py-3 text-center rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
-            activeSubTab === 'connections' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
+            activeSubTab === 'connections' ? 'bg-blue-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Connections Directory
@@ -484,7 +484,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
         <button
           onClick={() => setActiveSubTab('ledger')}
           className={`flex-1 py-3 text-center rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
-            activeSubTab === 'ledger' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
+            activeSubTab === 'ledger' ? 'bg-blue-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Referral Ledger ({referralTransactions.length})
@@ -492,7 +492,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
         <button
           onClick={() => setActiveSubTab('campaign-rules')}
           className={`flex-1 py-3 text-center rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
-            activeSubTab === 'campaign-rules' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
+            activeSubTab === 'campaign-rules' ? 'bg-blue-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Campaign Rules Config
@@ -839,7 +839,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
             <button
               onClick={handleSaveCampaignRules}
               disabled={savingSettings}
-              className="w-full sm:w-auto bg-slate-900 border border-slate-900 hover:bg-slate-850 text-white font-extrabold uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl shadow-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-extrabold uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl shadow-md shadow-orange-500/20 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
             >
               {savingSettings ? (
                 <>
@@ -857,7 +857,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
       {/* Manual Referral Application Overlap Modal */}
       <AnimatePresence>
         {isManualReferralModalOpen && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/20 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}

@@ -140,8 +140,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  if (process.env.NODE_ENV !== "development" && !process.env.RAZORPAY_KEY_SECRET) {
-    throw new Error("CRITICAL STARTUP ERROR: process.env.RAZORPAY_KEY_SECRET is required but undefined in non-development environments!");
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    console.warn("[Startup Notice] process.env.RAZORPAY_KEY_SECRET is not set. Online Razorpay payments will operate in sandbox/simulation mode.");
   }
 
   app.use(express.json());

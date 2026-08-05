@@ -2697,7 +2697,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
   });
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm overflow-y-auto">
       <AnimatePresence mode="wait">
         {!showSummary ? (
           <motion.div 
@@ -2705,7 +2705,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 1.05, opacity: 0 }}
-            className="bg-slate-900 border border-slate-800/80 rounded-[40px] p-8 w-full max-w-sm text-center shadow-3xl space-y-8 my-auto animate-fade-in"
+            className="bg-white border border-slate-200 rounded-[40px] p-8 w-full max-w-sm text-center shadow-2xl space-y-8 my-auto animate-fade-in text-slate-900"
           >
             {/* Spinning/Radial neon loading indicator */}
             <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
@@ -2813,7 +2813,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
             key="summary"
             initial={{ scale: 0.9, y: 30, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1, transition: { type: "spring", stiffness: 100, damping: 15 } }}
-            className="bg-slate-900 border border-slate-800/80 rounded-[44px] p-8 w-full max-w-sm text-center shadow-3xl text-white relative overflow-hidden my-auto"
+            className="bg-white border border-slate-200 rounded-[44px] p-8 w-full max-w-sm text-center shadow-2xl text-slate-900 relative overflow-hidden my-auto"
           >
             {/* Lottie-style Sparkle Burst on Load */}
             {particles.map((p) => (
@@ -2855,7 +2855,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
               </motion.div>
               
               <motion.div 
-                className="absolute -top-1 -right-1 text-amber-400 bg-slate-900 border border-slate-800 rounded-lg p-1"
+                className="absolute -top-1 -right-1 text-amber-500 bg-white border border-slate-200 rounded-lg p-1 shadow-sm"
                 animate={{ scale: [1, 1.25, 1], rotate: [0, 10, -10, 0] }}
                 transition={{ repeat: Infinity, duration: 4, delay: 1 }}
               >
@@ -2864,16 +2864,16 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
             </div>
 
             <div className="space-y-1.5 mt-6">
-              <h3 className="text-xl font-black italic tracking-tight uppercase">
+              <h3 className="text-xl font-black italic tracking-tight uppercase text-[#1e3a8a]">
                 Success, Partner!
               </h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                 Service Order Completed Successfully
               </p>
             </div>
 
             {/* Summary Details */}
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-3xl p-5 mt-6 space-y-4">
+            <div className="bg-[#f5f7fa] border border-slate-200/80 rounded-3xl p-5 mt-6 space-y-4">
               <div className="flex justify-between items-center text-left">
                 <div>
                   <p className="text-[8px] text-slate-500 font-black uppercase tracking-widest">

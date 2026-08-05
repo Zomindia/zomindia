@@ -133,7 +133,7 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
                         (n.type?.includes('warning') || n.type === 'booking_pending' || n.type === 'pending_parts' || n.type === 'amc_lead') ? 'bg-orange-500' :
                         (n.type?.includes('error') || n.type === 'booking_cancelled' || n.type === 'job_cancelled') ? 'bg-rose-600' :
                         (n.type === 'promotional' || n.type === 'offer_active') ? 'bg-violet-600' :
-                        'bg-slate-900'
+                        'bg-blue-600'
                       }`}>
                         {(n.type?.includes('success') || n.type === 'job_completed' || n.type === 'payment_received' || n.type === 'job_finalized') ? <CheckCircle2 size={12} strokeWidth={3} /> :
                          (n.type?.includes('booking') || n.type === 'job_started' || n.type === 'on_the_way' || n.type === 'arrived' || n.type === 'job_assigned') ? <ShieldCheck size={12} strokeWidth={3} /> :
@@ -166,7 +166,7 @@ export default function NotificationsView({ profile, onNavigate }: { profile: Us
                               e.preventDefault();
                               markAsRead(n.id);
                             }}
-                            className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-900/10"
+                            className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
                           >
                             Acknowledge
                           </button>

@@ -417,7 +417,7 @@ export default function OffersView({
             >
               {/* Absolute Decorative Shining Overlay */}
               <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/15 rounded-full blur-3xl group-hover:bg-white/25 transition-all duration-500 pointer-events-none" />
-              <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] transition-all duration-500 group-hover:backdrop-blur-0 z-0 pointer-events-none" />
+              <div className="absolute inset-0 bg-white/5 backdrop-blur-[1px] transition-all duration-500 group-hover:backdrop-blur-0 z-0 pointer-events-none" />
 
               {/* Main Content Body */}
               <div className="relative z-10 p-6 sm:p-8 flex flex-col h-full justify-between flex-1">
@@ -429,7 +429,7 @@ export default function OffersView({
                       <Tag size={11} className="stroke-[2.5]" />
                       {promo.discountType === 'percent' ? `${promo.discountValue}% OFF` : `Flat ₹${promo.discountValue} OFF`}
                     </span>
-                    <span className="text-[10px] text-white/90 font-bold flex items-center gap-1 px-2 py-1 bg-black/15 rounded-lg border border-white/5 backdrop-blur-sm">
+                    <span className="text-[10px] text-white/90 font-bold flex items-center gap-1 px-2 py-1 bg-white/10 rounded-lg border border-white/10 backdrop-blur-sm">
                       <Clock size={11} className="text-white/80" /> 7 Days Left
                     </span>
                   </div>
@@ -458,7 +458,7 @@ export default function OffersView({
                       e.stopPropagation();
                       copyToClipboard(promo.code);
                     }}
-                    className="group/code flex items-center justify-between gap-2 p-3 rounded-2xl bg-black/25 hover:bg-black/35 border border-white/10 hover:border-white/20 transition-all duration-200 cursor-pointer shadow-inner"
+                    className="group/code flex items-center justify-between gap-2 p-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 transition-all duration-200 cursor-pointer shadow-inner"
                     title="Click to copy coupon code"
                     id={`copy-pod-${promo.id}`}
                   >
@@ -577,7 +577,7 @@ export default function OffersView({
       {/* Redemption Modal - Centered with Slide-In Sheet */}
       <AnimatePresence>
         {selectedPromo && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" id="redemption-modal">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm" id="redemption-modal">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -669,7 +669,7 @@ export default function OffersView({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bg-slate-900/95 backdrop-blur-xl border border-white/10 text-white rounded-2xl p-5 shadow-2xl z-[150] flex flex-col gap-3"
+            className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-900 rounded-2xl p-5 shadow-2xl z-[150] flex flex-col gap-3"
             id="ios-pwa-prompt"
           >
             <div className="flex items-start justify-between gap-3">

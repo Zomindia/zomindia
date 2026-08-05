@@ -1358,7 +1358,7 @@ export default function AiSupportChat({
                     Support
                   </span>
                   <span className="text-indigo-400 font-bold">•</span>
-                  <div className="bg-slate-950/40 text-white px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border border-indigo-800/85 shadow-sm flex items-center gap-1 backdrop-blur-sm">
+                  <div className="bg-white/15 text-white px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border border-white/20 shadow-sm flex items-center gap-1 backdrop-blur-sm">
                     <span className="text-cyan-400 font-black animate-pulse">•</span>
                     <span>
                       नमस्ते, <span className="text-cyan-300">{userProfile ? (userProfile.fullName || userProfile.displayName || "User") : "Guest"}</span>

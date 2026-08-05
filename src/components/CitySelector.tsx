@@ -169,7 +169,7 @@ export function CitySelector({ isOpen, onClose, currentUser, onSelectCity }: Cit
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
               onClick={onClose}
-              className="absolute inset-0 bg-slate-900/85 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               id="city-selector-backdrop"
             />
 
@@ -265,7 +265,7 @@ export function CitySelector({ isOpen, onClose, currentUser, onSelectCity }: Cit
               animate={{ opacity: 0.6 }}
               exit={{ opacity: 0 }}
               onClick={() => { setComingSoonCity(null); setIsSubscribed(false); }}
-              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+              className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               id="coming-soon-backdrop"
             />
 

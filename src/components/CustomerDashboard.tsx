@@ -69,6 +69,8 @@ import {
   Phone,
   Sparkles,
   Moon,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
@@ -184,7 +186,7 @@ function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="p-1 rounded-full text-blue-400 hover:text-blue-300 hover:bg-slate-800/50 transition-all focus:outline-none shrink-0"
+        className="p-1 rounded-full text-blue-600 hover:text-blue-700 hover:bg-slate-100 transition-all focus:outline-none shrink-0"
         title="Verified Safety Info"
       >
         <Shield size={12} className="fill-blue-500/15" />
@@ -196,42 +198,42 @@ function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-xl z-50 pointer-events-auto text-left"
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-white border border-slate-200 text-slate-800 rounded-2xl p-4 shadow-xl z-50 pointer-events-auto text-left"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
-              <Shield size={16} className="text-emerald-500 fill-emerald-500/10" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-white leading-none">
+            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100">
+              <Shield size={16} className="text-emerald-600 fill-emerald-500/10" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 leading-none">
                 Safety & Verification
               </span>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-slate-400 font-bold">PROFILE CHECK:</span>
-                <span className="text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded uppercase">
+                <span className="text-slate-500 font-bold">PROFILE CHECK:</span>
+                <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase">
                   {isVerified ? 'VERIFIED' : 'PASSED'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-slate-400 font-bold">KYC DOCUMENTS:</span>
-                <span className="text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded uppercase">
+                <span className="text-slate-500 font-bold">KYC DOCUMENTS:</span>
+                <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase">
                   {kycStatus === 'verified' ? 'APPROVED' : 'VERIFIED'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-slate-400 font-bold">BACKGROUND:</span>
-                <span className="text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded uppercase">
+                <span className="text-slate-500 font-bold">BACKGROUND:</span>
+                <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase">
                   CLEARED
                 </span>
               </div>
             </div>
 
-            <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-2.5 pt-2.5 border-t border-slate-800/50">
+            <p className="text-[9px] text-slate-600 font-medium leading-relaxed mt-2.5 pt-2.5 border-t border-slate-100">
               This technician is a fully background-verified professional under safety standards.
             </p>
 
-            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2.5 h-2.5 bg-slate-900 border-r border-b border-slate-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2.5 h-2.5 bg-white border-r border-b border-slate-200 rotate-45" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -283,29 +285,29 @@ function RescheduleSector({ booking, onReschedule }: RescheduleSectorProps) {
   const isLocked = cooldown > 0 && !bypass;
 
   return (
-    <div className="bg-slate-950 text-white rounded-[32px] p-6 border border-slate-800 space-y-5 shadow-2xl relative overflow-hidden">
+    <div className="bg-white text-slate-900 rounded-2xl p-6 border border-slate-200/80 space-y-5 shadow-sm relative overflow-hidden">
       <div className="absolute -right-12 -top-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
       <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center shrink-0">
+        <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
           <HelpCircle size={20} className="animate-pulse" />
         </div>
         <div className="space-y-1">
-          <h4 className="text-xs font-black uppercase tracking-widest text-amber-400">
+          <h4 className="text-xs font-black uppercase tracking-widest text-amber-700">
             ⚠️ Service Connection Hold (Grace Cooldown Active)
           </h4>
-          <p className="text-[11px] text-slate-300 leading-normal">
+          <p className="text-[11px] text-slate-600 leading-normal">
             Your Service Expert was unable to reach you. To protect your wallet and scheduling sequence, we have queued your booking in slot-retention mode. A 15-minute response grace cooldown is active.
           </p>
         </div>
       </div>
 
       {isLocked ? (
-        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-850 space-y-3">
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Response Grace Countdown</span>
-            <span className="text-sm font-mono font-black text-amber-400 animate-pulse">{formatSecs(cooldown)}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Response Grace Countdown</span>
+            <span className="text-sm font-mono font-black text-amber-600 animate-pulse">{formatSecs(cooldown)}</span>
           </div>
-          <div className="h-1.5 bg-slate-850 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000"
               style={{ width: `${(cooldown / 900) * 100}%` }}
@@ -315,40 +317,40 @@ function RescheduleSector({ booking, onReschedule }: RescheduleSectorProps) {
             <p className="text-[9px] text-slate-500 font-bold uppercase">Safe Retention Mode Enabled</p>
             <button
               onClick={() => setBypass(true)}
-              className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[9px] uppercase tracking-wider rounded-lg transition-all cursor-pointer"
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white font-black text-[9px] uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-xs"
             >
               ⚡ Fast-Forward Cooldown
             </button>
           </div>
         </div>
       ) : (
-        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-850 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="space-y-1">
-            <h5 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+            <h5 className="text-xs font-black uppercase tracking-widest text-emerald-700 flex items-center gap-1.5">
               <CheckCircle2 size={13} /> 🔄 Reschedule & Release Slot
             </h5>
-            <p className="text-[10px] text-slate-405 leading-relaxed">
+            <p className="text-[10px] text-slate-600 leading-relaxed">
               Cooldown period resolved. Pick a new date/time to instantly release this booking back to available partner dispatch pools.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3.5">
             <div className="space-y-1.5 text-left">
-              <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">New Service Date</label>
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">New Service Date</label>
               <input 
                 type="date"
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
+                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
               />
             </div>
             <div className="space-y-1.5 text-left">
-              <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">New Slot Time</label>
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">New Slot Time</label>
               <input 
                 type="time"
                 value={newTime}
                 onChange={(e) => setNewTime(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
+                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500 font-sans"
               />
             </div>
           </div>
@@ -356,7 +358,7 @@ function RescheduleSector({ booking, onReschedule }: RescheduleSectorProps) {
           <button
             onClick={handleApply}
             disabled={loading}
-            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-55 text-slate-950 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-md mt-1 cursor-pointer"
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-55 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-sm mt-1 cursor-pointer"
           >
             {loading ? "Re-initializing Dispatch..." : "Confirm Reschedule & Release Reservation"}
           </button>
@@ -971,7 +973,7 @@ export default function CustomerDashboard({
         return "bg-amber-500 text-white";
       case "confirmed":
       case "assigned":
-        return "bg-[#0a2540] text-white";
+        return "bg-blue-700 text-white";
       case "pending":
       case "pending_parts":
         return "bg-amber-100 text-amber-700";
@@ -1419,7 +1421,7 @@ export default function CustomerDashboard({
 
     if (bookingStatus && (bookingStatus.toLowerCase() === "assigned" || bookingStatus.toUpperCase() === "ASSIGNED")) {
       isCustomComposite = true;
-      gradientClass = "from-[#0a2540] to-[#1e3a8a] shadow-blue-950/20";
+      gradientClass = "from-blue-600 to-indigo-700 shadow-blue-500/20";
     } else if (
       serviceName.toLowerCase().includes("cleaning") ||
       serviceName.toLowerCase().includes("wash")
@@ -1484,7 +1486,7 @@ export default function CustomerDashboard({
         {isCustomComposite ? (
           <div className="relative flex items-center justify-center shrink-0" style={{ width: iconSize, height: iconSize }}>
             <Clock size={iconSize} className="text-white shrink-0 animate-pulse" />
-            <div className="absolute -bottom-1 -right-1 bg-[#0a2540] rounded-full p-0.5 border border-white shadow-sm flex items-center justify-center">
+            <div className="absolute -bottom-1 -right-1 bg-blue-700 rounded-full p-0.5 border border-white shadow-sm flex items-center justify-center">
               <User size={subSize} className="text-white fill-white" strokeWidth={3} />
             </div>
           </div>
@@ -1506,19 +1508,19 @@ export default function CustomerDashboard({
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a2540] text-white py-3 px-6 md:px-8 rounded-[28px] shadow-xl relative overflow-hidden mb-6"
+          className="bg-white border border-slate-200/80 text-slate-900 py-3 px-6 md:px-8 rounded-[28px] shadow-sm relative overflow-hidden mb-6"
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
             <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2 rounded-xl shrink-0">
-                <Sparkles className="w-4 h-4 text-cyan-300" />
+              <div className="bg-blue-50 p-2 rounded-xl shrink-0 border border-blue-100">
+                <Sparkles className="w-4 h-4 text-blue-600" />
               </div>
               <div>
-                <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
+                <h4 className="text-xs font-bold tracking-tight text-slate-900 flex items-center gap-2">
                   INSTALL ZOMINDIA WEB-APP
                 </h4>
-                <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
+                <p className="text-xs text-slate-600 mt-0.5 font-normal leading-normal max-w-xl">
                   {showIosSafariInstall 
                     ? "To install, tap Share [↑] and select 'Add to Home Screen'."
                     : "Install Zomindia directly on your home screen for quick offline access and service tracking."}
@@ -1548,7 +1550,7 @@ export default function CustomerDashboard({
                     setShowPwaInstall(false);
                   }
                 }}
-                className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
+                className="text-slate-500 hover:text-slate-800 text-xs font-medium py-2 px-3 rounded-xl hover:bg-slate-100 transition cursor-pointer"
               >
                 Dismiss
               </button>
@@ -1560,7 +1562,7 @@ export default function CustomerDashboard({
       {/* INCOMING SECURE CALL MODAL */}
       <AnimatePresence>
         {activeCoordinatedCallBooking && (
-          <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1614,7 +1616,7 @@ export default function CustomerDashboard({
       {/* Success Confirmation Modal */}
       <AnimatePresence>
         {showSuccessModal && (
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-blue-700/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1714,12 +1716,12 @@ export default function CustomerDashboard({
                   className="bg-white border border-slate-200 text-slate-900 rounded-[32px] overflow-hidden shadow-xl mb-8 flex flex-col w-full relative"
                 >
                   {routingCallBookingId === booking.id && (
-                    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-6 rounded-[32px]">
-                      <div className="w-16 h-16 bg-emerald-500/20 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-4 animate-bounce">
-                        <Phone size={24} className="text-emerald-400" />
+                    <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-6 rounded-[32px]">
+                      <div className="w-16 h-16 bg-emerald-50 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-4 animate-bounce shadow-md">
+                        <Phone size={24} className="text-emerald-600" />
                       </div>
-                      <h4 className="text-white font-black text-xs uppercase tracking-widest mb-2">Routing call securely...</h4>
-                      <p className="text-slate-400 text-[10px] max-w-xs leading-relaxed">
+                      <h4 className="text-slate-900 font-black text-xs uppercase tracking-widest mb-2">Routing call securely...</h4>
+                      <p className="text-slate-600 text-[10px] max-w-xs leading-relaxed font-medium">
                         ZomIndia's Twilio privacy shield is active. Connecting you safely with our service professional.
                       </p>
                     </div>
@@ -1733,9 +1735,9 @@ export default function CustomerDashboard({
                     <div className="flex items-center gap-3">
                       {(() => {
                         const isConfirmedOrAssigned = bookingStatus.toLowerCase() === 'confirmed' || bookingStatus.toLowerCase() === 'assigned';
-                        const badgeColorText = isConfirmedOrAssigned ? 'text-[#0a2540]' : 'text-[#22c55e]';
-                        const badgeBg = isConfirmedOrAssigned ? 'bg-[#0a2540]/10' : 'bg-[#22c55e]/10';
-                        const badgeBorder = isConfirmedOrAssigned ? 'border-[#0a2540]/20' : 'border-[#22c55e]/20';
+                        const badgeColorText = isConfirmedOrAssigned ? 'text-blue-900' : 'text-[#22c55e]';
+                        const badgeBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-[#22c55e]/10';
+                        const badgeBorder = isConfirmedOrAssigned ? 'border-blue-200' : 'border-[#22c55e]/20';
                         const statusBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-emerald-50';
 
                         return (
@@ -1847,7 +1849,7 @@ export default function CustomerDashboard({
                                     className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                                       isActiveColour 
                                         ? (idx <= 1 
-                                            ? 'bg-[#0a2540] border-[#0a2540] text-white shadow-[#0a2540]/15' 
+                                            ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/15' 
                                             : 'bg-[#22c55e] border-[#22c55e] text-white shadow-[#22c55e]/15')
                                         : 'bg-white border-slate-200 text-slate-400'
                                     }`}
@@ -1856,7 +1858,7 @@ export default function CustomerDashboard({
                                   </div>
                                   <span className={`text-[8px] sm:text-[9px] font-black tracking-tight mt-1.5 transition-colors duration-300 ${
                                     isActiveColour 
-                                      ? (idx <= 1 ? 'text-[#0a2540] font-black' : 'text-[#22c55e] font-black') 
+                                      ? (idx <= 1 ? 'text-blue-900 font-black' : 'text-[#22c55e] font-black') 
                                       : 'text-slate-400'
                                   }`}>
                                     {step.label}
@@ -1869,38 +1871,38 @@ export default function CustomerDashboard({
                       </motion.div>
 
                       {/* 4. Appointment Details Segment */}
-                      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-xs font-semibold bg-white">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                            <Calendar size={14} className="text-[#22c55e]" />
+                      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80 text-xs font-semibold">
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                            <Calendar size={15} />
                           </div>
-                          <div>
-                            <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Date</p>
-                            <p className="font-extrabold text-slate-800">
+                          <div className="min-w-0">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Date</p>
+                            <p className="font-extrabold text-blue-950 text-xs truncate">
                               {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) || "Today"}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                            <Clock size={14} className="text-[#22c55e]" />
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                            <Clock size={15} />
                           </div>
-                          <div>
-                            <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Time</p>
-                            <p className="font-extrabold text-slate-800">
+                          <div className="min-w-0">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Time</p>
+                            <p className="font-extrabold text-blue-950 text-xs truncate">
                               {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "10:00 AM"}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                            <MapPin size={14} className="text-[#22c55e]" />
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                            <MapPin size={15} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold leading-none mb-1">Service Address</p>
-                            <p className="font-extrabold text-slate-800 text-left truncate" title={booking.address}>
+                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Address</p>
+                            <p className="font-extrabold text-blue-950 text-xs text-left truncate" title={booking.address}>
                               {expandedBookingId === booking.id ? booking.address : (booking.address ? booking.address.split(',')[0] : 'Vijay Nagar')}
                             </p>
                           </div>
@@ -1969,7 +1971,7 @@ export default function CustomerDashboard({
                               <div className="grid grid-cols-3 gap-1.5 w-full">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setBookingToPay(booking); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0"
+                                  className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
                                 >
                                   Online
                                 </button>
@@ -1992,21 +1994,22 @@ export default function CustomerDashboard({
                           {/* Detailed Accordion Launcher */}
                           <button
                             onClick={() => setExpandedBookingId(booking.id)}
-                            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-slate-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                            className="w-full py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs hover:shadow-sm active:scale-[0.99]"
                           >
-                            <span>View Details 🔽</span>
+                            <ChevronDown size={14} className="text-slate-600" />
+                            <span>View Full Booking Details</span>
                           </button>
                         </div>
                       ) : (
                         <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-400">
                           {/* 5. Security Verification OTP Segment */}
                           {otpCode && (bookingStatus.toLowerCase() !== "in_progress") && (
-                            <motion.div variants={itemVariants} className="bg-gradient-to-r from-slate-900 to-slate-950 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-md">
+                            <motion.div variants={itemVariants} className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-xs">
                               <div className="text-center sm:text-left">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#22c55e] px-2.5 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/20 rounded-full inline-block mb-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 px-2.5 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full inline-block mb-1.5">
                                   Security Verification OTP
                                 </span>
-                                <p className="text-[11px] text-slate-400 font-medium max-w-sm leading-tight text-left">
+                                <p className="text-[11px] text-slate-600 font-medium max-w-sm leading-tight text-left">
                                   Provide this secure 4-digit token to your service professional ONLY when they arrive.
                                 </p>
                               </div>
@@ -2018,7 +2021,7 @@ export default function CustomerDashboard({
                                     </div>
                                   ))}
                                 </div>
-                                <span className="text-[10px] text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 animate-pulse">
+                                <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 animate-pulse">
                                   <CheckCircle2 size={10} /> Standby
                                 </span>
                               </div>
@@ -2140,7 +2143,7 @@ export default function CustomerDashboard({
                                           e.stopPropagation();
                                           setBookingToPay(booking);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0"
+                                        className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
                                       >
                                         Online
                                       </button>
@@ -2180,7 +2183,7 @@ export default function CustomerDashboard({
                                       : booking.id,
                                   )
                                 }
-                                className="w-full text-[10px] font-black uppercase tracking-widest bg-slate-900 hover:bg-slate-800 text-white transition-all px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer border-0 font-display"
+                                className="w-full text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white transition-all px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer border-0 font-display"
                               >
                                 <Compass size={12} className="text-white shrink-0" />
                                 {expandedTrackerId === booking.id
@@ -2211,9 +2214,10 @@ export default function CustomerDashboard({
                           {/* Collapse Accordion Button */}
                           <button
                             onClick={() => setExpandedBookingId(null)}
-                            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-[10px] uppercase tracking-widest rounded-xl border border-slate-200/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                            className="w-full py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs hover:shadow-sm active:scale-[0.99]"
                           >
-                            <span>Hide Details 🔼</span>
+                            <ChevronUp size={14} className="text-slate-600" />
+                            <span>Hide Booking Details</span>
                           </button>
                         </div>
                       )}
@@ -2223,11 +2227,10 @@ export default function CustomerDashboard({
                     {/* Right/Expert Column (Col span: md:1, lg:1) */}
                     <div className="md:col-span-1">
                       {hasPartner ? (
-                        <div className="bg-slate-900 text-white p-5 rounded-[28px] border border-slate-850 shadow-xl flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px]">
-                          <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/10 rounded-full blur-2xl group-hover:bg-blue-600/20 transition-all duration-500 pointer-events-none" />
+                        <div className="bg-white text-slate-900 p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px]">
                           <div className="space-y-4">
                             <div className="flex flex-col items-center text-center">
-                              <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative mb-3">
+                              <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 relative mb-3">
                                 <img
                                   src={
                                     ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
@@ -2245,30 +2248,30 @@ export default function CustomerDashboard({
                                 />
                               </div>
                               <div>
-                                <span className="text-[8px] font-black uppercase text-[#22c55e] tracking-wider bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-md inline-block mb-1.5">
+                                <span className="text-[8px] font-black uppercase text-emerald-700 tracking-wider bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-block mb-1.5">
                                   Assigned Professional
                                 </span>
-                                <h5 className="font-bold text-white text-sm flex items-center justify-center gap-1 leading-none">
+                                <h5 className="font-bold text-slate-900 text-sm flex items-center justify-center gap-1 leading-none">
                                   {partnerUser?.displayName || "Vikas Chopra"}
-                                  <CheckCircle2 size={12} className="text-[#22c55e]" fill="currentColor" />
+                                  <CheckCircle2 size={12} className="text-emerald-600" fill="currentColor" />
                                 </h5>
-                                <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-slate-400 font-bold">
-                                  <span className="flex items-center gap-0.5 text-slate-200">
+                                <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-slate-600 font-bold">
+                                  <span className="flex items-center gap-0.5 text-slate-800">
                                     <Star size={10} className="text-amber-500 fill-amber-500" />
                                     <span>{(partnerDetail?.rating || 4.9).toFixed(1)}</span>
                                   </span>
                                   <span>•</span>
-                                  <span className="text-emerald-450 bg-[#22c55e]/10 border border-[#22c55e]/20 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
+                                  <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
                                     {partnerDetail?.reviewCount || 184} reviews
                                   </span>
                                 </div>
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-800">
+                          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200">
                             <button
                               onClick={() => setActiveBookingChat(booking)}
-                              className="flex-1 bg-white hover:bg-slate-100 text-slate-900 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                              className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
                             >
                               <MessageSquare size={12} /> Chat
                             </button>
@@ -2277,7 +2280,7 @@ export default function CustomerDashboard({
                                 id="customer-booking-secure-call-btn-1"
                                 disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
                               >
                                 <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
                               </button>
@@ -2369,40 +2372,40 @@ export default function CustomerDashboard({
               return (
                 <div
                   key={booking.id}
-                  className="booking-details-modal bg-slate-900 border border-slate-800 text-white rounded-3xl p-4 sm:p-8 shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5)] relative overflow-hidden mb-6"
+                  className="booking-details-modal bg-white border border-slate-200/80 text-slate-900 rounded-2xl p-4 sm:p-8 shadow-sm relative overflow-hidden mb-6"
                 >
                   {/* Visual Ambient Blur Accent */}
-                  <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
+                  <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none" />
 
                   {/* Header Module */}
-                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4 mb-6">
+                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200/80 pb-4 mb-6">
                     <div className="flex items-center gap-4 sm:gap-6">
                       {renderServiceThumbnail(booking.serviceId, "md")}
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                          <span className="text-[10px] font-mono tracking-widest text-slate-400 font-black uppercase">
+                          <span className="text-[10px] font-mono tracking-widest text-slate-500 font-black uppercase">
                             ID: #{booking.id.toUpperCase()}
                           </span>
-                          <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                           <span
                             className={`text-[8px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${getStatusColor(bookingStatus)}`}
                           >
                             {bookingStatus.replace("_", " ")}
                           </span>
                         </div>
-                        <h4 className="text-xl sm:text-2xl font-black italic tracking-tighter uppercase text-white leading-none">
+                        <h4 className="text-xl sm:text-2xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
                           {services[booking.serviceId]?.name ||
                             "Professional Service"}
                         </h4>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 self-stretch md:self-auto justify-between md:justify-end border-t border-slate-800/50 md:border-t-0 pt-4 md:pt-0">
+                    <div className="flex items-center gap-3 self-stretch md:self-auto justify-between md:justify-end border-t border-slate-200/80 md:border-t-0 pt-4 md:pt-0">
                       <div className="text-left md:text-right">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
                           Estimated Total
                         </p>
-                        <p className="text-xl font-black text-emerald-400">
+                        <p className="text-xl font-black text-emerald-600">
                           ₹{booking.totalPrice}
                         </p>
                       </div>
@@ -2410,10 +2413,10 @@ export default function CustomerDashboard({
                   </div>
 
                   {/* Visual Status Tracking Timeline */}
-                  <div className="relative z-10 w-full mb-8 pt-4 pb-6 px-4 bg-slate-950/40 rounded-3xl border border-slate-800/80">
+                  <div className="relative z-10 w-full mb-8 pt-4 pb-6 px-4 bg-slate-50 rounded-2xl border border-slate-200/80">
                     <div className="flex items-center justify-between relative max-w-3xl mx-auto px-1 sm:px-4 md:px-6">
                       {/* Background Progress Track Line */}
-                      <div className="absolute top-[18px] sm:top-[22px] left-6 right-6 h-[2px] bg-slate-800 z-0" />
+                      <div className="absolute top-[18px] sm:top-[22px] left-6 right-6 h-[2px] bg-slate-200 z-0" />
                       
                       {/* Active Animated Progress Track Line */}
                       <motion.div 
@@ -2463,17 +2466,17 @@ export default function CustomerDashboard({
                               initial={{ scale: 0.8 }}
                               animate={{ 
                                 scale: isCurrent ? [1, 1.15, 1] : 1,
-                                borderColor: isCompleted ? '#10b981' : isCurrent ? '#6366f1' : '#1e293b'
+                                borderColor: isCompleted ? '#10b981' : isCurrent ? '#6366f1' : '#cbd5e1'
                               }}
                               transition={{ 
                                 scale: isCurrent ? { repeat: Infinity, duration: 2, ease: "easeInOut" } : { duration: 0.3 }
                               }}
                               className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 flex items-center justify-center transition-all duration-300 relative ${
                                 isCompleted 
-                                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                                  ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' 
                                   : isCurrent 
-                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30 ring-4 ring-indigo-500/15' 
-                                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-500/30 ring-4 ring-indigo-500/15' 
+                                    : 'bg-white border-slate-300 text-slate-400'
                               }`}
                             >
                               <StepIcon size={16} className={isCurrent ? "animate-pulse" : ""} />
@@ -2488,15 +2491,15 @@ export default function CustomerDashboard({
                             <div className="mt-3 text-center flex flex-col items-center max-w-[65px] sm:max-w-[120px]">
                               <span className={`text-[8px] sm:text-[10px] font-black tracking-tight leading-snug transition-colors duration-300 ${
                                 isCompleted 
-                                  ? 'text-emerald-400 font-extrabold' 
+                                  ? 'text-emerald-700 font-extrabold' 
                                   : isCurrent 
-                                    ? 'text-indigo-300 font-black' 
+                                    ? 'text-indigo-700 font-black' 
                                     : 'text-slate-500'
                               }`}>
                                 {step.label}
                               </span>
-                              <span className={`text-[7px] sm:text-[8px] font-medium tracking-wide mt-0.5 whitespace-nowrap opacity-60 hidden md:block ${
-                                isCompleted ? 'text-emerald-500/80' : isCurrent ? 'text-indigo-400' : 'text-slate-600'
+                              <span className={`text-[7px] sm:text-[8px] font-medium tracking-wide mt-0.5 whitespace-nowrap opacity-70 hidden md:block ${
+                                isCompleted ? 'text-emerald-800' : isCurrent ? 'text-indigo-600' : 'text-slate-500'
                               }`}>
                                 {step.description}
                               </span>
@@ -2512,21 +2515,21 @@ export default function CustomerDashboard({
                     {/* Left Column: Details */}
                     <div className="lg:col-span-7 space-y-6">
                       {/* Booking metadata list */}
-                      <div className="space-y-4 bg-slate-800/20 border border-slate-800/80 p-5 rounded-3xl">
-                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-1">
-                          <FileText size={12} className="text-blue-400" />{" "}
+                      <div className="space-y-4 bg-slate-50 border border-slate-200/80 p-5 rounded-2xl">
+                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2 mb-1">
+                          <FileText size={12} className="text-blue-600" />{" "}
                           Appointment Details
                         </h5>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
-                          <div className="flex items-center gap-3 text-slate-200">
-                            <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0">
-                              <Calendar size={14} className="text-slate-400" />
+                          <div className="flex items-center gap-3 text-slate-800">
+                            <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shrink-0">
+                              <Calendar size={14} className="text-slate-600" />
                             </div>
                             <div>
-                              <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold mb-0.5">
+                              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold mb-0.5">
                                 Service Date
                               </p>
-                              <p className="font-bold text-slate-100">
+                              <p className="font-bold text-slate-900">
                                 {booking.scheduledAt
                                   ?.toDate?.()
                                   ?.toLocaleDateString([], {
@@ -2539,15 +2542,15 @@ export default function CustomerDashboard({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3 text-slate-200">
-                            <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0">
-                              <Clock size={14} className="text-slate-400" />
+                          <div className="flex items-center gap-3 text-slate-800">
+                            <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shrink-0">
+                              <Clock size={14} className="text-slate-600" />
                             </div>
                             <div>
-                              <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold mb-0.5">
+                              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold mb-0.5">
                                 Service Time
                               </p>
-                              <p className="font-bold text-slate-100">
+                              <p className="font-bold text-slate-900">
                                 {booking.scheduledAt
                                   ?.toDate?.()
                                   ?.toLocaleTimeString([], {
@@ -2559,15 +2562,15 @@ export default function CustomerDashboard({
                           </div>
                         </div>
 
-                        <div className="pt-3 border-t border-slate-800/60 flex items-start gap-3 text-slate-200 text-xs">
-                          <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700/50 flex items-center justify-center shrink-0 pb-0.5">
-                            <MapPin size={14} className="text-slate-400" />
+                        <div className="pt-3 border-t border-slate-200/80 flex items-start gap-3 text-slate-800 text-xs">
+                          <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shrink-0 pb-0.5">
+                            <MapPin size={14} className="text-slate-600" />
                           </div>
                           <div>
-                            <p className="text-[8px] uppercase tracking-wider text-slate-400 font-extrabold mb-0.5">
+                            <p className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold mb-0.5">
                               Service Address
                             </p>
-                            <p className="font-bold text-slate-100 leading-relaxed text-left">
+                            <p className="font-bold text-slate-900 leading-relaxed text-left">
                               {booking.address}
                             </p>
                           </div>
@@ -2576,9 +2579,9 @@ export default function CustomerDashboard({
 
                       {/* Technician details & Actions */}
                       {hasPartner ? (
-                        <div className="bg-slate-850/40 border border-slate-800 p-5 rounded-3xl space-y-4">
+                        <div className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl space-y-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e] relative">
+                            <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 relative">
                               <img
                                 src={
                                   ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
@@ -2596,14 +2599,14 @@ export default function CustomerDashboard({
                               />
                             </div>
                             <div className="min-w-0 flex-1 text-left">
-                              <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-md inline-block mb-1">
+                              <span className="text-[9px] font-black uppercase text-emerald-700 tracking-wider bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md inline-block mb-1">
                                 Assigned Professional
                               </span>
-                              <h5 className="font-bold text-slate-100 text-base flex items-center gap-1.5 leading-none">
+                              <h5 className="font-bold text-slate-900 text-base flex items-center gap-1.5 leading-none">
                                 {partnerUser?.displayName || "Expert Partner"}
                                 <CheckCircle2
                                   size={14}
-                                  className="text-emerald-500"
+                                  className="text-emerald-600"
                                   fill="currentColor"
                                 />
                                 <SafetyInfoTooltip 
@@ -2612,8 +2615,8 @@ export default function CustomerDashboard({
                                   kycStatus={partnerDetail?.kycStatus}
                                 />
                               </h5>
-                              <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400 font-bold">
-                                <span className="flex items-center gap-1 text-slate-200">
+                              <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-600 font-bold">
+                                <span className="flex items-center gap-1 text-slate-800">
                                   <Star
                                     size={12}
                                     className="text-amber-500 fill-amber-500"
@@ -2623,7 +2626,7 @@ export default function CustomerDashboard({
                                   </span>
                                 </span>
                                 <span>•</span>
-                                <span className="text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded text-[10px] tracking-wider">
+                                <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px] tracking-wider">
                                   {partnerDetail?.reviewCount || 12} reviews
                                 </span>
                               </div>
@@ -2634,11 +2637,11 @@ export default function CustomerDashboard({
                           <div className="flex gap-3">
                             <button
                               onClick={() => setActiveBookingChat(booking)}
-                              className="flex-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+                              className="flex-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
                             >
                               <MessageSquare
                                 size={14}
-                                className="text-slate-300"
+                                className="text-slate-600"
                               />{" "}
                               Chat
                             </button>
@@ -2647,23 +2650,23 @@ export default function CustomerDashboard({
                                 id="customer-booking-secure-call-btn-2"
                                 disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-900 active:scale-95 disabled:opacity-50 border border-slate-700 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                               >
-                                <Phone size={14} className="text-slate-300" />{" "}
+                                <Phone size={14} className="text-white" />{" "}
                                 {isCalling ? "Connecting..." : "Call"}
                               </button>
                             )}
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-slate-800/10 border border-dashed border-slate-800 p-6 rounded-3xl text-left">
-                          <div className="inline-flex w-10 h-10 rounded-xl bg-slate-800 items-center justify-center text-slate-400 mb-3 animate-pulse">
+                        <div className="bg-slate-50 border border-dashed border-slate-200 p-6 rounded-2xl text-left">
+                          <div className="inline-flex w-10 h-10 rounded-xl bg-blue-50 items-center justify-center text-blue-600 mb-3 animate-pulse">
                             <Sparkles size={18} />
                           </div>
-                          <h5 className="font-bold text-slate-300 leading-tight">
+                          <h5 className="font-bold text-slate-800 leading-tight">
                             Finding the best technician for you
                           </h5>
-                          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                          <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
                             We are matching your request with active, verified
                             experts nearby. Your booking schedule is secured.
                           </p>
@@ -2674,27 +2677,27 @@ export default function CustomerDashboard({
                     {/* Right Column: Security (OTP) & Map (Live Status Tracking) */}
                     <div className="lg:col-span-5 flex flex-col justify-between gap-6">
                       {/* Security Code Panel */}
-                      <div className="bg-gradient-to-br from-slate-900 to-slate-850 border border-slate-800 p-6 sm:p-8 rounded-[36px] text-center shadow-lg relative flex flex-col justify-center items-center h-full min-h-[180px]">
+                      <div className="bg-slate-50 border border-slate-200/80 p-6 sm:p-8 rounded-2xl text-center shadow-xs relative flex flex-col justify-center items-center h-full min-h-[180px]">
                         {booking.status === "in_progress" ? (
                           <>
                             <div className="mb-4">
-                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full inline-block animate-pulse">
+                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-full inline-block animate-pulse">
                                 Service Status
                               </span>
                             </div>
 
-                            <div className="p-6 bg-slate-800/50 text-emerald-400 rounded-full inline-block ring-4 ring-emerald-500/10 mb-2">
+                            <div className="p-6 bg-emerald-50 text-emerald-600 rounded-full inline-block ring-4 ring-emerald-100 mb-2">
                               <Zap size={44} className="animate-bounce" />
                             </div>
 
-                            <p className="text-[9px] font-bold text-slate-300 mt-4 uppercase tracking-widest leading-relaxed px-1">
+                            <p className="text-[9px] font-bold text-slate-600 mt-4 uppercase tracking-widest leading-relaxed px-1">
                               Your service is actively in progress. <br /> Our expert technician is working on your booking.
                             </p>
                           </>
                         ) : otpCode ? (
                           <>
                             <div className="mb-4">
-                              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full inline-block">
+                              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700 px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-full inline-block">
                                 Security Verification OTP
                               </span>
                             </div>
@@ -2706,25 +2709,25 @@ export default function CustomerDashboard({
                                 .map((digit, i) => (
                                   <div
                                     key={i}
-                                    className="w-12 h-14 bg-white text-slate-900 rounded-xl flex items-center justify-center text-3xl font-black italic shadow-md"
+                                    className="w-12 h-14 bg-white border border-slate-200 text-slate-900 rounded-xl flex items-center justify-center text-3xl font-black italic shadow-sm"
                                   >
                                     {digit}
                                   </div>
                                 ))}
                             </div>
 
-                            <p className="text-[9px] font-bold text-slate-400 mt-4 uppercase tracking-widest leading-relaxed px-2">
+                            <p className="text-[9px] font-bold text-slate-500 mt-4 uppercase tracking-widest leading-relaxed px-2">
                               Share this code with the partner ONLY <br /> once
                               they arrive to verify the visit.
                             </p>
                           </>
                         ) : (
-                          <div className="text-center py-4 text-slate-400">
+                          <div className="text-center py-4 text-slate-500">
                             <Shield
                               size={36}
-                              className="mx-auto text-slate-700 mb-3"
+                              className="mx-auto text-slate-400 mb-3"
                             />
-                            <p className="text-xs font-bold uppercase tracking-widest">
+                            <p className="text-xs font-bold uppercase tracking-widest text-slate-700">
                               Secured Service
                             </p>
                             <p className="text-[10px] text-slate-500 mt-1">
@@ -2745,7 +2748,7 @@ export default function CustomerDashboard({
                                   : booking.id,
                               )
                             }
-                            className="w-full text-[10px] font-black uppercase tracking-widest bg-blue-700 hover:bg-blue-800 text-white transition-all px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg cursor-pointer"
+                            className="w-full text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white transition-all px-6 py-4 rounded-xl flex items-center justify-center gap-3 shadow-xs cursor-pointer"
                           >
                             <Compass size={16} className="text-white" />
                             {expandedTrackerId === booking.id
@@ -2759,7 +2762,7 @@ export default function CustomerDashboard({
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: "auto", opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden border border-slate-800 rounded-[32px] bg-slate-900 p-4"
+                                className="overflow-hidden border border-slate-200/80 rounded-2xl bg-slate-50 p-4"
                               >
                                 <PartnerTrackingMap
                                   partnerId={booking.partnerId!}
@@ -3078,9 +3081,8 @@ export default function CustomerDashboard({
 
                           {/* Technician Card or Assignment Status */}
                           {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) ? (
-                            <div className="booking-details-modal flex gap-4 p-5 rounded-[28px] bg-slate-900 text-white items-center relative overflow-hidden group border border-slate-800 shadow-xl">
-                              <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-blue-600/15 rounded-full blur-2xl group-hover:bg-blue-600/25 transition-all duration-500 pointer-events-none" />
-                              <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-[#22c55e]">
+                            <div className="booking-details-modal flex gap-4 p-5 rounded-2xl bg-white text-slate-900 items-center relative overflow-hidden group border border-slate-200/80 shadow-sm">
+                              <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500">
                                 <img
                                   src={
                                     ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
@@ -3098,10 +3100,10 @@ export default function CustomerDashboard({
                                 />
                               </div>
                               <div className="flex-1 min-w-0 text-left">
-                                <span className="text-[8px] font-black uppercase text-blue-400 tracking-widest leading-none">
+                                <span className="text-[8px] font-black uppercase text-blue-700 tracking-widest leading-none">
                                   Your Assigned Expert
                                 </span>
-                                <h4 className="text-sm font-black tracking-tight text-white mt-1 truncate uppercase italic flex items-center gap-1.5 relative">
+                                <h4 className="text-sm font-black tracking-tight text-slate-900 mt-1 truncate uppercase italic flex items-center gap-1.5 relative">
                                   <span>{partners[booking.partnerId]?.displayName ||
                                     "Expert Technician"}</span>
                                   <SafetyInfoTooltip 
@@ -3111,22 +3113,22 @@ export default function CustomerDashboard({
                                   />
                                 </h4>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="flex items-center text-amber-400">
+                                  <div className="flex items-center text-amber-500">
                                     <Star
                                       size={10}
-                                      className="fill-amber-400 animate-pulse"
+                                      className="fill-amber-500"
                                     />
-                                    <span className="text-[9px] font-black ml-1 text-amber-300">
+                                    <span className="text-[9px] font-black ml-1 text-slate-700">
                                       {(
                                         partnerDetails[booking.partnerId]
                                           ?.rating || 4.8
                                       ).toFixed(1)} out of 5
                                     </span>
                                   </div>
-                                  <span className="text-slate-650 text-[10px]">
+                                  <span className="text-slate-300 text-[10px]">
                                     •
                                   </span>
-                                  <span className="text-[9px] text-emerald-400 font-extrabold bg-emerald-500/10 px-1.5 py-0.5 rounded tracking-wider">
+                                  <span className="text-[9px] text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded tracking-wider">
                                     {partnerDetails[booking.partnerId]?.reviewCount || 12} reviews
                                   </span>
                                 </div>
@@ -3140,7 +3142,7 @@ export default function CustomerDashboard({
                                     e.stopPropagation();
                                     handleInitiateCall(booking);
                                   }}
-                                  className="w-10 h-10 bg-emerald-500 active:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white hover:bg-emerald-600 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-emerald-500/15 cursor-pointer"
+                                  className="w-10 h-10 bg-emerald-600 active:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white hover:bg-emerald-700 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
                                   title="Call"
                                 >
                                   <Phone size={14} />
@@ -3150,7 +3152,7 @@ export default function CustomerDashboard({
                                     e.stopPropagation();
                                     setActiveBookingChat(booking);
                                   }}
-                                  className="w-10 h-10 bg-blue-600 text-white hover:bg-blue-700 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-blue-500/15"
+                                  className="w-10 h-10 bg-blue-600 text-white hover:bg-blue-700 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
                                   title="Chat with Partner"
                                 >
                                   <MessageSquare size={14} />
@@ -3252,7 +3254,7 @@ export default function CustomerDashboard({
               <div className="p-2 bg-[#22c55e]/10 text-[#22c55e] rounded-xl border border-[#22c55e]/20">
                 <Zap size={18} fill="currentColor" />
               </div>
-              <h2 className="text-xl font-extrabold text-[#0a2540] tracking-tight">
+              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
                 Exclusive Deals
               </h2>
             </div>
@@ -3307,7 +3309,7 @@ export default function CustomerDashboard({
                     </div>
 
                     <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#0a2540] group-hover:text-[#22c55e] transition-colors flex items-center gap-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-900 group-hover:text-[#22c55e] transition-colors flex items-center gap-1">
                         Claim Discount <ChevronRight size={12} className="stroke-[3]" />
                       </span>
                     </div>
@@ -3324,10 +3326,10 @@ export default function CustomerDashboard({
         <div className="mb-24">
           <div className="flex items-center justify-between mb-12">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-[#0a2540] rounded-[16px] text-white flex items-center justify-center">
+              <div className="w-10 h-10 bg-blue-700 rounded-[16px] text-white flex items-center justify-center shadow-md">
                 <Compass size={18} />
               </div>
-              <h2 className="text-2xl font-bold text-[#0a2540] tracking-tight">
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
                 Explore Categories
               </h2>
             </div>
@@ -3834,7 +3836,7 @@ export default function CustomerDashboard({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+              className="absolute inset-0 bg-slate-900/30 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 30 }}
@@ -4238,7 +4240,7 @@ export default function CustomerDashboard({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSupportBookingId(null)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}

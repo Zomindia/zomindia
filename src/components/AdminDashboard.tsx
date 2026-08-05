@@ -1710,7 +1710,7 @@ export default function AdminDashboard({
                   const otpCode = b.serviceOtp || "3492"; // lock default mock code for standard view
 
                   return (
-                    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                       <div
                         className="bg-white rounded-[32px] border border-slate-150 shadow-2xl w-full max-w-2xl max-h-[92dvh] overflow-y-auto relative p-6 sm:p-8 flex flex-col gap-6 transition-all duration-300"
                         id="overview-telemetry-modal"
@@ -1908,7 +1908,7 @@ export default function AdminDashboard({
                                   Payment & Earnings
                                 </h4>
                               </div>
-                              <span className="text-[8px] bg-slate-900 text-white px-2 py-0.5 rounded font-black tracking-widest">
+                              <span className="text-[8px] bg-[#002e6e] text-white px-2 py-0.5 rounded font-black tracking-widest">
                                 AUTOMATIC
                               </span>
                             </div>
@@ -2007,7 +2007,7 @@ export default function AdminDashboard({
                               setActiveAdminTab("bookings");
                               setSelectedOverviewBooking(null);
                             }}
-                            className="flex-1 bg-slate-900 hover:bg-[#0a2540] text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest text-center shadow-lg transition-transform active:scale-95"
+                            className="flex-1 bg-[#002e6e] hover:bg-[#002456] text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest text-center shadow-md transition-transform active:scale-95 cursor-pointer"
                           >
                             ⚡ Route directly to Control Hub
                           </button>
@@ -2151,7 +2151,7 @@ export default function AdminDashboard({
             initial={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
             animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
             exit={{ opacity: 0, y: -20, x: "-50%", scale: 0.95 }}
-            className="fixed top-6 left-1/2 z-[10000] flex items-center gap-2 bg-slate-900 border border-slate-800 text-white px-4 py-2 rounded-xl shadow-xl text-[10.5px] font-bold whitespace-nowrap"
+            className="fixed top-6 left-1/2 z-[10000] flex items-center gap-2 bg-[#002e6e] border border-[#002e6e] text-white px-4 py-2 rounded-xl shadow-xl text-[10.5px] font-bold whitespace-nowrap"
           >
             <div className="w-3.5 h-3.5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
               <Check size={8} />
@@ -3885,7 +3885,7 @@ function BookingRow({
           </div>
           <button
             onClick={onManage}
-            className="w-8 h-8 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-slate-900/5 shrink-0"
+            className="w-8 h-8 bg-[#002e6e] text-white rounded-xl flex items-center justify-center hover:bg-[#002456] hover:scale-105 active:scale-95 transition-all shadow-md shrink-0 cursor-pointer"
             title="Manage Booking Details"
           >
             <Settings size={14} strokeWidth={2} />
@@ -6491,7 +6491,7 @@ function PartnerManager({
                     className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 cursor-pointer ${
                       p.approvalStatus === "blacklisted"
                         ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-600"
-                        : "bg-slate-900 hover:bg-slate-800 text-white"
+                        : "bg-[#002e6e] hover:bg-[#002456] text-white"
                     }`}
                   >
                     <ShieldAlert size={12} />

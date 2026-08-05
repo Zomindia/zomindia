@@ -3754,7 +3754,7 @@ export default function CustomerHome({
                                 onAuthRequired();
                               }
                             }}
-                            className="px-6 py-3 bg-blue-950 text-white rounded-2xl text-xs font-semibold uppercase tracking-widest hover:bg-blue-900 active:scale-95 transition-all shadow-md shrink-0 font-sans"
+                            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-xs font-semibold uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-orange-500/20 shrink-0 font-sans cursor-pointer"
                           >
                             Instant Booking ⚡
                           </button>

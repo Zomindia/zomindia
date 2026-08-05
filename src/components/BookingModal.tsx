@@ -2203,7 +2203,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setSlotNotAvailablePopup(false)}
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               />
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -2238,7 +2238,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setShowContactPopup(false)}
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               />
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -2451,7 +2451,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   onSuccess();
                   onClose();
                 }}
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}

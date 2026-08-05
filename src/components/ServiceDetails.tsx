@@ -766,7 +766,7 @@ export default function ServiceDetails({
                       <button
                         type="button"
                         onClick={() => setIsDescOpen(false)}
-                        className="self-end mt-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md shadow-slate-900/10"
+                        className="self-end mt-2 px-4 py-2 bg-[#1e3a8a] hover:bg-[#172554] text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md"
                       >
                         Close Info ✕
                       </button>
@@ -1631,13 +1631,13 @@ export default function ServiceDetails({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-                            <span className="text-white/20 font-black text-3xl italic tracking-tighter uppercase">
+                          <div className="w-full h-full bg-[#1e3a8a] flex items-center justify-center">
+                            <span className="text-white/30 font-black text-3xl italic tracking-tighter uppercase">
                               {srv.name.slice(0, 2)}
                             </span>
                           </div>
                         )}
-                        <span className="absolute top-3.5 right-3.5 px-3 py-1.5 bg-slate-950 text-white rounded-xl text-[9px] font-black italic tracking-widest uppercase">
+                        <span className="absolute top-3.5 right-3.5 px-3 py-1.5 bg-[#f97316] text-white rounded-xl text-[9px] font-black italic tracking-widest uppercase shadow-md">
                           ₹{srv.basePrice}
                         </span>
                       </div>
