@@ -1170,7 +1170,7 @@ export default function App() {
           >
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 mb-16">
               {/* Customer Support Card */}
-              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8 flex flex-col items-start hover:border-blue-200 hover:shadow-md transition-all duration-300">
                 <div className="w-12 h-12 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center mb-6">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -1201,7 +1201,7 @@ export default function App() {
               </div>
 
               {/* Partner Relations Card */}
-              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8 flex flex-col items-start hover:border-blue-200 hover:shadow-md transition-all duration-300">
                 <div className="w-12 h-12 bg-amber-50 text-amber-700 rounded-2xl flex items-center justify-center mb-6">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -1229,7 +1229,7 @@ export default function App() {
               </div>
 
               {/* Corporate Location Card */}
-              <div className="bg-slate-50/60 rounded-[32px] border border-slate-100 p-8 flex flex-col items-start hover:border-blue-100 hover:shadow-xl hover:shadow-slate-100/40 transition-all duration-300">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8 flex flex-col items-start hover:border-blue-200 hover:shadow-md transition-all duration-300">
                 <div className="w-12 h-12 bg-indigo-50 text-indigo-700 rounded-2xl flex items-center justify-center mb-6">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
@@ -1541,11 +1541,11 @@ If you have any billing questions, or if your refund is delayed, please email us
       return content;
     }
     return (
-      <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between">
+      <div className="min-h-screen w-full bg-slate-50 text-slate-900 !bg-slate-50 flex flex-col justify-between">
         <div className="flex-1 w-full">
           {content}
         </div>
-        <ZomatoPageEndMarker pageName={getPageDisplayName(activeTab)} isDark={true} />
+        <ZomatoPageEndMarker pageName={getPageDisplayName(activeTab)} isDark={false} />
       </div>
     );
   };

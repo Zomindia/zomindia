@@ -527,24 +527,24 @@ export default function OffersView({
         </div>
       ) : null}
 
-      {/* Directory Block with Sleek Glassmorphism */}
-      <section className="mt-12 sm:mt-24 rounded-[32px] sm:rounded-[40px] bg-slate-950 border border-slate-800 p-6 sm:p-12 md:p-16 relative overflow-hidden shadow-2xl" id="offers-directory">
-        <div className="absolute -top-12 -right-12 w-80 h-80 bg-gradient-to-r from-blue-500/10 to-purple-500/5 rounded-full blur-[80px] pointer-events-none" />
-        <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-gradient-to-r from-pink-500/10 to-rose-500/5 rounded-full blur-[90px] pointer-events-none" />
+      {/* Directory Block with Sleek Light Theme */}
+      <section className="mt-12 sm:mt-24 rounded-2xl bg-white border border-slate-200/80 p-6 sm:p-12 md:p-16 relative overflow-hidden shadow-sm" id="offers-directory">
+        <div className="absolute -top-12 -right-12 w-80 h-80 bg-gradient-to-r from-blue-500/10 to-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-gradient-to-r from-orange-500/10 to-amber-500/5 rounded-full blur-[90px] pointer-events-none" />
 
         <div className="relative z-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 pb-6 border-b border-white/5">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 pb-6 border-b border-slate-100">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/5 text-white/85 rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-4 border border-white/10">
-                <Sparkles size={10} className="text-yellow-400" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-4 border border-blue-100">
+                <Sparkles size={10} className="text-orange-500" />
                 Service Directory
               </div>
-              <h3 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight uppercase leading-none">
+              <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight uppercase leading-none">
                 Apply Rewards <br />
-                <span className="text-slate-500 italic font-medium lowercase">to top categories</span>
+                <span className="text-blue-600 italic font-medium lowercase">to top categories</span>
               </h3>
             </div>
-            <p className="text-slate-400 text-xs sm:text-sm md:text-right max-w-xs leading-relaxed font-medium">
+            <p className="text-slate-600 text-xs sm:text-sm md:text-right max-w-xs leading-relaxed font-medium">
               Pick a category to instantly browse our high-end professional roster and secure booking credits.
             </p>
           </div>
@@ -558,13 +558,13 @@ export default function OffersView({
                   whileHover={{ y: -4, scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setActiveTab('home')}
-                  className="flex flex-col items-center p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10 transition-all duration-300 group cursor-pointer"
+                  className="flex flex-col items-center p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/50 transition-all duration-300 group cursor-pointer"
                   id={`directory-btn-${cat.id}`}
                 >
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/85 group-hover:bg-white group-hover:text-blue-700 group-hover:scale-110 shadow-lg group-hover:shadow-white/5 transition-all duration-300 mb-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 group-hover:bg-blue-600 group-hover:text-white group-hover:scale-110 shadow-sm transition-all duration-300 mb-3">
                     <Icon size={18} strokeWidth={2} />
                   </div>
-                  <span className="text-[10px] font-black text-slate-400 group-hover:text-white text-center uppercase tracking-widest transition-colors line-clamp-1 w-full px-1">
+                  <span className="text-[10px] font-black text-slate-700 group-hover:text-blue-900 text-center uppercase tracking-widest transition-colors line-clamp-1 w-full px-1">
                     {cat.name}
                   </span>
                 </motion.button>
@@ -577,7 +577,7 @@ export default function OffersView({
       {/* Redemption Modal - Centered with Slide-In Sheet */}
       <AnimatePresence>
         {selectedPromo && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md" id="redemption-modal">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" id="redemption-modal">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
