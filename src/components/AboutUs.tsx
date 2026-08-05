@@ -10,15 +10,11 @@ import {
   Award, 
   Clock, 
   CheckCircle2, 
-  PhoneCall, 
   HelpCircle, 
   FileText, 
   Lock, 
   RotateCcw, 
-  Heart, 
-  Zap, 
-  Building2,
-  ThumbsUp
+  Zap
 } from 'lucide-react';
 import { COMPANY_NAME } from '../types';
 
