@@ -112,6 +112,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>(null);
 
+  // PhonePe Online Payment States
+  const [createdOnlineBookingId, setCreatedOnlineBookingId] = useState<string | null>(null);
+  const [onlineBookingAmount, setOnlineBookingAmount] = useState<number>(0);
+  const [showPhonePeModal, setShowPhonePeModal] = useState<boolean>(false);
+  const [paymentFailureAlert, setPaymentFailureAlert] = useState<string | null>(null);
+  const [phonePeRedirectUrl, setPhonePeRedirectUrl] = useState<string>('');
+  const [phonePeProcessing, setPhonePeProcessing] = useState<boolean>(false);
+
   // Contact popup and dynamic Google Places search states
   const [showContactPopup, setShowContactPopup] = useState(false);
   const [popupEmail, setPopupEmail] = useState('');
@@ -295,25 +303,44 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   };
 
-  // Reverse geocoding via Google Maps Geocoder
+  // Reverse geocoding via OpenStreetMap / Nominatim fallback
+  const reverseGeocodeNominatim = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        setAddress(data.display_name);
+        return true;
+      }
+    } catch (e) {
+      console.warn("Nominatim reverse geocode fallback error:", e);
+    }
+    return false;
+  };
+
+  // Reverse geocoding via Google Maps Geocoder with Nominatim fallback
   const reverseGeocodeNativeGoogle = async (lat: number, lng: number) => {
     setIsGeocoding(true);
     const GeocoderClass = geocodingLib?.Geocoder || (window as any).google?.maps?.Geocoder;
     if (!GeocoderClass) {
+      await reverseGeocodeNominatim(lat, lng);
       setIsGeocoding(false);
       return;
     }
 
     try {
       const geocoder = new GeocoderClass();
-      geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+      geocoder.geocode({ location: { lat, lng } }, async (results: any, status: any) => {
         if (status === 'OK' && results && results[0]) {
           setAddress(results[0].formatted_address);
+        } else {
+          await reverseGeocodeNominatim(lat, lng);
         }
         setIsGeocoding(false);
       });
     } catch (err) {
-      console.error("Reverse geocoding failed:", err);
+      console.warn("Reverse geocoding failed, falling back to Nominatim:", err);
+      await reverseGeocodeNominatim(lat, lng);
       setIsGeocoding(false);
     }
   };
@@ -1160,6 +1187,45 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       try {
         localStorage.removeItem('zomindia_pending_booking');
       } catch (cacheErr) {}
+
+      // Online Payment Enforcement: If Online Payment is selected and remaining due > 0, initiate PhonePe and launch payment gateway
+      if (paymentMethod === 'online' && remainingDue > 0 && !useAmc) {
+        setCreatedOnlineBookingId(bookingId);
+        setOnlineBookingAmount(remainingDue);
+
+        try {
+          const payRes = await fetch('/api/phonepe/pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: remainingDue,
+              bookingId,
+              customerUid: activeUid,
+              mobileNumber: resolvedMobile
+            })
+          });
+          const payData = await payRes.json();
+          if (payRes.ok && payData.success) {
+            setPhonePeRedirectUrl(payData.redirectUrl || '');
+            setShowPhonePeModal(true);
+            setPaymentFailureAlert(null);
+            setLoading(false);
+            return; // Stay on Step 3 with PhonePe Payment Modal active!
+          } else {
+            throw new Error(payData.error || 'PhonePe payment gateway initiation failed');
+          }
+        } catch (payErr: any) {
+          console.error("PhonePe initiation error:", payErr);
+          setShowPhonePeModal(false);
+          setPaymentFailureAlert("Payment Unsuccessful. Please try again or switch payment mode.");
+          if (typeof (window as any).__showToast === 'function') {
+            (window as any).__showToast("Payment Unsuccessful. Please try again or switch payment mode.", "error");
+          }
+          setLoading(false);
+          return; // Stay on Step 3!
+        }
+      }
+
       setShowSuccessModal(true);
       setStep(4);
     } catch (err: any) {
@@ -1204,6 +1270,156 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       setShowFinalConfirmation(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmPhonePePayment = async () => {
+    if (!createdOnlineBookingId) return;
+    const activeUid = profile?.uid || auth.currentUser?.uid || "";
+    setPhonePeProcessing(true);
+    try {
+      const res = await fetch('/api/phonepe/verify-and-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: createdOnlineBookingId,
+          customerUid: activeUid
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast("Payment Successful! Booking Confirmed.", "success");
+        }
+        setShowPhonePeModal(false);
+        setPhonePeProcessing(false);
+        setPaymentFailureAlert(null);
+        setShowSuccessModal(true);
+        setStep(4);
+      } else {
+        throw new Error(data.error || 'Payment confirmation failed');
+      }
+    } catch (err: any) {
+      console.error("PhonePe Confirm Error:", err);
+      setPhonePeProcessing(false);
+      setShowPhonePeModal(false);
+      setPaymentFailureAlert("Payment Unsuccessful. Please try again or switch payment mode.");
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Payment Unsuccessful. Please try again or switch payment mode.", "error");
+      }
+    }
+  };
+
+  const handleCancelPhonePePayment = () => {
+    setShowPhonePeModal(false);
+    setPaymentFailureAlert("Payment Unsuccessful. Please try again or switch payment mode.");
+    if (typeof (window as any).__showToast === 'function') {
+      (window as any).__showToast("Payment Unsuccessful. Please try again or switch payment mode.", "error");
+    }
+  };
+
+  const handleRetryPhonePe = async () => {
+    if (!createdOnlineBookingId) return;
+    const activeUid = profile?.uid || auth.currentUser?.uid || "";
+    setPhonePeProcessing(true);
+    try {
+      let resolvedMobile = profile?.mobile || profile?.phoneNumber || auth.currentUser?.phoneNumber || "";
+      const payRes = await fetch('/api/phonepe/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: onlineBookingAmount,
+          bookingId: createdOnlineBookingId,
+          customerUid: activeUid,
+          mobileNumber: resolvedMobile
+        })
+      });
+      const payData = await payRes.json();
+      if (payRes.ok && payData.success) {
+        setPhonePeRedirectUrl(payData.redirectUrl || '');
+        setShowPhonePeModal(true);
+        setPaymentFailureAlert(null);
+      } else {
+        throw new Error(payData.error || 'Initiation failed');
+      }
+    } catch (err: any) {
+      setPaymentFailureAlert("Payment Unsuccessful. Please try again or switch payment mode.");
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Payment Unsuccessful. Please try again or switch payment mode.", "error");
+      }
+    } finally {
+      setPhonePeProcessing(false);
+    }
+  };
+
+  const handleSwitchToCODInBooking = async () => {
+    if (!createdOnlineBookingId) {
+      setPaymentMethod('cash');
+      setPaymentFailureAlert(null);
+      return;
+    }
+    setPhonePeProcessing(true);
+    try {
+      await updateDoc(doc(db, 'bookings', createdOnlineBookingId), {
+        paymentMethod: 'cash',
+        paymentStatus: 'unpaid',
+        status: 'confirmed',
+        updatedAt: Timestamp.now()
+      });
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Switched to Cash on Delivery. Booking Confirmed!", "success");
+      }
+      setPaymentFailureAlert(null);
+      setShowPhonePeModal(false);
+      setShowSuccessModal(true);
+      setStep(4);
+    } catch (err) {
+      console.error("Switch to COD error:", err);
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Failed to switch to Cash on Delivery.", "error");
+      }
+    } finally {
+      setPhonePeProcessing(false);
+    }
+  };
+
+  const handlePayWithWalletFallback = async () => {
+    if (!createdOnlineBookingId) return;
+    const activeUid = profile?.uid || auth.currentUser?.uid || "";
+    if (!profile?.walletBalance || profile.walletBalance < onlineBookingAmount) {
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Insufficient wallet balance.", "error");
+      }
+      return;
+    }
+    setPhonePeProcessing(true);
+    try {
+      // Deduct wallet balance
+      const uRef = doc(db, 'users', activeUid);
+      await updateDoc(uRef, {
+        walletBalance: Math.max(0, profile.walletBalance - onlineBookingAmount)
+      });
+      // Update booking
+      await updateDoc(doc(db, 'bookings', createdOnlineBookingId), {
+        paymentMethod: 'wallet',
+        paymentStatus: 'paid',
+        status: 'confirmed',
+        updatedAt: Timestamp.now()
+      });
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Payment Successful via Wallet! Booking Confirmed.", "success");
+      }
+      setPaymentFailureAlert(null);
+      setShowPhonePeModal(false);
+      setShowSuccessModal(true);
+      setStep(4);
+    } catch (err) {
+      console.error("Wallet fallback error:", err);
+      if (typeof (window as any).__showToast === 'function') {
+        (window as any).__showToast("Wallet payment failed.", "error");
+      }
+    } finally {
+      setPhonePeProcessing(false);
     }
   };
 
@@ -2065,6 +2281,44 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
   
                     <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
+                      {paymentFailureAlert && (
+                        <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl mb-3 space-y-3 shadow-md text-left">
+                          <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
+                            <AlertCircle size={18} className="text-rose-600 shrink-0" />
+                            <span>{paymentFailureAlert}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-600 font-medium">Choose an option below to proceed with your booking:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={phonePeProcessing}
+                              onClick={handleRetryPhonePe}
+                              className="py-2.5 px-3 bg-purple-700 hover:bg-purple-800 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                            >
+                              💳 Retry PhonePe
+                            </button>
+                            <button
+                              type="button"
+                              disabled={phonePeProcessing}
+                              onClick={handleSwitchToCODInBooking}
+                              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                            >
+                              💵 Switch to Cash (COD)
+                            </button>
+                            {profile?.walletBalance !== undefined && profile.walletBalance >= onlineBookingAmount && (
+                              <button
+                                type="button"
+                                disabled={phonePeProcessing}
+                                onClick={handlePayWithWalletFallback}
+                                className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                              >
+                                💼 Pay via Wallet
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <button 
                         disabled={loading}
                         onClick={handleConfirmServiceClick}
@@ -2102,6 +2356,55 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {showPhonePeModal && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                  className="bg-white w-full max-w-md rounded-[32px] p-6 sm:p-8 shadow-2xl text-center space-y-5 border border-purple-100"
+                >
+                  <div className="w-16 h-16 bg-purple-100 text-purple-700 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+                    <CreditCard size={32} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
+                      PhonePe Gateway
+                    </span>
+                    <h3 className="text-xl font-bold text-slate-900 mt-2">Complete Your Payment</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                      Booking #{createdOnlineBookingId?.slice(-6).toUpperCase()}
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Amount Payable</span>
+                    <span className="text-3xl font-black text-slate-900">₹{onlineBookingAmount}</span>
+                  </div>
+
+                  <div className="space-y-2.5 pt-2">
+                    <button
+                      type="button"
+                      disabled={phonePeProcessing}
+                      onClick={handleConfirmPhonePePayment}
+                      className="w-full py-4 bg-purple-700 hover:bg-purple-800 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-purple-700/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                    >
+                      📱 Pay via PhonePe Gateway (₹{onlineBookingAmount})
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={phonePeProcessing}
+                      onClick={handleCancelPhonePePayment}
+                      className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-2xl transition-all cursor-pointer border border-slate-200 active:scale-95 disabled:opacity-50"
+                    >
+                      Cancel Payment
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
 
             {showLocalLogin && (
               <AuthModal

@@ -1101,7 +1101,7 @@ export default function AdminDashboard({
             </button>
             <div className="flex items-center gap-3">
               <div className="hidden md:block text-right">
-                <p className="text-[11px] font-bold text-[#22c55e] leading-none mb-1">
+                <p className="text-[11px] font-bold text-[#002e6e] leading-none mb-1">
                   {`• नमस्ते, ${profile.fullName || profile.displayName || "Administrator"}`}
                 </p>
                 <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest leading-none">
@@ -1944,7 +1944,7 @@ export default function AdminDashboard({
                                 </span>
                                 <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">
                                   {b.paymentStatus === "paid"
-                                    ? "SETTLED VIA WALLET"
+                                    ? (b.paymentMethod === "phonepe_qr" ? "PAID VIA PHONEPE QR" : (b.paymentMethod === "online" ? "PAID VIA PHONEPE PG" : "SETTLED / PAID"))
                                     : "PENDING"}
                                 </span>
                               </div>
@@ -1952,8 +1952,10 @@ export default function AdminDashboard({
                                 <span className="text-slate-400 font-semibold">
                                   Channel Method:
                                 </span>
-                                <span className="font-extrabold text-slate-600 uppercase tracking-wide text-[10px]">
-                                  {b.paymentMethod || "Online"}
+                                <span className="font-extrabold text-purple-700 uppercase tracking-wide text-[10px]">
+                                  {b.paymentMethod === "phonepe_qr" 
+                                    ? "PhonePe Dynamic QR" 
+                                    : (b.paymentMethod === "online" ? "PhonePe Gateway" : (b.paymentMethod || "Online"))}
                                 </span>
                               </div>
                             </div>

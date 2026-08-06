@@ -149,7 +149,7 @@ export async function dispatchAutomatedWhatsAppAlert(
       break;
     case 'payment_reminder':
       templateName = 'zom_payout_reminder';
-      messageText = `Attention: Outstanding balance of ₹${params.amount || '0'} is detected for booking #${params.bookingId || ''}. Tap here to clear securely via Razorpay/Wallet: https://zomindia.com/pay/${params.bookingId || ''}`;
+      messageText = `Attention: Outstanding balance of ₹${params.amount || '0'} is detected for booking #${params.bookingId || ''}. Tap here to clear securely via PhonePe/Wallet: https://zomindia.com/pay/${params.bookingId || ''}`;
       break;
   }
 

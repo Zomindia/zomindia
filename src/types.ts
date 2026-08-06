@@ -233,7 +233,7 @@ export interface Booking {
   serviceId: string;
   status: BookingStatus;
   paymentStatus: 'unpaid' | 'paid';
-  paymentMethod?: 'online' | 'cash';
+  paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
   paymentIntentId?: string;
   scheduledAt: any; // Firestore Timestamp
   address: string;

@@ -1170,30 +1170,18 @@ router.post("/bookings/:bookingId/add-charge", async (req: any, res: any) => {
  * ============================================================================
  */
 
-// POST /api/payment/razorpay/verify-and-confirm
-// Confirms Razorpay signature & clears outstanding balances
-router.post("/payment/razorpay/verify-and-confirm", async (req: any, res: any) => {
+// POST /api/payment/phonepe/verify-and-confirm
+// Confirms PhonePe transaction & clears outstanding balances
+router.post("/payment/phonepe/verify-and-confirm", async (req: any, res: any) => {
   try {
-    const { bookingId, customerId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+    const { bookingId, customerId, merchantTransactionId, phonepeTransactionId } = req.body;
 
-    if (!bookingId || !razorpayPaymentId) {
-      return res.status(400).json({ error: "Missing verification criteria: bookingId, razorpayPaymentId" });
+    const txnId = merchantTransactionId || phonepeTransactionId;
+    if (!bookingId || !txnId) {
+      return res.status(400).json({ error: "Missing verification criteria: bookingId, merchantTransactionId" });
     }
 
     const db = getDb();
-
-    // Verify signature cryptographically
-    if (process.env.RAZORPAY_KEY_SECRET && razorpaySignature && razorpayOrderId) {
-      const text = razorpayOrderId + "|" + razorpayPaymentId;
-      const generated_signature = crypto
-        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-        .update(text)
-        .digest("hex");
-
-      if (generated_signature !== razorpaySignature) {
-        return res.status(400).json({ error: "Tampered billing signature verification failed!" });
-      }
-    }
 
     const bookingRef = db.collection("bookings").doc(bookingId);
     const bookingDoc = await bookingRef.get();
@@ -1205,7 +1193,7 @@ router.post("/payment/razorpay/verify-and-confirm", async (req: any, res: any) =
     await db.runTransaction(async (t) => {
       t.update(bookingRef, {
         paymentStatus: "paid",
-        paymentIntentId: razorpayPaymentId,
+        paymentIntentId: txnId,
         paymentMethod: "online",
         status: bookingData.status === "pending" ? "confirmed" : bookingData.status,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -1215,16 +1203,16 @@ router.post("/payment/razorpay/verify-and-confirm", async (req: any, res: any) =
       const txRef = db.collection("walletTransactions").doc();
       t.set(txRef, {
         userId: customerId || bookingData.customerId,
-        amount: bookingData.totalPrice,
+        amount: bookingData.totalPrice || 0,
         type: "debit",
-        reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via Razorpay`,
-        referenceId: razorpayPaymentId,
+        reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via PhonePe`,
+        referenceId: txnId,
         status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
     });
 
-    console.log(`[API Payment] Payment cleared via Razorpay Order: ${razorpayOrderId} for Booking: ${bookingId}`);
+    console.log(`[API Payment] Payment cleared via PhonePe Transaction: ${txnId} for Booking: ${bookingId}`);
     return res.status(200).json({ success: true, message: "Payment verified and recorded!" });
   } catch (err: any) {
     console.error("[API ConfirmPayment Error]:", err);

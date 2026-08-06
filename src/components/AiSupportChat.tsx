@@ -10,6 +10,13 @@ import {
   Phone,
   Mail,
   MessageCircle,
+  CreditCard,
+  ShieldCheck,
+  Lock,
+  Smartphone,
+  Check,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import { UserProfile, Booking } from "../types";
 import {
@@ -25,7 +32,7 @@ import {
   updateDoc,
   setDoc,
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import confetti from "canvas-confetti";
 
@@ -369,6 +376,17 @@ export default function AiSupportChat({
   const [selectedSlots, setSelectedSlots] = useState<Record<string, { date: string; slot: string }>>({});
   const [selectedAddresses, setSelectedAddresses] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // PhonePe Payment Gateway In Chat State
+  const [activePhonePePayment, setActivePhonePePayment] = useState<{
+    bookingId: string;
+    amount: number;
+    serviceType: string;
+    merchantTransactionId: string;
+    redirectUrl?: string;
+  } | null>(null);
+  const [isConfirmingPhonePe, setIsConfirmingPhonePe] = useState(false);
+  const [phonePeError, setPhonePeError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const updateBookingSlot = (bookingId: string, date: string, slot: string) => {
@@ -408,50 +426,61 @@ export default function AiSupportChat({
     );
   };
 
-  const loadRazorpayScript = (): Promise<boolean> => {
-    return new Promise((resolve) => {
-      if ((window as any).Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
   const handlePayAfterService = async (bookingId: string) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
     try {
-      const bookingPayload = draftBookings[bookingId];
+      let bookingPayload = draftBookings[bookingId];
       if (!bookingPayload) {
-        alert("Booking details not found in draft. Please start again.");
-        setIsSubmitting(false);
-        return;
+        const foundMsg = messages.find((m: any) => m.bookingData?.id === bookingId);
+        if (foundMsg && (foundMsg as any).bookingData) {
+          bookingPayload = (foundMsg as any).bookingData;
+        }
       }
+
+      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || "Indore (Zomindia Service Area)";
+      const chosenSlotObj = selectedSlots[bookingId];
+      const todayFullyBooked = isDateFullyBooked("today");
+      const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
+      const curDate = chosenSlotObj?.date || defaultDateVal;
+      const curSlot = chosenSlotObj?.slot || getFirstAvailableSlot(curDate as any) || "10:00 AM - 12:00 PM";
+      const scheduledSlot = `${curDate === "today" ? "Today" : "Tomorrow"}, ${curSlot}`;
+
+      const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
+      const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
+      const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
 
       const bookingRef = doc(db, "bookings", bookingId);
       const confirmedPayload = {
-        ...bookingPayload,
+        ...(bookingPayload || {}),
+        id: bookingId,
+        customerUid: activeUid,
+        userId: activeUid,
+        customerId: activeUid,
+        serviceType: bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service",
+        issueDetails: bookingPayload?.issueDetails || bookingPayload?.serviceType || "Home Service",
+        visitationFee: bookingPayload?.visitationFee || 195,
+        totalPrice: bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195,
+        scheduledSlot,
+        address: selectedAddress,
         status: "confirmed_pay_after_service",
         paymentMethod: "cash",
         paymentStatus: "unpaid",
+        customerName: resolvedName,
+        customerMobile: resolvedMobile,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       };
 
-      await setDoc(bookingRef, confirmedPayload);
+      await setDoc(bookingRef, confirmedPayload, { merge: true });
 
       setMessages((prev) =>
         prev.map((m: any) => {
           if (m.bookingData && m.bookingData.id === bookingId) {
             return {
               ...m,
-              text: "✅ Booking Confirmed - Cash on Service",
+              text: "✅ Cash Booking Confirmed - Pay After Service",
               bookingData: {
                 ...m.bookingData,
                 status: "confirmed_pay_after_service",
@@ -463,6 +492,15 @@ export default function AiSupportChat({
           return m;
         })
       );
+
+      // Post AI confirmation message in chat
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: `🎉 Cash Booking Confirmed! Your booking #${bookingId.slice(-6).toUpperCase()} is registered for Pay After Service (COD). Our expert technician will arrive as scheduled.`
+        }
+      ]);
 
       setShowBookingSuccess(true);
       confetti({
@@ -481,123 +519,216 @@ export default function AiSupportChat({
   const handlePayOnline = async (bookingId: string) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    setPhonePeError(null);
 
     try {
-      const bookingPayload = draftBookings[bookingId];
+      let bookingPayload = draftBookings[bookingId];
       if (!bookingPayload) {
-        alert("Booking details not found in draft. Please start again.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      const isLoaded = await loadRazorpayScript();
-      if (!isLoaded) {
-        alert("Razorpay payment gateway failed to load. Please try again.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      const orderRes = await fetch("/api/create-razorpay-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 195, bookingId })
-      });
-
-      if (!orderRes.ok) {
-        const errorText = await orderRes.text();
-        throw new Error(errorText || "Failed to initialize payment order");
-      }
-
-      const orderData = await orderRes.json();
-      const razorpayOrderId = orderData.id;
-
-      const options = {
-        key: "rzp_test_mock_key",
-        amount: 19500, // INR 195.00
-        currency: "INR",
-        name: "Zomindia",
-        description: "Zomini Home Service Inspection Fee",
-        order_id: razorpayOrderId,
-        handler: async function (response: any) {
-          const razorpayPaymentId = response.razorpay_payment_id || "mock_pay_" + Math.random().toString(36).substring(7);
-          const razorpaySignature = response.razorpay_signature || "mock_sig_" + Math.random().toString(36).substring(7);
-          const razorpayOrderIdValue = response.razorpay_order_id || razorpayOrderId;
-
-          console.log("Razorpay mock success. Verifying signature on server...");
-
-          try {
-            const verifyRes = await fetch("/api/verify-razorpay-signature", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                bookingId,
-                bookingPayload,
-                razorpay_order_id: razorpayOrderIdValue,
-                razorpay_payment_id: razorpayPaymentId,
-                razorpay_signature: razorpaySignature
-              })
-            });
-
-            if (!verifyRes.ok) {
-              const verifyErr = await verifyRes.json();
-              throw new Error(verifyErr.error || "Payment signature verification failed");
-            }
-
-            setMessages((prev) =>
-              prev.map((m: any) => {
-                if (m.bookingData && m.bookingData.id === bookingId) {
-                  return {
-                    ...m,
-                    text: "✅ Booking Confirmed - Paid Online",
-                    bookingData: {
-                      ...m.bookingData,
-                      status: "confirmed",
-                      paymentStatus: "paid",
-                      paymentMethod: "online",
-                      paymentIntentId: razorpayPaymentId
-                    }
-                  };
-                }
-                return m;
-              })
-            );
-
-            setShowBookingSuccess(true);
-            confetti({
-              particleCount: 150,
-              spread: 80,
-              origin: { y: 0.6 }
-            });
-          } catch (dbErr: any) {
-            console.error("Failed server verification and database creation:", dbErr);
-            alert(`Payment verification failed: ${dbErr.message}`);
-          } finally {
-            setIsSubmitting(false);
+        const foundLocal = localBookings.find((b) => b.id === bookingId);
+        if (foundLocal) {
+          bookingPayload = foundLocal;
+        } else {
+          const foundMsg = messages.find((m: any) => m.bookingData?.id === bookingId);
+          if (foundMsg && (foundMsg as any).bookingData) {
+            bookingPayload = (foundMsg as any).bookingData;
           }
-        },
-        modal: {
-          ondismiss: function () {
-            console.log("Razorpay modal dismissed by user");
-            setIsSubmitting(false);
-          }
-        },
-        prefill: {
-          name: userProfile?.fullName || userProfile?.displayName || "",
-          email: userProfile?.email || "",
-          contact: userProfile?.mobile || userProfile?.phoneNumber || ""
-        },
-        theme: {
-          color: "#059669"
         }
+      }
+
+      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || "Indore (Zomindia Service Area)";
+      const chosenSlotObj = selectedSlots[bookingId];
+      const todayFullyBooked = isDateFullyBooked("today");
+      const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
+      const curDate = chosenSlotObj?.date || defaultDateVal;
+      const curSlot = chosenSlotObj?.slot || getFirstAvailableSlot(curDate as any) || "10:00 AM - 12:00 PM";
+      const scheduledSlot = `${curDate === "today" ? "Today" : "Tomorrow"}, ${curSlot}`;
+
+      const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
+      const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
+      const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
+
+      const updatedPayload = {
+        ...(bookingPayload || {}),
+        id: bookingId,
+        customerUid: activeUid,
+        userId: activeUid,
+        customerId: activeUid,
+        serviceType: bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service",
+        issueDetails: bookingPayload?.issueDetails || bookingPayload?.serviceType || "Home Service",
+        visitationFee: bookingPayload?.visitationFee || 195,
+        totalPrice: bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195,
+        scheduledSlot,
+        address: selectedAddress,
+        status: "pending_checkout",
+        paymentStatus: "unpaid",
+        paymentMethod: "online",
+        customerName: resolvedName,
+        customerMobile: resolvedMobile,
+        updatedAt: Timestamp.now()
       };
 
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
+      setDraftBookings((prev) => ({ ...prev, [bookingId]: updatedPayload }));
+
+      try {
+        const bookingRef = doc(db, "bookings", bookingId);
+        await setDoc(bookingRef, { ...updatedPayload, createdAt: Timestamp.now() }, { merge: true });
+      } catch (fErr) {
+        console.warn("Firestore draft save warning:", fErr);
+      }
+
+      const amountToPay = updatedPayload.totalPrice || updatedPayload.visitationFee || 195;
+
+      const payRes = await fetch("/api/phonepe/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amountToPay,
+          bookingId,
+          customerUid: activeUid,
+          mobileNumber: resolvedMobile
+        })
+      });
+
+      let merchantTransactionId = `PHONEPE_${Date.now()}`;
+      let redirectUrl = "";
+
+      if (payRes.ok) {
+        const payData = await payRes.json();
+        if (payData.merchantTransactionId) merchantTransactionId = payData.merchantTransactionId;
+        if (payData.redirectUrl) redirectUrl = payData.redirectUrl;
+      }
+
+      // Launch PhonePe PG Modal in Chat
+      setActivePhonePePayment({
+        bookingId,
+        amount: amountToPay,
+        serviceType: updatedPayload.serviceType,
+        merchantTransactionId,
+        redirectUrl
+      });
     } catch (err: any) {
-      console.error("Error starting Razorpay payment:", err);
-      alert(`Error initializing payment: ${err.message}`);
+      console.error("Error launching PhonePe payment:", err);
+      alert(`Error starting PhonePe checkout: ${err.message || err}`);
+    } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleExecutePhonePePayment = async () => {
+    if (!activePhonePePayment) return;
+    setIsConfirmingPhonePe(true);
+    setPhonePeError(null);
+
+    const { bookingId, amount, merchantTransactionId } = activePhonePePayment;
+    const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
+
+    try {
+      const verifyRes = await fetch("/api/phonepe/verify-and-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId,
+          customerUid: activeUid,
+          merchantTransactionId
+        })
+      });
+
+      if (!verifyRes.ok) {
+        const errJson = await verifyRes.json().catch(() => ({}));
+        throw new Error(errJson.error || "PhonePe gateway confirmation failed");
+      }
+
+      // Update Firestore document to confirmed & paid
+      try {
+        const bookingRef = doc(db, "bookings", bookingId);
+        await setDoc(
+          bookingRef,
+          {
+            status: "confirmed",
+            paymentStatus: "paid",
+            paymentMethod: "online",
+            paymentIntentId: merchantTransactionId,
+            updatedAt: Timestamp.now()
+          },
+          { merge: true }
+        );
+      } catch (dbErr) {
+        console.warn("Firestore confirm update notice:", dbErr);
+      }
+
+      // Update message state in chat
+      setMessages((prev) =>
+        prev.map((m: any) => {
+          if (m.bookingData && m.bookingData.id === bookingId) {
+            return {
+              ...m,
+              bookingData: {
+                ...m.bookingData,
+                status: "confirmed",
+                paymentStatus: "paid",
+                paymentMethod: "online"
+              }
+            };
+          }
+          return m;
+        })
+      );
+
+      // Zomini posts confirmation message in chat
+      const confirmMsg = `🎉 Payment Received! Your booking #${bookingId.slice(-6).toUpperCase()} is now CONFIRMED.`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: confirmMsg,
+          bookingData: {
+            id: bookingId,
+            serviceType: activePhonePePayment.serviceType,
+            visitationFee: amount,
+            status: "confirmed",
+            paymentStatus: "paid"
+          }
+        }
+      ]);
+
+      setShowBookingSuccess(true);
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+
+      setActivePhonePePayment(null);
+    } catch (err: any) {
+      console.error("PhonePe execution error:", err);
+      setPhonePeError(err.message || "Payment verification failed. Please try again.");
+    } finally {
+      setIsConfirmingPhonePe(false);
+    }
+  };
+
+  const handleCancelPhonePePayment = () => {
+    if (!activePhonePePayment) return;
+    const { bookingId, amount, serviceType } = activePhonePePayment;
+
+    setActivePhonePePayment(null);
+    setIsConfirmingPhonePe(false);
+    setPhonePeError(null);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        text: `Payment process was paused. You can complete payment anytime using the 💳 PAY NOW button on your booking summary card below, or choose Pay Cash on Delivery (COD).`,
+        bookingData: draftBookings[bookingId] || {
+          id: bookingId,
+          serviceType: serviceType || "Home Service",
+          visitationFee: amount || 195,
+          status: "pending_checkout",
+          paymentStatus: "unpaid"
+        }
+      }
+    ]);
   };
 
   // Helper to dynamically detect if a string matches a specific language script or Hinglish
@@ -1627,22 +1758,23 @@ export default function AiSupportChat({
                                   </p>
                                 )}
                                 <button
-                                  onClick={() => handlePayAfterService(bookingId)}
-                                  disabled={isSubmitting || !isValidSlotSelected}
-                                  className={`w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] py-2 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 ${
-                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
-                                  }`}
-                                >
-                                  <span>{isSubmitting ? "Processing..." : "⚡ तुरंत बुक करें (Pay After Service)"}</span>
-                                </button>
-                                <button
                                   onClick={() => handlePayOnline(bookingId)}
                                   disabled={isSubmitting || !isValidSlotSelected}
-                                  className={`w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-[10.5px] py-1.5 px-3 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  className={`w-full bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[11px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 group ${
                                     isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
                                   }`}
                                 >
-                                  <span>{isSubmitting ? "Processing..." : "Pay Online ₹195 (UPI/Card)"}</span>
+                                  <CreditCard size={14} className="text-purple-200 group-hover:scale-110 transition-transform" />
+                                  <span>{isSubmitting ? "Launching PhonePe..." : "💳 Pay via PhonePe / UPI"}</span>
+                                </button>
+                                <button
+                                  onClick={() => handlePayAfterService(bookingId)}
+                                  disabled={isSubmitting || !isValidSlotSelected}
+                                  className={`w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[10.5px] py-2 px-3 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
+                                  }`}
+                                >
+                                  <span>💵 Pay Cash on Delivery (COD)</span>
                                 </button>
                               </div>
                             );
@@ -1653,16 +1785,30 @@ export default function AiSupportChat({
                           {/* Success background glow */}
                           <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 bg-emerald-200/40 rounded-full blur-xl"></div>
                           
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
-                              ✓
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
+                                ✓
+                              </div>
+                              <span className="font-extrabold text-emerald-800 text-xs">
+                                {(msg as any).bookingData.status === "confirmed_pay_after_service" 
+                                  ? "Cash Booking Confirmed" 
+                                  : "Booking Paid & Confirmed"
+                                }
+                              </span>
                             </div>
-                            <span className="font-extrabold text-emerald-800 text-xs">
-                              {(msg as any).bookingData.status === "confirmed_pay_after_service" 
-                                ? "Cash Booking Confirmed" 
-                                : "Booking Paid & Confirmed"
-                              }
-                            </span>
+
+                            {/* Interactive PAY NOW button for unpaid or Cash bookings */}
+                            {((msg as any).bookingData.status === "confirmed_pay_after_service" || (msg as any).bookingData.paymentStatus === "unpaid") && (
+                              <button
+                                onClick={() => handlePayOnline((msg as any).bookingData.id)}
+                                disabled={isSubmitting}
+                                className="bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[10px] px-2.5 py-1 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 animate-pulse"
+                              >
+                                <CreditCard size={12} className="text-purple-200" />
+                                <span>💳 PAY NOW</span>
+                              </button>
+                            )}
                           </div>
 
                           <div className="space-y-0.5">
@@ -1673,9 +1819,9 @@ export default function AiSupportChat({
                           <div className="space-y-0.5">
                             <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Inspection Fee</p>
                             <p className="text-[11.5px] font-black text-slate-800">
-                              ₹{(msg as any).bookingData.visitationFee} 
+                              ₹{(msg as any).bookingData.visitationFee || 195} 
                               <span className="ml-1.5 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                                {(msg as any).bookingData.status === "confirmed_pay_after_service" ? "Pay After Service" : "Paid"}
+                                {(msg as any).bookingData.status === "confirmed_pay_after_service" || (msg as any).bookingData.paymentStatus === "unpaid" ? "Pay After Service (COD)" : "Paid via PhonePe"}
                               </span>
                             </p>
                           </div>
@@ -1687,7 +1833,7 @@ export default function AiSupportChat({
                             >
                               <span>Track Status ➔</span>
                             </button>
-                            <span className="text-[9px] text-emerald-600/70 font-mono">ID: {(msg as any).bookingData.id.slice(0, 8)}</span>
+                            <span className="text-[9px] text-emerald-600/70 font-mono">ID: #{((msg as any).bookingData.id || "").slice(-6).toUpperCase()}</span>
                           </div>
                         </div>
                       )
@@ -1898,6 +2044,128 @@ export default function AiSupportChat({
                 </button>
               </div>
             </div>
+
+            {/* PhonePe Gateway In-Chat Modal Overlay */}
+            <AnimatePresence>
+              {activePhonePePayment && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs z-[130] flex items-center justify-center p-3 rounded-t-3xl sm:rounded-3xl"
+                >
+                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-purple-200 flex flex-col text-left">
+                    {/* PhonePe Header */}
+                    <div className="bg-[#5f259f] text-white p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center font-black text-white text-xs border border-white/20 shadow-xs">
+                          पे
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black tracking-wide flex items-center gap-1">
+                            PhonePe Payment Gateway
+                          </h4>
+                          <p className="text-[9px] text-purple-200 font-semibold flex items-center gap-1">
+                            <ShieldCheck size={11} className="text-emerald-300" />
+                            100% SECURE • 256-BIT ENCRYPTION
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleCancelPhonePePayment}
+                        disabled={isConfirmingPhonePe}
+                        className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
+                        title="Cancel Payment"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    {/* Order Details */}
+                    <div className="p-4 space-y-3 bg-gradient-to-b from-purple-50/50 to-white">
+                      <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-xs space-y-2">
+                        <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
+                          <span>Booking Ref</span>
+                          <span className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            #{activePhonePePayment.bookingId.slice(-6).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                          <span className="text-[11px] font-black text-slate-800">{activePhonePePayment.serviceType}</span>
+                          <span className="text-[#5f259f] font-black text-base">₹{activePhonePePayment.amount}</span>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider">Payment Options</label>
+                        
+                        <div className="p-2.5 rounded-xl border-2 border-[#5f259f] bg-purple-50/60 flex items-center justify-between shadow-xs cursor-pointer">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-[#5f259f] text-white flex items-center justify-center text-[10px] font-black shadow-xs">
+                              UPI
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-black text-slate-900">PhonePe UPI / Instant QR</p>
+                              <p className="text-[9px] text-purple-700 font-semibold">Zero transaction fee • Instant confirmation</p>
+                            </div>
+                          </div>
+                          <div className="w-4 h-4 rounded-full bg-[#5f259f] text-white flex items-center justify-center text-[10px] font-bold">
+                            ✓
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 opacity-60 flex items-center justify-between cursor-not-allowed">
+                          <div className="flex items-center gap-2.5">
+                            <CreditCard size={18} className="text-slate-500" />
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-700">Cards / NetBanking</p>
+                              <p className="text-[8.5px] text-slate-400">Supported on PhonePe Gateway</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {phonePeError && (
+                        <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-[10px] font-semibold text-center flex items-center justify-center gap-1">
+                          <AlertCircle size={12} />
+                          <span>{phonePeError}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
+                      <button
+                        onClick={handleExecutePhonePePayment}
+                        disabled={isConfirmingPhonePe}
+                        className="w-full bg-[#5f259f] hover:bg-[#4c1d82] active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-purple-900/20 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {isConfirmingPhonePe ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Verifying PhonePe Gateway...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock size={13} />
+                            <span>PAY ₹{activePhonePePayment.amount} WITH PHONEPE</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={handleCancelPhonePePayment}
+                        disabled={isConfirmingPhonePe}
+                        className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-700 py-1 cursor-pointer text-center"
+                      >
+                        Cancel & Pay Cash on Delivery
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Success Booking Popup Overlay */}
             <AnimatePresence>

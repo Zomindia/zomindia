@@ -4,8 +4,9 @@ service cloud.firestore {
     // 0. Global Safety Net
     match /{document=**} {
       allow read, write: if isSignedIn() && (
-        ('email' in request.auth.token && request.auth.token.email.lower() == 'system-worker@zomindia.com') ||
-        ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'system-worker@zomindia.com')
+        request.auth.uid == 'system-worker-uid' ||
+        ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.lower() == 'system-worker@zomindia.com') ||
+        ('email_address' in request.auth.token && request.auth.token.email_address != null && request.auth.token.email_address.lower() == 'system-worker@zomindia.com')
       );
     }
 

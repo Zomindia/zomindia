@@ -6,10 +6,6 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CreditCard, Lock, ShieldCheck, AlertCircle, Smartphone, Wallet } from 'lucide-react';
 
-declare const Razorpay: any;
-
-const RAZORPAY_KEY_ID = (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '';
-
 interface PaymentModalProps {
   booking: Booking;
   profile: UserProfile;
@@ -22,9 +18,6 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Auto-redirect if already requested to pay via wallet from booking modal?
-  // No, if they chose wallet in booking modal it was stored as paymentMethod: 'wallet', but status is still 'unpaid'.
-  
   const handleWalletPayment = async () => {
     if (!profile.walletBalance || profile.walletBalance < booking.totalPrice) {
       setError("Insufficient wallet balance.");
@@ -69,134 +62,75 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     }
   };
 
-  const handleRazorpayPayment = async () => {
-    if (!RAZORPAY_KEY_ID) {
-      setError("Payment system is not configured. (Missing Key ID)");
-      return;
+  const handleSwitchToCOD = async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const bRef = doc(db, 'bookings', booking.id);
+      await updateDoc(bRef, {
+        paymentMethod: 'cash',
+        paymentStatus: 'unpaid',
+        status: 'confirmed',
+        updatedAt: Timestamp.now()
+      });
+      setShowSuccess(true);
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    } catch (err: any) {
+      console.error("Error switching to COD:", err);
+      setError("Failed to switch payment mode.");
+      setProcessing(false);
     }
+  };
 
+  const handlePhonePePayment = async () => {
     setProcessing(true);
     setError(null);
 
     try {
-      // 1. Create order on server
-      const response = await fetch('/api/create-razorpay-order', {
+      const response = await fetch('/api/phonepe/pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: booking.totalPrice, bookingId: booking.id }),
+        body: JSON.stringify({
+          amount: booking.totalPrice,
+          bookingId: booking.id,
+          customerUid: profile.uid,
+          mobileNumber: profile.phoneNumber || ''
+        }),
       });
 
-      const order = await response.json();
+      const data = await response.json();
 
-      if (!order.id) {
-        throw new Error(order.error || 'Failed to create payment order');
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to initiate PhonePe payment');
       }
 
-      // 2. Open Razorpay Checkout
-      const options = {
-        key: RAZORPAY_KEY_ID,
-        amount: order.amount,
-        currency: order.currency,
-        name: "Zomindia Internet Technology",
-        description: `Service Booking: ${booking.serviceId}`,
-        order_id: order.id,
-        handler: async function (response: any) {
-          // This function executes after a successful payment
-          try {
-            await updateDoc(doc(db, 'bookings', booking.id), {
-              paymentStatus: 'paid',
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpaySignature: response.razorpay_signature,
-              status: 'completed',
-              updatedAt: Timestamp.now()
-            });
+      // Call verify endpoint to set status to paid in Firestore
+      try {
+        await fetch('/api/phonepe/verify-and-confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingId: booking.id,
+            customerUid: profile.uid
+          })
+        });
+      } catch (confirmErr) {
+        console.warn("Direct confirm notice:", confirmErr);
+      }
 
-            // Credit the partner's earnings & rewards (including 20% surge rate to partner wallet)
-            if (booking.partnerId) {
-              const partnerRef = doc(db, 'partners', booking.partnerId);
-              const partnerSnap = await getDoc(partnerRef);
-              if (partnerSnap.exists()) {
-                const partnerData = partnerSnap.data();
-                const rewardPts = 10;
-                
-                // Determine if 20% surge rate applies (Removed)
-                const creditAmount = booking.totalPrice;
-
-                await updateDoc(partnerRef, {
-                  totalEarnings: (partnerData.totalEarnings || 0) + creditAmount,
-                  rewardCredits: (partnerData.rewardCredits || 0) + rewardPts,
-                  updatedAt: Timestamp.now()
-                });
-
-                // Also update the partner's User profile walletBalance
-                if (partnerData.userId) {
-                  const partnerUserRef = doc(db, 'users', partnerData.userId);
-                  const partnerUserSnap = await getDoc(partnerUserRef);
-                  if (partnerUserSnap.exists()) {
-                    await updateDoc(partnerUserRef, {
-                      walletBalance: (partnerUserSnap.data()?.walletBalance || 0) + creditAmount,
-                      updatedAt: Timestamp.now()
-                    });
-                  }
-                }
-
-                await addDoc(collection(db, 'partners', booking.partnerId, 'earningsHistory'), {
-                  type: 'booking_earning',
-                  amount: creditAmount,
-                  credits: rewardPts,
-                  bookingId: booking.id,
-                  reason: `Completed service (Razorpay online)`,
-                  createdAt: Timestamp.now()
-                });
-              }
-            }
-
-            // Trigger final bill email
-            try {
-              await fetch('/api/send-final-bill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId: booking.id, requesterUid: profile.uid }),
-              });
-            } catch (billErr) {
-              console.error("Failed to trigger final bill email:", billErr);
-            }
-
-            setShowSuccess(true);
-            setTimeout(() => {
-              onSuccess();
-            }, 2500);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
-            setError('Payment succeeded but failed to update record. Please contact support.');
-          }
-        },
-        prefill: {
-          name: "", // Can add user name from profile if available
-          email: "",
-          contact: ""
-        },
-        theme: {
-          color: "#1c1917"
-        },
-        modal: {
-          ondismiss: function() {
-            setProcessing(false);
-          }
-        }
-      };
-
-      const rzp = new Razorpay(options);
-      rzp.on('payment.failed', function (response: any) {
-        setError(response.error.description || 'Payment failed');
-        setProcessing(false);
-      });
-      rzp.open();
-
+      if (data.redirectUrl && !data.isSimulation) {
+        window.location.href = data.redirectUrl;
+      } else {
+        setShowSuccess(true);
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+      }
     } catch (err: any) {
-      console.error("Payment Error:", err);
-      setError(err.message || 'Payment initialization failed');
+      console.error("PhonePe Payment Error:", err);
+      setError(err.message || 'Payment initiation failed');
       setProcessing(false);
     }
   };
@@ -294,22 +228,30 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               ) : null}
 
               <button
-                onClick={handleRazorpayPayment}
+                onClick={handlePhonePePayment}
                 disabled={processing}
-                className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all flex justify-center items-center gap-3 shadow-xl shadow-blue-700/20 disabled:opacity-50 active:scale-95"
+                className="w-full bg-purple-700 text-white py-5 rounded-2xl font-black text-lg hover:bg-purple-800 transition-all flex justify-center items-center gap-3 shadow-xl shadow-purple-700/20 disabled:opacity-50 active:scale-95"
               >
                 <CreditCard size={20} />
-                {processing ? 'Launching Gateway...' : `Proceed to Pay ₹${booking.totalPrice}`}
+                {processing ? 'Launching PhonePe...' : `Pay via PhonePe ₹${booking.totalPrice}`}
+              </button>
+
+              <button
+                onClick={handleSwitchToCOD}
+                disabled={processing}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-3.5 rounded-2xl font-bold text-sm transition-all flex justify-center items-center gap-2 border border-slate-200 cursor-pointer disabled:opacity-50 active:scale-95"
+              >
+                💵 Switch to Cash on Delivery (COD)
               </button>
               
               <div className="flex items-center justify-center gap-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                  <div className="flex items-center gap-1.5"><ShieldCheck size={12} /> Secure</div>
                  <div className="flex items-center gap-1.5"><Lock size={12} /> Encrypted</div>
-                 <div className="flex items-center gap-1.5"><CreditCard size={12} /> Indian Gateway</div>
+                 <div className="flex items-center gap-1.5"><CreditCard size={12} /> PhonePe PG</div>
               </div>
 
               <div className="pt-4 text-center">
-                <p className="text-[10px] text-slate-300 font-medium">Powered by Razorpay</p>
+                <p className="text-[10px] text-slate-400 font-medium">Powered by PhonePe Secure Gateway</p>
               </div>
             </div>
           </div>

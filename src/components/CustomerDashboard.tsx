@@ -960,27 +960,26 @@ export default function CustomerDashboard({
     switch (status) {
       case "finalized":
       case "closed":
-        return "bg-emerald-100 text-emerald-700";
       case "completed":
-        return "bg-emerald-600 text-white";
+        return "bg-slate-100 text-[#002e6e] border border-slate-200 font-medium";
       case "cancelled":
-        return "bg-rose-100 text-rose-700";
+        return "bg-rose-100 text-rose-700 border border-rose-200 font-medium";
       case "in_progress":
-        return "bg-blue-600 text-white animate-pulse";
+        return "bg-blue-600 text-white font-medium animate-pulse";
       case "on_the_way":
-        return "bg-indigo-600 text-white";
+        return "bg-indigo-600 text-white font-medium";
       case "arrived":
-        return "bg-amber-500 text-white";
+        return "bg-amber-500 text-white font-medium";
       case "confirmed":
       case "assigned":
-        return "bg-blue-700 text-white";
+        return "bg-slate-100 text-[#002e6e] border border-slate-200 font-medium";
       case "pending":
       case "pending_parts":
-        return "bg-amber-100 text-amber-700";
+        return "bg-slate-100 text-[#002e6e] border border-slate-200 font-medium";
       case "payment_pending":
-        return "bg-rose-600 text-white";
+        return "bg-rose-600 text-white font-medium";
       default:
-        return "bg-slate-50 text-slate-400";
+        return "bg-slate-100 text-[#002e6e] border border-slate-200 font-medium";
     }
   };
 
@@ -1733,34 +1732,22 @@ export default function CustomerDashboard({
                   {/* 1. Header/Status Segment */}
                   <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-slate-50/20 border-b border-slate-100 relative z-10 w-full">
                     <div className="flex items-center gap-3">
-                      {(() => {
-                        const isConfirmedOrAssigned = bookingStatus.toLowerCase() === 'confirmed' || bookingStatus.toLowerCase() === 'assigned';
-                        const badgeColorText = isConfirmedOrAssigned ? 'text-blue-900' : 'text-[#22c55e]';
-                        const badgeBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-[#22c55e]/10';
-                        const badgeBorder = isConfirmedOrAssigned ? 'border-blue-200' : 'border-[#22c55e]/20';
-                        const statusBg = isConfirmedOrAssigned ? 'bg-blue-50' : 'bg-emerald-50';
-
-                        return (
-                          <>
-                            <span className={`text-[11px] font-mono tracking-widest ${badgeColorText} font-black uppercase ${badgeBg} border ${badgeBorder} px-2.5 py-1 rounded-lg`}>
-                              ID: #{booking.id.slice(-6).toUpperCase()}
-                            </span>
-                            <span className={`text-[9px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${statusBg} ${badgeColorText} border ${badgeBorder} shadow-xs`}>
-                              {(() => {
-                                const statusStr = typeof bookingStatus === 'string' ? bookingStatus.trim().toUpperCase() : "";
-                                if (statusStr === "ASSIGNED") {
-                                  return "Expert Assigned & Preparing";
-                                }
-                                return typeof bookingStatus === 'string' ? bookingStatus.replace("_", " ") : "";
-                              })()}
-                            </span>
-                          </>
-                        );
-                      })()}
+                      <span className="text-[11px] font-mono tracking-widest bg-sky-100 text-sky-800 border border-sky-200 font-semibold uppercase px-2.5 py-1 rounded-full shadow-xs">
+                        ID: #{booking.id.slice(-6).toUpperCase()}
+                      </span>
+                      <span className="text-[9px] bg-slate-100 text-[#002e6e] border border-slate-200 font-medium uppercase tracking-wider px-2.5 py-1 rounded-full shadow-xs">
+                        {(() => {
+                          const statusStr = typeof bookingStatus === 'string' ? bookingStatus.trim().toUpperCase() : "";
+                          if (statusStr === "ASSIGNED") {
+                            return "Expert Assigned & Preparing";
+                          }
+                          return typeof bookingStatus === 'string' ? bookingStatus.replace("_", " ") : "";
+                        })()}
+                      </span>
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Estimated Total</p>
-                      <p className="text-xl font-black text-[#22c55e]">₹{booking.totalPrice}</p>
+                      <p className="text-xl font-black text-[#002e6e]">₹{booking.totalPrice}</p>
                     </div>
                   </motion.div>
 
@@ -2383,12 +2370,12 @@ export default function CustomerDashboard({
                       {renderServiceThumbnail(booking.serviceId, "md")}
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                          <span className="text-[10px] font-mono tracking-widest text-slate-500 font-black uppercase">
-                            ID: #{booking.id.toUpperCase()}
+                          <span className="text-[10px] font-mono tracking-widest bg-sky-100 text-sky-800 border border-sky-200 font-semibold uppercase px-2.5 py-0.5 rounded-full">
+                            ID: #{booking.id.toUpperCase().slice(-6)}
                           </span>
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                           <span
-                            className={`text-[8px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${getStatusColor(bookingStatus)}`}
+                            className={`text-[8px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-wider ${getStatusColor(bookingStatus)}`}
                           >
                             {bookingStatus.replace("_", " ")}
                           </span>
@@ -2405,7 +2392,7 @@ export default function CustomerDashboard({
                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
                           Estimated Total
                         </p>
-                        <p className="text-xl font-black text-emerald-600">
+                        <p className="text-xl font-black text-[#002e6e]">
                           ₹{booking.totalPrice}
                         </p>
                       </div>
@@ -3520,30 +3507,55 @@ export default function CustomerDashboard({
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between items-start mb-1 gap-2">
                     <div className="min-w-0">
-                      <span className="text-[9px] font-mono font-black text-slate-400 block tracking-wider mb-0.5">BOOKING ID: #{booking.id.toUpperCase().slice(-6)}</span>
+                      <span className="text-[9px] font-mono bg-sky-100 text-sky-800 border border-sky-200 font-semibold px-2 py-0.5 rounded-full inline-block tracking-wider mb-1">
+                        ID: #{booking.id.toUpperCase().slice(-6)}
+                      </span>
                       <h4 className="font-bold text-slate-900 truncate text-sm">
                         {services[booking.serviceId]?.name}
                       </h4>
                     </div>
                     <div className="flex gap-1.5 items-center shrink-0">
-                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md">
+                      <span className="text-[8px] uppercase tracking-widest bg-slate-100 text-[#002e6e] border border-slate-200 font-medium px-2 py-0.5 rounded-full">
                         {booking.status}
                       </span>
                       <span
-                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${booking.paymentStatus === "paid" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-500"}`}
+                        className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                          booking.paymentStatus === "paid" 
+                            ? "bg-sky-50 text-sky-700 border border-sky-200" 
+                            : "bg-rose-50 text-rose-500 border border-rose-100"
+                        }`}
                       >
-                        {booking.paymentStatus || "unpaid"}
+                        {booking.paymentStatus === "paid"
+                          ? (booking.paymentMethod === 'phonepe_qr' 
+                              ? 'PAID VIA PHONEPE QR' 
+                              : (booking.paymentMethod === 'online' ? 'PAID VIA PHONEPE' : 'PAID'))
+                          : (booking.paymentStatus || "unpaid")}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-end mb-3 pt-1.5 border-t border-slate-50">
+                  <div className="flex justify-between items-center mb-3 pt-1.5 border-t border-slate-50 gap-2">
                     <p className="text-[9px] text-slate-400 font-bold">
                       Date: {booking.scheduledAt?.toDate?.()?.toLocaleDateString()}
                     </p>
-                    <div className="text-right">
-                      <span className="text-[8px] font-black uppercase text-slate-400 block leading-none">Paid Amount</span>
-                      <span className="text-xs font-black text-slate-900">₹{booking.totalPrice || 0}</span>
+                    <div className="flex items-center gap-2">
+                      {(booking.paymentStatus?.toLowerCase() === 'unpaid' || booking.paymentStatus?.toLowerCase() === 'pending') && booking.paymentMethod !== 'cash' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBookingToPay(booking);
+                          }}
+                          className="text-[9px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-2.5 py-1 rounded-lg transition-all shadow-sm cursor-pointer animate-pulse"
+                        >
+                          💳 PAY NOW
+                        </button>
+                      )}
+                      <div className="text-right">
+                        <span className="text-[8px] font-black uppercase text-slate-400 block leading-none">
+                          {booking.paymentStatus === 'paid' ? 'Paid Amount' : 'Amount Due'}
+                        </span>
+                        <span className="text-xs font-black text-slate-900">₹{booking.totalPrice || 0}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -3685,16 +3697,22 @@ export default function CustomerDashboard({
                       Book Again
                     </button>
 
-                    {booking.paymentStatus === "unpaid" && (
-                      <div className="flex gap-1.5">
+                    {(booking.paymentStatus?.toLowerCase() === "unpaid" || booking.paymentStatus?.toLowerCase() === "pending") && (
+                      <div className="flex gap-1.5 items-center">
                         <button
-                          onClick={() => setBookingToPay(booking)}
-                          className="text-[9px] font-black uppercase tracking-widest text-white bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBookingToPay(booking);
+                          }}
+                          className="text-[9.5px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-3.5 py-1.5 rounded-lg transition-all shadow-md cursor-pointer animate-pulse flex items-center gap-1.5"
                         >
-                          💳 Pay Now
+                          💳 PAY NOW
                         </button>
                         <button
-                          onClick={() => setIsPaymentScannerOpen(true)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsPaymentScannerOpen(true);
+                          }}
                           className="text-[9px] font-black uppercase tracking-widest text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-slate-200 cursor-pointer flex items-center gap-1"
                         >
                           <QrCode size={10} /> Scan QR

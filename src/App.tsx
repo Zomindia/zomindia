@@ -1625,8 +1625,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                     >
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                        <span className="text-xs font-black leading-tight flex items-center gap-1 justify-end text-[#22c55e]" id="portal-header-greeter">
-                          <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
+                        <span className="text-xs font-bold leading-tight flex items-center gap-1.5 justify-end" id="portal-header-greeter">
+                          <Sparkles size={13} className="text-[#00baf2] animate-pulse shrink-0" />
+                          <span className="bg-gradient-to-r from-[#002e6e] via-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
+                            {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                          </span>
                         </span>
                         {/* IMMUTABLE GREETER BLOCK END */}
                         <span 
@@ -1785,8 +1788,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                   {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
                   <div className="flex md:hidden items-center gap-2 select-none">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                    <span className="text-[10px] font-black text-[#22c55e] bg-slate-50 px-2 py-1 rounded-xl flex items-center gap-1">
-                      <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
+                    <span className="text-[10px] font-bold bg-sky-50/80 border border-sky-100 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-xs">
+                      <Sparkles size={11} className="text-[#00baf2] shrink-0" />
+                      <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
+                        {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                      </span>
                     </span>
                     {/* IMMUTABLE GREETER BLOCK END */}
                     <button
@@ -1933,8 +1939,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                     />
                     <div>
                       {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                      <p className="text-sm font-black text-[#22c55e] font-display uppercase leading-tight flex items-center gap-1">
-                        <span>{profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}</span>
+                      <p className="text-sm font-bold font-display uppercase leading-tight flex items-center gap-1.5">
+                        <Sparkles size={14} className="text-[#00baf2] shrink-0" />
+                        <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
+                          {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                        </span>
                       </p>
                       {/* IMMUTABLE GREETER BLOCK END */}
                       <p 
