@@ -986,65 +986,81 @@ export default function CustomerDashboard({
     const stages: { key: Booking["status"][]; label: string; icon: any }[] = [
       {
         key: ["pending", "pending_parts"],
-        label: "Booking Placed",
+        label: "Confirmed",
         icon: Clock,
       },
       {
         key: ["confirmed", "assigned"],
-        label: "Professional Assigned",
+        label: "Expert Assigned",
         icon: User,
       },
-      { key: ["on_the_way"], label: "On The Way", icon: Navigation },
-      { key: ["arrived"], label: "Arrived", icon: MapPin },
+      { key: ["on_the_way", "arrived"], label: "On The Way", icon: Navigation },
       { key: ["in_progress"], label: "In Progress", icon: Zap },
       {
         key: ["completed", "finalized", "closed"],
-        label: "Finished",
+        label: "Completed",
         icon: CheckCircle2,
       },
     ];
 
     const currentStageIndex = stages.findIndex((s) => s.key.includes(status));
+    const activeIndex = currentStageIndex >= 0 ? currentStageIndex : 0;
 
     return (
-      <div className="py-2 px-1 sm:px-4">
-        <div className="flex items-center justify-between relative">
-          <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2 z-0" />
-          {stages.map((stage, idx) => {
-            const isCompleted =
-              idx < currentStageIndex ||
-              status === "completed" ||
-              status === "finalized" ||
-              status === "closed";
-            const isCurrent = idx === currentStageIndex;
-            const Icon = stage.icon;
+      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm my-2">
+        <div className="relative w-full max-w-2xl mx-auto py-2">
+          {/* Track Line Background */}
+          <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-1 bg-slate-150 bg-slate-200/70 rounded-full z-0" />
+          {/* Active Progress Line */}
+          <div
+            className="absolute top-[18px] sm:top-[20px] left-6 h-1 bg-gradient-to-r from-[#002e6e] via-[#e11d48] to-[#22c55e] rounded-full z-0 transition-all duration-500"
+            style={{
+              width: `${
+                status === "completed" || status === "finalized" || status === "closed"
+                  ? "100%"
+                  : `${Math.min(100, (activeIndex / (stages.length - 1)) * 100)}%`
+              }`,
+            }}
+          />
 
-            return (
-              <div
-                key={idx}
-                className="relative z-10 flex flex-col items-center gap-3"
-              >
-                <div
-                  className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-500 ${
-                    isCompleted
-                      ? "bg-emerald-500 text-white"
-                      : isCurrent
-                        ? "bg-blue-700 text-white ring-4 ring-blue-700/10"
-                        : "bg-white border-2 border-slate-100 text-slate-200"
-                  }`}
-                >
-                  <Icon size={16} />
+          <div className="flex items-center justify-between relative z-10">
+            {stages.map((stage, idx) => {
+              const isCompleted =
+                idx < activeIndex ||
+                status === "completed" ||
+                status === "finalized" ||
+                status === "closed";
+              const isCurrent = idx === activeIndex && !["completed", "finalized", "closed"].includes(status);
+              const Icon = stage.icon;
+
+              return (
+                <div key={idx} className="flex flex-col items-center">
+                  <div
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                      isCompleted
+                        ? "bg-[#22c55e] border-[#22c55e] text-white shadow-sm"
+                        : isCurrent
+                        ? "bg-[#002e6e] border-[#002e6e] text-white ring-4 ring-[#002e6e]/15 shadow-md scale-110"
+                        : "bg-white border-slate-200 text-slate-300"
+                    }`}
+                  >
+                    <Icon size={16} />
+                  </div>
+                  <span
+                    className={`text-[9px] sm:text-[10px] font-black tracking-wider uppercase mt-2 text-center max-w-[75px] leading-tight ${
+                      isCompleted
+                        ? "text-emerald-700 font-black"
+                        : isCurrent
+                        ? "text-[#002e6e] font-black"
+                        : "text-slate-400 font-bold"
+                    }`}
+                  >
+                    {stage.label}
+                  </span>
                 </div>
-                <span
-                  className={`text-[8px] font-black uppercase tracking-widest text-center max-w-[60px] hidden sm:block ${
-                    isCurrent ? "text-slate-900" : "text-slate-300"
-                  }`}
-                >
-                  {stage.label}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -1729,12 +1745,12 @@ export default function CustomerDashboard({
                   <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl animate-pulse pointer-events-none" />
 
                   {/* 1. Header/Status Segment */}
-                  <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-slate-50/20 border-b border-slate-100 relative z-10 w-full">
+                  <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-white border-b border-slate-200/80 relative z-10 w-full">
                     <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-mono tracking-widest bg-sky-100 text-sky-800 border border-sky-200 font-semibold uppercase px-2.5 py-1 rounded-full shadow-xs">
+                      <span className="text-xs font-mono tracking-widest bg-sky-50 text-[#002e6e] border border-sky-200 font-black uppercase px-3 py-1 rounded-full shadow-2xs">
                         ID: #{booking.id.slice(-6).toUpperCase()}
                       </span>
-                      <span className="text-[9px] bg-slate-100 text-[#002e6e] border border-slate-200 font-medium uppercase tracking-wider px-2.5 py-1 rounded-full shadow-xs">
+                      <span className="text-[10px] bg-slate-50 text-[#002e6e] border border-slate-200/80 font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-2xs">
                         {(() => {
                           const statusStr = typeof bookingStatus === 'string' ? bookingStatus.trim().toUpperCase() : "";
                           if (statusStr === "ASSIGNED") {
@@ -1746,7 +1762,7 @@ export default function CustomerDashboard({
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Estimated Total</p>
-                      <p className="text-xl font-black text-[#002e6e]">₹{booking.totalPrice}</p>
+                      <p className="text-xl sm:text-2xl font-black text-[#002e6e]">₹{booking.totalPrice}</p>
                     </div>
                   </motion.div>
 
@@ -1757,18 +1773,18 @@ export default function CustomerDashboard({
                     <div className="space-y-6 md:col-span-2 lg:col-span-3">
                       
                       {/* Service Header Info */}
-                      <motion.div variants={itemVariants} className="flex items-center gap-4 bg-white">
+                      <motion.div variants={itemVariants} className="flex items-center gap-4 bg-white p-2 rounded-2xl">
                         {renderServiceThumbnail(booking.serviceId, "md", bookingStatus)}
                         <div>
-                          <h4 className="text-lg sm:text-xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
+                          <h4 className="text-lg sm:text-2xl font-black tracking-tight uppercase text-[#002e6e] leading-tight">
                             {services[booking.serviceId]?.name || "Professional Service"}
                           </h4>
                           {hasPartner && (
-                            <div className="flex items-center gap-1.5 mt-2">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Expert:</span>
-                              <span className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assigned Expert:</span>
+                              <span className="text-xs font-black text-slate-900 flex items-center gap-1 bg-slate-50 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
                                 {partnerUser?.displayName || "Vikas Chopra"}
-                                <CheckCircle2 size={12} className="text-[#22c55e] fill-[#22c55e]/10" />
+                                <CheckCircle2 size={13} className="text-[#22c55e] fill-[#22c55e]/10" />
                               </span>
                             </div>
                           )}
@@ -1776,10 +1792,10 @@ export default function CustomerDashboard({
                       </motion.div>
 
                       {/* 3. Status Tracking Pipeline Segment */}
-                      <motion.div variants={itemVariants} className="bg-slate-50/70 p-5 rounded-[24px] border border-slate-100">
+                      <motion.div variants={itemVariants} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
                         <div className="relative w-full max-w-2xl mx-auto py-2">
                           {/* Progress Line */}
-                          <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-[3px] bg-slate-200 rounded-full z-0" />
+                          <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-[3px] bg-slate-200/80 rounded-full z-0" />
                           <motion.div 
                             initial={{ width: '0%' }}
                             animate={{ 
@@ -1835,16 +1851,16 @@ export default function CustomerDashboard({
                                     className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                                       isActiveColour 
                                         ? (idx <= 1 
-                                            ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/15' 
-                                            : 'bg-[#22c55e] border-[#22c55e] text-white shadow-[#22c55e]/15')
-                                        : 'bg-white border-slate-200 text-slate-400'
+                                            ? 'bg-[#002e6e] border-[#002e6e] text-white shadow-sm' 
+                                            : 'bg-[#22c55e] border-[#22c55e] text-white shadow-sm')
+                                        : 'bg-white border-slate-200 text-slate-300'
                                     }`}
                                   >
-                                    <StepIcon size={14} />
+                                    <StepIcon size={16} />
                                   </div>
-                                  <span className={`text-[8px] sm:text-[9px] font-black tracking-tight mt-1.5 transition-colors duration-300 ${
+                                  <span className={`text-[9px] sm:text-[10px] font-black tracking-tight mt-1.5 transition-colors duration-300 ${
                                     isActiveColour 
-                                      ? (idx <= 1 ? 'text-blue-900 font-black' : 'text-[#22c55e] font-black') 
+                                      ? (idx <= 1 ? 'text-[#002e6e] font-black' : 'text-[#22c55e] font-black') 
                                       : 'text-slate-400'
                                   }`}>
                                     {step.label}
@@ -1857,38 +1873,38 @@ export default function CustomerDashboard({
                       </motion.div>
 
                       {/* 4. Appointment Details Segment */}
-                      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80 text-xs font-semibold">
-                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-white rounded-2xl border border-slate-200/80 shadow-sm text-xs font-semibold">
+                        <div className="flex items-center gap-3 bg-slate-50/60 p-3 rounded-xl border border-slate-200/60">
+                          <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 text-[#002e6e]">
                             <Calendar size={15} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Date</p>
-                            <p className="font-extrabold text-blue-950 text-xs truncate">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold leading-none mb-1">Service Date</p>
+                            <p className="font-extrabold text-[#002e6e] text-xs truncate">
                               {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) || "Today"}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                        <div className="flex items-center gap-3 bg-slate-50/60 p-3 rounded-xl border border-slate-200/60">
+                          <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 text-[#002e6e]">
                             <Clock size={15} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Time</p>
-                            <p className="font-extrabold text-blue-950 text-xs truncate">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold leading-none mb-1">Service Time</p>
+                            <p className="font-extrabold text-[#002e6e] text-xs truncate">
                               {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "10:00 AM"}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-2xs">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 text-orange-500">
+                        <div className="flex items-center gap-3 bg-slate-50/60 p-3 rounded-xl border border-slate-200/60">
+                          <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 text-[#002e6e]">
                             <MapPin size={15} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[9px] uppercase tracking-wider text-slate-600 font-extrabold leading-none mb-1">Service Address</p>
-                            <p className="font-extrabold text-blue-950 text-xs text-left truncate" title={booking.address}>
+                            <p className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold leading-none mb-1">Service Address</p>
+                            <p className="font-extrabold text-[#002e6e] text-xs text-left truncate" title={booking.address}>
                               {expandedBookingId === booking.id ? booking.address : (booking.address ? booking.address.split(',')[0] : 'Vijay Nagar')}
                             </p>
                           </div>
@@ -1915,14 +1931,16 @@ export default function CustomerDashboard({
 
                           {/* 2. Prominent OTP display for Assigned state */}
                           {otpCode && (bookingStatus.toLowerCase() === 'assigned' || bookingStatus.toLowerCase() === 'confirmed') && (
-                            <div className="bg-gradient-to-r from-slate-900 to-slate-950 p-4 rounded-2xl flex items-center justify-between shadow-md">
+                            <div className="bg-white p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between border border-slate-200/80 shadow-sm gap-4">
                               <div>
-                                <span className="text-[8px] font-black uppercase tracking-wider text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/25 px-2 py-0.5 rounded-full inline-block">Security OTP</span>
-                                <p className="text-[10px] text-slate-400 mt-1 font-bold">Share on expert arrival only</p>
+                                <span className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                                  <ShieldCheck size={13} className="text-orange-600" /> Security OTP
+                                </span>
+                                <p className="text-xs text-slate-600 mt-1.5 font-bold">Provide to professional on arrival</p>
                               </div>
-                              <div className="flex gap-1.5">
+                              <div className="flex gap-2">
                                 {(otpCode || "").toString().split("").map((digit, i) => (
-                                  <div key={i} className="w-8 h-8 bg-white border border-slate-250 text-slate-950 rounded-lg flex items-center justify-center text-sm font-black italic shadow-inner">
+                                  <div key={i} className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center text-lg font-black font-mono shadow-sm">
                                     {digit}
                                   </div>
                                 ))}
@@ -1932,16 +1950,16 @@ export default function CustomerDashboard({
 
                           {/* 3. In Progress Real-Time Progress Bar */}
                           {bookingStatus.toLowerCase() === 'in_progress' && (
-                            <div className="space-y-2 bg-slate-50/50 border border-slate-150 p-4 rounded-2xl">
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-500">
-                                <span>Service in Progress</span>
-                                <span className="text-emerald-500">{booking.progressPercentage || 0}% Completed</span>
+                            <div className="space-y-2.5 bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm">
+                              <div className="flex justify-between items-center text-xs font-black uppercase tracking-wider text-slate-700">
+                                <span className="text-[#002e6e]">Service in Progress</span>
+                                <span className="text-emerald-600 font-extrabold">{booking.progressPercentage || 0}% Completed</span>
                               </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-150 relative">
+                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200/80 relative">
                                 <motion.div
                                   initial={{ width: 0 }}
                                   animate={{ width: `${booking.progressPercentage || 0}%` }}
-                                  className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full"
+                                  className="h-full bg-gradient-to-r from-[#002e6e] to-emerald-500 rounded-full"
                                 />
                               </div>
                             </div>
@@ -1949,29 +1967,29 @@ export default function CustomerDashboard({
 
                           {/* 4. Payment triggers for Completed status */}
                           {(bookingStatus.toLowerCase() === 'completed' || bookingStatus.toLowerCase() === 'payment_pending') && (
-                            <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl flex flex-col gap-2">
+                            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm flex flex-col gap-3">
                               <div className="text-left">
-                                <h5 className="text-[9px] font-black uppercase text-[#22c55e] tracking-wider leading-none mb-1">Awaiting Service Payment</h5>
-                                <p className="text-[9px] text-slate-500 font-bold">Clear total of ₹{booking.totalPrice} using the secure portal below.</p>
+                                <h5 className="text-xs font-black uppercase text-[#002e6e] tracking-wider leading-none mb-1">Awaiting Service Payment</h5>
+                                <p className="text-xs text-slate-600 font-semibold mt-1">Clear total of ₹{booking.totalPrice} instantly using secure checkout below.</p>
                               </div>
-                              <div className="grid grid-cols-3 gap-1.5 w-full">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setBookingToPay(booking); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
+                                  className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] py-3 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 flex items-center justify-center gap-2"
                                 >
-                                  Online
+                                  💳 PAY NOW
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setIsPaymentScannerOpen(true); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                  className="text-xs font-bold uppercase tracking-wider text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs active:scale-95"
                                 >
-                                  <QrCode size={10} /> QR
+                                  <QrCode size={14} /> SCAN QR
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handlePayWithCashByCustomer(booking); }}
-                                  className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center"
+                                  className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 hover:bg-emerald-100 py-3 rounded-xl border border-emerald-200 transition-all cursor-pointer text-center active:scale-95 flex items-center justify-center gap-1.5"
                                 >
-                                  Cash
+                                  💵 PAY CASH
                                 </button>
                               </div>
                             </div>
@@ -1980,9 +1998,9 @@ export default function CustomerDashboard({
                           {/* Detailed Accordion Launcher */}
                           <button
                             onClick={() => setExpandedBookingId(booking.id)}
-                            className="w-full py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs hover:shadow-sm active:scale-[0.99]"
+                            className="w-full py-3.5 bg-white hover:bg-slate-50 text-[#002e6e] font-black text-xs uppercase tracking-wider rounded-2xl border border-slate-200/80 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99]"
                           >
-                            <ChevronDown size={14} className="text-slate-600" />
+                            <ChevronDown size={16} className="text-[#002e6e]" />
                             <span>View Full Booking Details</span>
                           </button>
                         </div>
@@ -1990,25 +2008,25 @@ export default function CustomerDashboard({
                         <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-400">
                           {/* 5. Security Verification OTP Segment */}
                           {otpCode && (bookingStatus.toLowerCase() !== "in_progress") && (
-                            <motion.div variants={itemVariants} className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-xs">
+                            <motion.div variants={itemVariants} className="bg-white border border-slate-200/80 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 shadow-sm hover:shadow-md transition-all">
                               <div className="text-center sm:text-left">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 px-2.5 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full inline-block mb-1.5">
-                                  Security Verification OTP
+                                <span className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 mb-1.5 shadow-2xs">
+                                  <ShieldCheck size={13} className="text-orange-600" /> Security Verification OTP
                                 </span>
-                                <p className="text-[11px] text-slate-600 font-medium max-w-sm leading-tight text-left">
+                                <p className="text-xs text-slate-600 font-bold max-w-sm leading-relaxed text-left">
                                   Provide this secure 4-digit token to your service professional ONLY when they arrive.
                                 </p>
                               </div>
                               <div className="flex items-center gap-3">
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-2">
                                   {(otpCode || "").toString().split("").map((digit, i) => (
-                                    <div key={i} className="w-10 h-10 bg-white border border-slate-200 text-slate-900 rounded-xl flex items-center justify-center text-xl font-black italic shadow-sm">
+                                    <div key={i} className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center text-xl font-black font-mono shadow-sm">
                                       {digit}
                                     </div>
                                   ))}
                                 </div>
-                                <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 animate-pulse">
-                                  <CheckCircle2 size={10} /> Standby
+                                <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5">
+                                  <CheckCircle2 size={12} /> Standby
                                 </span>
                               </div>
                             </motion.div>
@@ -2017,12 +2035,12 @@ export default function CustomerDashboard({
                           {/* Service Protocol Checklist & Cost Summary Subgrid */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             {/* Service Checklist Card */}
-                            <div className="bg-slate-50/50 border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
-                              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-                                <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-                                  <FileText size={12} className="text-[#22c55e]" /> Service Checklist
+                            <div className="bg-white border border-slate-200/80 p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-all">
+                              <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-100">
+                                <h5 className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5">
+                                  <FileText size={14} className="text-[#002e6e]" /> Service Checklist
                                 </h5>
-                                <span className="text-[9px] font-black text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20 px-2 py-0.5 rounded-lg font-mono">
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg font-mono">
                                   Progress: {booking.progressPercentage !== undefined ? booking.progressPercentage : Math.round(((booking.completedTasks?.length || 0) / (services[booking.serviceId]?.predefinedTasks?.length || 4)) * 100)}%
                                 </span>
                               </div>
@@ -2035,23 +2053,15 @@ export default function CustomerDashboard({
                                 ).map((task: string, i: number) => {
                                   const isDone = booking.completedTasks?.includes(task || "");
                                   return (
-                                    <div key={i} className="flex items-center justify-between bg-white px-3 py-2.5 rounded-xl border border-slate-100 shadow-2xs relative overflow-hidden">
-                                      <div className="flex items-center gap-2 text-left w-full relative">
-                                        <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${isDone ? "bg-[#22c55e] border-[#22c55e] text-white" : "border-slate-200 text-slate-300"}`}>
-                                          <CheckCircle2 size={10} className={isDone ? "text-white" : "text-slate-200"} fill={isDone ? "currentColor" : "transparent"} />
+                                    <div key={i} className="flex items-center justify-between bg-slate-50/70 px-3.5 py-2.5 rounded-xl border border-slate-200/60 shadow-2xs relative overflow-hidden">
+                                      <div className="flex items-center gap-2.5 text-left w-full relative">
+                                        <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${isDone ? "bg-[#22c55e] border-[#22c55e] text-white" : "border-slate-300 text-slate-300"}`}>
+                                          <CheckCircle2 size={11} className={isDone ? "text-white" : "text-slate-200"} fill={isDone ? "currentColor" : "transparent"} />
                                         </div>
                                         <div className="relative flex-1">
-                                          <span className={`text-[11px] font-semibold leading-tight transition-all duration-305 ${isDone ? "text-[#22c55e]/70 font-semibold" : "text-slate-700"}`}>
+                                          <span className={`text-xs font-semibold leading-tight transition-all duration-300 ${isDone ? "text-emerald-700 line-through font-medium" : "text-slate-800"}`}>
                                             {task}
                                           </span>
-                                          {isDone && (
-                                            <motion.div
-                                              initial={{ width: 0 }}
-                                              animate={{ width: "100%" }}
-                                              transition={{ duration: 0.5, ease: "easeOut" }}
-                                              className="absolute top-1/2 left-0 h-[2px] bg-[#22c55e] shadow-[0_0_8px_#22c55e] -translate-y-1/2 pointer-events-none"
-                                            />
-                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -2061,46 +2071,46 @@ export default function CustomerDashboard({
                             </div>
 
                             {/* Cost Summary & Payments Card */}
-                            <div className="bg-slate-50/50 border border-slate-150 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
-                              <div className="space-y-2.5 text-xs">
-                                <div className="flex justify-between items-center text-slate-500 pb-2 border-b border-slate-100">
-                                  <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-                                    <Sparkles size={12} className="text-[#22c55e]" /> Cost Summary
+                            <div className="bg-white border border-slate-200/80 p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-all">
+                              <div className="space-y-3 text-xs">
+                                <div className="flex justify-between items-center text-slate-500 pb-2.5 border-b border-slate-100">
+                                  <h5 className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5">
+                                    <Sparkles size={14} className="text-[#002e6e]" /> Cost Summary
                                   </h5>
                                 </div>
-                                <div className="flex justify-between items-center text-slate-500 pt-1">
-                                  <span className="font-semibold text-slate-400">
+                                <div className="flex justify-between items-center text-slate-600 pt-1">
+                                  <span className="font-semibold text-slate-600">
                                     {services[booking.serviceId]?.name || "Base Fare"}
                                   </span>
-                                  <span className="text-slate-800 font-bold">
+                                  <span className="text-slate-900 font-extrabold">
                                     ₹{services[booking.serviceId]?.basePrice || booking.totalPrice}
                                   </span>
                                 </div>
 
                                 {booking.discountApplied && booking.discountApplied > 0 ? (
-                                  <div className="flex justify-between items-center text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100">
-                                    <span className="font-extrabold text-[10px]">Promo Discount ({booking.promoCode || "PROMO"})</span>
+                                  <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 font-extrabold">
+                                    <span>Promo Discount ({booking.promoCode || "PROMO"})</span>
                                     <span className="font-black">-₹{booking.discountApplied}</span>
                                   </div>
                                 ) : null}
 
                                 {/* Additional Charges added by Partner */}
                                 {booking.additionalCharges && booking.additionalCharges.length > 0 ? (
-                                  <div className="space-y-1 pt-1.5 border-t border-slate-100 text-left">
+                                  <div className="space-y-1.5 pt-2 border-t border-slate-100 text-left">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                       Technician Approved Add-ons
                                     </span>
                                     {booking.additionalCharges.map((chg, i) => (
                                       <div
                                         key={i}
-                                        className="flex justify-between items-start bg-amber-500/[0.04] p-2 rounded-lg border border-amber-500/10"
+                                        className="flex justify-between items-start bg-amber-50 p-2.5 rounded-xl border border-amber-200/80"
                                       >
                                         <div>
-                                          <p className="font-extrabold text-slate-700 text-[10px] leading-none">
+                                          <p className="font-extrabold text-slate-800 text-xs leading-none">
                                             {chg.reason}
                                           </p>
                                         </div>
-                                        <span className="font-black text-amber-600 text-[10px]">
+                                        <span className="font-black text-amber-800 text-xs">
                                           ₹{chg.amount}
                                         </span>
                                       </div>
@@ -2108,48 +2118,48 @@ export default function CustomerDashboard({
                                   </div>
                                 ) : null}
 
-                                <div className="flex justify-between items-center text-slate-900 border-t border-slate-100 pt-2 mt-1">
-                                  <span className="font-black uppercase tracking-wider text-[10px]">Net Payable Amount</span>
-                                  <span className="text-base font-black text-slate-900">₹{booking.totalPrice}</span>
+                                <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-1">
+                                  <span className="font-black uppercase tracking-wider text-xs text-[#002e6e]">Net Payable Amount</span>
+                                  <span className="text-lg font-black text-[#002e6e]">₹{booking.totalPrice}</span>
                                 </div>
 
                                 {(bookingStatus === "payment_pending" || bookingStatus === "completed") && (
-                                  <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl flex flex-col gap-2">
+                                  <div className="mt-3 p-3 bg-sky-50/50 border border-sky-200/80 rounded-xl flex flex-col gap-2">
                                     <div className="text-left">
-                                      <h5 className="text-[8px] font-black uppercase text-[#22c55e] tracking-wider leading-none mb-1">
+                                      <h5 className="text-[10px] font-black uppercase text-[#002e6e] tracking-wider leading-none mb-1">
                                         Awaiting Service Payment
                                       </h5>
-                                      <p className="text-[9px] text-slate-500 font-semibold leading-tight">
-                                        Select secure payment route, or clear of ₹{booking.totalPrice} in cash.
+                                      <p className="text-xs text-slate-600 font-medium leading-tight">
+                                        Select secure payment route, or clear ₹{booking.totalPrice} in cash.
                                       </p>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-1.5 w-full">
+                                    <div className="grid grid-cols-3 gap-2 w-full pt-1">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setBookingToPay(booking);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-all cursor-pointer text-center animate-pulse border-0 shadow-xs"
+                                        className="text-[10px] font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] py-2.5 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95"
                                       >
-                                        Online
+                                        💳 PAY NOW
                                       </button>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setIsPaymentScannerOpen(true);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                        className="text-[10px] font-extrabold uppercase tracking-wider text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs active:scale-95"
                                       >
-                                        <QrCode size={10} /> QR
+                                        <QrCode size={11} /> SCAN
                                       </button>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handlePayWithCashByCustomer(booking);
                                         }}
-                                        className="text-[8px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg border border-emerald-200 transition-all cursor-pointer text-center"
+                                        className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 hover:bg-emerald-100 py-2.5 rounded-xl border border-emerald-200 transition-all cursor-pointer text-center active:scale-95"
                                       >
-                                        Cash
+                                        💵 CASH
                                       </button>
                                     </div>
                                   </div>
@@ -2792,7 +2802,7 @@ export default function CustomerDashboard({
                     id={`booking-card-${booking.id}`}
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`bg-white border-2 transition-all duration-500 ${expandedBookingId === booking.id ? "border-blue-700 shadow-xl" : "border-slate-100 shadow-sm hover:border-slate-200"} rounded-2xl p-4 sm:p-6 cursor-pointer relative overflow-hidden`}
+                    className={`bg-white border transition-all duration-300 ${expandedBookingId === booking.id ? "border-[#002e6e] shadow-lg" : "border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300"} rounded-2xl p-5 cursor-pointer relative overflow-hidden`}
                     onClick={() =>
                       setExpandedBookingId(
                         expandedBookingId === booking.id ? null : booking.id,
@@ -2803,28 +2813,31 @@ export default function CustomerDashboard({
                       <div className="flex gap-4 sm:gap-6 items-start">
                         {renderServiceThumbnail(booking.serviceId, "md")}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-3 mb-2">
+                          <div className="flex items-center justify-between gap-3 mb-2">
                             <span
-                              className={`text-[8px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${getStatusColor(booking.status)} shadow-sm border border-black/5`}
+                              className={`text-[10px] px-3 py-0.5 rounded-full font-black uppercase tracking-widest ${getStatusColor(booking.status)} shadow-2xs border border-black/5`}
                             >
                               {booking.status.replace("_", " ")}
                             </span>
+                            <span className="text-xs font-mono font-extrabold text-[#002e6e] bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
+                              #{booking.id.slice(-6).toUpperCase()}
+                            </span>
                           </div>
-                          <h3 className="text-xl font-black mb-2 text-slate-900 tracking-tight uppercase italic leading-none truncate">
+                          <h3 className="text-lg sm:text-xl font-black mb-1.5 text-[#002e6e] tracking-tight uppercase leading-snug truncate">
                             {services[booking.serviceId]?.name ||
                               "Professional Service"}
                           </h3>
-                          <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            <Clock size={12} className="text-slate-300" />{" "}
+                          <div className="flex items-center gap-3 text-xs text-slate-500 font-bold uppercase tracking-wider">
+                            <Clock size={13} className="text-[#002e6e]" />{" "}
                             {booking.scheduledAt
                               ?.toDate?.()
                               ?.toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })}
-                            <span className="text-slate-100">•</span>
-                            <MapPin size={12} className="text-slate-300" />{" "}
-                            <span className="truncate max-w-[100px]">
+                            <span className="text-slate-300">•</span>
+                            <MapPin size={13} className="text-[#002e6e]" />{" "}
+                            <span className="truncate max-w-[140px]">
                               {booking.address}
                             </span>
                           </div>
@@ -2833,7 +2846,7 @@ export default function CustomerDashboard({
 
                       {expandedBookingId === booking.id && (
                         <div
-                          className="pt-6 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 space-y-8 cursor-default"
+                          className="pt-6 border-t border-slate-200/80 animate-in fade-in slide-in-from-top-2 space-y-6 cursor-default"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {booking.status === "Pending - Customer Unresponsive" ? (
@@ -2853,39 +2866,43 @@ export default function CustomerDashboard({
                             "on_the_way",
                             "arrived",
                           ].includes(booking.status) && (
-                            <div className="bg-blue-50/50 rounded-[24px] p-6 border border-blue-100/50">
-                              <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-700 mb-2 flex items-center gap-1.5">
-                                <Zap size={12} className="fill-blue-700/20" />{" "}
-                                SECURE SERVICE OTP
-                              </h4>
-                              <p className="text-[11px] text-slate-500 font-semibold mb-3 leading-relaxed">
-                                Share this secure 4-digit code with your service
-                                technician ONLY once they arrive at your
-                                location to proceed with the service.
-                              </p>
-                              <div className="flex flex-row items-center justify-start gap-4">
-                                <div className="flex items-center gap-3 animate-pulse">
-                                  <span className="bg-white border-2 border-blue-200 text-blue-800 font-mono font-black text-2xl tracking-[0.2em] py-2 px-6 rounded-2xl shadow-sm inline-block">
-                                    {bookingOtps[booking.id] ||
-                                      booking.serviceOtp ||
-                                      "----"}
-                                  </span>
-                                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 font-bold flex items-center gap-1.5 animate-pulse">
-                                    <CheckCircle2 size={11} /> Standby
-                                  </span>
+                            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                              <div>
+                                <span className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 shadow-2xs mb-1.5">
+                                  <ShieldCheck size={13} className="text-orange-600" /> Security Verification OTP
+                                </span>
+                                <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                                  Provide this 4-digit token to your service technician ONLY on arrival.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="flex gap-2">
+                                  {(bookingOtps[booking.id] || booking.serviceOtp || "----")
+                                    .toString()
+                                    .split("")
+                                    .map((digit, i) => (
+                                      <div
+                                        key={i}
+                                        className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center text-xl font-black font-mono shadow-sm"
+                                      >
+                                        {digit}
+                                      </div>
+                                    ))}
                                 </div>
+                                <span className="text-[10px] text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200 font-bold flex items-center gap-1">
+                                  <CheckCircle2 size={12} /> Standby
+                                </span>
                               </div>
                             </div>
                           )}
 
                           {/* Predefined tasks / Multi-service Checklist */}
-                          <div className="bg-slate-50/60 rounded-[32px] p-6 border border-slate-100">
-                            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
-                              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-                                <FileText size={12} /> Service Protocol & Items
-                                Booked
+                          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+                            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+                              <h4 className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5">
+                                <FileText size={14} className="text-[#002e6e]" /> Service Protocol & Items
                               </h4>
-                              <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg">
+                              <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
                                 Progress:{" "}
                                 {Math.round(
                                   ((booking.completedTasks?.length || 0) /
@@ -2897,7 +2914,7 @@ export default function CustomerDashboard({
                               </span>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                               {(services[booking.serviceId]?.predefinedTasks
                                 ?.length
                                 ? (services[booking.serviceId]?.predefinedTasks || [])
@@ -2914,14 +2931,14 @@ export default function CustomerDashboard({
                                 return (
                                   <div
                                     key={i}
-                                    className="flex items-center justify-between bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm"
+                                    className="flex items-center justify-between bg-slate-50/70 px-3.5 py-2.5 rounded-xl border border-slate-200/60 shadow-2xs"
                                   >
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2.5">
                                       <div
-                                        className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border ${isDone ? "bg-emerald-500 border-emerald-500 text-white shadow-sm" : "border-slate-200 text-slate-300"}`}
+                                        className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${isDone ? "bg-[#22c55e] border-[#22c55e] text-white" : "border-slate-300 text-slate-300"}`}
                                       >
                                         <CheckCircle2
-                                          size={12}
+                                          size={11}
                                           className={
                                             isDone
                                               ? "text-white"
@@ -2935,13 +2952,13 @@ export default function CustomerDashboard({
                                         />
                                       </div>
                                       <span
-                                        className={`text-xs font-bold leading-normal text-left transition-colors duration-300 ${isDone ? "text-slate-400 line-through font-medium" : "text-slate-800"}`}
+                                        className={`text-xs font-semibold leading-tight text-left transition-colors duration-300 ${isDone ? "text-emerald-700 line-through font-medium" : "text-slate-800"}`}
                                       >
                                         {task}
                                       </span>
                                     </div>
                                     <span
-                                      className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${isDone ? "bg-emerald-50 text-emerald-600" : "bg-slate-50 text-slate-400"}`}
+                                      className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${isDone ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"}`}
                                     >
                                       {isDone ? "Done" : "Pending"}
                                     </span>
@@ -2952,17 +2969,17 @@ export default function CustomerDashboard({
                           </div>
 
                           {/* Billing & Pricing Summary Panel */}
-                          <div className="bg-slate-50/60 rounded-[32px] p-6 border border-slate-100">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-1.5 border-b border-slate-100 pb-3">
-                              <Sparkles size={12} /> Comprehensive Cost Summary
+                          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+                            <h4 className="text-xs font-black uppercase tracking-wider text-[#002e6e] mb-3 flex items-center gap-1.5 border-b border-slate-100 pb-2.5">
+                              <Sparkles size={14} className="text-[#002e6e]" /> Comprehensive Cost Summary
                             </h4>
-                            <div className="space-y-2 text-xs">
+                            <div className="space-y-2.5 text-xs">
                               <div className="flex justify-between items-center text-slate-600">
-                                <span className="font-semibold">
+                                <span className="font-semibold text-slate-600">
                                   {services[booking.serviceId]?.name ||
                                     "Base Fare"}
                                 </span>
-                                <span className="font-bold">
+                                <span className="font-extrabold text-slate-900">
                                   ₹
                                   {services[booking.serviceId]?.basePrice ||
                                     booking.totalPrice}
@@ -2971,8 +2988,8 @@ export default function CustomerDashboard({
 
                               {booking.discountApplied &&
                               booking.discountApplied > 0 ? (
-                                <div className="flex justify-between items-center text-emerald-600 bg-emerald-50/50 px-3 py-1.5 rounded-xl border border-emerald-100/30">
-                                  <span className="font-bold">
+                                <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 font-extrabold">
+                                  <span>
                                     Discount Applied (
                                     {booking.promoCode || "PROMO"})
                                   </span>
@@ -2992,10 +3009,10 @@ export default function CustomerDashboard({
                                   {booking.additionalCharges.map((chg, i) => (
                                     <div
                                       key={i}
-                                      className="flex justify-between items-start bg-amber-500/[0.04] p-3 rounded-xl border border-amber-500/10"
+                                      className="flex justify-between items-start bg-amber-50 p-2.5 rounded-xl border border-amber-200/80"
                                     >
                                       <div>
-                                        <p className="font-extrabold text-slate-800 leading-none">
+                                        <p className="font-extrabold text-slate-800 text-xs leading-none">
                                           {chg.reason}
                                         </p>
                                         <span className="text-[9px] text-slate-400 font-bold leading-none">
@@ -3004,7 +3021,7 @@ export default function CustomerDashboard({
                                             ?.toLocaleDateString() || "Today"}
                                         </span>
                                       </div>
-                                      <span className="font-black text-amber-700 text-xs">
+                                      <span className="font-black text-amber-800 text-xs">
                                         ₹{chg.amount}
                                       </span>
                                     </div>
@@ -3012,23 +3029,23 @@ export default function CustomerDashboard({
                                 </div>
                               ) : null}
 
-                              <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/50 pt-3 mt-3">
-                                <span className="font-black uppercase tracking-wider text-[11px]">
+                              <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-2">
+                                <span className="font-black uppercase tracking-wider text-xs text-[#002e6e]">
                                   Total Net Payable
                                 </span>
-                                <span className="text-xl font-black text-slate-900">
+                                <span className="text-xl font-black text-[#002e6e]">
                                   ₹{booking.totalPrice}
                                 </span>
                               </div>
 
                               {booking.status === "payment_pending" && (
-                                <div className="mt-4 p-5 bg-gradient-to-r from-blue-50 to-blue-50/50 rounded-3xl border border-blue-100 flex flex-col md:flex-row items-center justify-between gap-4">
+                                <div className="mt-4 p-4 bg-sky-50/50 rounded-2xl border border-sky-200/80 flex flex-col md:flex-row items-center justify-between gap-3">
                                   <div className="text-left">
-                                    <h5 className="text-[10px] font-black uppercase text-blue-700 tracking-wider">
+                                    <h5 className="text-xs font-black uppercase text-[#002e6e] tracking-wider">
                                       Awaiting Service Payment
                                     </h5>
-                                    <p className="text-[11px] text-slate-500 font-semibold mt-0.5 leading-tight">
-                                      Choose online secure payment, or confirm check handover of ₹{booking.totalPrice} in cash.
+                                    <p className="text-xs text-slate-600 font-medium mt-0.5 leading-tight">
+                                      Select secure payment route or clear ₹{booking.totalPrice} in cash.
                                     </p>
                                   </div>
                                   <div className="flex gap-2 w-full md:w-auto shrink-0 flex-wrap justify-end">
@@ -3037,27 +3054,27 @@ export default function CustomerDashboard({
                                         e.stopPropagation();
                                         setBookingToPay(booking);
                                       }}
-                                      className="flex-1 md:flex-initial text-[10px] font-black uppercase tracking-widest text-white bg-blue-700 hover:bg-blue-800 px-4.5 py-3 rounded-2xl transition-all shadow-md cursor-pointer text-center active:scale-95"
+                                      className="flex-1 md:flex-initial text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer text-center active:scale-95"
                                     >
-                                      💳 Pay Online
+                                      💳 PAY NOW
                                     </button>
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setIsPaymentScannerOpen(true);
                                       }}
-                                      className="flex-1 md:flex-initial text-[10px] font-black uppercase tracking-widest text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-4.5 py-3 rounded-2xl transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                                      className="flex-1 md:flex-initial text-xs font-bold uppercase tracking-wider text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 px-4 py-2.5 rounded-xl transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                                     >
-                                      <QrCode size={12} /> Scan QR
+                                      <QrCode size={13} /> SCAN QR
                                     </button>
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handlePayWithCashByCustomer(booking);
                                       }}
-                                      className="flex-1 md:flex-initial text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4.5 py-3 rounded-2xl border border-emerald-200 transition-all shadow-sm cursor-pointer text-center active:scale-95"
+                                      className="flex-1 md:flex-initial text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 rounded-xl border border-emerald-200 transition-all cursor-pointer text-center active:scale-95"
                                     >
-                                      💵 Pay Cash
+                                      💵 PAY CASH
                                     </button>
                                   </div>
                                 </div>
@@ -3500,70 +3517,59 @@ export default function CustomerDashboard({
             ).map((booking) => (
               <div
                 key={booking.id}
-                className="bg-white border border-slate-100 rounded-2xl p-4 hover:border-slate-200 transition-all flex gap-3"
+                className="bg-white border border-slate-200/80 rounded-2xl p-5 hover:shadow-md transition-all shadow-sm flex gap-4"
               >
                 {renderServiceThumbnail(booking.serviceId, "sm")}
                 <div className="min-w-0 flex-1">
-                  <div className="flex justify-between items-start mb-1 gap-2">
+                  <div className="flex justify-between items-start mb-1.5 gap-2">
                     <div className="min-w-0">
-                      <span className="text-[9px] font-mono bg-sky-100 text-sky-800 border border-sky-200 font-semibold px-2 py-0.5 rounded-full inline-block tracking-wider mb-1">
+                      <span className="text-[10px] font-mono bg-sky-50 text-[#002e6e] border border-sky-200 font-black px-2.5 py-0.5 rounded-full inline-block tracking-wider mb-1">
                         ID: #{booking.id.toUpperCase().slice(-6)}
                       </span>
-                      <h4 className="font-bold text-slate-900 truncate text-sm">
-                        {services[booking.serviceId]?.name}
+                      <h4 className="font-black text-[#002e6e] truncate text-base leading-snug">
+                        {services[booking.serviceId]?.name || "Professional Service"}
                       </h4>
                     </div>
-                    <div className="flex gap-1.5 items-center shrink-0">
-                      <span className="text-[8px] uppercase tracking-widest bg-slate-100 text-[#002e6e] border border-slate-200 font-medium px-2 py-0.5 rounded-full">
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[9px] uppercase tracking-wider bg-slate-50 text-[#002e6e] border border-slate-200/80 font-extrabold px-2.5 py-0.5 rounded-full">
                         {booking.status}
                       </span>
                       <span
-                        className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                        className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
                           booking.paymentStatus === "paid" 
-                            ? "bg-sky-50 text-sky-700 border border-sky-200" 
-                            : "bg-rose-50 text-rose-500 border border-rose-100"
+                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200" 
+                            : (booking.paymentMethod === 'cash' ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-rose-50 text-rose-700 border border-rose-200")
                         }`}
                       >
                         {booking.paymentStatus === "paid"
                           ? (booking.paymentMethod === 'phonepe_qr' 
-                              ? 'PAID VIA PHONEPE QR' 
-                              : (booking.paymentMethod === 'online' ? 'PAID VIA PHONEPE' : 'PAID'))
-                          : (booking.paymentStatus || "unpaid")}
+                              ? 'PAID VIA PHONEPE' 
+                              : (booking.paymentMethod === 'online' ? 'PAID VIA PHONEPE' : 'PAID VIA PHONEPE'))
+                          : (booking.paymentMethod === 'cash' ? 'PAY AFTER SERVICE' : 'UNPAID')}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center mb-3 pt-1.5 border-t border-slate-50 gap-2">
-                    <p className="text-[9px] text-slate-400 font-bold">
-                      Date: {booking.scheduledAt?.toDate?.()?.toLocaleDateString()}
+                  <div className="flex justify-between items-center mb-3 pt-2 border-t border-slate-100 gap-2">
+                    <p className="text-xs text-slate-500 font-bold">
+                      Date: {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) || "Recent"}
                     </p>
                     <div className="flex items-center gap-2">
-                      {(booking.paymentStatus?.toLowerCase() === 'unpaid' || booking.paymentStatus?.toLowerCase() === 'pending') && booking.paymentMethod !== 'cash' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBookingToPay(booking);
-                          }}
-                          className="text-[9px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-2.5 py-1 rounded-lg transition-all shadow-sm cursor-pointer animate-pulse"
-                        >
-                          💳 PAY NOW
-                        </button>
-                      )}
                       <div className="text-right">
-                        <span className="text-[8px] font-black uppercase text-slate-400 block leading-none">
+                        <span className="text-[9px] font-black uppercase text-slate-400 block leading-none">
                           {booking.paymentStatus === 'paid' ? 'Paid Amount' : 'Amount Due'}
                         </span>
-                        <span className="text-xs font-black text-slate-900">₹{booking.totalPrice || 0}</span>
+                        <span className="text-sm font-black text-[#002e6e]">₹{booking.totalPrice || 0}</span>
                       </div>
                     </div>
                   </div>
 
                   {booking.completionPhotos && booking.completionPhotos[0] && (
-                    <div className="mb-4 p-2 bg-slate-50 border border-slate-200/50 rounded-2xl flex flex-col gap-1.5 max-w-sm">
-                      <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                    <div className="mb-4 p-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-col gap-1.5 max-w-sm">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
                         Captured Job Completion Proof:
                       </p>
-                      <div className="w-full h-24 rounded-xl overflow-hidden border border-slate-100 bg-slate-100">
+                      <div className="w-full h-28 rounded-xl overflow-hidden border border-slate-200/80 bg-slate-100">
                         <img
                           src={booking.completionPhotos[0]}
                           alt="Job Completion Proof"
@@ -3581,7 +3587,7 @@ export default function CustomerDashboard({
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="my-3 p-4 bg-emerald-50/20 border border-emerald-100/40 rounded-2xl relative overflow-hidden"
+                        className="my-3 p-4 bg-sky-50/50 border border-sky-200/80 rounded-2xl relative overflow-hidden"
                       >
                         {successCheckedCards[booking.id] ? (
                           <motion.div
@@ -3595,22 +3601,22 @@ export default function CustomerDashboard({
                               transition={{ duration: 0.5 }}
                               className="bg-emerald-100 p-2.5 rounded-full text-emerald-600 mb-2"
                             >
-                              <CheckCircle2 size={24} className="text-emerald-600 animate-pulse" />
+                              <CheckCircle2 size={24} className="text-emerald-600" />
                             </motion.div>
-                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest leading-none">
+                            <span className="text-xs font-black text-emerald-800 uppercase tracking-wider leading-none">
                               Review Submitted!
                             </span>
-                            <span className="text-[9px] font-semibold text-slate-500 mt-1">
+                            <span className="text-xs font-semibold text-slate-600 mt-1">
                               Feedback captured. Thank you!
                             </span>
                           </motion.div>
                         ) : (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                              <span className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1">
                                 ⭐ Share Your Experience:
                               </span>
-                              <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded">
+                              <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
                                 Required
                               </span>
                             </div>
@@ -3635,7 +3641,7 @@ export default function CustomerDashboard({
                                       className={
                                         star <= bRating
                                           ? "text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)] scale-110"
-                                          : "text-slate-200 hover:text-amber-300 transition-colors"
+                                          : "text-slate-300 hover:text-amber-300 transition-colors"
                                       }
                                     />
                                   </button>
@@ -3650,7 +3656,7 @@ export default function CustomerDashboard({
                                 animate={{ opacity: 1, y: 0 }}
                                 className="space-y-1.5"
                               >
-                                <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-405">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-600">
                                   Your Feedback & Comment:
                                 </span>
                                 <textarea
@@ -3661,7 +3667,7 @@ export default function CustomerDashboard({
                                   }}
                                   placeholder="Write a comment about the service partner's work..."
                                   rows={2}
-                                  className="w-full bg-white border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-700 transition-all font-sans font-medium"
+                                  className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002e6e] transition-all font-sans font-medium"
                                 />
                               </motion.div>
                             )}
@@ -3675,7 +3681,7 @@ export default function CustomerDashboard({
                                   e.stopPropagation();
                                   handleInlineFeedbackSubmit(booking);
                                 }}
-                                className="text-[9px] font-black uppercase tracking-widest text-white bg-blue-700 hover:bg-blue-850 disabled:bg-slate-100 disabled:text-slate-400 border-0 px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+                                className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] disabled:bg-slate-200 disabled:text-slate-400 border-0 px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
                               >
                                 {inlineSubmittingId === booking.id ? "Saving..." : "Submit Review"}
                               </button>
@@ -3686,24 +3692,24 @@ export default function CustomerDashboard({
                     </AnimatePresence>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
                     <button
                       onClick={() =>
                         setSelectedService(services[booking.serviceId])
                       }
-                      className="text-[9px] font-black uppercase tracking-widest text-slate-900 border-b-2 border-blue-700 pb-0.5 hover:text-slate-500 hover:border-slate-500 transition-colors cursor-pointer"
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-3.5 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                     >
-                      Book Again
+                      <span>🔁 BOOK AGAIN</span>
                     </button>
 
                     {(booking.paymentStatus?.toLowerCase() === "unpaid" || booking.paymentStatus?.toLowerCase() === "pending") && (
-                      <div className="flex gap-1.5 items-center">
+                      <div className="flex gap-2 items-center">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setBookingToPay(booking);
                           }}
-                          className="text-[9.5px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-3.5 py-1.5 rounded-lg transition-all shadow-md cursor-pointer animate-pulse flex items-center gap-1.5"
+                          className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] px-3.5 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
                         >
                           💳 PAY NOW
                         </button>
@@ -3712,9 +3718,9 @@ export default function CustomerDashboard({
                             e.stopPropagation();
                             setIsPaymentScannerOpen(true);
                           }}
-                          className="text-[9px] font-black uppercase tracking-widest text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-slate-200 cursor-pointer flex items-center gap-1"
+                          className="text-xs font-extrabold uppercase tracking-wider text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95"
                         >
-                          <QrCode size={10} /> Scan QR
+                          <QrCode size={12} /> SCAN QR
                         </button>
                       </div>
                     )}
@@ -3751,40 +3757,35 @@ export default function CustomerDashboard({
                       if (!["completed", "finalized"].includes(booking.status)) return null;
 
                       return (
-                        <div className="flex flex-col items-end gap-1.5 ml-auto">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">
-                            Post-Service & Billing
-                          </p>
-                          <div className="flex gap-2">
+                        <div className="flex flex-wrap items-center gap-2 ml-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const link = document.createElement("a");
+                              link.href = `/api/download-invoice?bookingId=${booking.id}&requesterUid=${profile?.uid || ""}`;
+                              link.setAttribute("download", `invoice_${booking.id}.pdf`);
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            className="text-[10px] font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5 hover:bg-sky-100 bg-sky-50 px-3 py-1.5 rounded-xl border border-sky-200 transition-all shadow-2xs cursor-pointer"
+                            title="Download invoice for this completed service"
+                          >
+                            <Download size={11} /> Invoice PDF
+                          </button>
+
+                          {showHelpAndSupport && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const link = document.createElement("a");
-                                link.href = `/api/download-invoice?bookingId=${booking.id}&requesterUid=${profile?.uid || ""}`;
-                                link.setAttribute("download", `invoice_${booking.id}.pdf`);
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
+                                handleInitiateSupport(booking.id);
                               }}
-                              className="text-[9px] font-black uppercase tracking-widest text-[#050CA6] flex items-center gap-1.5 hover:text-[#040980] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 transition-all shadow-sm cursor-pointer"
-                              title="Download invoice for this completed service"
+                              className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl border border-rose-200 transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                              title="Request Support for this booking"
                             >
-                              <Download size={10} /> Invoice PDF
+                              <HelpCircle size={11} /> Support
                             </button>
-
-                            {showHelpAndSupport && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleInitiateSupport(booking.id);
-                                }}
-                                className="text-[9px] font-black uppercase tracking-widest text-white bg-red-600 hover:bg-red-750 px-2.5 py-1.5 rounded-lg border border-red-500 transition-all shadow-sm flex items-center gap-1 cursor-pointer"
-                                title="Request Support for this booking"
-                              >
-                                <HelpCircle size={10} /> Help & Support
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       );
                     })()}
