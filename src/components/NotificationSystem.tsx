@@ -211,6 +211,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
                 if (notif.type === 'promotional') onNavigate('offers');
                 else if (notif.type === 'payment_received') onNavigate('wallet');
                 else if (notif.bookingId) onNavigate('bookings', notif.bookingId);
+                else onNavigate('notifications');
               }
             }}
             className={`p-4 rounded-2xl shadow-2xl pointer-events-auto flex items-start gap-4 relative overflow-hidden group border cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ${

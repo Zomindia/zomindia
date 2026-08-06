@@ -1481,10 +1481,20 @@ If you have any billing questions, or if your refund is delayed, please email us
 
     if (activeTab === 'notifications' && profile) {
       return <NotificationsView profile={profile} onNavigate={(tab, bId) => {
-        if (tab === 'bookings') {
-          setActiveTab('bookings', bId || null);
-        } else if (tab === 'offers' || tab === 'wallet') {
-          setActiveTab(tab);
+        if (profile.role === 'admin') {
+          setActiveTab('admin', bId || null);
+        } else if (profile.role === 'partner') {
+          setActiveTab('partner', bId || null);
+        } else {
+          if (tab === 'bookings' || tab === 'jobs') {
+            setActiveTab('bookings', bId || null);
+          } else if (tab === 'offers' || tab === 'wallet' || tab === 'tickets' || tab === 'amcs') {
+            setActiveTab(tab as any);
+          } else if (bId) {
+            setActiveTab('bookings', bId);
+          } else {
+            setActiveTab(tab as any, bId || null);
+          }
         }
       }} />;
     }
