@@ -13,7 +13,6 @@ import {
   Map,
   AdvancedMarker,
   Pin,
-  useMapsLibrary,
   useMap
 } from '@vis.gl/react-google-maps';
 import { 
@@ -132,9 +131,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
   const [useAmc, setUseAmc] = useState(savedState?.useAmc ?? false);
 
-  // Maps Libraries
-  const placesLib = useMapsLibrary('places');
-  const geocodingLib = useMapsLibrary('geocoding');
+  // Maps State
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
   const [isGeocoding, setIsGeocoding] = useState(false);
 
@@ -200,13 +197,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   }, [profile]);
 
   // Dynamic Google Places Autocomplete search lookup with local fallback
+  // Address search lookup with Nominatim and local fallback
   useEffect(() => {
     if (address.trim().length < 2 || selectedFromDropdown) {
       if (!selectedFromDropdown) setLiveSuggestions([]);
       return;
     }
 
-    const delayDebounceFn = setTimeout(() => {
+    const delayDebounceFn = setTimeout(async () => {
       const q = address.trim().toLowerCase();
       const getLocalSuggestions = () => {
         const filtered = INDORE_FALLBACK_LOCATIONS.filter(item => 
@@ -217,93 +215,61 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           placeId: 'indore_custom',
           name: address.trim(),
           area: `${address.trim()}, Indore, Madhya Pradesh`,
-          description: `${address.trim()}, Indore, Madhya Pradesh`
+          description: `${address.trim()}, Indore, Madhya Pradesh`,
+          lat: 22.7196,
+          lng: 75.8577
         }];
       };
 
-      if (!placesLib) {
-        setIsSearchingLive(false);
-        setLiveSuggestions(getLocalSuggestions());
-        return;
-      }
-
       setIsSearchingLive(true);
       try {
-        const autocompleteService = new placesLib.AutocompleteService();
         const queryText = address.toLowerCase().includes("indore") ? address : `${address}, Indore`;
-
-        autocompleteService.getPlacePredictions(
-          {
-            input: queryText,
-            componentRestrictions: { country: 'in' },
-          },
-          (predictions, status) => {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=in&q=${encodeURIComponent(queryText)}&limit=5`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const formatted = data.map((item: any, idx: number) => ({
+              placeId: `nom_${item.place_id || idx}`,
+              name: item.name || item.display_name.split(',')[0],
+              area: item.display_name,
+              description: item.display_name,
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon)
+            }));
+            setLiveSuggestions(formatted);
             setIsSearchingLive(false);
-            if (status === 'OK' && predictions && predictions.length > 0) {
-              const formatted = predictions.map((p) => ({
-                placeId: p.place_id,
-                name: p.structured_formatting?.main_text || p.description.split(',')[0],
-                area: p.structured_formatting?.secondary_text || p.description,
-                description: p.description
-              }));
-              setLiveSuggestions(formatted);
-            } else {
-              // Status is NOT 'OK' (e.g. REQUEST_DENIED, ApiTargetBlockedMapError)
-              setLiveSuggestions(getLocalSuggestions());
-            }
+            return;
           }
-        );
+        }
       } catch (err) {
-        console.warn("Google Places Autocomplete error, falling back to local suggestions:", err);
-        setIsSearchingLive(false);
-        setLiveSuggestions(getLocalSuggestions());
+        console.warn("Nominatim address search notice:", err);
       }
+      setIsSearchingLive(false);
+      setLiveSuggestions(getLocalSuggestions());
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [address, selectedFromDropdown, placesLib]);
+  }, [address, selectedFromDropdown]);
 
   // Handle selecting a place suggestion
-  const handleSelectSuggestion = (suggestion: { placeId: string; description: string; name: string; area: string }) => {
+  const handleSelectSuggestion = (suggestion: { placeId: string; description: string; name: string; area: string; lat?: number; lng?: number }) => {
     setAddress(suggestion.description);
     setSelectedFromDropdown(true);
     setShowSearchSuggestions(false);
 
-    if (suggestion.placeId.startsWith('indore_')) {
-      const indoreCenter = { lat: 22.7196, lng: 75.8577 };
-      setLocation(indoreCenter);
-      setMapCenter(indoreCenter);
+    if (typeof suggestion.lat === 'number' && typeof suggestion.lng === 'number' && !isNaN(suggestion.lat) && !isNaN(suggestion.lng)) {
+      const newPos = { lat: suggestion.lat, lng: suggestion.lng };
+      setLocation(newPos);
+      setMapCenter(newPos);
       return;
     }
 
-    if (geocodingLib) {
-      try {
-        const geocoder = new geocodingLib.Geocoder();
-        geocoder.geocode({ placeId: suggestion.placeId }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            const lat = results[0].geometry.location.lat();
-            const lng = results[0].geometry.location.lng();
-            setLocation({ lat, lng });
-            setMapCenter({ lat, lng });
-          } else {
-            const indoreCenter = { lat: 22.7196, lng: 75.8577 };
-            setLocation(indoreCenter);
-            setMapCenter(indoreCenter);
-          }
-        });
-      } catch (err) {
-        const indoreCenter = { lat: 22.7196, lng: 75.8577 };
-        setLocation(indoreCenter);
-        setMapCenter(indoreCenter);
-      }
-    } else {
-      const indoreCenter = { lat: 22.7196, lng: 75.8577 };
-      setLocation(indoreCenter);
-      setMapCenter(indoreCenter);
-    }
+    const indoreCenter = { lat: 22.7196, lng: 75.8577 };
+    setLocation(indoreCenter);
+    setMapCenter(indoreCenter);
   };
 
-  // Reverse geocoding via OpenStreetMap / Nominatim fallback
+  // Reverse geocoding via OpenStreetMap / Nominatim
   const reverseGeocodeNominatim = async (lat: number, lng: number) => {
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
@@ -318,31 +284,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return false;
   };
 
-  // Reverse geocoding via Google Maps Geocoder with Nominatim fallback
+  // Safe reverse geocoding runner
   const reverseGeocodeNativeGoogle = async (lat: number, lng: number) => {
     setIsGeocoding(true);
-    const GeocoderClass = geocodingLib?.Geocoder || (window as any).google?.maps?.Geocoder;
-    if (!GeocoderClass) {
-      await reverseGeocodeNominatim(lat, lng);
-      setIsGeocoding(false);
-      return;
-    }
-
-    try {
-      const geocoder = new GeocoderClass();
-      geocoder.geocode({ location: { lat, lng } }, async (results: any, status: any) => {
-        if (status === 'OK' && results && results[0]) {
-          setAddress(results[0].formatted_address);
-        } else {
-          await reverseGeocodeNominatim(lat, lng);
-        }
-        setIsGeocoding(false);
-      });
-    } catch (err) {
-      console.warn("Reverse geocoding failed, falling back to Nominatim:", err);
-      await reverseGeocodeNominatim(lat, lng);
-      setIsGeocoding(false);
-    }
+    await reverseGeocodeNominatim(lat, lng);
+    setIsGeocoding(false);
   };
 
   const getEventLatLng = (e: any): { lat: number, lng: number } | null => {

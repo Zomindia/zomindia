@@ -37,7 +37,6 @@ import {
   Map,
   AdvancedMarker,
   useMap,
-  useMapsLibrary,
 } from "@vis.gl/react-google-maps";
 import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
