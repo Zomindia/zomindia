@@ -2,19 +2,14 @@
 @import "tailwindcss";
 
 :root {
-  --bg-canvas: #f8fafc;
-  --bg-surface: #ffffff;
-  --brand-orange: #f97316;
-  --brand-orange-hover: #ea580c;
-  --brand-navy: #1e3a8a;
+  --canvas-bg: #f5f7fa;
+  --surface-bg: #ffffff;
+  --paytm-blue: #00baf2;
+  --paytm-navy: #002e6e;
   --text-main: #0f172a;
   --text-muted: #64748b;
+  --brand-orange: #f97316;
   --border-light: #e2e8f0;
-
-  --canvas-bg: #f8fafc;
-  --surface-bg: #ffffff;
-  --paytm-blue: #f97316;
-  --paytm-navy: #1e3a8a;
 }
 
 @theme {
@@ -24,23 +19,21 @@
   --font-serif: "Baskervville", serif;
   --font-editorial: "Playfair Display", serif;
   
-  --color-brand-orange: #f97316;
-  --color-brand-orange-hover: #ea580c;
-  --color-brand-navy: #1e3a8a;
-  --color-bg-canvas: #f8fafc;
-  --color-bg-surface: #ffffff;
+  --color-paytm-blue: #00baf2;
+  --color-paytm-navy: #002e6e;
+  --color-canvas-bg: #f5f7fa;
 
-  --color-blue-50: #eff6ff;
-  --color-blue-100: #dbeafe;
-  --color-blue-200: #bfdbfe;
-  --color-blue-300: #93c5fd;
-  --color-blue-400: #60a5fa;
-  --color-blue-500: #3b82f6;
-  --color-blue-600: #2563eb;
-  --color-blue-700: #1d4ed8;
-  --color-blue-800: #1e40af;
-  --color-blue-900: #1e3a8a;
-  --color-blue-950: #172554;
+  --color-blue-50: #f0f1ff;
+  --color-blue-100: #e3e4ff;
+  --color-blue-200: #cdd0ff;
+  --color-blue-300: #aeb2ff;
+  --color-blue-400: #888dff;
+  --color-blue-500: #050ca6;
+  --color-blue-600: #050ca6;
+  --color-blue-700: #050ca6;
+  --color-blue-800: #03086b;
+  --color-blue-900: #002e6e;
+  --color-blue-950: #002e6e;
 
   --color-amber-400: #fcd34d;
   --color-amber-500: #FAC213;
@@ -52,9 +45,9 @@
   --color-yellow-600: #EAB308;
   --color-yellow-700: #D97706;
 
-  --color-brand-accent: #f97316;
-  --color-brand-muted: #64748b;
-  --color-brand-surface: #f8fafc;
+  --color-brand-accent: #00baf2;
+  --color-brand-muted: #64748B;
+  --color-brand-surface: #F5F7FA;
   --color-brand-gold: #FAC213;
   --color-luxury-gold: #C5A059;
 
@@ -75,10 +68,10 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    background-color: var(--bg-canvas);
+    background-color: var(--canvas-bg);
   }
   body {
-    @apply antialiased text-slate-900 bg-[#f8fafc] selection:bg-[#f97316] selection:text-white leading-relaxed transition-colors duration-200;
+    @apply antialiased text-slate-900 bg-[#f5f7fa] selection:bg-[#00baf2] selection:text-white leading-relaxed transition-colors duration-200;
   }
   
   button, 
@@ -92,7 +85,7 @@
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight text-[#1e3a8a] font-bold;
+    @apply font-display tracking-tight text-[#002e6e] font-bold;
   }
 
   p {

@@ -1131,13 +1131,13 @@ export default function PartnerTrackingMap({
       )}
 
       {/* Dynamic Real-time Distance & ETA Header Panel (ABOVE the Map) */}
-      <div className="bg-[#1e3a8a] text-white rounded-[28px] p-5 border border-[#1e3a8a] shadow-lg flex items-center justify-between gap-4 select-none">
+      <div className="bg-[#002e6e] text-white rounded-[28px] p-5 border border-[#002e6e] shadow-lg flex items-center justify-between gap-4 select-none">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[#f97316]/20 border border-[#f97316]/30 flex items-center justify-center text-[#f97316]">
+          <div className="w-10 h-10 rounded-2xl bg-[#00baf2]/20 border border-[#00baf2]/30 flex items-center justify-center text-[#00baf2]">
             <Radio size={18} className="animate-pulse" />
           </div>
           <div>
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#f97316]">
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#00baf2]">
               Real-Time Distance
             </span>
             <h4 className="text-lg font-black italic mt-0.5 tracking-tight text-white flex items-center gap-2">
@@ -1293,15 +1293,15 @@ export default function PartnerTrackingMap({
           <div className="relative flex items-center justify-center">
             {/* Pulsing broadcast radar animation */}
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#f97316] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#f97316]"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00baf2] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#00baf2]"></span>
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#1e3a8a] shrink-0">
+            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#002e6e] shrink-0">
               Assigned Pro ETA:
             </span>
-            <span className="text-xs sm:text-sm font-black italic tracking-tight text-[#1e3a8a]">
+            <span className="text-xs sm:text-sm font-black italic tracking-tight text-[#002e6e]">
               {eta}
             </span>
           </div>

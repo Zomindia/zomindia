@@ -766,7 +766,7 @@ export default function ServiceDetails({
                       <button
                         type="button"
                         onClick={() => setIsDescOpen(false)}
-                        className="self-end mt-2 px-4 py-2 bg-[#1e3a8a] hover:bg-[#172554] text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md"
+                        className="self-end mt-2 px-4 py-2 bg-[#002e6e] hover:bg-[#002456] text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md"
                       >
                         Close Info ✕
                       </button>
@@ -1631,7 +1631,7 @@ export default function ServiceDetails({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full bg-[#1e3a8a] flex items-center justify-center">
+                          <div className="w-full h-full bg-[#002e6e] flex items-center justify-center">
                             <span className="text-white/30 font-black text-3xl italic tracking-tighter uppercase">
                               {srv.name.slice(0, 2)}
                             </span>

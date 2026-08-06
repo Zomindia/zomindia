@@ -2864,7 +2864,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
             </div>
 
             <div className="space-y-1.5 mt-6">
-              <h3 className="text-xl font-black italic tracking-tight uppercase text-[#1e3a8a]">
+              <h3 className="text-xl font-black italic tracking-tight uppercase text-[#002e6e]">
                 Success, Partner!
               </h3>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">

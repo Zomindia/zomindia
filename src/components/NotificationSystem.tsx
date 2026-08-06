@@ -218,7 +218,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
               (notif.type?.includes('booking') || notif.type === 'job_started' || notif.type === 'on_the_way' || notif.type === 'arrived') ? 'bg-blue-700 text-white border-blue-600 shadow-blue-700/20' :
               (notif.type?.includes('warning') || notif.type === 'booking_pending' || notif.type === 'pending_parts') ? 'bg-orange-500 text-white border-orange-400 shadow-orange-500/20' :
               (notif.type?.includes('error') || notif.type === 'booking_cancelled') ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/20' :
-              'bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-lg'
+              'bg-[#002e6e] text-white border-[#002e6e] shadow-lg'
             }`}
           >
             <div className="shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-150 ring-4 ring-white/10 relative overflow-visible">
