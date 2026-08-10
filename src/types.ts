@@ -183,6 +183,19 @@ export interface PartnerProfile {
   photoURL?: string;
   govtId?: string;
   experience?: number;
+  experienceYears?: number;
+  completedJobsCount?: number;
+  completedJobs?: number;
+  isBackgroundVerified?: boolean;
+  vaccinationStatus?: string;
+  safetyShieldBadges?: string[];
+  liveLocation?: {
+    lat?: number;
+    lng?: number;
+    distanceKm?: number;
+    statusText?: string;
+    address?: string;
+  };
   previousSalary?: string;
   bankDetails?: {
     accountHolder?: string;

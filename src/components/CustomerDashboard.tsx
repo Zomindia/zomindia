@@ -62,6 +62,7 @@ import {
   Camera,
   Shield,
   ShieldCheck,
+  ShieldAlert,
   ArrowRight,
   Compass,
   FileText,
@@ -881,43 +882,70 @@ export default function CustomerDashboard({
     }
   }, [bookings, partners]);
 
-  // Fetch Partner details (PartnerProfile) for bookings
+  // Fetch & listen to real-time Partner details (PartnerProfile) for assigned bookings
   useEffect(() => {
-    const fetchPartnerDetails = async () => {
-      const partnerIds = bookings
-        .map((b) => b.partnerId)
-        .filter((id): id is string => !!id && !partnerDetails[id]);
+    const partnerIds = bookings
+      .map((b) => b.partnerId)
+      .filter((id): id is string => !!id);
 
-      const uniqueMissingIds = Array.from(new Set(partnerIds));
+    const uniqueIds = Array.from(new Set(partnerIds));
+    if (uniqueIds.length === 0) return;
 
-      if (uniqueMissingIds.length === 0) return;
+    const unsubs: (() => void)[] = [];
 
-      try {
-        // Partners collection uses userId field to link to UserProfile
-        const batchSize = 10;
-        for (let i = 0; i < uniqueMissingIds.length; i += batchSize) {
-          const chunk = uniqueMissingIds.slice(i, i + batchSize);
-          const pq = query(
-            collection(db, "partners"),
-            where("userId", "in", chunk),
-          );
-          const pSnap = await getDocs(pq);
+    // 1. Listen by doc ID directly
+    uniqueIds.forEach((pId) => {
+      const unsubDoc = onSnapshot(
+        doc(db, "partners", pId),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as PartnerProfile;
+            const profile = { id: snap.id, ...data };
+            setPartnerDetails((prev) => ({
+              ...prev,
+              [pId]: profile,
+              [data.userId || pId]: profile,
+            }));
+          }
+        },
+        (err) => {
+          console.warn("Snapshot listener error for partner:", pId, err);
+        }
+      );
+      unsubs.push(unsubDoc);
+    });
+
+    // 2. Query by userId in batch
+    const batchSize = 10;
+    for (let i = 0; i < uniqueIds.length; i += batchSize) {
+      const chunk = uniqueIds.slice(i, i + batchSize);
+      const pq = query(
+        collection(db, "partners"),
+        where("userId", "in", chunk)
+      );
+      const unsubQuery = onSnapshot(
+        pq,
+        (pSnap) => {
           const fetched: Record<string, PartnerProfile> = {};
           pSnap.forEach((doc) => {
             const data = doc.data() as PartnerProfile;
-            fetched[data.userId] = { id: doc.id, ...data };
+            const profile = { id: doc.id, ...data };
+            if (data.userId) fetched[data.userId] = profile;
+            fetched[doc.id] = profile;
           });
           setPartnerDetails((prev) => ({ ...prev, ...fetched }));
+        },
+        (err) => {
+          console.warn("Query snapshot error for partners:", err);
         }
-      } catch (err) {
-        console.error("Error fetching partner details:", err);
-      }
-    };
-
-    if (bookings.length > 0) {
-      fetchPartnerDetails();
+      );
+      unsubs.push(unsubQuery);
     }
-  }, [bookings, partnerDetails]);
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [bookings]);
 
   // Fetch service details for bookings
   useEffect(() => {
@@ -2254,10 +2282,17 @@ export default function CustomerDashboard({
 
                                 {/* Verified Badge */}
                                 <div className="mt-1">
-                                  <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
-                                    <ShieldCheck size={11} className="text-emerald-600 shrink-0" />
-                                    <span>✓ Background Verified & Police Checked</span>
-                                  </span>
+                                  {(partnerDetail?.isBackgroundVerified ?? partnerDetail?.isVerified ?? true) ? (
+                                    <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                      <ShieldCheck size={11} className="text-emerald-600 shrink-0" />
+                                      <span>✓ Background Verified & Police Checked</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                      <ShieldAlert size={11} className="text-amber-600 shrink-0" />
+                                      <span>Verification Pending</span>
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Rating Pill */}
@@ -2272,23 +2307,29 @@ export default function CustomerDashboard({
 
                                 {/* Experience & Work Stats */}
                                 <p className="text-[11px] font-bold text-slate-600 mt-2 flex items-center justify-center gap-1.5">
-                                  <span>{partnerDetail?.experience || 5}+ Years Experience</span>
+                                  <span>{partnerDetail?.experienceYears || partnerDetail?.experience || 5}+ Years Experience</span>
                                   <span className="text-slate-300">•</span>
-                                  <span>{(partnerDetail as any)?.completedJobs || 1200}+ Jobs Completed</span>
+                                  <span>{(partnerDetail?.completedJobsCount || partnerDetail?.completedJobs || 1200).toLocaleString()}+ Jobs Completed</span>
                                 </p>
 
                                 {/* Live Proximity / ETA */}
                                 <div className="bg-sky-50/80 border border-sky-100 rounded-xl px-3 py-1.5 mt-2.5 text-[10px] font-black text-[#002e6e] flex items-center justify-center gap-1.5 shadow-2xs">
                                   <span className="shrink-0">📍</span>
-                                  <span>2.2 km away</span>
+                                  <span>{partnerDetail?.liveLocation?.distanceKm ? `${partnerDetail.liveLocation.distanceKm} km away` : "2.2 km away"}</span>
                                   <span className="text-sky-300">•</span>
-                                  <span className="text-emerald-700 font-black">Arriving on time</span>
+                                  <span className="text-emerald-700 font-black">{partnerDetail?.liveLocation?.statusText || "Arriving on time"}</span>
                                 </div>
 
                                 {/* Trust Shield Signal */}
-                                <div className="bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-1.5 mt-2 text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1.5">
+                                <div className="bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-1.5 mt-2 text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1.5 flex-wrap">
                                   <Shield size={12} className="text-[#002e6e] shrink-0" />
-                                  <span>Zomindia Safety Assured — Masked & Sanitized</span>
+                                  <span>
+                                    {partnerDetail?.safetyShieldBadges && partnerDetail.safetyShieldBadges.length > 0
+                                      ? `Zomindia Safety Assured — ${partnerDetail.safetyShieldBadges.join(" & ")}`
+                                      : partnerDetail?.vaccinationStatus
+                                      ? `Zomindia Safety Assured — ${partnerDetail.vaccinationStatus}`
+                                      : "Zomindia Safety Assured — Masked & Sanitized"}
+                                  </span>
                                 </div>
                               </div>
                             </div>

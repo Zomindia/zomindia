@@ -64,6 +64,21 @@
         "bio": { "type": "string" },
         "rating": { "type": "number" },
         "reviewCount": { "type": "number" },
+        "experienceYears": { "type": "number", "description": "Years of experience" },
+        "completedJobsCount": { "type": "number", "description": "Total completed jobs" },
+        "isBackgroundVerified": { "type": "boolean", "description": "Police background check status" },
+        "vaccinationStatus": { "type": "string", "description": "Vaccination and hygiene status" },
+        "safetyShieldBadges": { "type": "array", "items": { "type": "string" }, "description": "Safety badges like Masked & Sanitized" },
+        "liveLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "distanceKm": { "type": "number" },
+            "statusText": { "type": "string" },
+            "address": { "type": "string" }
+          }
+        },
         "isVerified": { "type": "boolean" },
         "status": { "type": "string", "enum": ["active", "inactive", "pending"] },
         "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "Offline"] },

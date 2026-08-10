@@ -99,6 +99,8 @@ import {
   Home,
   Sparkles,
   Zap,
+  Edit3,
+  Shield,
 } from "lucide-react";
 import {
   AreaChart,
@@ -5353,6 +5355,122 @@ function PartnerManager({
   const [selectedProfilePartner, setSelectedProfilePartner] = useState<
     (PartnerProfile & { user?: UserProfile }) | null
   >(null);
+  const [selectedEditPartner, setSelectedEditPartner] =
+    useState<PartnerProfile | null>(null);
+  const [editExperienceYears, setEditExperienceYears] = useState<number>(5);
+  const [editCompletedJobs, setEditCompletedJobs] = useState<number>(1200);
+  const [editIsBgVerified, setEditIsBgVerified] = useState<boolean>(true);
+  const [editVaccinationStatus, setEditVaccinationStatus] =
+    useState<string>("Vaccinated & Sanitized");
+  const [editBadges, setEditBadges] = useState<string[]>([
+    "Masked & Sanitized",
+    "Police Checked",
+    "Temperature Verified",
+  ]);
+  const [editDistanceKm, setEditDistanceKm] = useState<number>(2.2);
+  const [editStatusText, setEditStatusText] = useState<string>("Arriving on time");
+  const [editRating, setEditRating] = useState<number>(4.9);
+  const [editReviewCount, setEditReviewCount] = useState<number>(184);
+  const [customBadgeText, setCustomBadgeText] = useState<string>("");
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (selectedEditPartner) {
+      setEditExperienceYears(
+        selectedEditPartner.experienceYears || selectedEditPartner.experience || 5
+      );
+      setEditCompletedJobs(
+        selectedEditPartner.completedJobsCount || selectedEditPartner.completedJobs || 1200
+      );
+      setEditIsBgVerified(
+        selectedEditPartner.isBackgroundVerified ?? selectedEditPartner.isVerified ?? true
+      );
+      setEditVaccinationStatus(
+        selectedEditPartner.vaccinationStatus || "Vaccinated & Sanitized"
+      );
+      setEditBadges(
+        selectedEditPartner.safetyShieldBadges && selectedEditPartner.safetyShieldBadges.length > 0
+          ? selectedEditPartner.safetyShieldBadges
+          : ["Masked & Sanitized", "Police Checked", "Temperature Verified"]
+      );
+      setEditDistanceKm(selectedEditPartner.liveLocation?.distanceKm || 2.2);
+      setEditStatusText(selectedEditPartner.liveLocation?.statusText || "Arriving on time");
+      setEditRating(selectedEditPartner.rating || 4.9);
+      setEditReviewCount(selectedEditPartner.reviewCount || 184);
+    }
+  }, [selectedEditPartner]);
+
+  const handleSavePartnerEdit = async () => {
+    if (!selectedEditPartner) return;
+    setIsSavingEdit(true);
+    try {
+      const partnerId = selectedEditPartner.id;
+      const userId = selectedEditPartner.userId || partnerId.replace("partner_", "");
+
+      const updatePayload = {
+        experienceYears: Number(editExperienceYears),
+        experience: Number(editExperienceYears),
+        completedJobsCount: Number(editCompletedJobs),
+        completedJobs: Number(editCompletedJobs),
+        isBackgroundVerified: Boolean(editIsBgVerified),
+        isVerified: Boolean(editIsBgVerified),
+        vaccinationStatus: editVaccinationStatus,
+        safetyShieldBadges: editBadges,
+        rating: Number(editRating),
+        reviewCount: Number(editReviewCount),
+        liveLocation: {
+          distanceKm: Number(editDistanceKm),
+          statusText: editStatusText || "Arriving on time",
+        },
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Set/update in partners collection
+      await setDoc(doc(db, "partners", partnerId), updatePayload, { merge: true });
+
+      if (userId && userId !== partnerId) {
+        await setDoc(doc(db, "partners", userId), updatePayload, { merge: true }).catch(() => {});
+        await setDoc(doc(db, "partners", `partner_${userId}`), updatePayload, { merge: true }).catch(() => {});
+      }
+
+      // Update user document if present
+      await updateDoc(doc(db, "users", userId), {
+        "partnerData.experienceYears": Number(editExperienceYears),
+        "partnerData.completedJobsCount": Number(editCompletedJobs),
+        "partnerData.isBackgroundVerified": Boolean(editIsBgVerified),
+        "partnerData.vaccinationStatus": editVaccinationStatus,
+        "partnerData.safetyShieldBadges": editBadges,
+        "partnerData.rating": Number(editRating),
+        "partnerData.reviewCount": Number(editReviewCount),
+      }).catch(() => {});
+
+      // Update local state in AdminDashboard immediately
+      setRawPartners?.((prev) =>
+        prev.map((p) => {
+          if (p.id === partnerId || p.userId === userId) {
+            return {
+              ...p,
+              ...updatePayload,
+            };
+          }
+          return p;
+        })
+      );
+
+      if (triggerToast) {
+        triggerToast("Partner profile & safety badges updated successfully!");
+      } else {
+        alert("Partner profile & safety badges updated successfully!");
+      }
+
+      setSelectedEditPartner(null);
+    } catch (err) {
+      console.error("Error updating partner credentials:", err);
+      alert("Failed to update partner credentials: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
   const [manualKYCPartner, setManualKYCPartner] =
     useState<PartnerProfile | null>(null);
   const [rejectingKYCPartner, setRejectingKYCPartner] =
@@ -6342,6 +6460,45 @@ function PartnerManager({
                   )}
                 </div>
 
+                {/* Partner Credentials & Safety Badges Summary */}
+                <div className="w-full my-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-left">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      Credentials & Badges
+                    </span>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${p.isBackgroundVerified ?? p.isVerified ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                      {p.isBackgroundVerified ?? p.isVerified ? "✓ Police Verified" : "Unverified"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-700">
+                    <span className="bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded-md">
+                      💼 {p.experienceYears || p.experience || 5}+ Yrs Exp
+                    </span>
+                    <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                      🛠️ {(p.completedJobsCount || p.completedJobs || 1200).toLocaleString()}+ Jobs
+                    </span>
+                    {p.safetyShieldBadges && p.safetyShieldBadges.length > 0 ? (
+                      p.safetyShieldBadges.map((badge: string, idx: number) => (
+                        <span key={idx} className="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
+                          🛡️ {badge}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
+                        🛡️ Masked & Sanitized
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedEditPartner(p)}
+                    className="w-full mt-3 bg-[#002e6e] hover:bg-[#001f4d] text-white py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-900/10 active:scale-95"
+                  >
+                    <Edit3 size={14} />
+                    Edit Profile & Badges
+                  </button>
+                </div>
+
                 <div className="flex w-full gap-3">
                   <button
                     onClick={() => setSelectedProfilePartner({ ...p, user })}
@@ -6574,6 +6731,248 @@ function PartnerManager({
                     Apply Points
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* EDIT PARTNER PROFILE & BADGES MODAL */}
+        {selectedEditPartner && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[32px] max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 my-8"
+            >
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-600/30 rounded-2xl border border-blue-400/30">
+                    <ShieldCheck size={22} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-lg">Edit Partner Profile & Badges</h3>
+                    <p className="text-slate-400 text-xs font-medium">
+                      Update experience, police verification, & safety badges
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedEditPartner(null)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[72vh] overflow-y-auto">
+                {/* Experience & Jobs Completed */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Experience (Years)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={editExperienceYears}
+                      onChange={(e) => setEditExperienceYears(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-600 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Total Jobs Completed
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editCompletedJobs}
+                      onChange={(e) => setEditCompletedJobs(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-600 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Police Verification Toggle */}
+                <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={20} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-extrabold text-xs text-emerald-900">Police & Background Verification</p>
+                      <p className="text-[11px] text-emerald-700">Show "✓ Background Verified & Police Checked"</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editIsBgVerified}
+                    onChange={(e) => setEditIsBgVerified(e.target.checked)}
+                    className="w-5 h-5 accent-emerald-600 cursor-pointer rounded"
+                  />
+                </div>
+
+                {/* Vaccination / Hygiene Status */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Vaccination & Hygiene Status
+                  </label>
+                  <input
+                    type="text"
+                    value={editVaccinationStatus}
+                    onChange={(e) => setEditVaccinationStatus(e.target.value)}
+                    placeholder="e.g. Vaccinated & Sanitized"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-600 outline-none"
+                  />
+                </div>
+
+                {/* Safety Shield Badges Multi-select */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Safety & Shield Badges
+                  </label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      "Masked & Sanitized",
+                      "Police Checked",
+                      "Temperature Verified",
+                      "Background Verified",
+                      "Safety Shield Assured",
+                      "Vaccinated (Dose 2)",
+                    ].map((preset) => {
+                      const active = editBadges.includes(preset);
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            if (active) {
+                              setEditBadges(editBadges.filter((b) => b !== preset));
+                            } else {
+                              setEditBadges([...editBadges, preset]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                            active
+                              ? "bg-[#002e6e] text-white border-[#002e6e] shadow-sm"
+                              : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                          }`}
+                        >
+                          <span>{active ? "✓" : "+"}</span>
+                          <span>{preset}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom badge input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add custom safety badge..."
+                      value={customBadgeText}
+                      onChange={(e) => setCustomBadgeText(e.target.value)}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customBadgeText.trim() && !editBadges.includes(customBadgeText.trim())) {
+                          setEditBadges([...editBadges, customBadgeText.trim()]);
+                          setCustomBadgeText("");
+                        }
+                      }}
+                      className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-900 transition-all"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Proximity & Status */}
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Distance from Customer (km)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editDistanceKm}
+                      onChange={(e) => setEditDistanceKm(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Live Proximity Status
+                    </label>
+                    <input
+                      type="text"
+                      value={editStatusText}
+                      onChange={(e) => setEditStatusText(e.target.value)}
+                      placeholder="e.g. Arriving on time"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Rating & Reviews */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Rating Stars (0.0 - 5.0)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="5"
+                      value={editRating}
+                      onChange={(e) => setEditRating(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Total Reviews Count
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editReviewCount}
+                      onChange={(e) => setEditReviewCount(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer buttons */}
+              <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEditPartner(null)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/70 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingEdit}
+                  onClick={handleSavePartnerEdit}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <LoadingSpinner /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={16} /> Save & Sync to Customer Card
+                    </>
+                  )}
+                </button>
               </div>
             </motion.div>
           </div>
