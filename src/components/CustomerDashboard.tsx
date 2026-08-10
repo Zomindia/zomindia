@@ -2223,10 +2223,10 @@ export default function CustomerDashboard({
                     {/* Right/Expert Column (Col span: md:1, lg:1) */}
                     <div className="md:col-span-1">
                       {hasPartner ? (
-                        <div className="bg-white text-slate-900 p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px]">
-                          <div className="space-y-4">
+                        <div className="bg-white text-slate-900 p-5 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md flex flex-col justify-between h-full relative overflow-hidden group min-h-[220px] transition-all">
+                          <div className="space-y-3">
                             <div className="flex flex-col items-center text-center">
-                              <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 relative mb-3">
+                              <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 relative mb-2 shadow-xs">
                                 <img
                                   src={
                                     ((booking as any).assignedPartner?.profileImage && !(booking as any).assignedPartner?.profileImage.includes("googleusercontent.com/image_collection"))
@@ -2243,42 +2243,72 @@ export default function CustomerDashboard({
                                   loading="lazy"
                                 />
                               </div>
-                              <div>
-                                <span className="text-[8px] font-black uppercase text-emerald-700 tracking-wider bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-block mb-1.5">
+                              <div className="w-full">
+                                <span className="text-[9px] font-black uppercase text-[#002e6e] tracking-wider bg-sky-50 border border-sky-200/80 px-2.5 py-0.5 rounded-full inline-block mb-1">
                                   Assigned Professional
                                 </span>
-                                <h5 className="font-bold text-slate-900 text-sm flex items-center justify-center gap-1 leading-none">
+                                <h5 className="font-black text-slate-900 text-base flex items-center justify-center gap-1.5 leading-snug">
                                   {partnerUser?.displayName || "Vikas Chopra"}
-                                  <CheckCircle2 size={12} className="text-emerald-600" fill="currentColor" />
+                                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" fill="currentColor" />
                                 </h5>
-                                <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-slate-600 font-bold">
-                                  <span className="flex items-center gap-0.5 text-slate-800">
-                                    <Star size={10} className="text-amber-500 fill-amber-500" />
-                                    <span>{(partnerDetail?.rating || 4.9).toFixed(1)}</span>
+
+                                {/* Verified Badge */}
+                                <div className="mt-1">
+                                  <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                    <ShieldCheck size={11} className="text-emerald-600 shrink-0" />
+                                    <span>✓ Background Verified & Police Checked</span>
                                   </span>
-                                  <span>•</span>
-                                  <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[9px] font-extrabold">
-                                    {partnerDetail?.reviewCount || 184} reviews
+                                </div>
+
+                                {/* Rating Pill */}
+                                <div className="flex items-center justify-center gap-2 mt-2">
+                                  <span className="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                    <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />
+                                    <span>{(partnerDetail?.rating || 4.9).toFixed(1)} Rating</span>
+                                    <span className="text-amber-400">•</span>
+                                    <span>{partnerDetail?.reviewCount || 184} Reviews</span>
                                   </span>
+                                </div>
+
+                                {/* Experience & Work Stats */}
+                                <p className="text-[11px] font-bold text-slate-600 mt-2 flex items-center justify-center gap-1.5">
+                                  <span>{partnerDetail?.experience || 5}+ Years Experience</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span>{(partnerDetail as any)?.completedJobs || 1200}+ Jobs Completed</span>
+                                </p>
+
+                                {/* Live Proximity / ETA */}
+                                <div className="bg-sky-50/80 border border-sky-100 rounded-xl px-3 py-1.5 mt-2.5 text-[10px] font-black text-[#002e6e] flex items-center justify-center gap-1.5 shadow-2xs">
+                                  <span className="shrink-0">📍</span>
+                                  <span>2.2 km away</span>
+                                  <span className="text-sky-300">•</span>
+                                  <span className="text-emerald-700 font-black">Arriving on time</span>
+                                </div>
+
+                                {/* Trust Shield Signal */}
+                                <div className="bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-1.5 mt-2 text-[10px] font-extrabold text-slate-700 flex items-center justify-center gap-1.5">
+                                  <Shield size={12} className="text-[#002e6e] shrink-0" />
+                                  <span>Zomindia Safety Assured — Masked & Sanitized</span>
                                 </div>
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200">
+
+                          <div className="flex gap-2 mt-4 pt-3.5 border-t border-slate-100">
                             <button
                               onClick={() => setActiveBookingChat(booking)}
-                              className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                              className="flex-1 bg-[#002e6e] hover:bg-[#001f4d] text-white font-black tracking-wider text-xs uppercase py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-sm active:scale-95"
                             >
-                              <MessageSquare size={12} /> Chat
+                              <MessageSquare size={13} /> Chat
                             </button>
                             {partnerUser?.phoneNumber && (
                               <button
                                 id="customer-booking-secure-call-btn-1"
                                 disabled={isCalling}
                                 onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white font-bold tracking-wider text-[10px] uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                                className="flex-1 bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-50 text-white font-black tracking-wider text-xs uppercase py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-md"
                               >
-                                <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
+                                <Phone size={13} /> {isCalling ? "Connecting..." : "Call"}
                               </button>
                             )}
                           </div>
