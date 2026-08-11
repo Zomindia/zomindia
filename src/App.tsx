@@ -47,6 +47,7 @@ import {
 // Modules
 import CustomerHome from './components/CustomerHome';
 import Avatar from './components/Avatar';
+import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
@@ -2397,6 +2398,8 @@ If you have any billing questions, or if your refund is delayed, please email us
         initialFullName={profile?.fullName || profile?.displayName || ''}
         initialPhone={profile?.phoneNumber || ''}
       />
+
+      <PWAInstallBanner />
 
     </div>
     </APIProvider>

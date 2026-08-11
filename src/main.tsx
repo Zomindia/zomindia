@@ -29,11 +29,27 @@ initSecurityShield();
  */
 console.log("[Zomindia Telecom] Whitelisting metadata registered for WebRTC and Masked calling gateway.");
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      // Force cleanup of legacy workers with non-matching script URLs
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        if (reg.active && !reg.active.scriptURL.endsWith('/sw.js')) {
+          console.log('[PWA] Purging legacy service worker:', reg.active.scriptURL);
+          await reg.unregister();
+        }
+      }
+    } catch (e) {
+      console.warn('[PWA] Legacy worker check bypassed:', e);
+    }
+
     navigator.serviceWorker.register('/sw.js')
       .then((reg) => {
         console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
+
+        // Force explicit update check on boot
+        reg.update().catch(() => {});
 
         // Aggressively check for updates and skip waiting instantly
         if (reg.waiting) {

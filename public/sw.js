@@ -16,28 +16,33 @@ const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-512.png',
-  '/screenshot-mobile.png',
-  '/screenshot-desktop.png',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon-32x32.png',
+  '/favicon-16x16.png',
+  '/favicon.ico',
   ...precacheManifest.map(entry => typeof entry === 'string' ? entry : entry.url)
 ];
 
-// Installation: Open cache and add essential app shell assets
+// Installation: Open cache and add essential app shell assets safely
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
+      .then(async (cache) => {
         console.log('[PWA SW] Pre-caching core application shell assets...');
-        return cache.addAll(PRECACHE_ASSETS);
+        await Promise.allSettled(
+          PRECACHE_ASSETS.map(asset =>
+            cache.add(asset).catch(err => console.warn('[PWA SW] Skip non-critical asset:', asset, err))
+          )
+        );
       })
       .then(() => {
         console.log('[PWA SW] Core assets cached successfully. Activating...');
         return self.skipWaiting();
       })
       .catch((error) => {
-        console.error('[PWA SW] Pre-cache installation failed:', error);
+        console.error('[PWA SW] Pre-cache installation error handled:', error);
       })
   );
 });
@@ -59,6 +64,14 @@ self.addEventListener('activate', (event) => {
       return self.clients.claim();
     })
   );
+});
+
+// Message Event: Handle SKIP_WAITING signal from client for instant updates
+self.addEventListener('message', (event) => {
+  if (event.data && (event.data.type === 'SKIP_WAITING' || event.data === 'skipWaiting')) {
+    console.log('[PWA SW] Received SKIP_WAITING postMessage. Activating immediately...');
+    self.skipWaiting();
+  }
 });
 
 // Fetch Interception: Robust caching with offline shell fallbacks
@@ -146,8 +159,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Zomindia Internet Technologies';
   const options = {
     body: data.message || data.body || 'New update regarding your booking.',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/'

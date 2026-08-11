@@ -392,7 +392,10 @@ export default function CustomerHome({
 
   const handleInstallPwa = async () => {
     const promptEvent = (window as any).deferredPrompt;
-    if (!promptEvent) return;
+    if (!promptEvent) {
+      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+      return;
+    }
     try {
       await promptEvent.prompt();
       const choiceResult = await promptEvent.userChoice;
@@ -403,6 +406,7 @@ export default function CustomerHome({
       }
     } catch (err) {
       console.warn('[PWA] Error prompt:', err);
+      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
     }
   };
 

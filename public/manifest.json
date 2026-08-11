@@ -9,7 +9,7 @@
   "display_override": ["standalone", "window-controls-overlay"],
   "orientation": "portrait-primary",
   "background_color": "#ffffff",
-  "theme_color": "#0a2540",
+  "theme_color": "#002e6e",
   "categories": ["business", "utilities", "lifestyle"],
   "dir": "ltr",
   "lang": "en-US",
@@ -30,15 +30,15 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshot-mobile.png",
-      "sizes": "1080x1920",
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Zomindia Mobile Home Screen"
     },
     {
-      "src": "/screenshot-desktop.png",
-      "sizes": "1920x1080",
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Zomindia Desktop Home Screen"

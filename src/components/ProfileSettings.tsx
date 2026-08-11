@@ -68,6 +68,7 @@ import {
   ArrowLeft,
   HelpCircle,
   Phone,
+  Download,
 } from "lucide-react";
 
 interface Props {
@@ -1762,6 +1763,7 @@ export default function ProfileSettings({
                 }
               />
             </button>
+
 
             <button
               onClick={handleRefreshData}
