@@ -1229,11 +1229,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookingId: createdOnlineBookingId,
-          customerUid: activeUid
+          customerUid: activeUid,
+          amount: onlineBookingAmount
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        // Also update local firestore record for instant UI reactivity
+        try {
+          const bRef = doc(db, 'bookings', createdOnlineBookingId);
+          await updateDoc(bRef, {
+            paymentStatus: 'paid',
+            paymentMethod: 'online',
+            status: 'confirmed',
+            updatedAt: Timestamp.now()
+          });
+        } catch (clientErr) {
+          console.warn("Client booking sync warning:", clientErr);
+        }
+
         if (typeof (window as any).__showToast === 'function') {
           (window as any).__showToast("Payment Successful! Booking Confirmed.", "success");
         }

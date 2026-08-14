@@ -550,7 +550,15 @@ async function startServer() {
 
       const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
       const merchantTransactionId = "TXN_" + (bookingId ? bookingId.slice(0, 8) : "ZOM") + "_" + Date.now();
-      const cleanMobile = mobileNumber ? String(mobileNumber).replace(/\D/g, "").slice(-10) : "9999999999";
+      
+      let cleanMobile = "9999999999";
+      if (mobileNumber) {
+        const digits = String(mobileNumber).replace(/\D/g, "");
+        if (digits.length >= 10) {
+          cleanMobile = digits.slice(-10);
+        }
+      }
+
       const host = req.headers.host ? `https://${req.headers.host}` : "https://zomindia.com";
       const redirectUrl = customRedirect || `${host}/api/phonepe/redirect?txnId=${merchantTransactionId}&bookingId=${bookingId || ""}`;
       const callbackUrl = `${host}/api/phonepe/callback`;
@@ -623,12 +631,13 @@ async function startServer() {
       if (bookingId && db) {
         try {
           const bookingRef = db.collection("bookings").doc(bookingId);
-          await bookingRef.update({
+          await bookingRef.set({
+            status: "confirmed",
             paymentStatus: "paid",
             paymentMethod: "online",
             paymentIntentId: txnId || `PHONEPE_${Date.now()}`,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
+          }, { merge: true });
 
           await db.collection("walletTransactions").add({
             userId: req.body.customerUid || "system",
@@ -673,36 +682,100 @@ async function startServer() {
     }
   });
 
-  // PhonePe Verify and Confirm Direct API
+  // Single Consolidated PhonePe Verify and Confirm Direct API
   app.post("/api/phonepe/verify-and-confirm", async (req, res) => {
     try {
-      const { bookingId, customerUid } = req.body;
+      const { bookingId, customerUid, bookingPayload, merchantTransactionId, amount } = req.body;
       if (!bookingId) {
         return res.status(400).json({ error: "Booking ID is required" });
       }
 
-      if (db) {
-        const bookingRef = db.collection("bookings").doc(bookingId);
-        await bookingRef.update({
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      const txnId = merchantTransactionId || `PHONEPE_${Date.now()}`;
+      const bookingRef = db.collection("bookings").doc(bookingId);
+      const existingDoc = await bookingRef.get();
+
+      let finalAmount = typeof amount === "number" ? amount : 0;
+      let finalUserId = customerUid || "system";
+
+      if (bookingPayload) {
+        const payloadData: any = {
+          ...bookingPayload,
+          status: "confirmed",
+          paymentStatus: "paid",
+          paymentIntentId: txnId,
+          paymentMethod: "online",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!existingDoc.exists) {
+          payloadData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        if (bookingPayload.scheduledAt) {
+          if (typeof bookingPayload.scheduledAt === "object" && typeof bookingPayload.scheduledAt.seconds === "number") {
+            payloadData.scheduledAt = new admin.firestore.Timestamp(
+              bookingPayload.scheduledAt.seconds,
+              bookingPayload.scheduledAt.nanoseconds || 0
+            );
+          } else if (typeof bookingPayload.scheduledAt === "string") {
+            payloadData.scheduledAt = admin.firestore.Timestamp.fromDate(new Date(bookingPayload.scheduledAt));
+          } else {
+            payloadData.scheduledAt = admin.firestore.Timestamp.now();
+          }
+        }
+
+        await bookingRef.set(payloadData, { merge: true });
+        finalAmount = Number(bookingPayload.totalPrice) || finalAmount;
+        finalUserId = bookingPayload.customerUid || bookingPayload.userId || finalUserId;
+      } else {
+        const updateData: any = {
           status: "confirmed",
           paymentStatus: "paid",
           paymentMethod: "online",
-          paymentIntentId: `PHONEPE_${Date.now()}`,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+          paymentIntentId: txnId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
 
+        if (!existingDoc.exists) {
+          updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await bookingRef.set(updateData, { merge: true });
+
+        if (existingDoc.exists) {
+          const docData = existingDoc.data();
+          finalAmount = Number(docData?.totalPrice) || finalAmount;
+          finalUserId = docData?.customerId || docData?.customerUid || docData?.userId || finalUserId;
+        }
+      }
+
+      // Record wallet/payment transaction history
+      try {
         await db.collection("walletTransactions").add({
-          userId: customerUid || "system",
-          amount: 0,
+          userId: finalUserId,
+          amount: finalAmount,
           type: "debit",
           reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via PhonePe`,
-          referenceId: `PHONEPE_${Date.now()}`,
+          referenceId: txnId,
           status: "completed",
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
+      } catch (txErr: any) {
+        console.warn("[PhonePe Transaction Log Notice]:", txErr.message);
       }
 
-      return res.json({ success: true, paymentStatus: "paid", status: "confirmed" });
+      console.log(`[PhonePe Verified] Confirmed Booking: ${bookingId} for Transaction: ${txnId}`);
+      return res.json({
+        success: true,
+        bookingId,
+        paymentStatus: "paid",
+        status: "confirmed",
+        transactionId: txnId
+      });
     } catch (err: any) {
       console.error("[PhonePe Confirm Error]:", err);
       return res.status(500).json({ error: err.message || "Failed to confirm PhonePe payment" });
@@ -883,75 +956,6 @@ async function startServer() {
 
       return res.json(statusData || { success: isSuccess, code: isSuccess ? "PAYMENT_SUCCESS" : "PAYMENT_PENDING" });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Verify and Confirm PhonePe Payment for Booking
-  app.post("/api/phonepe/verify-and-confirm", async (req, res) => {
-    try {
-      const { bookingId, bookingPayload, merchantTransactionId } = req.body;
-
-      if (!bookingId || !bookingPayload) {
-        return res.status(400).json({ error: "Missing required verification data" });
-      }
-
-      if (!db) {
-        return res.status(500).json({ error: "Database not initialized" });
-      }
-
-      const txnId = merchantTransactionId || `PHONEPE_${Date.now()}`;
-
-      let expectedPrice = 195;
-      if (bookingPayload && bookingPayload.serviceId) {
-        const serviceDoc = await db.collection("services").doc(bookingPayload.serviceId).get();
-        if (serviceDoc.exists) {
-          const serviceData = serviceDoc.data();
-          expectedPrice = typeof serviceData?.basePrice === "number" ? serviceData.basePrice : 195;
-        }
-      }
-
-      const confirmedPayload = {
-        ...bookingPayload,
-        status: "confirmed",
-        paymentStatus: "paid",
-        paymentIntentId: txnId,
-        paymentMethod: "online",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      if (bookingPayload.scheduledAt) {
-        if (typeof bookingPayload.scheduledAt === "object" && typeof bookingPayload.scheduledAt.seconds === "number") {
-          confirmedPayload.scheduledAt = new admin.firestore.Timestamp(
-            bookingPayload.scheduledAt.seconds,
-            bookingPayload.scheduledAt.nanoseconds || 0
-          );
-        } else if (typeof bookingPayload.scheduledAt === "string") {
-          confirmedPayload.scheduledAt = admin.firestore.Timestamp.fromDate(new Date(bookingPayload.scheduledAt));
-        } else {
-          confirmedPayload.scheduledAt = admin.firestore.Timestamp.now();
-        }
-      } else {
-        confirmedPayload.scheduledAt = admin.firestore.Timestamp.now();
-      }
-
-      await db.collection("bookings").doc(bookingId).set(confirmedPayload);
-
-      await db.collection("walletTransactions").add({
-        userId: bookingPayload.customerUid || bookingPayload.userId || "system",
-        amount: bookingPayload.totalPrice || expectedPrice,
-        type: "debit",
-        reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via PhonePe`,
-        referenceId: txnId,
-        status: "completed",
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      console.log(`[PhonePe Verified] Created Booking: ${bookingId} for Transaction: ${txnId}`);
-      return res.json({ success: true });
-    } catch (err: any) {
-      console.error("PhonePe verification error:", err);
       return res.status(500).json({ error: err.message });
     }
   });

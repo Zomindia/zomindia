@@ -89,6 +89,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     setError(null);
 
     try {
+      const resolvedMobile = (profile as any).phoneNumber || (profile as any).mobile || '';
       const response = await fetch('/api/phonepe/pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,7 +97,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           amount: booking.totalPrice,
           bookingId: booking.id,
           customerUid: profile.uid,
-          mobileNumber: profile.phoneNumber || ''
+          mobileNumber: resolvedMobile
         }),
       });
 
@@ -113,8 +114,19 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             bookingId: booking.id,
-            customerUid: profile.uid
+            customerUid: profile.uid,
+            merchantTransactionId: data.merchantTransactionId,
+            amount: booking.totalPrice
           })
+        });
+
+        // Also update local firestore record for instant UI reactivity
+        const bRef = doc(db, 'bookings', booking.id);
+        await updateDoc(bRef, {
+          paymentStatus: 'paid',
+          paymentMethod: 'online',
+          status: booking.status === 'pending' ? 'confirmed' : booking.status,
+          updatedAt: Timestamp.now()
         });
       } catch (confirmErr) {
         console.warn("Direct confirm notice:", confirmErr);
@@ -126,7 +138,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         setShowSuccess(true);
         setTimeout(() => {
           onSuccess();
-        }, 1500);
+        }, 1200);
       }
     } catch (err: any) {
       console.error("PhonePe Payment Error:", err);
