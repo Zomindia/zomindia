@@ -30,15 +30,15 @@
   ],
   "screenshots": [
     {
-      "src": "/pwa-512x512.png",
-      "sizes": "512x512",
+      "src": "/screenshot-mobile.png",
+      "sizes": "750x1334",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Zomindia Mobile Home Screen"
     },
     {
-      "src": "/pwa-512x512.png",
-      "sizes": "512x512",
+      "src": "/screenshot-desktop.png",
+      "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Zomindia Desktop Home Screen"
