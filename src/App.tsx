@@ -74,6 +74,7 @@ const CustomerAmcView = lazy(() => import('./components/CustomerAmcView'));
 const SupportTicketsView = lazy(() => import('./components/SupportTicketsView'));
 const WalletView = lazy(() => import('./components/WalletView'));
 const ReferralsView = lazy(() => import('./components/ReferralsView'));
+const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
 
 import ElitePartnerModal from './components/ElitePartnerModal';
 
@@ -149,11 +150,11 @@ export type ActiveTabType = 'home' | 'bookings' | 'profile' | 'admin' | 'partner
 export const getTabFromUrl = (): ActiveTabType | null => {
   if (typeof window === 'undefined') return 'home';
   const path = window.location.pathname;
-  if (path === '/about-us') return 'about';
-  if (path === '/contact-us') return 'contact';
-  if (path === '/privacy-policy') return 'privacy';
-  if (path === '/terms-and-conditions' || path === '/terms-of-service') return 'terms';
-  if (path === '/refund-policy' || path === '/cancellation-and-refund') return 'refund';
+  if (path === '/about-us' || path === '/about') return 'about';
+  if (path === '/contact-us' || path === '/contact') return 'contact';
+  if (path === '/privacy-policy' || path === '/privacy') return 'privacy';
+  if (path === '/terms-and-conditions' || path === '/terms-of-service' || path === '/terms') return 'terms';
+  if (path === '/refund-policy' || path === '/cancellation-and-refund' || path === '/refund') return 'refund';
   if (path === '/help-center' || path === '/help') return 'help';
 
   const hash = window.location.hash.replace('#', '');
@@ -1305,24 +1306,9 @@ You agree to pay the prices shown on your booking screen, which include basic lo
 
       if (activeTab === 'privacy') {
         return (
-          <StaticPage
-            title="Privacy Policy"
-            content={`At ${COMPANY_NAME} (registered in Indore, MP, INDIA), we care deeply about your privacy. Here is a super simple guide to how we handle your personal details:
-
-1. What Info We Collect & Why
-• Name, Email, and Phone: We use your phone number to log you in securely with a quick OTP. Your email is used for sending plain invoices and receipts.
-• Your Address: We collect your address to dispatch our service professionals straight to your doorstep.
-• Your Location: With your permission, we use your location to show available local services near you and help service partners find your home easily.
-
-2. No Selling of Data
-We will NEVER sell, rent, or trade your personal details to any outside marketing companies. Your data is only shared with the specific verified service provider assigned to complete your home booking.
-
-3. Safe & Secure Database
-All your data is stored in secure, top-tier cloud databases (Firestore) with strict locks. Only authorized people can see it.
-
-4. Your Data, Your Control
-You have full control over your details. You can view, update, or ask us to delete your account anytime by emailing us at support@zomindia.com.`}
+          <PrivacyPolicy
             onBack={() => setActiveTab('home')}
+            onNavigate={(tab) => setActiveTab(tab as any)}
           />
         );
       }
