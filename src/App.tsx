@@ -57,6 +57,7 @@ import { CitySelector } from './components/CitySelector';
 import ZomatoPageEndMarker, { getPageDisplayName } from './components/ZomatoPageEndMarker';
 import AboutUs from './components/AboutUs';
 import Footer from './components/Footer';
+import AiSupportChat from './components/AiSupportChat';
 
 // Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
@@ -71,7 +72,6 @@ const PartnerApp = lazy(() => import('./components/PartnerApp'));
 const PartnerPortalLanding = lazy(() => import('./components/partner/PartnerPortalLanding'));
 const CustomerAmcView = lazy(() => import('./components/CustomerAmcView'));
 const SupportTicketsView = lazy(() => import('./components/SupportTicketsView'));
-const AiSupportChat = lazy(() => import('./components/AiSupportChat'));
 const WalletView = lazy(() => import('./components/WalletView'));
 const ReferralsView = lazy(() => import('./components/ReferralsView'));
 

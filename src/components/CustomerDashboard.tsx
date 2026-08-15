@@ -534,52 +534,15 @@ export default function CustomerDashboard({
     );
   }, [bookings]);
 
-  const handleInitiateCall = async (booking: Booking) => {
-    const currentUid = auth.currentUser?.uid;
-    const targetUid = booking.partnerId;
+  const handleInitiateCall = (booking: Booking) => {
+    const assignedPartner = booking.partnerId ? partners[booking.partnerId] : null;
+    const assignedPartnerPhone = (assignedPartner as any)?.phoneNumber || (assignedPartner as any)?.phone || (booking as any)?.assignedPartner?.phoneNumber || (booking as any)?.assignedPartner?.phone || "+919630234563";
 
-    if (!currentUid) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Authentication required to make calls.");
-      }
-      return;
-    }
-    if (!targetUid) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Recipient details are missing (no partner assigned yet).");
-      }
-      return;
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast("Opening device phone dialer to connect with assigned professional...", "info");
     }
 
-    setIsCalling(true);
-
-    try {
-      const response = await fetch('/api/make-secure-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fromUserId: currentUid,
-          toUserId: targetUid,
-          recipientRole: 'partner'
-        })
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast("Call initiated! Please answer your phone to connect.");
-        }
-      } else {
-        if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast("Could not connect call. Please try again.");
-        }
-      }
-    } catch (err: any) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Could not connect call. Please try again.");
-      }
-    } finally {
-      setIsCalling(false);
-    }
+    window.location.href = `tel:${assignedPartnerPhone || '+919630234563'}`;
   };
 
   const handleAnswerCall = async (booking: Booking) => {
@@ -2346,16 +2309,13 @@ export default function CustomerDashboard({
                             >
                               <MessageSquare size={13} /> Chat
                             </button>
-                            {partnerUser?.phoneNumber && (
-                              <button
-                                id="customer-booking-secure-call-btn-1"
-                                disabled={isCalling}
-                                onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-50 text-white font-black tracking-wider text-xs uppercase py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-md"
-                              >
-                                <Phone size={13} /> {isCalling ? "Connecting..." : "Call"}
-                              </button>
-                            )}
+                            <button
+                              id="customer-booking-secure-call-btn-1"
+                              onClick={() => handleInitiateCall(booking)}
+                              className="flex-1 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black tracking-wider text-xs uppercase py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-md"
+                            >
+                              <Phone size={13} /> Call
+                            </button>
                           </div>
                         </div>
                       ) : (
@@ -2716,17 +2676,14 @@ export default function CustomerDashboard({
                               />{" "}
                               Chat
                             </button>
-                            {partnerUser?.phoneNumber && (
-                              <button
-                                id="customer-booking-secure-call-btn-2"
-                                disabled={isCalling}
-                                onClick={() => handleInitiateCall(booking)}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-                              >
-                                <Phone size={14} className="text-white" />{" "}
-                                {isCalling ? "Connecting..." : "Call"}
-                              </button>
-                            )}
+                            <button
+                              id="customer-booking-secure-call-btn-2"
+                              onClick={() => handleInitiateCall(booking)}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-white font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                            >
+                              <Phone size={14} className="text-white" />{" "}
+                              Call
+                            </button>
                           </div>
                         </div>
                       ) : (

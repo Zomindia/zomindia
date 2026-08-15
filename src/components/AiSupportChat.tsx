@@ -288,6 +288,33 @@ const LANGUAGES = [
   { code: "pa-IN", name: "ਪੰਜਾਬੀ (Punjabi)", label: "PA" },
 ];
 
+// Helper to dynamically detect if a string matches a specific language script or Hinglish
+const detectLanguage = (text: string, currentLang?: string): string | null => {
+  if (!text) return null;
+  if (/[\u0A80-\u0AFF]/.test(text)) return "gu-IN"; // Gujarati
+  if (/[\u0980-\u09FF]/.test(text)) return "bn-IN"; // Bengali
+  if (/[\u0B80-\u0BFF]/.test(text)) return "ta-IN"; // Tamil
+  if (/[\u0C00-\u0C7F]/.test(text)) return "te-IN"; // Telugu
+  if (/[\u0C80-\u0CFF]/.test(text)) return "kn-IN"; // Kannada
+  if (/[\u0D00-\u0D7F]/.test(text)) return "ml-IN"; // Malayalam
+  if (/[\u0A00-\u0A7F]/.test(text)) return "pa-IN"; // Punjabi
+  if (/[\u0900-\u097F]/.test(text)) {
+    // If the current language is Marathi, don't overwrite with Hindi
+    if (currentLang === "mr-IN") return "mr-IN";
+    return "hi-IN";
+  }
+  // Check if the text contains Hinglish / Roman Hindi words or phrases
+  const hinglishRegex = /\b(hai|hain|nahi|nahin|ho|raha|rahi|rahe|karo|kya|kaise|kitna|kitne|chahiye|me|mein|par|ko|se|bhai|bhaiya|aaj|aaya|aa|ka|ki|ke|pani|paani|thanda|thandha|kharab|aayega|aaye|karenge|karne|batao|bataiye|dikkat|samasya|paise|rupaye|sahi|sasta|chalu|band|bhej|bhejo|kam|kaam)\b/i;
+  if (hinglishRegex.test(text)) {
+    return "hi-IN";
+  }
+  const pureEnglishRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|where|why|how|what|which|who|whom|when|please|help|could|would|should|can|will|service|booking|repair|check|status|cancel|refund)\b/i;
+  if (pureEnglishRegex.test(text) && !hinglishRegex.test(text)) {
+    return "en-IN";
+  }
+  return null;
+};
+
 export default function AiSupportChat({
   userProfile,
   isPartner,
@@ -314,27 +341,6 @@ export default function AiSupportChat({
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
-
-  const saveContextBeforeLogin = () => {
-    try {
-      sessionStorage.setItem("zomini_pending_chat_history", JSON.stringify(messages));
-      sessionStorage.setItem("zomini_chat_open", "true");
-      if (activeTab) {
-        sessionStorage.setItem("zomini_saved_tab", activeTab);
-      }
-      console.log("[Zomini] Saved pending chat history, active tab, and active toggle in sessionStorage.");
-    } catch (err) {
-      console.warn("Failed to save pending chat history:", err);
-    }
-  };
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 640);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   // IMMUTABLE SYSTEM-SYNC STARTING MESSAGE: Context-aware of active bookings
   const [messages, setMessages] = useState<
@@ -387,7 +393,52 @@ export default function AiSupportChat({
   } | null>(null);
   const [isConfirmingPhonePe, setIsConfirmingPhonePe] = useState(false);
   const [phonePeError, setPhonePeError] = useState<string | null>(null);
+
+  // Multilingual voice configurations
+  const [selectedLang, setSelectedLang] = useState("hi-IN");
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const saveContextBeforeLogin = () => {
+    try {
+      sessionStorage.setItem("zomini_pending_chat_history", JSON.stringify(messages));
+      sessionStorage.setItem("zomini_chat_open", "true");
+      if (activeTab) {
+        sessionStorage.setItem("zomini_saved_tab", activeTab);
+      }
+      console.log("[Zomini] Saved pending chat history, active tab, and active toggle in sessionStorage.");
+    } catch (err) {
+      console.warn("Failed to save pending chat history:", err);
+    }
+  };
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Dynamic language detection based on current conversation context or user input
+  useEffect(() => {
+    if (input.trim().length > 1) {
+      const detected = detectLanguage(input, selectedLang);
+      if (detected && detected !== selectedLang) {
+        setSelectedLang(detected);
+      }
+    } else if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const detected = detectLanguage(lastMsg.text, selectedLang);
+      if (detected && detected !== selectedLang) {
+        setSelectedLang(detected);
+      }
+    }
+  }, [input, messages, selectedLang]);
 
   const updateBookingSlot = (bookingId: string, date: string, slot: string) => {
     setSelectedSlots((prev) => ({ ...prev, [bookingId]: { date, slot } }));
@@ -730,56 +781,6 @@ export default function AiSupportChat({
       }
     ]);
   };
-
-  // Helper to dynamically detect if a string matches a specific language script or Hinglish
-  const detectLanguage = (text: string): string | null => {
-    if (!text) return null;
-    if (/[\u0A80-\u0AFF]/.test(text)) return "gu-IN"; // Gujarati
-    if (/[\u0980-\u09FF]/.test(text)) return "bn-IN"; // Bengali
-    if (/[\u0B80-\u0BFF]/.test(text)) return "ta-IN"; // Tamil
-    if (/[\u0C00-\u0C7F]/.test(text)) return "te-IN"; // Telugu
-    if (/[\u0C80-\u0CFF]/.test(text)) return "kn-IN"; // Kannada
-    if (/[\u0D00-\u0D7F]/.test(text)) return "ml-IN"; // Malayalam
-    if (/[\u0A00-\u0A7F]/.test(text)) return "pa-IN"; // Punjabi
-    if (/[\u0900-\u097F]/.test(text)) {
-      // If the current language is Marathi, don't overwrite with Hindi
-      if (selectedLang === "mr-IN") return "mr-IN";
-      return "hi-IN";
-    }
-    // Check if the text contains Hinglish / Roman Hindi words or phrases
-    const hinglishRegex = /\b(hai|hain|nahi|nahin|ho|raha|rahi|rahe|karo|kya|kaise|kitna|kitne|chahiye|me|mein|par|ko|se|bhai|bhaiya|aaj|aaya|aa|ka|ki|ke|pani|paani|thanda|thandha|kharab|aayega|aaye|karenge|karne|batao|bataiye|dikkat|samasya|paise|rupaye|sahi|sasta|chalu|band|bhej|bhejo|kam|kaam)\b/i;
-    if (hinglishRegex.test(text)) {
-      return "hi-IN";
-    }
-    const pureEnglishRegex = /\b(the|is|are|am|was|were|be|have|has|had|do|does|did|where|why|how|what|which|who|whom|when|please|help|could|would|should|can|will|service|booking|repair|check|status|cancel|refund)\b/i;
-    if (pureEnglishRegex.test(text) && !hinglishRegex.test(text)) {
-      return "en-IN";
-    }
-    return null;
-  };
-
-  // Multilingual voice configurations
-  const [selectedLang, setSelectedLang] = useState("hi-IN");
-  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [micError, setMicError] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
-
-  // Dynamic language detection based on current conversation context or user input
-  useEffect(() => {
-    if (input.trim().length > 1) {
-      const detected = detectLanguage(input);
-      if (detected && detected !== selectedLang) {
-        setSelectedLang(detected);
-      }
-    } else if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      const detected = detectLanguage(lastMsg.text);
-      if (detected && detected !== selectedLang) {
-        setSelectedLang(detected);
-      }
-    }
-  }, [input, messages]);
 
   // Speech Recognition API
   const toggleListening = () => {
