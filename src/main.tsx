@@ -7,6 +7,47 @@ import { I18nProvider } from './lib/i18n';
 import { initSecurityShield } from './utils/securityShield';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 
+// Persistent Global Event Caching attached before React mounts
+if (typeof window !== 'undefined') {
+  (window as any).gm_authFailure = () => {
+    console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
+  };
+
+  let activePrompt: any = (window as any).deferredPrompt || null;
+
+  Object.defineProperty(window, 'deferredPrompt', {
+    get() {
+      return activePrompt;
+    },
+    set(val) {
+      if (val === null || val) {
+        activePrompt = val;
+      }
+    },
+    configurable: true,
+    enumerable: true
+  });
+
+  window.addEventListener('beforeinstallprompt', (e: any) => {
+    // Prevent default browser banner so we control when and how it triggers
+    e.preventDefault();
+    console.log('[PWA] beforeinstallprompt event captured and locked in memory.');
+    (window as any).deferredPrompt = e;
+    
+    // Dispatch a custom event so React components are notified instantly across pages/views
+    window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+  });
+
+  window.addEventListener('appinstalled', () => {
+    console.log('[PWA] App has been installed successfully.');
+    (window as any).deferredPrompt = null;
+    try {
+      localStorage.setItem('zomindia_pwa_installed', 'true');
+    } catch {}
+    window.dispatchEvent(new CustomEvent('pwa-prompt-dismissed'));
+  });
+}
+
 // Call the element loader before rendering the App
 defineCustomElements(window);
 
@@ -81,45 +122,6 @@ if ('serviceWorker' in navigator) {
       refreshing = true;
       window.location.reload();
     }
-  });
-}
-
-// Global listener with memory lock to capture `beforeinstallprompt` and persist globally
-if (typeof window !== 'undefined') {
-  (window as any).gm_authFailure = () => {
-    console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
-  };
-
-  let activePrompt: any = (window as any).deferredPrompt || null;
-
-  Object.defineProperty(window, 'deferredPrompt', {
-    get() {
-      return activePrompt;
-    },
-    set(val) {
-      // Keep state locked in memory and don't allow it to be stripped unless explicitly reset to null
-      if (val === null || val) {
-        activePrompt = val;
-      }
-    },
-    configurable: true,
-    enumerable: true
-  });
-
-  window.addEventListener('beforeinstallprompt', (e: any) => {
-    // Prevent default browser prompt bar from showing
-    e.preventDefault();
-    console.log('[PWA] beforeinstallprompt event captured and locked in memory.');
-    (window as any).deferredPrompt = e;
-    
-    // Dispatch a custom event so React components are notified instantly across pages/views
-    window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
-  });
-
-  window.addEventListener('appinstalled', () => {
-    console.log('[PWA] App has been installed successfully.');
-    (window as any).deferredPrompt = null;
-    window.dispatchEvent(new CustomEvent('pwa-prompt-dismissed'));
   });
 }
 
