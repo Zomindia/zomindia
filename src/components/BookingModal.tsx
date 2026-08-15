@@ -23,6 +23,7 @@ import {
   Calendar as CalendarIcon,
   CheckCircle2,
   ArrowLeft,
+  ArrowRight,
   Navigation,
   Info,
   Zap,
@@ -31,9 +32,15 @@ import {
   MessageCircle,
   Tag,
   Building,
-  Home
+  Home,
+  Lock,
+  Wallet,
+  Banknote,
+  ShieldCheck
 } from 'lucide-react';
 import PartnerIdentityMarker from './PartnerIdentityMarker';
+import PaymentMethodSelector, { PaymentCategoryType, UpiSubAppType } from './PaymentMethodSelector';
+import OnlinePaymentGatewayModal, { PaymentSuccessData } from './OnlinePaymentGatewayModal';
 
 interface Props {
   service: Service;
@@ -87,7 +94,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [isFetchingGps, setIsFetchingGps] = useState(false);
   const [mapZoom, setMapZoom] = useState(15);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cash'>(savedState?.paymentMethod || 'cash');
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cash' | 'upi' | 'card'>(
+    savedState?.paymentMethod === 'cash' ? 'cash' : (savedState?.paymentMethod || 'upi')
+  );
   const [availablePromos, setAvailablePromos] = useState<Promotion[]>([]);
   const [slotNotAvailablePopup, setSlotNotAvailablePopup] = useState(false);
 
@@ -109,12 +118,49 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [selectedFromDropdown, setSelectedFromDropdown] = useState(false);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
-  const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>(null);
+  const [onlineSubMethod, setOnlineSubMethod] = useState<'upi' | 'card' | null>('upi');
+  const [selectedPaymentCategory, setSelectedPaymentCategory] = useState<PaymentCategoryType>(
+    savedState?.paymentMethod === 'cash' ? 'cash' : 'upi'
+  );
+  const [selectedUpiApp, setSelectedUpiApp] = useState<UpiSubAppType>('gpay');
+  const [customUpiId, setCustomUpiId] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+
+  const handleSelectPaymentCategory = (cat: PaymentCategoryType) => {
+    setSelectedPaymentCategory(cat);
+    if (cat === 'upi') {
+      setPaymentMethod('upi');
+      setOnlineSubMethod('upi');
+    } else if (cat === 'card') {
+      setPaymentMethod('card');
+      setOnlineSubMethod('card');
+    } else if (cat === 'cash') {
+      setPaymentMethod('cash');
+      setOnlineSubMethod(null);
+    } else if (cat === 'wallet') {
+      setPaymentMethod('online');
+      setOnlineSubMethod(null);
+    }
+    setError(null);
+    setPaymentFailureAlert(null);
+  };
+
+  const handleSelectUpiApp = (app: UpiSubAppType) => {
+    setSelectedUpiApp(app);
+    setSelectedPaymentCategory('upi');
+    setPaymentMethod('upi');
+    setOnlineSubMethod('upi');
+    setError(null);
+    setPaymentFailureAlert(null);
+  };
 
   // PhonePe Online Payment States
   const [createdOnlineBookingId, setCreatedOnlineBookingId] = useState<string | null>(null);
   const [onlineBookingAmount, setOnlineBookingAmount] = useState<number>(0);
   const [showPhonePeModal, setShowPhonePeModal] = useState<boolean>(false);
+  const [showOnlineGateway, setShowOnlineGateway] = useState<boolean>(false);
   const [paymentFailureAlert, setPaymentFailureAlert] = useState<string | null>(null);
   const [phonePeRedirectUrl, setPhonePeRedirectUrl] = useState<string>('');
   const [phonePeProcessing, setPhonePeProcessing] = useState<boolean>(false);
@@ -697,31 +743,51 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
     const totalBill = calculateFinalPrice();
     const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
-    const remainingDue = totalBill - walletDeduction;
-
-    if (remainingDue > 0) {
-      if (paymentMethod === 'online' && !onlineSubMethod) {
-        setError("Please select either UPI or Card / Net Banking to pay the outstanding balance of ₹" + remainingDue + ".");
-        return;
-      }
-    }
+    const remainingDue = Math.max(0, totalBill - walletDeduction);
+    const isWalletCoveringAll = useWalletBalance && (profile?.walletBalance || 0) >= totalBill;
+    const isPayOnline = (
+      selectedPaymentCategory === 'upi' || 
+      selectedPaymentCategory === 'card' || 
+      paymentMethod === 'upi' || 
+      paymentMethod === 'card' || 
+      paymentMethod === 'online'
+    ) && remainingDue > 0 && !useAmc && !isWalletCoveringAll;
 
     const emailToUse = contactEmail || profile?.email || '';
     const rawPhone = contactPhone || profile?.phoneNumber || profile?.mobile || '';
     const cleanedPhone = cleanPhoneTo10(rawPhone);
 
-    if (cleanedPhone && cleanedPhone.length === 10) {
-      setContactEmail(emailToUse);
-      setContactPhone(cleanedPhone);
-      handleBooking(emailToUse, cleanedPhone);
-    } else {
+    if (!cleanedPhone || cleanedPhone.length !== 10) {
       setPopupEmail(emailToUse);
       setPopupPhone(cleanedPhone);
       setShowContactPopup(true);
+      return;
     }
+
+    setContactEmail(emailToUse);
+    setContactPhone(cleanedPhone);
+
+    // If User chose Pay Online: DO NOT directly create booking! Open full-screen Centralized Payment Gateway Modal
+    if (isPayOnline) {
+      if (!auth.currentUser) {
+        setShowLocalLogin(true);
+        setError("Authentication required: Please sign in with an active customer account to proceed.");
+        return;
+      }
+      setOnlineBookingAmount(remainingDue);
+      setShowOnlineGateway(true);
+      return;
+    }
+
+    // If Cash on Arrival or 100% Wallet / AMC: Proceed to booking creation immediately!
+    handleBooking(emailToUse, cleanedPhone);
   };
 
-  const handleBooking = async (overrideEmail?: string, overridePhone?: string) => {
+  const handleBooking = async (
+    overrideEmail?: string, 
+    overridePhone?: string,
+    onlinePaymentData?: PaymentSuccessData
+  ) => {
     setLoading(true);
     setError(null);
 
@@ -1025,12 +1091,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       resolvedMobile = cleanPhone || cleanPhoneTo10(resolvedMobile);
 
+      const isOnlineConfirmed = !!onlinePaymentData;
+      const resolvedPaymentStatus = useAmc ? 'paid' : (isOnlineConfirmed || remainingDue === 0 ? 'paid' : 'unpaid');
+      const resolvedPaymentMethod = useAmc 
+        ? 'wallet' 
+        : (isOnlineConfirmed 
+          ? (walletDeduction > 0 ? 'wallet+online' : 'online') 
+          : computedPaymentMethod);
+
       const bookingPayload = {
         customerUid: activeUid,
         serviceId: service.id,
         partnerId: assignedPartnerId,
         status: assignedPartnerId ? "pending_acceptance" : "pending", 
-        paymentStatus: useAmc ? 'paid' : (remainingDue === 0 ? 'paid' : 'unpaid'),
+        paymentStatus: resolvedPaymentStatus,
         scheduledAt: Timestamp.fromDate(scheduledAt),
         address: fullAddress,
         lat: location?.lat || null,
@@ -1038,7 +1112,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         totalPrice: remainingDue,
         promoCode: appliedPromo?.code || null,
         discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
-        paymentMethod: useAmc ? 'wallet' : computedPaymentMethod,
+        paymentMethod: resolvedPaymentMethod,
         isAmcBooking: useAmc,
         amcId: useAmc ? activeAmc?.id : null,
         serviceOtp,
@@ -1056,7 +1130,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         },
         otpVerified: false,
         walletDeductAmount: walletDeduction,
-        originalBillValue: totalBill
+        originalBillValue: totalBill,
+        transactionId: onlinePaymentData?.txnId || null,
+        onlinePaymentProvider: onlinePaymentData?.provider || null,
+        onlinePaymentMethod: onlinePaymentData?.method || null,
+        paidAmount: isOnlineConfirmed ? onlinePaymentData.amount : (useWalletBalance && remainingDue === 0 ? totalBill : 0)
       };
 
       try {
@@ -1079,7 +1157,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             serviceId: service.id,
             partnerId: assignedPartnerId,
             status: assignedPartnerId ? "pending_acceptance" : "pending",
-            paymentStatus: useAmc ? 'paid' : (remainingDue === 0 ? 'paid' : 'unpaid'),
+            paymentStatus: resolvedPaymentStatus,
             scheduledAtIso: scheduledAt.toISOString(),
             address: fullAddress,
             lat: location?.lat || null,
@@ -1087,7 +1165,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             totalPrice: remainingDue,
             promoCode: appliedPromo?.code || null,
             discountApplied: useAmc ? service.basePrice : (appliedPromo ? (service.basePrice - finalPrice) : 0),
-            paymentMethod: useAmc ? 'wallet' : computedPaymentMethod,
+            paymentMethod: resolvedPaymentMethod,
             isAmcBooking: useAmc,
             amcId: useAmc ? activeAmc?.id : null,
             serviceOtp,
@@ -1102,7 +1180,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
               email: resolvedEmail
             },
             walletDeductAmount: walletDeduction,
-            originalBillValue: totalBill
+            originalBillValue: totalBill,
+            transactionId: onlinePaymentData?.txnId || null
           })
         });
       } catch (restErr: any) {
@@ -1130,47 +1209,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
       
       setShowFinalConfirmation(false);
+      setShowOnlineGateway(false);
+      setShowPhonePeModal(false);
       try {
         localStorage.removeItem('zomindia_pending_booking');
       } catch (cacheErr) {}
-
-      // Online Payment Enforcement: If Online Payment is selected and remaining due > 0, initiate PhonePe and launch payment gateway
-      if (paymentMethod === 'online' && remainingDue > 0 && !useAmc) {
-        setCreatedOnlineBookingId(bookingId);
-        setOnlineBookingAmount(remainingDue);
-
-        try {
-          const payRes = await fetch('/api/phonepe/pay', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: remainingDue,
-              bookingId,
-              customerUid: activeUid,
-              mobileNumber: resolvedMobile
-            })
-          });
-          const payData = await payRes.json();
-          if (payRes.ok && payData.success) {
-            setPhonePeRedirectUrl(payData.redirectUrl || '');
-            setShowPhonePeModal(true);
-            setPaymentFailureAlert(null);
-            setLoading(false);
-            return; // Stay on Step 3 with PhonePe Payment Modal active!
-          } else {
-            throw new Error(payData.error || 'PhonePe payment gateway initiation failed');
-          }
-        } catch (payErr: any) {
-          console.error("PhonePe initiation error:", payErr);
-          setShowPhonePeModal(false);
-          setPaymentFailureAlert("Payment Unsuccessful. Please try again or switch payment mode.");
-          if (typeof (window as any).__showToast === 'function') {
-            (window as any).__showToast("Payment Unsuccessful. Please try again or switch payment mode.", "error");
-          }
-          setLoading(false);
-          return; // Stay on Step 3!
-        }
-      }
 
       setShowSuccessModal(true);
       setStep(4);
@@ -2037,256 +2080,225 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-2xl border border-slate-150 p-3.5 space-y-3">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider text-left">Payment Method</p>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod('cash');
-                          setOnlineSubMethod(null);
-                          setError(null);
-                        }}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-white text-blue-900 shadow-xs border border-slate-200/40' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                         <span className="text-[11px]">Pay on arrival</span>
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setPaymentMethod('online');
-                          if (!onlineSubMethod) setOnlineSubMethod('upi');
-                          setError(null);
-                        }}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${paymentMethod === 'online' ? 'bg-white text-blue-900 shadow-xs border border-slate-200/40' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                         <span className="text-[11px]">Pay online</span>
-                      </button>
+                  {/* Modern Zomato/Blinkit Style Payment Drawer */}
+                  <div className="bg-white rounded-2xl border border-slate-150 p-4 space-y-4">
+                    <PaymentMethodSelector 
+                      totalBill={calculateFinalPrice()}
+                      walletBalance={profile?.walletBalance || 0}
+                      useWallet={useWalletBalance}
+                      onToggleWallet={(val) => {
+                        setUseWalletBalance(val);
+                        setError(null);
+                        setPaymentFailureAlert(null);
+                      }}
+                      selectedCategory={selectedPaymentCategory}
+                      selectedUpiApp={selectedUpiApp}
+                      customUpiId={customUpiId}
+                      onSelectCategory={handleSelectPaymentCategory}
+                      onSelectUpiApp={handleSelectUpiApp}
+                      onChangeCustomUpiId={(id) => {
+                        setCustomUpiId(id);
+                        handleSelectPaymentCategory('upi');
+                      }}
+                      cardNumber={cardNumber}
+                      onChangeCardNumber={(num) => {
+                        setCardNumber(num);
+                        handleSelectPaymentCategory('card');
+                      }}
+                      cardExpiry={cardExpiry}
+                      onChangeCardExpiry={(exp) => {
+                        setCardExpiry(exp);
+                        handleSelectPaymentCategory('card');
+                      }}
+                      cardCvv={cardCvv}
+                      onChangeCardCvv={(cvv) => {
+                        setCardCvv(cvv);
+                        handleSelectPaymentCategory('card');
+                      }}
+                      savingsAmount={(appliedPromo ? (appliedPromo.discountType === 'percent' ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) : appliedPromo.discountValue) : 0) + (profile?.isPremium ? getPrimeDiscountAmount() : 0)}
+                    />
+                  </div>
+  
+                  <div id="price-summary-container" className="pt-2 pb-1 text-left space-y-1">
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs font-medium text-slate-500">Service Base Price</p>
+                      <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
                     </div>
-                    {profile?.walletBalance !== undefined && profile.walletBalance > 0 && (
-                      <div className="mt-1">
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const nextVal = !useWalletBalance;
-                            setUseWalletBalance(nextVal);
-                            setError(null);
-                          }}
-                          className={`w-full flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer ${useWalletBalance ? 'border-emerald-500 bg-emerald-50/50 text-emerald-900 shadow-xs' : 'border-slate-200 bg-slate-50/30 text-slate-600 hover:border-slate-300'}`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[8px] ${useWalletBalance ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white'}`}>
-                              {useWalletBalance ? '✓' : ''}
-                            </span>
-                            <span className="text-[11px] font-semibold text-slate-700">Use wallet balance</span>
-                          </div>
-                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Bal: ₹{profile.walletBalance}</span>
-                        </button>
+                     {isSurgePricingActive() && (
+                      <div className="flex justify-between items-center bg-rose-50/50 px-2.5 py-1 rounded-lg border border-rose-100">
+                        <div className="flex items-center gap-1">
+                          <Zap size={10} className="text-rose-600 fill-rose-600 animate-pulse" />
+                          <p className="text-[11px] font-bold text-rose-650 uppercase">
+                            {time === '19:00' ? "Evening Surge (20% Extra)" : "Prime Surge"}
+                          </p>
+                        </div>
+                        <p className="text-[11px] font-heavy text-rose-650">+₹{getSurgeAmount()}</p>
                       </div>
                     )}
+                    {appliedPromo && (
+                      <div className="flex justify-between items-center bg-emerald-50/50 px-2.5 py-1 rounded-lg">
+                        <div className="flex items-center gap-1">
+                          <Zap size={10} className="text-emerald-600 fill-emerald-600" />
+                          <p className="text-[11px] font-bold text-emerald-650 uppercase">Promo Code ({appliedPromo.code})</p>
+                        </div>
+                        <p className="text-[11px] font-heavy text-emerald-650">-₹{appliedPromo.discountType === 'percent' 
+                          ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) 
+                          : appliedPromo.discountValue}</p>
+                      </div>
+                    )}
+                    {profile?.isPremium && (
+                      <div className="flex justify-between items-center bg-indigo-50/50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                        <div className="flex items-center gap-1">
+                          <Zap size={10} className="text-indigo-600 fill-indigo-600" />
+                          <p className="text-[11px] font-bold text-indigo-650 uppercase">Prime Club (15% Off)</p>
+                        </div>
+                        <p className="text-[11px] font-heavy text-indigo-[650]">-₹{getPrimeDiscountAmount()}</p>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs font-medium text-slate-500 font-mono">Tax & Convenience Charges</p>
+                      <p className="text-xs font-bold text-slate-450 italic">On Arrival</p>
+                    </div>
+
+                    {useWalletBalance && (
+                      <>
+                        <div className="flex justify-between items-center bg-emerald-50/70 px-2.5 py-1 rounded-lg border border-emerald-100">
+                          <div className="flex items-center gap-1">
+                            <span className="text-emerald-600">💼</span>
+                            <p className="text-[11px] font-bold text-emerald-700 uppercase">Wallet applied</p>
+                          </div>
+                          <p className="text-[11px] font-black text-emerald-700">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</p>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex justify-between items-center pt-2.5 mt-2.5 border-t border-slate-100">
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">
+                          {useWalletBalance ? "Remaining due" : "Final payable"}
+                        </p>
+                        <p className="text-xl font-black text-slate-900 tracking-tight">
+                          ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
+                        </p>
+                      </div>
+                      <div className="text-slate-350 shrink-0">
+                         <CheckCircle2 size={24} className={useWalletBalance ? "text-emerald-500" : ""} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modern Floating / Sticky Bottom Action Bar (Zomato/Blinkit Style) */}
+                  <div className="sticky bottom-0 bg-white/95 backdrop-blur-md border-t border-slate-200 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-10px_25px_rgba(15,23,42,0.06)] flex flex-col shrink-0">
+                    {paymentFailureAlert && (
+                      <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl mb-3 space-y-3 shadow-md text-left">
+                        <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
+                          <AlertCircle size={18} className="text-rose-600 shrink-0" />
+                          <span>{paymentFailureAlert}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 font-medium">Choose an option below to proceed with your booking:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={phonePeProcessing}
+                            onClick={handleRetryPhonePe}
+                            className="py-2.5 px-3 bg-purple-700 hover:bg-purple-800 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                          >
+                            💳 Retry PhonePe
+                          </button>
+                          <button
+                            type="button"
+                            disabled={phonePeProcessing}
+                            onClick={handleSwitchToCODInBooking}
+                            className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                          >
+                            💵 Switch to Cash (COD)
+                          </button>
+                          {profile?.walletBalance !== undefined && profile.walletBalance >= onlineBookingAmount && (
+                            <button
+                              type="button"
+                              disabled={phonePeProcessing}
+                              onClick={handlePayWithWalletFallback}
+                              className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
+                            >
+                              💼 Pay via Wallet
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {(() => {
                       const totalBill = calculateFinalPrice();
                       const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
-                      const remainingDue = totalBill - walletDeduction;
+                      const finalPayable = Math.max(0, totalBill - walletDeduction);
+                      const isWalletCoveringAll = useWalletBalance && (profile?.walletBalance || 0) >= totalBill;
+                      const savingsAmount = (appliedPromo ? (appliedPromo.discountType === 'percent' ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) : appliedPromo.discountValue) : 0) + (profile?.isPremium ? getPrimeDiscountAmount() : 0);
+                      const isOnlineSelected = (
+                        selectedPaymentCategory === 'upi' || 
+                        selectedPaymentCategory === 'card' || 
+                        paymentMethod === 'upi' || 
+                        paymentMethod === 'card' || 
+                        paymentMethod === 'online'
+                      ) && !isWalletCoveringAll;
 
-                      if (useWalletBalance && remainingDue > 0) {
-                        return (
-                          <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2.5 mt-2">
-                            <span className="block text-[10px] font-bold text-slate-500 text-left">
-                              Remaining balance due via:
+                      return (
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="text-left shrink-0">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block leading-none mb-0.5">
+                              {useWalletBalance && finalPayable === 0 ? "Paid from Wallet" : "To Pay"}
                             </span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPaymentMethod('online');
-                                  setOnlineSubMethod('upi');
-                                  setError(null);
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'upi' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                              >
-                                📱 UPI (GPay/PhonePe)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPaymentMethod('online');
-                                  setOnlineSubMethod('card');
-                                  setError(null);
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'online' && onlineSubMethod === 'card' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                              >
-                                💳 Card / Net Banking
-                              </button>
-                            </div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <div className="h-[1px] bg-slate-200 flex-1"></div>
-                              <span className="text-[8px] font-bold text-slate-400">or</span>
-                              <div className="h-[1px] bg-slate-200 flex-1"></div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                  setPaymentMethod('cash');
-                                  setOnlineSubMethod(null);
-                                  setError(null);
-                                }}
-                                className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${paymentMethod === 'cash' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                              >
-                                💵 Pay outstanding on arrival (Cash)
-                              </button>
-                            </div>
-                          );
-                        } else if (paymentMethod === 'online') {
-                          return (
-                            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2 mt-2">
-                              <span className="block text-[10px] font-bold text-slate-500 text-left">
-                                Select online mode:
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                                ₹{finalPayable}
                               </span>
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setOnlineSubMethod('upi');
-                                    setError(null);
-                                  }}
-                                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${onlineSubMethod === 'upi' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                                >
-                                  📱 UPI (GPay/PhonePe)
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setOnlineSubMethod('card');
-                                    setError(null);
-                                  }}
-                                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer ${onlineSubMethod === 'card' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
-                                >
-                                  💳 Card / Net Banking
-                                </button>
-                              </div>
+                              {service.basePrice > finalPayable && (
+                                <span className="text-xs text-slate-400 line-through font-semibold">
+                                  ₹{service.basePrice}
+                                </span>
+                              )}
                             </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-  
-                    <div id="price-summary-container" className="pt-2 pb-1 text-left space-y-1">
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs font-medium text-slate-500">Service Base Price</p>
-                        <p className="text-xs font-bold text-slate-900">₹{service.basePrice}</p>
-                      </div>
-                       {isSurgePricingActive() && (
-                        <div className="flex justify-between items-center bg-rose-50/50 px-2.5 py-1 rounded-lg border border-rose-100">
-                          <div className="flex items-center gap-1">
-                            <Zap size={10} className="text-rose-600 fill-rose-600 animate-pulse" />
-                            <p className="text-[11px] font-bold text-rose-650 uppercase">
-                              {time === '19:00' ? "Evening Surge (20% Extra)" : "Prime Surge"}
-                            </p>
-                          </div>
-                          <p className="text-[11px] font-heavy text-rose-650">+₹{getSurgeAmount()}</p>
-                        </div>
-                      )}
-                      {appliedPromo && (
-                        <div className="flex justify-between items-center bg-emerald-50/50 px-2.5 py-1 rounded-lg">
-                          <div className="flex items-center gap-1">
-                            <Zap size={10} className="text-emerald-600 fill-emerald-600" />
-                            <p className="text-[11px] font-bold text-emerald-650 uppercase">Promo Code ({appliedPromo.code})</p>
-                          </div>
-                          <p className="text-[11px] font-heavy text-emerald-650">-₹{appliedPromo.discountType === 'percent' 
-                            ? Math.round((service.basePrice * appliedPromo.discountValue) / 100) 
-                            : appliedPromo.discountValue}</p>
-                        </div>
-                      )}
-                      {profile?.isPremium && (
-                        <div className="flex justify-between items-center bg-indigo-50/50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                          <div className="flex items-center gap-1">
-                            <Zap size={10} className="text-indigo-600 fill-indigo-600" />
-                            <p className="text-[11px] font-bold text-indigo-650 uppercase">Prime Club (15% Off)</p>
-                          </div>
-                          <p className="text-[11px] font-heavy text-indigo-[650]">-₹{getPrimeDiscountAmount()}</p>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs font-medium text-slate-500 font-mono">Tax & Convenience Charges</p>
-                        <p className="text-xs font-bold text-slate-450 italic">On Arrival</p>
-                      </div>
-  
-                      {useWalletBalance && (
-                        <>
-                          <div className="flex justify-between items-center bg-emerald-50/70 px-2.5 py-1 rounded-lg border border-emerald-100">
-                            <div className="flex items-center gap-1">
-                              <span className="text-emerald-600">💼</span>
-                              <p className="text-[11px] font-bold text-emerald-700 uppercase">Wallet applied</p>
-                            </div>
-                            <p className="text-[11px] font-black text-emerald-700">-₹{Math.min(profile?.walletBalance || 0, calculateFinalPrice())}</p>
-                          </div>
-                        </>
-                      )}
-  
-                      <div className="flex justify-between items-center pt-2.5 mt-2.5 border-t border-slate-100">
-                        <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">
-                            {useWalletBalance ? "Remaining due" : "Final payable"}
-                          </p>
-                          <p className="text-xl font-black text-slate-900 tracking-tight">
-                            ₹{useWalletBalance ? Math.max(0, calculateFinalPrice() - (profile?.walletBalance || 0)) : calculateFinalPrice()}
-                          </p>
-                        </div>
-                        <div className="text-slate-350 shrink-0">
-                           <CheckCircle2 size={24} className={useWalletBalance ? "text-emerald-500" : ""} />
-                        </div>
-                      </div>
-                    </div>
-  
-                    <div className="sticky bottom-0 bg-white border-t border-slate-100 py-3.5 mt-5 -mx-4 sm:-mx-8 px-4 sm:px-8 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] flex flex-col shrink-0">
-                      {paymentFailureAlert && (
-                        <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl mb-3 space-y-3 shadow-md text-left">
-                          <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
-                            <AlertCircle size={18} className="text-rose-600 shrink-0" />
-                            <span>{paymentFailureAlert}</span>
-                          </div>
-                          <p className="text-[10px] text-slate-600 font-medium">Choose an option below to proceed with your booking:</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                            <button
-                              type="button"
-                              disabled={phonePeProcessing}
-                              onClick={handleRetryPhonePe}
-                              className="py-2.5 px-3 bg-purple-700 hover:bg-purple-800 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
-                            >
-                              💳 Retry PhonePe
-                            </button>
-                            <button
-                              type="button"
-                              disabled={phonePeProcessing}
-                              onClick={handleSwitchToCODInBooking}
-                              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
-                            >
-                              💵 Switch to Cash (COD)
-                            </button>
-                            {profile?.walletBalance !== undefined && profile.walletBalance >= onlineBookingAmount && (
-                              <button
-                                type="button"
-                                disabled={phonePeProcessing}
-                                onClick={handlePayWithWalletFallback}
-                                className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm transition-all cursor-pointer text-center disabled:opacity-50"
-                              >
-                                💼 Pay via Wallet
-                              </button>
+                            {savingsAmount > 0 && (
+                              <span className="text-[10px] font-bold text-emerald-600 block">
+                                Saved ₹{savingsAmount}
+                              </span>
                             )}
                           </div>
-                        </div>
-                      )}
 
-                      <button 
-                        disabled={loading}
-                        onClick={handleConfirmServiceClick}
-                        className="w-full bg-blue-700 text-white py-3 rounded-xl font-bold text-sm tracking-wide hover:bg-blue-800 transition-all flex justify-center items-center gap-1.5 shadow active:scale-[0.98] cursor-pointer"
-                      >
-                        {loading ? 'Processing...' : 'Confirm Booking'}
-                      </button>
-                    </div>
+                          <motion.button 
+                            whileTap={{ scale: 0.97 }}
+                            disabled={loading}
+                            onClick={handleConfirmServiceClick}
+                            className={`flex-1 py-3.5 px-5 sm:px-6 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all flex justify-center items-center gap-2 shadow-lg active:scale-[0.98] cursor-pointer disabled:opacity-50 ${
+                              isWalletCoveringAll 
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/25'
+                                : isOnlineSelected
+                                ? 'bg-[#002e6e] hover:bg-blue-900 text-white shadow-blue-900/25'
+                                : 'bg-slate-900 hover:bg-black text-white shadow-slate-900/25'
+                            }`}
+                          >
+                            {loading ? (
+                              <span className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                Processing Booking...
+                              </span>
+                            ) : isWalletCoveringAll ? (
+                              <>
+                                <Wallet size={16} /> Pay ₹{totalBill} via Wallet &amp; Book
+                              </>
+                            ) : isOnlineSelected ? (
+                              <>
+                                <Lock size={14} className="text-emerald-300" /> Proceed to Payment Gateway (₹{finalPayable}) <ArrowRight size={14} />
+                              </>
+                            ) : (
+                              <>
+                                <Banknote size={16} /> Confirm Booking (Pay on Arrival)
+                              </>
+                            )}
+                          </motion.button>
+                        </div>
+                      );
+                    })()}
+                  </div>
                   </motion.div>
               )}
 
@@ -2365,6 +2377,32 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </motion.div>
               </div>
             )}
+
+            {/* Centralized Online Payment Gateway Checkout Modal */}
+            <OnlinePaymentGatewayModal
+              isOpen={showOnlineGateway}
+              amount={onlineBookingAmount || Math.max(0, calculateFinalPrice() - (useWalletBalance ? Math.min(profile?.walletBalance || 0, calculateFinalPrice()) : 0))}
+              serviceName={service.name}
+              customerName={profile?.fullName || 'Customer'}
+              customerPhone={contactPhone || profile?.phoneNumber || profile?.mobile || ''}
+              customerEmail={contactEmail || profile?.email || ''}
+              bookingDetails={{
+                date,
+                time,
+                address
+              }}
+              onClose={() => {
+                setShowOnlineGateway(false);
+                setError("Payment incomplete. Please try again.");
+              }}
+              onPaymentCancel={() => {
+                setShowOnlineGateway(false);
+                setError("Payment incomplete. Please try again.");
+              }}
+              onPaymentSuccess={async (paymentData) => {
+                await handleBooking(contactEmail, contactPhone, paymentData);
+              }}
+            />
 
             {showLocalLogin && (
               <AuthModal
@@ -2690,7 +2728,26 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       setContactEmail(emailTrimmed);
                       setContactPhone(phoneDigits);
                       setShowContactPopup(false);
-                      await handleBooking(emailTrimmed, phoneDigits);
+                      setLoading(false);
+
+                      const totalBill = calculateFinalPrice();
+                      const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
+                      const remainingDue = Math.max(0, totalBill - walletDeduction);
+                      const isWalletCoveringAll = useWalletBalance && (profile?.walletBalance || 0) >= totalBill;
+                      const isPayOnline = (
+                        selectedPaymentCategory === 'upi' || 
+                        selectedPaymentCategory === 'card' || 
+                        paymentMethod === 'upi' || 
+                        paymentMethod === 'card' || 
+                        paymentMethod === 'online'
+                      ) && remainingDue > 0 && !useAmc && !isWalletCoveringAll;
+
+                      if (isPayOnline) {
+                        setOnlineBookingAmount(remainingDue);
+                        setShowOnlineGateway(true);
+                      } else {
+                        await handleBooking(emailTrimmed, phoneDigits);
+                      }
                     }}
                     className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                   >

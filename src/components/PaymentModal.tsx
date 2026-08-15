@@ -1,10 +1,25 @@
 import React, { useState } from 'react';
-import { doc, updateDoc, Timestamp, getDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking, UserProfile } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CreditCard, Lock, ShieldCheck, AlertCircle, Smartphone, Wallet } from 'lucide-react';
+import { 
+  X, 
+  CreditCard, 
+  Lock, 
+  ShieldCheck, 
+  AlertCircle, 
+  Smartphone, 
+  Wallet, 
+  Banknote, 
+  CheckCircle2, 
+  Check, 
+  QrCode, 
+  Zap,
+  ArrowRight
+} from 'lucide-react';
+import PaymentMethodSelector, { PaymentCategoryType, UpiSubAppType } from './PaymentMethodSelector';
+import OnlinePaymentGatewayModal, { PaymentSuccessData } from './OnlinePaymentGatewayModal';
 
 interface PaymentModalProps {
   booking: Booking;
@@ -17,9 +32,37 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showOnlineGateway, setShowOnlineGateway] = useState(false);
+
+  // Payment Selection States
+  const [selectedCategory, setSelectedCategory] = useState<PaymentCategoryType>(
+    booking.paymentMethod === 'cash' ? 'cash' : 'upi'
+  );
+  const [selectedUpiApp, setSelectedUpiApp] = useState<UpiSubAppType>('gpay');
+  const [customUpiId, setCustomUpiId] = useState('');
+  const [useWallet, setUseWallet] = useState(false);
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+
+  const handleSelectCategory = (cat: PaymentCategoryType) => {
+    setSelectedCategory(cat);
+    setError(null);
+  };
+
+  const handleSelectUpiApp = (app: UpiSubAppType) => {
+    setSelectedUpiApp(app);
+    setSelectedCategory('upi');
+    setError(null);
+  };
+
+  const totalBill = booking.totalPrice || 0;
+  const walletDeduction = useWallet ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
+  const finalPayable = Math.max(0, totalBill - walletDeduction);
+  const isWalletFullyCovering = useWallet && (profile?.walletBalance || 0) >= totalBill;
 
   const handleWalletPayment = async () => {
-    if (!profile.walletBalance || profile.walletBalance < booking.totalPrice) {
+    if (!profile.walletBalance || profile.walletBalance < totalBill) {
       setError("Insufficient wallet balance.");
       return;
     }
@@ -53,7 +96,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       setShowSuccess(true);
       setTimeout(() => {
         onSuccess();
-      }, 2500);
+      }, 2000);
 
     } catch (err: any) {
        console.error("Wallet Payment Error:", err);
@@ -94,7 +137,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: booking.totalPrice,
+          amount: finalPayable,
           bookingId: booking.id,
           customerUid: profile.uid,
           mobileNumber: resolvedMobile
@@ -116,7 +159,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
             bookingId: booking.id,
             customerUid: profile.uid,
             merchantTransactionId: data.merchantTransactionId,
-            amount: booking.totalPrice
+            amount: finalPayable
           })
         });
 
@@ -147,22 +190,89 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     }
   };
 
+  const handleOnlinePaymentConfirmed = async (paymentData: PaymentSuccessData) => {
+    setProcessing(true);
+    setError(null);
+    setShowOnlineGateway(false);
+
+    try {
+      // Direct update in Firestore
+      const bRef = doc(db, 'bookings', booking.id);
+      await updateDoc(bRef, {
+        paymentStatus: 'paid',
+        paymentMethod: walletDeduction > 0 ? 'wallet+online' : 'online',
+        transactionId: paymentData.txnId,
+        onlinePaymentProvider: paymentData.provider,
+        onlinePaymentMethod: paymentData.method,
+        paidAmount: paymentData.amount,
+        status: booking.status === 'pending' ? 'confirmed' : booking.status,
+        updatedAt: Timestamp.now()
+      });
+
+      // If partial wallet deduction was used, debit wallet
+      if (walletDeduction > 0) {
+        try {
+          await fetch('/api/pay-via-wallet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: booking.id, userId: profile.uid, amount: walletDeduction }),
+          });
+        } catch (walletErr) {
+          console.warn("Wallet partial debit notice:", walletErr);
+        }
+      }
+
+      // Send confirmation bill email
+      try {
+        await fetch('/api/send-final-bill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: booking.id, requesterUid: profile.uid }),
+        });
+      } catch (billErr) {
+        console.warn("Final bill trigger notice:", billErr);
+      }
+
+      setShowSuccess(true);
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    } catch (err: any) {
+      console.error("Payment Confirmation Error:", err);
+      setError(err.message || "Failed to confirm payment on server.");
+      setProcessing(false);
+    }
+  };
+
+  const handleExecutePayment = () => {
+    if (isWalletFullyCovering) {
+      handleWalletPayment();
+      return;
+    }
+
+    if (selectedCategory === 'cash') {
+      handleSwitchToCOD();
+      return;
+    }
+
+    // UPI or Card -> Proceed to Payment Gateway Checkout Modal
+    setShowOnlineGateway(true);
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        // Disabled backdrop dismissal to prevent accidental screen close on keyboard mistouches (e.g. typing payment details)
-        onClick={undefined}
-        className="absolute inset-0 bg-blue-700/60 backdrop-blur-sm" 
+        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm" 
       />
       
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative bg-white w-full max-w-lg rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        initial={{ opacity: 0, y: 50, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 50, scale: 0.98 }}
+        className="relative bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] z-10"
       >
         <AnimatePresence>
           {showSuccess && (
@@ -172,16 +282,18 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-[110] bg-white flex flex-col items-center justify-center p-8 text-center"
             >
-              <div className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl">
+              <div className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/20">
                 <ShieldCheck size={40} />
               </div>
-              <h3 className="text-3xl font-display font-bold text-slate-900 italic mb-2">Payment Confirmed</h3>
-              <p className="text-slate-500 font-medium mb-8 leading-relaxed">Transaction successful! Your booking is now finalized.</p>
-              <div className="w-12 h-1 bg-emerald-100 rounded-full overflow-hidden">
+              <h3 className="text-2xl font-black text-slate-900 mb-2">Payment Confirmed</h3>
+              <p className="text-slate-500 font-medium mb-8 leading-relaxed">
+                {selectedCategory === 'cash' ? 'Pay on arrival selected! Your booking is confirmed.' : 'Transaction successful! Your booking is confirmed.'}
+              </p>
+              <div className="w-16 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
                 <motion.div 
                   initial={{ x: '-100%' }}
                   animate={{ x: '100%' }}
-                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                  transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
                   className="w-full h-full bg-emerald-500"
                 />
               </div>
@@ -189,85 +301,150 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           )}
         </AnimatePresence>
 
-        <div className="p-6 md:p-8 pb-4 flex justify-between items-center border-b border-slate-100 shrink-0">
-          <h3 className="font-bold text-lg md:text-xl text-slate-900 flex items-center gap-2">
-            <CreditCard size={20} className="text-slate-400" />
-            Payment Gateway
-          </h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
-            <X size={20} />
+        {/* Modal Header */}
+        <div className="p-4 sm:p-5 pb-3 flex justify-between items-center border-b border-slate-100 shrink-0 bg-white">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+              <CreditCard size={18} />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-tight">
+                Select Payment Mode
+              </h3>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Booking #{booking.id.slice(-6).toUpperCase()}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-full transition-colors cursor-pointer"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        <div className="p-6 md:p-8 overflow-y-auto no-scrollbar">
-          <div className="space-y-6">
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200">
-              <div className="flex justify-between items-center mb-6">
-                <p className="text-xs text-slate-400 uppercase font-bold tracking-widest">Amount to Pay</p>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-slate-900">₹{booking.totalPrice}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Inclusive of all taxes</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
-                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                  <Smartphone size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">UPI / Cards / Netbanking</p>
-                  <p className="text-xs text-slate-500">Secure Indian payment methods</p>
-                </div>
-              </div>
+        {/* Modal Scrollable Content */}
+        <div className="p-4 sm:p-6 overflow-y-auto no-scrollbar space-y-4 pb-24">
+          
+          {error && (
+            <div className="text-rose-600 text-xs font-semibold bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex gap-2 items-center">
+              <AlertCircle size={16} className="shrink-0 text-rose-500" /> 
+              <span>{error}</span>
             </div>
+          )}
 
-            {error && (
-              <div className="text-rose-500 text-sm font-semibold bg-rose-50 p-4 rounded-2xl flex gap-2 items-center">
-                <AlertCircle size={16} /> {error}
-              </div>
-            )}
+          {/* Payment Method Selector Component */}
+          <PaymentMethodSelector 
+            totalBill={totalBill}
+            walletBalance={profile?.walletBalance || 0}
+            useWallet={useWallet}
+            onToggleWallet={(val) => {
+              setUseWallet(val);
+              setError(null);
+            }}
+            selectedCategory={selectedCategory}
+            selectedUpiApp={selectedUpiApp}
+            customUpiId={customUpiId}
+            onSelectCategory={handleSelectCategory}
+            onSelectUpiApp={handleSelectUpiApp}
+            onChangeCustomUpiId={(id) => {
+              setCustomUpiId(id);
+              handleSelectCategory('upi');
+            }}
+            cardNumber={cardNumber}
+            onChangeCardNumber={(num) => {
+              setCardNumber(num);
+              handleSelectCategory('card');
+            }}
+            cardExpiry={cardExpiry}
+            onChangeCardExpiry={(exp) => {
+              setCardExpiry(exp);
+              handleSelectCategory('card');
+            }}
+            cardCvv={cardCvv}
+            onChangeCardCvv={(cvv) => {
+              setCardCvv(cvv);
+              handleSelectCategory('card');
+            }}
+          />
+        </div>
 
-            <div className="flex flex-col gap-4">
-              {profile.walletBalance && profile.walletBalance >= booking.totalPrice ? (
-                <button
-                  onClick={handleWalletPayment}
-                  disabled={processing}
-                  className="w-full bg-emerald-500 text-white py-5 rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all flex justify-center items-center gap-3 shadow-xl shadow-emerald-500/20 disabled:opacity-50 active:scale-95"
-                >
-                  <Wallet size={20} />
-                  {processing ? 'Processing...' : `Pay from Wallet (Bal: ₹${profile.walletBalance})`}
-                </button>
-              ) : null}
-
-              <button
-                onClick={handlePhonePePayment}
-                disabled={processing}
-                className="w-full bg-purple-700 text-white py-5 rounded-2xl font-black text-lg hover:bg-purple-800 transition-all flex justify-center items-center gap-3 shadow-xl shadow-purple-700/20 disabled:opacity-50 active:scale-95"
-              >
-                <CreditCard size={20} />
-                {processing ? 'Launching PhonePe...' : `Pay via PhonePe ₹${booking.totalPrice}`}
-              </button>
-
-              <button
-                onClick={handleSwitchToCOD}
-                disabled={processing}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-3.5 rounded-2xl font-bold text-sm transition-all flex justify-center items-center gap-2 border border-slate-200 cursor-pointer disabled:opacity-50 active:scale-95"
-              >
-                💵 Switch to Cash on Delivery (COD)
-              </button>
-              
-              <div className="flex items-center justify-center gap-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                 <div className="flex items-center gap-1.5"><ShieldCheck size={12} /> Secure</div>
-                 <div className="flex items-center gap-1.5"><Lock size={12} /> Encrypted</div>
-                 <div className="flex items-center gap-1.5"><CreditCard size={12} /> PhonePe PG</div>
-              </div>
-
-              <div className="pt-4 text-center">
-                <p className="text-[10px] text-slate-400 font-medium">Powered by PhonePe Secure Gateway</p>
-              </div>
+        {/* Modern Sticky Bottom Action Bar (Zomato/Blinkit Style) */}
+        <div className="absolute bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-150 p-4 shadow-[0_-8px_25px_rgba(15,23,42,0.06)] z-20 flex items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block leading-none mb-0.5">
+              {useWallet && finalPayable === 0 ? "Paid from wallet" : "To Pay"}
+            </span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-black text-slate-900 tracking-tight">
+                ₹{finalPayable}
+              </span>
+              {walletDeduction > 0 && (
+                <span className="text-[10px] font-bold text-emerald-600">
+                  (-₹{walletDeduction} wallet)
+                </span>
+              )}
             </div>
           </div>
+
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            disabled={processing}
+            onClick={handleExecutePayment}
+            className={`flex-1 py-3.5 px-5 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+              isWalletFullyCovering
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                : selectedCategory === 'cash'
+                ? 'bg-slate-900 hover:bg-black text-white shadow-slate-900/20'
+                : 'bg-[#002e6e] hover:bg-blue-900 text-white shadow-blue-900/20'
+            }`}
+          >
+            {processing ? (
+              <span className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Processing...
+              </span>
+            ) : isWalletFullyCovering ? (
+              <>
+                <Wallet size={16} /> Pay ₹{totalBill} via Wallet &amp; Confirm
+              </>
+            ) : selectedCategory === 'cash' ? (
+              <>
+                <Banknote size={16} /> Confirm Booking (Pay on Arrival)
+              </>
+            ) : (
+              <>
+                <Lock size={14} className="text-emerald-300" /> Proceed to Payment Gateway (₹{finalPayable}) <ArrowRight size={14} />
+              </>
+            )}
+          </motion.button>
         </div>
+
+        {/* Centralized Online Payment Gateway Checkout Modal */}
+        <OnlinePaymentGatewayModal
+          isOpen={showOnlineGateway}
+          amount={finalPayable}
+          serviceName={(booking as any).serviceName || 'Home Service'}
+          customerName={booking.customerName || (booking as any).customerBookedName || profile.fullName || 'Customer'}
+          customerPhone={booking.customerMobile || (booking as any).customerBookedPhone || (profile as any).phoneNumber || (profile as any).mobile || ''}
+          customerEmail={(booking as any).customerEmail || (booking as any).customerBookedEmail || profile.email || ''}
+          bookingDetails={{
+            date: booking.scheduledAt?.toDate?.() ? booking.scheduledAt.toDate().toLocaleDateString('en-IN') : 'Scheduled Slot',
+            time: booking.scheduledAt?.toDate?.() ? booking.scheduledAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            address: booking.address || ''
+          }}
+          onClose={() => {
+            setShowOnlineGateway(false);
+            setError("Payment incomplete. Please try again.");
+          }}
+          onPaymentCancel={() => {
+            setShowOnlineGateway(false);
+            setError("Payment incomplete. Please try again.");
+          }}
+          onPaymentSuccess={handleOnlinePaymentConfirmed}
+        />
+
       </motion.div>
     </div>
   );

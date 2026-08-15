@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -36,7 +36,6 @@ import AiSupportChat from "./AiSupportChat";
 import {
   Map,
   AdvancedMarker,
-  useMap,
 } from "@vis.gl/react-google-maps";
 import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
@@ -71,6 +70,8 @@ import {
   Moon,
   ChevronDown,
   ChevronUp,
+  CreditCard,
+  AlertCircle,
 } from "lucide-react";
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
@@ -375,15 +376,154 @@ interface Props {
   setActiveTab?: (tab: string, arg?: string | null) => void;
 }
 
+const BookingStatusTracker = ({ status }: { status: Booking["status"] }) => {
+  const stages: { key: Booking["status"][]; label: string; icon: any }[] = [
+    {
+      key: ["pending", "pending_parts"],
+      label: "Confirmed",
+      icon: Clock,
+    },
+    {
+      key: ["confirmed", "assigned"],
+      label: "Expert Assigned",
+      icon: User,
+    },
+    { key: ["on_the_way", "arrived"], label: "On The Way", icon: Navigation },
+    { key: ["in_progress"], label: "In Progress", icon: Zap },
+    {
+      key: ["completed", "finalized", "closed"],
+      label: "Completed",
+      icon: CheckCircle2,
+    },
+  ];
+
+  const currentStageIndex = stages.findIndex((s) => s.key.includes(status));
+  const activeIndex = currentStageIndex >= 0 ? currentStageIndex : 0;
+
+  return (
+    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm my-2">
+      <div className="relative w-full max-w-2xl mx-auto py-2">
+        {/* Track Line Background */}
+        <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-1 bg-slate-150 bg-slate-200/70 rounded-full z-0" />
+        {/* Active Progress Line */}
+        <div
+          className="absolute top-[18px] sm:top-[20px] left-6 h-1 bg-gradient-to-r from-[#002e6e] via-[#e11d48] to-[#22c55e] rounded-full z-0 transition-all duration-500"
+          style={{
+            width: `${
+              status === "completed" || status === "finalized" || status === "closed"
+                ? "100%"
+                : `${Math.min(100, (activeIndex / (stages.length - 1)) * 100)}%`
+            }`,
+          }}
+        />
+
+        <div className="flex items-center justify-between relative z-10">
+          {stages.map((stage, idx) => {
+            const isCompleted =
+              idx < activeIndex ||
+              status === "completed" ||
+              status === "finalized" ||
+              status === "closed";
+            const isCurrent = idx === activeIndex && !["completed", "finalized", "closed"].includes(status);
+            const Icon = stage.icon;
+
+            return (
+              <div key={idx} className="flex flex-col items-center">
+                <div
+                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                    isCompleted
+                      ? "bg-[#22c55e] border-[#22c55e] text-white shadow-sm"
+                      : isCurrent
+                      ? "bg-[#002e6e] border-[#002e6e] text-white ring-4 ring-[#002e6e]/15 shadow-md scale-110"
+                      : "bg-white border-slate-200 text-slate-300"
+                  }`}
+                >
+                  <Icon size={16} />
+                </div>
+                <span
+                  className={`text-[9px] sm:text-[10px] font-black tracking-wider uppercase mt-2 text-center max-w-[75px] leading-tight ${
+                    isCompleted
+                      ? "text-emerald-700 font-black"
+                      : isCurrent
+                      ? "text-[#002e6e] font-black"
+                      : "text-slate-400 font-bold"
+                  }`}
+                >
+                  {stage.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function CustomerDashboard({
   profile,
   onServiceSelect,
   initialExpandedBookingId,
   setActiveTab,
 }: Props) {
+  // PWA states
   const [showPwaInstall, setShowPwaInstall] = useState(false);
   const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
 
+  // Booking and partner states
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isCalling, setIsCalling] = useState<boolean>(false);
+  const [partners, setPartners] = useState<Record<string, UserProfile>>({});
+  const [partnerDetails, setPartnerDetails] = useState<Record<string, PartnerProfile>>({});
+  const [services, setServices] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+  const [trackingBookingId, setTrackingBookingId] = useState<string | null>(null);
+  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(initialExpandedBookingId || null);
+  const [expandedTrackerId, setExpandedTrackerId] = useState<string | null>(null);
+  const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
+  const [routingCallBookingId, setRoutingCallBookingId] = useState<string | null>(null);
+  const [activeBookingChat, setActiveBookingChat] = useState<Booking | null>(null);
+  const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(null);
+
+  // Modal and action states
+  const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
+  const [finalizingBooking, setFinalizingBooking] = useState<Booking | null>(null);
+  const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
+  const [allActiveServices, setAllActiveServices] = useState<Service[]>([]);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
+
+  // Payment scanner and history search/filters states
+  const [isPaymentScannerOpen, setIsPaymentScannerOpen] = useState(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyCategoryFilter, setHistoryCategoryFilter] = useState<string | null>(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+
+  // Support request states
+  const [supportBookingId, setSupportBookingId] = useState<string | null>(null);
+  const [supportReason, setSupportReason] = useState("");
+  const [supportSubmitted, setSupportSubmitted] = useState(false);
+
+  // Rating & review states
+  const [dbRatedBookings, setDbRatedBookings] = useState<Record<string, boolean>>({});
+  const [dismissedHistoryCards, setDismissedHistoryCards] = useState<Record<string, boolean>>({});
+  const [successCheckedCards, setSuccessCheckedCards] = useState<Record<string, boolean>>({});
+  const [inlineRatings, setInlineRatings] = useState<Record<string, number>>({});
+  const [inlineComments, setInlineComments] = useState<Record<string, string>>({});
+  const [inlineSubmittingId, setInlineSubmittingId] = useState<string | null>(null);
+  const [rating, setRating] = useState(0);
+  const [ratingPartner, setRatingPartner] = useState(0);
+  const [ratingProcess, setRatingProcess] = useState(0);
+  const [ratingSafety, setRatingSafety] = useState(0);
+  const [ratingZomIndia, setRatingZomIndia] = useState(0);
+  const [comment, setComment] = useState("");
+  const [reviewPhoto, setReviewPhoto] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // PWA prompt effect
   useEffect(() => {
     const checkPrompt = () => {
       setShowPwaInstall(!!(window as any).deferredPrompt);
@@ -432,26 +572,6 @@ export default function CustomerDashboard({
       window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
     }
   };
-
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isCalling, setIsCalling] = useState<boolean>(false);
-  const [partners, setPartners] = useState<Record<string, UserProfile>>({});
-  const [partnerDetails, setPartnerDetails] = useState<
-    Record<string, PartnerProfile>
-  >({});
-  const [services, setServices] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
-  const [trackingBookingId, setTrackingBookingId] = useState<string | null>(
-    null,
-  );
-  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(
-    initialExpandedBookingId || null,
-  );
-  const [expandedTrackerId, setExpandedTrackerId] = useState<string | null>(
-    null,
-  );
-  const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
-  const [routingCallBookingId, setRoutingCallBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialExpandedBookingId) {
@@ -518,12 +638,6 @@ export default function CustomerDashboard({
 
     return () => unsubscribes.forEach((unsub) => unsub());
   }, [activeBookingIds, activeBookings]);
-  const [activeBookingChat, setActiveBookingChat] = useState<Booking | null>(
-    null,
-  );
-  const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(
-    null,
-  );
 
   const activeCoordinatedCallBooking = useMemo(() => {
     return bookings.find(
@@ -589,33 +703,6 @@ export default function CustomerDashboard({
     }
   };
 
-  const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
-  const [finalizingBooking, setFinalizingBooking] = useState<Booking | null>(
-    null,
-  );
-  const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
-  const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const [allActiveServices, setAllActiveServices] = useState<Service[]>([]);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState<
-    string | null
-  >(null);
-
-  // Payment scanner and history search/filters states
-  const [isPaymentScannerOpen, setIsPaymentScannerOpen] = useState(false);
-  const [historySearchQuery, setHistorySearchQuery] = useState("");
-  const [historyCategoryFilter, setHistoryCategoryFilter] = useState<
-    string | null
-  >(null);
-  const [showAllHistory, setShowAllHistory] = useState(false);
-
-  // Support request states
-  const [supportBookingId, setSupportBookingId] = useState<string | null>(null);
-  const [supportReason, setSupportReason] = useState("");
-  const [supportSubmitted, setSupportSubmitted] = useState(false);
-
   const handleInitiateSupport = (bookingId: string) => {
     console.log(`Support request initiated for Booking ID: ${bookingId}`);
     setSupportBookingId(bookingId);
@@ -645,18 +732,6 @@ export default function CustomerDashboard({
       }, 2000);
     }
   };
-
-  // State for tracking bookings that have already been rated/reviewed in Firestore
-  const [dbRatedBookings, setDbRatedBookings] = useState<Record<string, boolean>>({});
-  // State for tracking locally dismissed/hidden card IDs (for animating/smooth transition before hiding)
-  const [dismissedHistoryCards, setDismissedHistoryCards] = useState<Record<string, boolean>>({});
-  // State for custom 'checkmark' animation triggering for specific bookingIds
-  const [successCheckedCards, setSuccessCheckedCards] = useState<Record<string, boolean>>({});
-
-  // State for in-card inline ratings and comments drafts
-  const [inlineRatings, setInlineRatings] = useState<Record<string, number>>({});
-  const [inlineComments, setInlineComments] = useState<Record<string, string>>({});
-  const [inlineSubmittingId, setInlineSubmittingId] = useState<string | null>(null);
 
   // Hook to check if a booking has already been rated and feedback is submitted to Firestore
   useEffect(() => {
@@ -976,99 +1051,6 @@ export default function CustomerDashboard({
         return "bg-slate-100 text-[#002e6e] border border-slate-200 font-medium";
     }
   };
-
-  const BookingStatusTracker = ({ status }: { status: Booking["status"] }) => {
-    const stages: { key: Booking["status"][]; label: string; icon: any }[] = [
-      {
-        key: ["pending", "pending_parts"],
-        label: "Confirmed",
-        icon: Clock,
-      },
-      {
-        key: ["confirmed", "assigned"],
-        label: "Expert Assigned",
-        icon: User,
-      },
-      { key: ["on_the_way", "arrived"], label: "On The Way", icon: Navigation },
-      { key: ["in_progress"], label: "In Progress", icon: Zap },
-      {
-        key: ["completed", "finalized", "closed"],
-        label: "Completed",
-        icon: CheckCircle2,
-      },
-    ];
-
-    const currentStageIndex = stages.findIndex((s) => s.key.includes(status));
-    const activeIndex = currentStageIndex >= 0 ? currentStageIndex : 0;
-
-    return (
-      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm my-2">
-        <div className="relative w-full max-w-2xl mx-auto py-2">
-          {/* Track Line Background */}
-          <div className="absolute top-[18px] sm:top-[20px] left-6 right-6 h-1 bg-slate-150 bg-slate-200/70 rounded-full z-0" />
-          {/* Active Progress Line */}
-          <div
-            className="absolute top-[18px] sm:top-[20px] left-6 h-1 bg-gradient-to-r from-[#002e6e] via-[#e11d48] to-[#22c55e] rounded-full z-0 transition-all duration-500"
-            style={{
-              width: `${
-                status === "completed" || status === "finalized" || status === "closed"
-                  ? "100%"
-                  : `${Math.min(100, (activeIndex / (stages.length - 1)) * 100)}%`
-              }`,
-            }}
-          />
-
-          <div className="flex items-center justify-between relative z-10">
-            {stages.map((stage, idx) => {
-              const isCompleted =
-                idx < activeIndex ||
-                status === "completed" ||
-                status === "finalized" ||
-                status === "closed";
-              const isCurrent = idx === activeIndex && !["completed", "finalized", "closed"].includes(status);
-              const Icon = stage.icon;
-
-              return (
-                <div key={idx} className="flex flex-col items-center">
-                  <div
-                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-                      isCompleted
-                        ? "bg-[#22c55e] border-[#22c55e] text-white shadow-sm"
-                        : isCurrent
-                        ? "bg-[#002e6e] border-[#002e6e] text-white ring-4 ring-[#002e6e]/15 shadow-md scale-110"
-                        : "bg-white border-slate-200 text-slate-300"
-                    }`}
-                  >
-                    <Icon size={16} />
-                  </div>
-                  <span
-                    className={`text-[9px] sm:text-[10px] font-black tracking-wider uppercase mt-2 text-center max-w-[75px] leading-tight ${
-                      isCompleted
-                        ? "text-emerald-700 font-black"
-                        : isCurrent
-                        ? "text-[#002e6e] font-black"
-                        : "text-slate-400 font-bold"
-                    }`}
-                  >
-                    {stage.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const [rating, setRating] = useState(0);
-  const [ratingPartner, setRatingPartner] = useState(0);
-  const [ratingProcess, setRatingProcess] = useState(0);
-  const [ratingSafety, setRatingSafety] = useState(0);
-  const [ratingZomIndia, setRatingZomIndia] = useState(0);
-  const [comment, setComment] = useState("");
-  const [reviewPhoto, setReviewPhoto] = useState("");
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Automatically open rating popup for completed bookings that need review (Urban Company style)
   useEffect(() => {
@@ -1741,7 +1723,7 @@ export default function CustomerDashboard({
 
                   {/* 1. Header/Status Segment */}
                   <motion.div variants={itemVariants} className="p-5 flex flex-wrap items-center justify-between gap-4 bg-white border-b border-slate-200/80 relative z-10 w-full">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       <span className="text-xs font-mono tracking-widest bg-sky-50 text-[#002e6e] border border-sky-200 font-black uppercase px-3 py-1 rounded-full shadow-2xs">
                         ID: #{booking.id.slice(-6).toUpperCase()}
                       </span>
@@ -1754,10 +1736,32 @@ export default function CustomerDashboard({
                           return typeof bookingStatus === 'string' ? bookingStatus.replace("_", " ") : "";
                         })()}
                       </span>
+                      {booking.paymentStatus === 'paid' ? (
+                        <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-300 font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-2xs inline-flex items-center gap-1">
+                          <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                          {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-300 font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-2xs inline-flex items-center gap-1">
+                          <AlertCircle size={12} className="text-amber-600 shrink-0" />
+                          PAY AFTER SERVICE (UNPAID)
+                        </span>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Estimated Total</p>
                       <p className="text-xl sm:text-2xl font-black text-[#002e6e]">₹{booking.totalPrice}</p>
+                      {booking.paymentStatus !== 'paid' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBookingToPay(booking);
+                          }}
+                          className="mt-2 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-4 py-2 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                        >
+                          <CreditCard size={14} /> Pay Now Online (₹{booking.totalPrice})
+                        </button>
+                      )}
                     </div>
                   </motion.div>
 
@@ -1960,8 +1964,8 @@ export default function CustomerDashboard({
                             </div>
                           )}
 
-                          {/* 4. Payment triggers for Completed status */}
-                          {(bookingStatus.toLowerCase() === 'completed' || bookingStatus.toLowerCase() === 'payment_pending') && (
+                          {/* 4. Payment triggers for Completed/Payment Pending status */}
+                          {(bookingStatus.toLowerCase() === 'completed' || bookingStatus.toLowerCase() === 'payment_pending') && booking.paymentStatus !== 'paid' && (
                             <div className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm flex flex-col gap-3">
                               <div className="text-left">
                                 <h5 className="text-xs font-black uppercase text-[#002e6e] tracking-wider leading-none mb-1">Awaiting Service Payment</h5>
@@ -1970,9 +1974,9 @@ export default function CustomerDashboard({
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setBookingToPay(booking); }}
-                                  className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] py-3 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 flex items-center justify-center gap-2"
+                                  className="text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] py-3 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 flex items-center justify-center gap-2"
                                 >
-                                  💳 PAY NOW
+                                  <CreditCard size={14} /> Pay Now Online (₹{booking.totalPrice})
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setIsPaymentScannerOpen(true); }}
@@ -2113,12 +2117,37 @@ export default function CustomerDashboard({
                                   </div>
                                 ) : null}
 
-                                <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-1">
-                                  <span className="font-black uppercase tracking-wider text-xs text-[#002e6e]">Net Payable Amount</span>
-                                  <span className="text-lg font-black text-[#002e6e]">₹{booking.totalPrice}</span>
+                                <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-1 flex-wrap gap-2">
+                                  <div>
+                                    <span className="font-black uppercase tracking-wider text-xs text-[#002e6e] block">Net Payable Amount</span>
+                                    {booking.paymentStatus === 'paid' ? (
+                                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                        <CheckCircle2 size={11} className="text-emerald-600" />
+                                        {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                        <AlertCircle size={11} className="text-amber-600" /> PAY AFTER SERVICE (UNPAID)
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-right flex flex-col items-end">
+                                    <span className="text-lg font-black text-[#002e6e]">₹{booking.totalPrice}</span>
+                                    {booking.paymentStatus !== 'paid' && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setBookingToPay(booking);
+                                        }}
+                                        className="mt-1.5 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3.5 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                                      >
+                                        <CreditCard size={13} /> Pay Now Online (₹{booking.totalPrice})
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
 
-                                {(bookingStatus === "payment_pending" || bookingStatus === "completed") && (
+                                {(bookingStatus === "payment_pending" || bookingStatus === "completed") && booking.paymentStatus !== "paid" && (
                                   <div className="mt-3 p-3 bg-sky-50/50 border border-sky-200/80 rounded-xl flex flex-col gap-2">
                                     <div className="text-left">
                                       <h5 className="text-[10px] font-black uppercase text-[#002e6e] tracking-wider leading-none mb-1">
@@ -2134,9 +2163,9 @@ export default function CustomerDashboard({
                                           e.stopPropagation();
                                           setBookingToPay(booking);
                                         }}
-                                        className="text-[10px] font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] py-2.5 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95"
+                                        className="text-[10px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] py-2.5 rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 flex items-center justify-center gap-1"
                                       >
-                                        💳 PAY NOW
+                                        <CreditCard size={11} /> PAY NOW
                                       </button>
                                       <button
                                         onClick={(e) => {
@@ -2873,6 +2902,35 @@ export default function CustomerDashboard({
                               {booking.address}
                             </span>
                           </div>
+                          
+                          <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 flex-wrap">
+                            <div>
+                              {booking.paymentStatus === 'paid' ? (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
+                                  <CheckCircle2 size={11} className="text-emerald-600" />
+                                  {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1 shadow-2xs">
+                                  <AlertCircle size={11} className="text-amber-600" /> PAY AFTER SERVICE (UNPAID)
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-black text-[#002e6e]">₹{booking.totalPrice}</span>
+                              {booking.paymentStatus !== 'paid' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setBookingToPay(booking);
+                                  }}
+                                  className="text-[11px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                                >
+                                  <CreditCard size={12} /> Pay Now Online (₹{booking.totalPrice})
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -3061,16 +3119,41 @@ export default function CustomerDashboard({
                                 </div>
                               ) : null}
 
-                              <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-2">
-                                <span className="font-black uppercase tracking-wider text-xs text-[#002e6e]">
-                                  Total Net Payable
-                                </span>
-                                <span className="text-xl font-black text-[#002e6e]">
-                                  ₹{booking.totalPrice}
-                                </span>
+                               <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-2 flex-wrap gap-2">
+                                <div>
+                                  <span className="font-black uppercase tracking-wider text-xs text-[#002e6e] block">
+                                    Total Net Payable
+                                  </span>
+                                  {booking.paymentStatus === 'paid' ? (
+                                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                      <CheckCircle2 size={11} className="text-emerald-600" />
+                                      {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                      <AlertCircle size={11} className="text-amber-600" /> PAY AFTER SERVICE (UNPAID)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-right flex flex-col items-end">
+                                  <span className="text-xl font-black text-[#002e6e]">
+                                    ₹{booking.totalPrice}
+                                  </span>
+                                  {booking.paymentStatus !== 'paid' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setBookingToPay(booking);
+                                      }}
+                                      className="mt-1.5 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3.5 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ml-auto"
+                                    >
+                                      <CreditCard size={13} /> Pay Now Online (₹{booking.totalPrice})
+                                    </button>
+                                  )}
+                                </div>
                               </div>
 
-                              {booking.status === "payment_pending" && (
+                              {(booking.status === "payment_pending" || booking.status === "completed") && booking.paymentStatus !== "paid" && (
                                 <div className="mt-4 p-4 bg-sky-50/50 rounded-2xl border border-sky-200/80 flex flex-col md:flex-row items-center justify-between gap-3">
                                   <div className="text-left">
                                     <h5 className="text-xs font-black uppercase text-[#002e6e] tracking-wider">
@@ -3086,9 +3169,9 @@ export default function CustomerDashboard({
                                         e.stopPropagation();
                                         setBookingToPay(booking);
                                       }}
-                                      className="flex-1 md:flex-initial text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer text-center active:scale-95"
+                                      className="flex-1 md:flex-initial text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer text-center active:scale-95 flex items-center justify-center gap-1.5"
                                     >
-                                      💳 PAY NOW
+                                      <CreditCard size={13} /> PAY NOW
                                     </button>
                                     <button
                                       onClick={(e) => {
@@ -3566,33 +3649,40 @@ export default function CustomerDashboard({
                       <span className="text-[9px] uppercase tracking-wider bg-slate-50 text-[#002e6e] border border-slate-200/80 font-extrabold px-2.5 py-0.5 rounded-full">
                         {booking.status}
                       </span>
-                      <span
-                        className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
-                          booking.paymentStatus === "paid" 
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200" 
-                            : (booking.paymentMethod === 'cash' ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-rose-50 text-rose-700 border border-rose-200")
-                        }`}
-                      >
-                        {booking.paymentStatus === "paid"
-                          ? (booking.paymentMethod === 'phonepe_qr' 
-                              ? 'PAID VIA PHONEPE' 
-                              : (booking.paymentMethod === 'online' ? 'PAID VIA PHONEPE' : 'PAID VIA PHONEPE'))
-                          : (booking.paymentMethod === 'cash' ? 'PAY AFTER SERVICE' : 'UNPAID')}
-                      </span>
+                      {booking.paymentStatus === "paid" ? (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1">
+                          <CheckCircle2 size={10} className="text-emerald-600 shrink-0" />
+                          {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs inline-flex items-center gap-1">
+                          <AlertCircle size={10} className="text-amber-600 shrink-0" />
+                          PAY AFTER SERVICE (UNPAID)
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center mb-3 pt-2 border-t border-slate-100 gap-2">
+                  <div className="flex justify-between items-center mb-3 pt-2 border-t border-slate-100 gap-2 flex-wrap">
                     <p className="text-xs text-slate-500 font-bold">
                       Date: {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) || "Recent"}
                     </p>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <span className="text-[9px] font-black uppercase text-slate-400 block leading-none">
-                          {booking.paymentStatus === 'paid' ? 'Paid Amount' : 'Amount Due'}
-                        </span>
-                        <span className="text-sm font-black text-[#002e6e]">₹{booking.totalPrice || 0}</span>
-                      </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[9px] font-black uppercase text-slate-400 block leading-none">
+                        {booking.paymentStatus === 'paid' ? 'Paid Amount' : 'Amount Due'}
+                      </span>
+                      <span className="text-sm font-black text-[#002e6e]">₹{booking.totalPrice || 0}</span>
+                      {booking.paymentStatus !== 'paid' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBookingToPay(booking);
+                          }}
+                          className="mt-1.5 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                        >
+                          <CreditCard size={12} /> Pay Now Online (₹{booking.totalPrice || 0})
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -3734,16 +3824,16 @@ export default function CustomerDashboard({
                       <span>🔁 BOOK AGAIN</span>
                     </button>
 
-                    {(booking.paymentStatus?.toLowerCase() === "unpaid" || booking.paymentStatus?.toLowerCase() === "pending") && (
+                    {booking.paymentStatus !== "paid" && (
                       <div className="flex gap-2 items-center">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setBookingToPay(booking);
                           }}
-                          className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] px-3.5 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
+                          className="text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3.5 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5 active:scale-95"
                         >
-                          💳 PAY NOW
+                          <CreditCard size={13} /> Pay Now Online (₹{booking.totalPrice || 0})
                         </button>
                         <button
                           onClick={(e) => {
@@ -4266,6 +4356,19 @@ export default function CustomerDashboard({
             profile={profile}
             onClose={() => setBookingToPay(null)}
             onSuccess={() => {
+              const paidBookingId = bookingToPay.id;
+              setBookings((prev) =>
+                prev.map((b) =>
+                  b.id === paidBookingId
+                    ? {
+                        ...b,
+                        paymentStatus: "paid",
+                        paymentMethod: "online",
+                        status: b.status === "payment_pending" ? "completed" : b.status,
+                      }
+                    : b
+                )
+              );
               setBookingToPay(null);
             }}
           />

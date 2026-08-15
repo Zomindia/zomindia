@@ -188,6 +188,16 @@ service cloud.firestore {
              (!('amcId' in data) || (data.amcId is string || data.amcId == null)) &&
              (!('customerBookedEmail' in data) || (data.customerBookedEmail is string || data.customerBookedEmail == null)) &&
              (!('customerBookedPhone' in data) || (data.customerBookedPhone is string || data.customerBookedPhone == null)) &&
+             (!('customerBookedName' in data) || (data.customerBookedName is string || data.customerBookedName == null)) &&
+             (!('customerName' in data) || (data.customerName is string || data.customerName == null)) &&
+             (!('customerMobile' in data) || (data.customerMobile is string || data.customerMobile == null)) &&
+             (!('customerData' in data) || (data.customerData is map || data.customerData == null)) &&
+             (!('walletDeductAmount' in data) || (data.walletDeductAmount is number || data.walletDeductAmount == null)) &&
+             (!('originalBillValue' in data) || (data.originalBillValue is number || data.originalBillValue == null)) &&
+             (!('transactionId' in data) || (data.transactionId is string || data.transactionId == null)) &&
+             (!('onlinePaymentProvider' in data) || (data.onlinePaymentProvider is string || data.onlinePaymentProvider == null)) &&
+             (!('onlinePaymentMethod' in data) || (data.onlinePaymentMethod is string || data.onlinePaymentMethod == null)) &&
+             (!('paidAmount' in data) || (data.paidAmount is number || data.paidAmount == null)) &&
              (!('additionalCharges' in data) || (data.additionalCharges is list)) &&
              (!('activeCall' in data) || (data.activeCall is map || data.activeCall == null)) &&
              (!('secondaryContact' in data) || (data.secondaryContact is string || data.secondaryContact == null)) &&
