@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, X, Zap, Loader2, Share2, MoreVertical } from 'lucide-react';
+import { Download, X, Zap, Loader2 } from 'lucide-react';
 import { LogoIcon } from './BrandLogo';
 
 export function PWAInstallBanner() {
   const [showBanner, setShowBanner] = useState<boolean>(false);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [isInstalling, setIsInstalling] = useState<boolean>(false);
-  const [showManualGuide, setShowManualGuide] = useState<boolean>(false);
 
   useEffect(() => {
     // 1. Check if app is running in standalone mode or already installed
@@ -86,12 +85,10 @@ export function PWAInstallBanner() {
       setIsStandalone(true);
       setShowBanner(false);
       setIsInstalling(false);
-      setShowManualGuide(false);
     };
 
     const handleTriggerPrompt = () => {
       setShowBanner(true);
-      setShowManualGuide(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -140,7 +137,6 @@ export function PWAInstallBanner() {
           (window as any).deferredPrompt = null;
           setIsStandalone(true);
           setShowBanner(false);
-          setShowManualGuide(false);
           if (typeof (window as any).__showToast === 'function') {
             (window as any).__showToast('Zomindia app installed successfully!', 'success');
           }
@@ -150,22 +146,12 @@ export function PWAInstallBanner() {
       } finally {
         setIsInstalling(false);
       }
-    } else {
-      console.log('[PWA] Native prompt not available. Displaying manual 1-step guide.');
-      setShowManualGuide(true);
-      if (typeof (window as any).__showToast === 'function') {
-        (window as any).__showToast(
-          "Tap the browser menu (⋮ / Share) and select 'Add to Home Screen' to install.",
-          'info'
-        );
-      }
     }
   };
 
   const handleDismiss = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setShowBanner(false);
-    setShowManualGuide(false);
     try {
       sessionStorage.setItem('zomindia_pwa_dismissed', 'true');
     } catch {}
@@ -216,84 +202,61 @@ export function PWAInstallBanner() {
               <X className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
 
-            {showManualGuide ? (
-              /* Polite 1-step Guide for browsers where beforeinstallprompt is not directly triggered */
-              <div className="pt-0.5 pr-4">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <Share2 className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="font-bold text-xs text-[#002e6e]">Install Zomindia App</span>
-                </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                  Tap the browser menu <span className="inline-flex items-center font-bold text-slate-800 bg-slate-100 px-1 py-0.5 rounded text-[10px] mx-0.5"><MoreVertical className="w-2.5 h-2.5 inline" /> / Share</span> and select <span className="font-bold text-blue-600">&ldquo;Add to Home Screen&rdquo;</span> to install.
-                </p>
-                <div className="mt-2.5 flex justify-end">
-                  <button
-                    onClick={() => setShowManualGuide(false)}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-full cursor-pointer transition-colors border-0"
-                  >
-                    Got it
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Standard Quick Install Banner */
-              <div className="flex items-center justify-between gap-3">
-                {/* Left side: Icon & Title */}
-                <div className="flex items-center gap-3 min-w-0 flex-1 pr-3">
-                  <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/90 shadow-sm flex items-center justify-center overflow-hidden">
-                    <img
-                      src={LogoIcon || '/logo-192.png'}
-                      alt="Zomindia Logo"
-                      className="w-full h-full object-contain select-none"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
-                      }}
-                    />
-                    <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm border border-white">
-                      <Zap className="w-2.5 h-2.5 fill-white" />
-                    </span>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-bold text-xs text-[#002e6e] truncate leading-tight">
-                      Install Zomindia App
-                    </h4>
-                    <p className="text-[10px] text-slate-500 truncate leading-tight mt-0.5">
-                      {isInstalling ? 'Initiating native install...' : '1-Click Booking & Live Tracking'}
-                    </p>
-                  </div>
+            {/* Clean Quick Install Card */}
+            <div className="flex items-center justify-between gap-3">
+              {/* Left side: Icon & Title */}
+              <div className="flex items-center gap-3 min-w-0 flex-1 pr-3">
+                <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/90 shadow-sm flex items-center justify-center overflow-hidden">
+                  <img
+                    src={LogoIcon || '/logo-192.png'}
+                    alt="Zomindia Logo"
+                    className="w-full h-full object-contain select-none"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                    }}
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm border border-white">
+                    <Zap className="w-2.5 h-2.5 fill-white" />
+                  </span>
                 </div>
 
-                {/* Right side: Action Button */}
-                <div className="flex items-center gap-1.5 shrink-0 pt-1.5 sm:pt-0">
-                  <motion.button
-                    onClick={handleInstall}
-                    disabled={isInstalling}
-                    whileHover={!isInstalling ? { scale: 1.03 } : {}}
-                    whileTap={!isInstalling ? { scale: 0.92 } : {}}
-                    transition={{ type: 'spring', stiffness: 500, damping: 18 }}
-                    className={`bg-[#002e6e] hover:bg-[#00baf2] text-white font-bold text-xs px-3.5 py-2 rounded-full shadow-md shadow-[#002e6e]/20 transition-colors flex items-center gap-1.5 cursor-pointer border-0 select-none active:ring-2 active:ring-[#00baf2]/40 ${
-                      isInstalling ? 'opacity-90 cursor-wait' : ''
-                    }`}
-                  >
-                    {isInstalling ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Installing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Install</span>
-                      </>
-                    )}
-                  </motion.button>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-xs text-[#002e6e] truncate leading-tight">
+                    Install Zomindia App
+                  </h4>
+                  <p className="text-[10px] text-slate-500 truncate leading-tight mt-0.5">
+                    {isInstalling ? 'Initiating native install...' : '1-Click Booking & Live Tracking'}
+                  </p>
                 </div>
               </div>
-            )}
+
+              {/* Right side: Action Button */}
+              <div className="flex items-center gap-1.5 shrink-0 pt-1.5 sm:pt-0">
+                <motion.button
+                  onClick={handleInstall}
+                  disabled={isInstalling}
+                  whileHover={!isInstalling ? { scale: 1.03 } : {}}
+                  whileTap={!isInstalling ? { scale: 0.92 } : {}}
+                  transition={{ type: 'spring', stiffness: 500, damping: 18 }}
+                  className={`bg-[#002e6e] hover:bg-[#00baf2] text-white font-bold text-xs px-3.5 py-2 rounded-full shadow-md shadow-[#002e6e]/20 transition-colors flex items-center gap-1.5 cursor-pointer border-0 select-none active:ring-2 active:ring-[#00baf2]/40 ${
+                    isInstalling ? 'opacity-90 cursor-wait' : ''
+                  }`}
+                >
+                  {isInstalling ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Installing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Install</span>
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </div>
           </div>
         </motion.div>
       )}
