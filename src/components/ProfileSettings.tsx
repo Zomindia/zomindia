@@ -90,12 +90,40 @@ type SubSectionType =
   | "hardware"
   | "faq";
 
+// Shimmering skeleton loader for perceived fast speeds
+function ShimmerSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="bg-white border text-left border-neutral-100 rounded-[28px] p-6 animate-pulse flex flex-col md:flex-row justify-between gap-4"
+        >
+          <div className="flex-1 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-24 bg-neutral-100 rounded-md" />
+              <div className="h-4 w-16 bg-neutral-100 rounded-md" />
+            </div>
+            <div className="h-6 w-2/3 bg-neutral-100 rounded-lg" />
+            <div className="h-4 w-1/2 bg-neutral-100 rounded-md" />
+          </div>
+          <div className="w-full md:w-32 flex flex-col gap-2 justify-center items-end shrink-0">
+            <div className="h-8 w-24 bg-neutral-100 rounded-xl" />
+            <div className="h-5 w-20 bg-neutral-100 rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ProfileSettings({
   profile,
   onUpdate,
   setActiveTab,
   setIsPartnerModalOpen,
 }: Props) {
+  // Navigation & Sub-views state
   const [activeSub, setActiveSub] = useState<SubSectionType | null>(null);
   const [openFaq, setOpenFaq] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,34 +139,34 @@ export default function ProfileSettings({
 
   // Local state for basic parameters
   const [displayName, setDisplayName] = useState(
-    profile.fullName || profile.displayName || "",
+    profile?.fullName || profile?.displayName || "",
   );
-  const [bio, setBio] = useState(profile.bio || "");
-  const [address, setAddress] = useState(profile.address || "");
+  const [bio, setBio] = useState(profile?.bio || "");
+  const [address, setAddress] = useState(profile?.address || "");
   const [notifPrefs, setNotifPrefs] = useState({
-    bookingUpdates: profile.notificationPreferences?.bookingUpdates ?? true,
+    bookingUpdates: profile?.notificationPreferences?.bookingUpdates ?? true,
     promotionalMessages:
-      profile.notificationPreferences?.promotionalMessages ?? true,
+      profile?.notificationPreferences?.promotionalMessages ?? true,
   });
 
   // Urban Company premium profile preferences
-  const [gender, setGender] = useState(profile.gender || "");
+  const [gender, setGender] = useState(profile?.gender || "");
   const [languagePreference, setLanguagePreference] = useState(
-    profile.languagePreference || "English",
+    profile?.languagePreference || "English",
   );
-  const [houseType, setHouseType] = useState(profile.houseType || "Apartment");
-  const [bhkSize, setBhkSize] = useState(profile.bhkSize || "2 BHK");
+  const [houseType, setHouseType] = useState(profile?.houseType || "Apartment");
+  const [bhkSize, setBhkSize] = useState(profile?.bhkSize || "2 BHK");
   const [preferredTimeSlot, setPreferredTimeSlot] = useState(
-    profile.preferredTimeSlot || "Anytime",
+    profile?.preferredTimeSlot || "Anytime",
   );
   const [secondaryPhone, setSecondaryPhone] = useState(
-    profile.secondaryPhone || "",
+    profile?.secondaryPhone || "",
   );
 
   // Verification parameters
-  const [newEmail, setNewEmail] = useState(profile.email || "");
+  const [newEmail, setNewEmail] = useState(profile?.email || "");
   const [newPhone, setNewPhone] = useState(
-    profile.phoneNumber ? profile.phoneNumber.replace("+91", "") : "",
+    profile?.phoneNumber ? profile.phoneNumber.replace("+91", "") : "",
   );
   const [emailLoading, setEmailLoading] = useState(false);
   const [phoneLoading, setPhoneLoading] = useState(false);
@@ -150,32 +178,6 @@ export default function ProfileSettings({
   const [confirmationResult, setConfirmationResult] =
     useState<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<any>(null);
-
-  useEffect(() => {
-    return () => {
-      if (recaptchaRef.current) {
-        try {
-          recaptchaRef.current.clear();
-        } catch (e) {
-          console.warn(
-            "Profile settings recaptcha cleanup on unmount failed:",
-            e,
-          );
-        }
-      }
-      const anchor = document.getElementById("profile-recaptcha-dynamic");
-      if (anchor) {
-        try {
-          anchor.remove();
-        } catch (e) {}
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    // Standard page scroll retention for profile section
-    return () => {};
-  }, []);
 
   // Security OTP Interceptor for basic information / delivery parameters editing
   const [securityOtpModalOpen, setSecurityOtpModalOpen] = useState(false);
@@ -201,35 +203,87 @@ export default function ProfileSettings({
   // Active bookings tracking parameters
   const [activeBookings, setActiveBookings] = useState<any[]>([]);
   const [loadingActive, setLoadingActive] = useState(true);
-
-  // Shimmering skeleton loader for perceived fast speeds
-  const ShimmerSkeleton = () => (
-    <div className="space-y-4">
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="bg-white border text-left border-neutral-100 rounded-[28px] p-6 animate-pulse flex flex-col md:flex-row justify-between gap-4"
-        >
-          <div className="flex-1 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-24 bg-neutral-100 rounded-md" />
-              <div className="h-4 w-16 bg-neutral-100 rounded-md" />
-            </div>
-            <div className="h-6 w-2/3 bg-neutral-100 rounded-lg" />
-            <div className="h-4 w-1/2 bg-neutral-100 rounded-md" />
-          </div>
-          <div className="w-full md:w-32 flex flex-col gap-2 justify-center items-end shrink-0">
-            <div className="h-8 w-24 bg-neutral-100 rounded-xl" />
-            <div className="h-5 w-20 bg-neutral-100 rounded-md" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
   const [refreshing, setRefreshing] = useState(false);
 
+  // History & services state
+  const [historyBookings, setHistoryBookings] = useState<any[]>([]);
+  const [servicesMap, setServicesMap] = useState<Record<string, any>>({});
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Alerts history state
+  const [alertsHistory, setAlertsHistory] = useState<any[]>([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+
+  // 1. Recaptcha cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recaptchaRef.current) {
+        try {
+          recaptchaRef.current.clear();
+        } catch (e) {
+          console.warn(
+            "Profile settings recaptcha cleanup on unmount failed:",
+            e,
+          );
+        }
+      }
+      const anchor = document.getElementById("profile-recaptcha-dynamic");
+      if (anchor) {
+        try {
+          anchor.remove();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  // 2. WebOTP Auto-detection for Profile settings phone update verification
+  useEffect(() => {
+    if (!showOtpInput) return;
+
+    if (typeof window !== "undefined" && "OTPCredential" in window) {
+      const ac = new AbortController();
+      navigator.credentials
+        .get({
+          otp: { transport: ["sms"] },
+          signal: ac.signal,
+        } as any)
+        .then((otpVal: any) => {
+          if (otpVal && otpVal.code) {
+            const codeDigits = otpVal.code.replace(/\D/g, "").slice(0, 6);
+            if (codeDigits.length === 6) {
+              console.log(
+                "[WebOTP] Auto-detected OTP for phone settings:",
+                codeDigits,
+              );
+              setOtp(codeDigits);
+            }
+          }
+        })
+        .catch((err) => {
+          if (
+            err.name !== "AbortError" &&
+            err.name !== "SecurityError" &&
+            !err.message?.toLowerCase().includes("otp-credentials")
+          ) {
+            console.error(
+              "[WebOTP API] ProfileSettings error auto-detecting OTP:",
+              err,
+            );
+          } else {
+            console.log(
+              "[WebOTP API] ProfileSettings auto-detection bypassed (sandbox/iframe restrictions or aborted).",
+            );
+          }
+        });
+
+      return () => {
+        ac.abort();
+      };
+    }
+  }, [showOtpInput]);
+
   const fetchUserData = async () => {
+    if (!profile?.uid) return;
     try {
       const [bSnap, aSnap] = await Promise.all([
         getDocs(
@@ -259,10 +313,199 @@ export default function ProfileSettings({
     }
   };
 
-  // Fetch true stats from firestore on load
+  // 3. Fetch true stats from firestore on load
   useEffect(() => {
     fetchUserData();
-  }, [profile.uid]);
+  }, [profile?.uid]);
+
+  // 4. Sync state if profile changes
+  useEffect(() => {
+    if (!profile) return;
+    setDisplayName(profile.fullName || profile.displayName || "");
+    setNewEmail(profile.email || "");
+    setAddress(profile.address || "");
+    setBio(profile.bio || "");
+    setNotifPrefs({
+      bookingUpdates: profile.notificationPreferences?.bookingUpdates ?? true,
+      promotionalMessages:
+        profile.notificationPreferences?.promotionalMessages ?? true,
+    });
+    setGender(profile.gender || "");
+    setLanguagePreference(profile.languagePreference || "English");
+    setHouseType(profile.houseType || "Apartment");
+    setBhkSize(profile.bhkSize || "2 BHK");
+    setPreferredTimeSlot(profile.preferredTimeSlot || "Anytime");
+    setSecondaryPhone(profile.secondaryPhone || "");
+    if (profile.phoneNumber) {
+      setNewPhone(profile.phoneNumber.replace("+91", ""));
+    }
+  }, [profile]);
+
+  // 5. Live real-time Active Bookings listener
+  useEffect(() => {
+    if (!profile?.uid) return;
+    setLoadingActive(true);
+    let q;
+    if (profile.role === "partner") {
+      q = query(
+        collection(db, "bookings"),
+        where("partnerId", "==", profile.uid),
+      );
+    } else {
+      q = query(
+        collection(db, "bookings"),
+        where("customerId", "==", profile.uid),
+      );
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const status = data.status || "";
+          if (
+            status !== "completed" &&
+            status !== "finalized" &&
+            status !== "closed" &&
+            status !== "cancelled" &&
+            status !== "declined"
+          ) {
+            list.push({ id: doc.id, ...data });
+          }
+        });
+        list.sort((a, b) => {
+          const timeA = a.scheduledAt?.seconds || a.createdAt?.seconds || 0;
+          const timeB = b.scheduledAt?.seconds || b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
+        setActiveBookings(list);
+        setLoadingActive(false);
+      },
+      (error) => {
+        console.error("Error loading active bookings in real-time:", error);
+        setLoadingActive(false);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [profile?.uid, profile?.role]);
+
+  // 6. Load static services and booking history concurrently
+  useEffect(() => {
+    if (!profile?.uid) return;
+    let active = true;
+    const loadHistoryAndServices = async () => {
+      setLoadingHistory(true);
+      try {
+        let q;
+        if (profile.role === "partner") {
+          q = query(
+            collection(db, "bookings"),
+            where("partnerId", "==", profile.uid),
+            orderBy("scheduledAt", "desc"),
+          );
+        } else {
+          q = query(
+            collection(db, "bookings"),
+            where("customerId", "==", profile.uid),
+            orderBy("scheduledAt", "desc"),
+          );
+        }
+
+        const [sSnap, bSnap] = await Promise.all([
+          getDocs(collection(db, "services")),
+          getDocs(q),
+        ]);
+
+        const sMap: Record<string, any> = {};
+        sSnap.forEach((d) => {
+          sMap[d.id] = { id: d.id, ...(d.data() as any) };
+        });
+
+        const list: any[] = [];
+        bSnap.forEach((d) => {
+          list.push({ id: d.id, ...(d.data() as any) });
+        });
+
+        if (active) {
+          setServicesMap(sMap);
+          setHistoryBookings(list);
+        }
+      } catch (err) {
+        console.warn(
+          "Unable to fetch booking history & services concurrently:",
+          err,
+        );
+      } finally {
+        if (active) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    if (activeSub === "history" || activeSub === "active") {
+      loadHistoryAndServices();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [activeSub, profile?.uid, profile?.role]);
+
+  // 7. WhatsApp alerts history listener
+  useEffect(() => {
+    if (activeSub === "alerts") {
+      setLoadingAlerts(true);
+      const q = query(
+        collection(db, "whatsapp_alerts"),
+        where("to", "==", profile?.phoneNumber || ""),
+        orderBy("timestamp", "desc"),
+        limit(15),
+      );
+
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          const list: any[] = [];
+          snap.forEach((d) => {
+            list.push({ id: d.id, ...d.data() });
+          });
+          setAlertsHistory(list);
+          setLoadingAlerts(false);
+        },
+        () => {
+          const fallbackQ = query(
+            collection(db, "whatsapp_alerts"),
+            orderBy("timestamp", "desc"),
+            limit(15),
+          );
+          onSnapshot(
+            fallbackQ,
+            (fallbackSnap) => {
+              const fallbackList: any[] = [];
+              fallbackSnap.forEach((fd) => {
+                fallbackList.push({ id: fd.id, ...fd.data() });
+              });
+              setAlertsHistory(fallbackList);
+              setLoadingAlerts(false);
+            },
+            (fallbackErr) => {
+              console.warn(
+                "Firestore alerts subscription failed:",
+                fallbackErr,
+              );
+              setLoadingAlerts(false);
+            },
+          );
+        },
+      );
+      return () => {
+        if (typeof unsub === "function") unsub();
+      };
+    }
+  }, [activeSub, profile?.phoneNumber]);
 
   const handleRefreshData = async () => {
     setRefreshing(true);
@@ -343,199 +586,6 @@ export default function ProfileSettings({
       setRefreshing(false);
     }
   };
-
-  // Sync state if profile changes
-  useEffect(() => {
-    setDisplayName(profile.fullName || profile.displayName || "");
-    setNewEmail(profile.email || "");
-    setAddress(profile.address || "");
-    setBio(profile.bio || "");
-    setNotifPrefs({
-      bookingUpdates: profile.notificationPreferences?.bookingUpdates ?? true,
-      promotionalMessages:
-        profile.notificationPreferences?.promotionalMessages ?? true,
-    });
-    setGender(profile.gender || "");
-    setLanguagePreference(profile.languagePreference || "English");
-    setHouseType(profile.houseType || "Apartment");
-    setBhkSize(profile.bhkSize || "2 BHK");
-    setPreferredTimeSlot(profile.preferredTimeSlot || "Anytime");
-    setSecondaryPhone(profile.secondaryPhone || "");
-    if (profile.phoneNumber) {
-      setNewPhone(profile.phoneNumber.replace("+91", ""));
-    }
-  }, [profile]);
-
-  const [historyBookings, setHistoryBookings] = useState<any[]>([]);
-  const [servicesMap, setServicesMap] = useState<Record<string, any>>({});
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // Live real-time Active Bookings listener - cleanly subscribed and cleaned up to prevent memory leaks
-  useEffect(() => {
-    if (!profile?.uid) return;
-    setLoadingActive(true);
-    let q;
-    if (profile.role === "partner") {
-      q = query(
-        collection(db, "bookings"),
-        where("partnerId", "==", profile.uid),
-      );
-    } else {
-      q = query(
-        collection(db, "bookings"),
-        where("customerId", "==", profile.uid),
-      );
-    }
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const status = data.status || "";
-          // Active bookings aren't completed, finalized, closed, or cancelled
-          if (
-            status !== "completed" &&
-            status !== "finalized" &&
-            status !== "closed" &&
-            status !== "cancelled" &&
-            status !== "declined"
-          ) {
-            list.push({ id: doc.id, ...data });
-          }
-        });
-        list.sort((a, b) => {
-          const timeA = a.scheduledAt?.seconds || a.createdAt?.seconds || 0;
-          const timeB = b.scheduledAt?.seconds || b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-        setActiveBookings(list);
-        setLoadingActive(false);
-      },
-      (error) => {
-        console.error("Error loading active bookings in real-time:", error);
-        setLoadingActive(false);
-      },
-    );
-
-    return () => unsubscribe();
-  }, [profile.uid, profile.role]);
-
-  // Load static services once of mount, and queries booking history concurrently
-  useEffect(() => {
-    let active = true;
-    const loadHistoryAndServices = async () => {
-      setLoadingHistory(true);
-      try {
-        let q;
-        if (profile.role === "partner") {
-          q = query(
-            collection(db, "bookings"),
-            where("partnerId", "==", profile.uid),
-            orderBy("scheduledAt", "desc"),
-          );
-        } else {
-          q = query(
-            collection(db, "bookings"),
-            where("customerId", "==", profile.uid),
-            orderBy("scheduledAt", "desc"),
-          );
-        }
-
-        const [sSnap, bSnap] = await Promise.all([
-          getDocs(collection(db, "services")),
-          getDocs(q),
-        ]);
-
-        const sMap: Record<string, any> = {};
-        sSnap.forEach((d) => {
-          sMap[d.id] = { id: d.id, ...(d.data() as any) };
-        });
-
-        const list: any[] = [];
-        bSnap.forEach((d) => {
-          list.push({ id: d.id, ...(d.data() as any) });
-        });
-
-        if (active) {
-          setServicesMap(sMap);
-          setHistoryBookings(list);
-        }
-      } catch (err) {
-        console.warn(
-          "Unable to fetch booking history & services concurrently:",
-          err,
-        );
-      } finally {
-        if (active) {
-          setLoadingHistory(false);
-        }
-      }
-    };
-
-    if (activeSub === "history" || activeSub === "active") {
-      loadHistoryAndServices();
-    }
-
-    return () => {
-      active = false;
-    };
-  }, [activeSub, profile.uid, profile.role]);
-
-  const [alertsHistory, setAlertsHistory] = useState<any[]>([]);
-  const [loadingAlerts, setLoadingAlerts] = useState(false);
-
-  useEffect(() => {
-    if (activeSub === "alerts") {
-      setLoadingAlerts(true);
-      const q = query(
-        collection(db, "whatsapp_alerts"),
-        where("to", "==", profile.phoneNumber || ""),
-        orderBy("timestamp", "desc"),
-        limit(15),
-      );
-
-      const unsub = onSnapshot(
-        q,
-        (snap) => {
-          const list: any[] = [];
-          snap.forEach((d) => {
-            list.push({ id: d.id, ...d.data() });
-          });
-          setAlertsHistory(list);
-          setLoadingAlerts(false);
-        },
-        (err) => {
-          // Fallback to fetch all alerts if user phone filter is restricted
-          const fallbackQ = query(
-            collection(db, "whatsapp_alerts"),
-            orderBy("timestamp", "desc"),
-            limit(15),
-          );
-          onSnapshot(
-            fallbackQ,
-            (fallbackSnap) => {
-              const fallbackList: any[] = [];
-              fallbackSnap.forEach((fd) => {
-                fallbackList.push({ id: fd.id, ...fd.data() });
-              });
-              setAlertsHistory(fallbackList);
-              setLoadingAlerts(false);
-            },
-            (fallbackErr) => {
-              console.warn(
-                "Firestore alerts subscription failed:",
-                fallbackErr,
-              );
-              setLoadingAlerts(false);
-            },
-          );
-        },
-      );
-      return unsub;
-    }
-  }, [activeSub, profile.phoneNumber]);
 
   const commitProfileSettingsUpdate = async (
     overrides = pendingFieldOverrides || {},
@@ -1167,57 +1217,6 @@ export default function ProfileSettings({
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
-
-  // Senior dev addition: WebOTP Auto-detection for Profile settings phone update verification
-  useEffect(() => {
-    if (!showOtpInput) return;
-
-    if (typeof window !== "undefined" && "OTPCredential" in window) {
-      const ac = new AbortController();
-      navigator.credentials
-        .get({
-          otp: { transport: ["sms"] },
-          signal: ac.signal,
-        } as any)
-        .then((otpVal: any) => {
-          if (otpVal && otpVal.code) {
-            const codeDigits = otpVal.code.replace(/\D/g, "").slice(0, 6);
-            if (codeDigits.length === 6) {
-              console.log(
-                "[WebOTP] Auto-detected OTP for phone settings:",
-                codeDigits,
-              );
-              setOtp(codeDigits);
-
-              // Allow user a fraction of a second to visually confirm, then auto-submit the OTP
-              setTimeout(() => {
-                handleConfirmOtp();
-              }, 600);
-            }
-          }
-        })
-        .catch((err) => {
-          if (
-            err.name !== "AbortError" &&
-            err.name !== "SecurityError" &&
-            !err.message?.toLowerCase().includes("otp-credentials")
-          ) {
-            console.error(
-              "[WebOTP API] ProfileSettings error auto-detecting OTP:",
-              err,
-            );
-          } else {
-            console.log(
-              "[WebOTP API] ProfileSettings auto-detection bypassed (sandbox/iframe restrictions or aborted).",
-            );
-          }
-        });
-
-      return () => {
-        ac.abort();
-      };
-    }
-  }, [showOtpInput]);
 
   const handleSelectSub = (sub: SubSectionType) => {
     setActiveSub(sub);

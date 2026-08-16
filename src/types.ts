@@ -242,6 +242,8 @@ export interface AdditionalCharge {
 export interface Booking {
   id: string;
   customerUid: string;
+  customerId?: string;
+  userId?: string;
   partnerId?: string;
   serviceId: string;
   status: BookingStatus;
@@ -268,6 +270,13 @@ export interface Booking {
   partnerLocation?: { lat: number; lng: number };
   createdAt: any;
   updatedAt: any;
+  rating?: number;
+  review?: string;
+  comment?: string;
+  feedbackScores?: any;
+  ratingDetails?: any;
+  reviewedAt?: any;
+  photoURL?: string;
   partnerPriority?: 'high' | 'medium' | 'low';
   completedTasks?: string[];
   adminNotes?: string;

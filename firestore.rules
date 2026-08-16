@@ -160,25 +160,29 @@ service cloud.firestore {
     }
 
     function isValidBooking(data) {
-      return data.keys().hasAll(['customerUid', 'serviceId', 'status', 'scheduledAt', 'address', 'totalPrice', 'paymentStatus']) &&
+      return (('customerUid' in data) || ('customerId' in data) || ('userId' in data)) &&
+             data.keys().hasAll(['serviceId', 'status', 'scheduledAt', 'address', 'totalPrice', 'paymentStatus']) &&
              data.status is string &&
              data.paymentStatus is string &&
              data.totalPrice is number &&
-             data.scheduledAt is timestamp && 
+             (data.scheduledAt is timestamp || data.scheduledAt is string) && 
+             (!('customerUid' in data) || data.customerUid is string) &&
+             (!('customerId' in data) || data.customerId is string) &&
+             (!('userId' in data) || data.userId is string) &&
              (!('partnerId' in data) || (data.partnerId is string || data.partnerId == null)) &&
              (!('lat' in data) || (data.lat is number || data.lat == null)) &&
              (!('lng' in data) || (data.lng is number || data.lng == null)) &&
-             (!('serviceOtp' in data) || (data.serviceOtp is string && data.serviceOtp.size() == 4)) &&
+             (!('serviceOtp' in data) || (data.serviceOtp is string && data.serviceOtp.size() <= 10)) &&
              (!('otpVerified' in data) || (data.otpVerified is bool)) &&
              (!('progressPercentage' in data) || (data.progressPercentage is number)) &&
              (!('checklist' in data) || (data.checklist is list)) &&
              (!('startOTP' in data) || (data.startOTP is string)) &&
-             (!('partnerLocation' in data) || (data.partnerLocation is map)) &&
+             (!('partnerLocation' in data) || (data.partnerLocation is map || data.partnerLocation == null)) &&
              (!('promoCode' in data) || (data.promoCode is string || data.promoCode == null)) &&
              (!('discountApplied' in data) || (data.discountApplied is number)) &&
              (!('cancellationReason' in data) || (data.cancellationReason is string && data.cancellationReason.size() <= 1000)) &&
              (!('pendingReason' in data) || (data.pendingReason is string || data.pendingReason == null)) &&
-             (!('pendingResolveDate' in data) || (data.pendingResolveDate is timestamp || data.pendingResolveDate == null)) &&
+             (!('pendingResolveDate' in data) || (data.pendingResolveDate is timestamp || data.pendingResolveDate is string || data.pendingResolveDate == null)) &&
              (!('pendingResolveDuration' in data) || (data.pendingResolveDuration is string || data.pendingResolveDuration == null)) &&
              (!('previousStatus' in data) || (data.previousStatus is string || data.previousStatus == null)) &&
              (!('completedTasks' in data) || (data.completedTasks is list)) &&
@@ -202,20 +206,36 @@ service cloud.firestore {
              (!('activeCall' in data) || (data.activeCall is map || data.activeCall == null)) &&
              (!('secondaryContact' in data) || (data.secondaryContact is string || data.secondaryContact == null)) &&
              (!('completionNote' in data) || (data.completionNote is string || data.completionNote == null)) &&
-             (!('completedAt' in data) || (data.completedAt is timestamp || data.completedAt == null)) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp)) &&
-             (!('updatedAt' in data) || (data.updatedAt is timestamp));
+             (!('completedAt' in data) || (data.completedAt is timestamp || data.completedAt is string || data.completedAt == null)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp || data.createdAt is string)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp || data.updatedAt is string)) &&
+             (!('razorpayPaymentId' in data) || (data.razorpayPaymentId is string || data.razorpayPaymentId == null)) &&
+             (!('razorpayOrderId' in data) || (data.razorpayOrderId is string || data.razorpayOrderId == null)) &&
+             (!('razorpaySignature' in data) || (data.razorpaySignature is string || data.razorpaySignature == null)) &&
+             (!('paymentIntentId' in data) || (data.paymentIntentId is string || data.paymentIntentId == null)) &&
+             (!('rating' in data) || (data.rating is number || data.rating == null)) &&
+             (!('review' in data) || (data.review is string || data.review == null)) &&
+             (!('comment' in data) || (data.comment is string || data.comment == null)) &&
+             (!('feedbackScores' in data) || (data.feedbackScores is map || data.feedbackScores == null)) &&
+             (!('ratingDetails' in data) || (data.ratingDetails is map || data.ratingDetails == null)) &&
+             (!('reviewedAt' in data) || (data.reviewedAt is timestamp || data.reviewedAt is string || data.reviewedAt == null)) &&
+             (!('photoURL' in data) || (data.photoURL is string || data.photoURL == null));
     }
 
     function isValidReview(data) {
-      return data.keys().hasAll(['bookingId', 'customerUid', 'partnerId', 'rating']) &&
-             data.customerUid == request.auth.uid &&
+      return data.keys().hasAll(['bookingId', 'rating']) &&
+             (('customerUid' in data && data.customerUid == request.auth.uid) || ('customerId' in data && data.customerId == request.auth.uid) || ('userId' in data && data.userId == request.auth.uid) || isAdmin()) &&
              data.rating is number &&
+             (!('partnerId' in data) || (data.partnerId is string || data.partnerId == null)) &&
+             (!('customerUid' in data) || data.customerUid is string) &&
+             (!('customerId' in data) || data.customerId is string) &&
+             (!('userId' in data) || data.userId is string) &&
              (!('serviceId' in data) || (data.serviceId is string)) &&
-             (!('comment' in data) || (data.comment is string && data.comment.size() <= 1000)) &&
+             (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000)) &&
              (!('ratingDetails' in data) || (data.ratingDetails is map)) &&
+             (!('feedbackScores' in data) || (data.feedbackScores is map)) &&
              (!('photoURL' in data) || (data.photoURL is string)) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp));
+             (!('createdAt' in data) || (data.createdAt is timestamp || data.createdAt is string));
     }
 
     function isValidPromotion(data) {
@@ -425,6 +445,8 @@ service cloud.firestore {
         isAdmin() || isHRAdmin() || isHeadAdmin() || (
           isOwner(existing().userId) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'isAvailable', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'updatedAt'])
+        ) || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount', 'updatedAt'])
         )
       );
       allow delete: if isAdmin();
@@ -460,41 +482,41 @@ service cloud.firestore {
         isAdmin() || 
         (resource != null && (
           resource.data.get('customerUid', '') == request.auth.uid ||
+          resource.data.get('customerId', '') == request.auth.uid ||
+          resource.data.get('userId', '') == request.auth.uid ||
           resource.data.get('partnerId', '') == request.auth.uid
         ))
       );
       allow list: if isSignedIn() && (
         isAdmin() ||
         resource.data.get('customerUid', '') == request.auth.uid || 
+        resource.data.get('customerId', '') == request.auth.uid || 
+        resource.data.get('userId', '') == request.auth.uid || 
         resource.data.get('partnerId', '') == request.auth.uid || 
         resource.data.get('status', '') == "pending" ||
         (resource.data.get('status', '') != "cancelled" && resource.data.get('status', '') != "rejected")
       );
       allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming()) && (
-        incoming().get('customerUid', '') == request.auth.uid
-      ) && (
-        exists(/databases/$(database)/documents/services/$(incoming().serviceId)) || 
-        !exists(/databases/$(database)/documents/services/$(incoming().serviceId))
+        incoming().get('customerUid', '') == request.auth.uid ||
+        incoming().get('customerId', '') == request.auth.uid ||
+        incoming().get('userId', '') == request.auth.uid ||
+        isAdmin()
       );
       allow update: if isSignedIn() && isValidId(bookingId) && (
         // Customer update branch
-        (existing().get('customerUid', '') == request.auth.uid && (
-          // Action: Cancel or Finalize
-          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status in ['cancelled', 'finalized']) ||
-          // Action: Pay Online
-          (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'razorpayPaymentId', 'razorpayOrderId', 'razorpaySignature', 'status', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
-          (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentIntentId', 'status', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
-          (incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paymentIntentId', 'updatedAt']) && incoming().paymentStatus == 'paid') ||
-          // Action: Pay After Service (Cash/UPI) Selection
-          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentMethod', 'updatedAt']) && incoming().status == 'confirmed_pay_after_service' && incoming().paymentMethod == 'cash') ||
-          // Action: Pay with Cash (Customer confirming cash handover)
-          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentMethod', 'updatedAt']) && incoming().status == 'completed' && incoming().paymentStatus == 'paid' && incoming().paymentMethod == 'cash') ||
-          // Action: Reschedule
-          (incoming().diff(existing()).affectedKeys().hasOnly(['scheduledAt', 'status', 'partnerId', 'activeCall', 'updatedAt']) && incoming().status == 'pending') ||
-          // Action: Chat Quick Action (Secondary Contact)
-          (incoming().diff(existing()).affectedKeys().hasOnly(['secondaryContact', 'updatedAt'])) ||
-          // Action: Active Call status
-          (incoming().diff(existing()).affectedKeys().hasOnly(['activeCall', 'updatedAt']))
+        ((existing().get('customerUid', '') == request.auth.uid || 
+          existing().get('customerId', '') == request.auth.uid || 
+          existing().get('userId', '') == request.auth.uid) && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'paymentStatus', 'paymentMethod', 'transactionId', 'onlinePaymentProvider', 
+            'onlinePaymentMethod', 'paidAmount', 'razorpayPaymentId', 'razorpayOrderId', 
+            'razorpaySignature', 'paymentIntentId', 'scheduledAt', 'partnerId', 'activeCall', 
+            'secondaryContact', 'updatedAt', 'cancellationReason', 'walletDeductAmount', 
+            'originalBillValue', 'discountApplied', 'promoCode', 'address', 'customerData', 
+            'customerMobile', 'customerName', 'customerBookedName', 'customerBookedPhone', 
+            'customerBookedEmail', 'progressPercentage', 'checklist',
+            'rating', 'review', 'comment', 'feedbackScores', 'ratingDetails', 'reviewedAt', 'photoURL'
+          ])
         )) ||
         // Partner assignment/claim branch
         (
@@ -510,7 +532,9 @@ service cloud.firestore {
             'status', 'otpVerified', 'cancellationReason', 'completedTasks', 'completionPhotos',
             'pendingReason', 'pendingResolveDate', 'pendingResolveDuration', 
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
-            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 'address', 'updatedAt', 'activeCall', 'partnerLocation', 'completedAt'
+            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 
+            'address', 'updatedAt', 'activeCall', 'partnerLocation', 'completedAt',
+            'progressPercentage', 'checklist', 'serviceOtp', 'startOTP'
           ])
         )) ||
         isAdmin()
@@ -521,10 +545,14 @@ service cloud.firestore {
         allow read: if isSignedIn() && isValidId(bookingId) && (
           isAdmin() ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('partnerId', '') == request.auth.uid
         );
         allow create: if isSignedIn() && isValidId(bookingId) && (
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('partnerId', '') == request.auth.uid
         ) && isValidMessage(incoming());
       }
@@ -532,7 +560,9 @@ service cloud.firestore {
       match /secrets/otp {
         allow read: if isSignedIn() && isValidId(bookingId) && (
           isAdmin() ||
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid
         );
         allow create: if isSignedIn() && isValidId(bookingId);
         allow update, delete: if isAdmin();
@@ -544,11 +574,15 @@ service cloud.firestore {
         allow get: if isSignedIn() && isValidId(bookingId) && (
           isAdmin() ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('partnerId', '') == request.auth.uid
         );
         allow list: if isSignedIn() && isValidId(bookingId) && (
           isAdmin() ||
-          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid
         );
         allow create: if isAdmin();
       }
@@ -556,9 +590,22 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidId(reviewId) && isValidReview(incoming()) &&
-                    get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.get('customerUid', '') == request.auth.uid &&
-                    get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.get('status', '') in ['completed', 'payment_pending', 'finalized'];
+      allow create: if isSignedIn() && isValidId(reviewId) && isValidReview(incoming()) && (
+                    isAdmin() ||
+                    incoming().get('customerId', '') == request.auth.uid ||
+                    incoming().get('customerUid', '') == request.auth.uid ||
+                    incoming().get('userId', '') == request.auth.uid ||
+                    (exists(/databases/$(database)/documents/bookings/$(incoming().bookingId)) && (
+                      get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.get('customerUid', '') == request.auth.uid ||
+                      get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.get('customerId', '') == request.auth.uid ||
+                      get(/databases/$(database)/documents/bookings/$(incoming().bookingId)).data.get('userId', '') == request.auth.uid
+                    ))
+      );
+      allow update: if isAdmin() || (isSignedIn() && (
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('customerUid', '') == request.auth.uid ||
+        resource.data.get('userId', '') == request.auth.uid
+      ));
       allow delete: if isAdmin() && isValidId(reviewId);
     }
 

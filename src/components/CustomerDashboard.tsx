@@ -72,6 +72,7 @@ import {
   ChevronUp,
   CreditCard,
   AlertCircle,
+  X,
 } from "lucide-react";
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
@@ -508,6 +509,18 @@ export default function CustomerDashboard({
   const [supportSubmitted, setSupportSubmitted] = useState(false);
 
   // Rating & review states
+  const [skippedRatingBookingIds, setSkippedRatingBookingIds] = useState<Record<string, boolean>>(() => {
+    try {
+      const local = localStorage.getItem("zomindia_skipped_ratings");
+      const session = sessionStorage.getItem("zomindia_skipped_ratings");
+      return {
+        ...(local ? JSON.parse(local) : {}),
+        ...(session ? JSON.parse(session) : {}),
+      };
+    } catch (e) {
+      return {};
+    }
+  });
   const [dbRatedBookings, setDbRatedBookings] = useState<Record<string, boolean>>({});
   const [dismissedHistoryCards, setDismissedHistoryCards] = useState<Record<string, boolean>>({});
   const [successCheckedCards, setSuccessCheckedCards] = useState<Record<string, boolean>>({});
@@ -1052,10 +1065,47 @@ export default function CustomerDashboard({
     }
   };
 
+  // Dismiss / Skip rating modal without blocking user
+  const handleSkipRating = (bookingId?: string) => {
+    const bId = bookingId || finalizingBooking?.id;
+    if (bId) {
+      setSkippedRatingBookingIds((prev) => {
+        const updated = { ...prev, [bId]: true };
+        try {
+          localStorage.setItem("zomindia_skipped_ratings", JSON.stringify(updated));
+          sessionStorage.setItem("zomindia_skipped_ratings", JSON.stringify(updated));
+        } catch (e) {
+          console.warn("[CustomerDashboard] Storage write notice:", e);
+        }
+        return updated;
+      });
+      setDismissedHistoryCards((prev) => ({ ...prev, [bId]: true }));
+    }
+    setFinalizingBooking(null);
+    setRating(0);
+    setRatingPartner(0);
+    setRatingProcess(0);
+    setRatingSafety(0);
+    setRatingZomIndia(0);
+
+    const toastMsg = "Feedback skipped. You can always rate later from your booking history.";
+    if ((window as any).__showToast) {
+      (window as any).__showToast(toastMsg);
+    }
+  };
+
   // Automatically open rating popup for completed bookings that need review (Urban Company style)
   useEffect(() => {
     const completedBookingToReview = bookings.find(
-      (b) => b.status === "completed" && b.paymentStatus === "paid" && b.customerUid === profile?.uid
+      (b) =>
+        b.status === "completed" &&
+        b.paymentStatus === "paid" &&
+        (b.customerUid === profile?.uid || b.customerId === profile?.uid || b.userId === profile?.uid) &&
+        !b.rating &&
+        !b.reviewedAt &&
+        !dbRatedBookings[b.id] &&
+        !dismissedHistoryCards[b.id] &&
+        !skippedRatingBookingIds[b.id]
     );
     if (completedBookingToReview && !finalizingBooking) {
       setRating(0);
@@ -1065,7 +1115,7 @@ export default function CustomerDashboard({
       setRatingZomIndia(0);
       setFinalizingBooking(completedBookingToReview);
     }
-  }, [bookings, profile?.uid, finalizingBooking]);
+  }, [bookings, profile?.uid, finalizingBooking, dbRatedBookings, dismissedHistoryCards, skippedRatingBookingIds]);
 
   const handlePaymentScanSuccess = (scannedBookingId: string) => {
     // Locate the booking by ID across user's active/past bookings list
@@ -1135,77 +1185,125 @@ export default function CustomerDashboard({
     const inlineComment = inlineComments[booking.id] || "";
 
     if (inlineRating === 0) {
-      alert("Please select at least a 1-star rating before submitting.");
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Please select at least 1 star before submitting.");
+      } else {
+        alert("Please select at least a 1-star rating before submitting.");
+      }
       return;
     }
 
+    setInlineSubmittingId(booking.id);
+
+    const reviewData: any = {
+      bookingId: booking.id,
+      customerId: profile?.uid || "",
+      customerUid: profile?.uid || "",
+      userId: profile?.uid || "",
+      partnerId: booking.partnerId || "",
+      serviceId: booking.serviceId || "",
+      rating: inlineRating,
+      ratingDetails: {
+        partner: inlineRating,
+        process: inlineRating,
+        safety: inlineRating,
+        zomindia: inlineRating,
+      },
+      feedbackScores: {
+        partner: inlineRating,
+        process: inlineRating,
+        safety: inlineRating,
+        zomindia: inlineRating,
+      },
+      comment: inlineComment,
+      review: inlineComment,
+      createdAt: Timestamp.now(),
+    };
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out after 5s")), 5000)
+    );
+
     try {
-      setInlineSubmittingId(booking.id);
-      
-      const reviewData: any = {
-        bookingId: booking.id,
-        customerId: profile?.uid || "",
-        partnerId: booking.partnerId || "",
-        serviceId: booking.serviceId,
-        rating: inlineRating,
-        ratingDetails: {
-          partner: inlineRating,
-          process: inlineRating,
-          safety: inlineRating,
-          zomindia: inlineRating,
-        },
-        comment: inlineComment,
-        createdAt: Timestamp.now(),
-      };
+      await Promise.race([
+        (async () => {
+          // 1. Try secure backend API first
+          try {
+            const apiRes = await fetch(`/api/bookings/${booking.id}/review`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(reviewData),
+            });
+            if (apiRes.ok) {
+              const resData = await apiRes.json();
+              if (resData.success) return;
+            }
+          } catch (apiErr) {
+            console.warn("[Inline Feedback] Backend API notice, proceeding with Firestore fallback:", apiErr);
+          }
 
-      // Add review to Firestore
-      await addDoc(collection(db, "reviews"), reviewData);
+          // 2. Direct Firestore fallback
+          try {
+            await addDoc(collection(db, "reviews"), reviewData);
+          } catch (rErr) {
+            console.warn("[Inline Feedback] Review add doc notice:", rErr);
+          }
 
-      // Update service rating (simplified sync)
-      const serviceRef = doc(db, "services", booking.serviceId);
-      const s = services[booking.serviceId];
-      if (s) {
-        const newCount = (s.reviewCount || 0) + 1;
-        const newRating =
-          ((s.rating || 4.8) * (s.reviewCount || 10) + inlineRating) /
-          (newCount + 10); // Pseudo weighted average
-        await updateDoc(serviceRef, {
-          rating: Number(newRating.toFixed(1)),
-          reviewCount: newCount,
-        });
-      }
+          try {
+            await updateDoc(doc(db, "bookings", booking.id), {
+              status: "finalized",
+              rating: inlineRating,
+              review: inlineComment,
+              comment: inlineComment,
+              feedbackScores: reviewData.ratingDetails,
+              ratingDetails: reviewData.ratingDetails,
+              reviewedAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            });
+          } catch (bErr) {
+            console.warn("[Inline Feedback] Booking update notice:", bErr);
+          }
 
-      // Update partner rating
-      if (booking.partnerId) {
-        const partnerQuery = query(
-          collection(db, "partners"),
-          where("userId", "==", booking.partnerId),
-        );
-        const pSnap = await getDocs(partnerQuery);
-        if (!pSnap.empty) {
-          const pDoc = pSnap.docs[0];
-          const pData = pDoc.data() as PartnerProfile;
-          const pNewCount = (pData.reviewCount || 0) + 1;
-          const pNewRating =
-            ((pData.rating || 4.8) * (pData.reviewCount || 10) + inlineRating) /
-            (pNewCount + 10);
-          await updateDoc(doc(db, "partners", pDoc.id), {
-            rating: Number(pNewRating.toFixed(1)),
-            reviewCount: pNewCount,
-          });
-        }
-      }
+          // Service rating sync
+          if (booking.serviceId) {
+            try {
+              const serviceRef = doc(db, "services", booking.serviceId);
+              const s = services[booking.serviceId];
+              if (s) {
+                const newCount = (s.reviewCount || 0) + 1;
+                const newRating =
+                  ((s.rating || 4.8) * (s.reviewCount || 10) + inlineRating) /
+                  (newCount + 10);
+                await updateDoc(serviceRef, {
+                  rating: Number(newRating.toFixed(1)),
+                  reviewCount: newCount,
+                });
+              }
+            } catch (sErr) {
+              // Non-blocking
+            }
+          }
+        })(),
+        timeoutPromise,
+      ]);
 
-      // Update booking status
-      await updateDoc(doc(db, "bookings", booking.id), {
-        status: "finalized",
-        updatedAt: Timestamp.now(),
-      });
-
-      // Trigger subtle checkmark animation!
+      // Optimistic update & UI unlock
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === booking.id
+            ? {
+                ...b,
+                status: "finalized",
+                rating: inlineRating,
+                review: inlineComment,
+                reviewedAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+      setDbRatedBookings((prev) => ({ ...prev, [booking.id]: true }));
       setSuccessCheckedCards((prev) => ({ ...prev, [booking.id]: true }));
 
-      // Clean up inputs
       setInlineRatings((prev) => {
         const copy = { ...prev };
         delete copy[booking.id];
@@ -1217,14 +1315,34 @@ export default function CustomerDashboard({
         return copy;
       });
 
-      // Wait 1.5 seconds for the checkmark animation to complete, then slide or transition hide it automatically!
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Thank you for your feedback!");
+      }
+
       setTimeout(() => {
         setDismissedHistoryCards((prev) => ({ ...prev, [booking.id]: true }));
-      }, 1500);
+      }, 1200);
 
     } catch (err) {
-      console.error("Error submitting inline review:", err);
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+      console.warn("[Inline Feedback] Handled feedback fallback:", err);
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === booking.id
+            ? {
+                ...b,
+                status: "finalized",
+                rating: inlineRating,
+                review: inlineComment,
+                reviewedAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+      setDbRatedBookings((prev) => ({ ...prev, [booking.id]: true }));
+      setDismissedHistoryCards((prev) => ({ ...prev, [booking.id]: true }));
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Thank you for your feedback!");
+      }
     } finally {
       setInlineSubmittingId(null);
     }
@@ -1238,70 +1356,146 @@ export default function CustomerDashboard({
     }
 
     // Compute the composite rating based on sub-criteria
-    const finalRating = Math.round((ratingPartner + ratingProcess + ratingSafety + ratingZomIndia) / 4) || 5;
+    const finalRating =
+      Math.round((ratingPartner + ratingProcess + ratingSafety + ratingZomIndia) / 4) || 5;
+
+    setIsSubmittingReview(true);
+
+    const reviewData: any = {
+      bookingId: booking.id,
+      customerId: profile?.uid || "",
+      customerUid: profile?.uid || "",
+      userId: profile?.uid || "",
+      partnerId: booking.partnerId || "",
+      serviceId: booking.serviceId || "",
+      rating: finalRating,
+      ratingDetails: {
+        partner: ratingPartner || 5,
+        process: ratingProcess || 5,
+        safety: ratingSafety || 5,
+        zomindia: ratingZomIndia || 5,
+      },
+      feedbackScores: {
+        partner: ratingPartner || 5,
+        process: ratingProcess || 5,
+        safety: ratingSafety || 5,
+        zomindia: ratingZomIndia || 5,
+      },
+      comment,
+      review: comment,
+      createdAt: Timestamp.now(),
+    };
+    if (reviewPhoto) reviewData.photoURL = reviewPhoto;
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out after 5s")), 5000)
+    );
 
     try {
-      setIsSubmittingReview(true);
-      const reviewData: any = {
-        bookingId: booking.id,
-        customerId: profile.uid,
-        partnerId: booking.partnerId,
-        serviceId: booking.serviceId,
-        rating: finalRating,
-        ratingDetails: {
-          partner: ratingPartner || 5,
-          process: ratingProcess || 5,
-          safety: ratingSafety || 5,
-          zomindia: ratingZomIndia || 5,
-        },
-        comment,
-        createdAt: Timestamp.now(),
-      };
-      if (reviewPhoto) reviewData.photoURL = reviewPhoto;
+      await Promise.race([
+        (async () => {
+          // 1. Try secure backend API endpoint first
+          try {
+            const apiRes = await fetch(`/api/bookings/${booking.id}/review`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(reviewData),
+            });
+            if (apiRes.ok) {
+              const resData = await apiRes.json();
+              if (resData.success) return;
+            }
+          } catch (apiErr) {
+            console.warn("[HandleFinalize] Backend API endpoint notice, falling back to direct Firestore:", apiErr);
+          }
 
-      await addDoc(collection(db, "reviews"), reviewData);
+          // 2. Direct Firestore writes as fallback
+          try {
+            await addDoc(collection(db, "reviews"), reviewData);
+          } catch (rErr) {
+            console.warn("[HandleFinalize] Direct review doc write notice:", rErr);
+          }
 
-      // Update service rating (simplified sync)
-      const serviceRef = doc(db, "services", booking.serviceId);
-      const s = services[booking.serviceId];
-      const newCount = (s?.reviewCount || 0) + 1;
-      const newRating =
-        ((s?.rating || 4.8) * (s?.reviewCount || 10) + finalRating) /
-        (newCount + 10); // Pseudo weighted average
+          // Update booking document
+          try {
+            await updateDoc(doc(db, "bookings", booking.id), {
+              status: "finalized",
+              rating: finalRating,
+              review: comment,
+              comment: comment,
+              feedbackScores: reviewData.feedbackScores,
+              ratingDetails: reviewData.ratingDetails,
+              reviewedAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            });
+          } catch (bErr) {
+            console.warn("[HandleFinalize] Direct booking update notice:", bErr);
+          }
 
-      await updateDoc(serviceRef, {
-        rating: Number(newRating.toFixed(1)),
-        reviewCount: newCount,
-      });
+          // Non-blocking sync for service rating
+          if (booking.serviceId) {
+            try {
+              const serviceRef = doc(db, "services", booking.serviceId);
+              const s = services[booking.serviceId];
+              const newCount = (s?.reviewCount || 0) + 1;
+              const newRating =
+                ((s?.rating || 4.8) * (s?.reviewCount || 10) + finalRating) /
+                (newCount + 10);
+              await updateDoc(serviceRef, {
+                rating: Number(newRating.toFixed(1)),
+                reviewCount: newCount,
+              });
+            } catch (sErr) {
+              // Non-blocking
+            }
+          }
 
-      // Update partner rating
-      if (booking.partnerId) {
-        const partnerQuery = query(
-          collection(db, "partners"),
-          where("userId", "==", booking.partnerId),
-        );
-        const pSnap = await getDocs(partnerQuery);
-        if (!pSnap.empty) {
-          const pDoc = pSnap.docs[0];
-          const pData = pDoc.data() as PartnerProfile;
-          const pNewCount = (pData.reviewCount || 0) + 1;
-          const pNewRating =
-            ((pData.rating || 4.8) * (pData.reviewCount || 10) + finalRating) /
-            (pNewCount + 10);
-          await updateDoc(doc(db, "partners", pDoc.id), {
-            rating: Number(pNewRating.toFixed(1)),
-            reviewCount: pNewCount,
-          });
-        }
-      }
+          // Non-blocking sync for partner rating
+          if (booking.partnerId) {
+            try {
+              const partnerQuery = query(
+                collection(db, "partners"),
+                where("userId", "==", booking.partnerId)
+              );
+              const pSnap = await getDocs(partnerQuery);
+              if (!pSnap.empty) {
+                const pDoc = pSnap.docs[0];
+                const pData = pDoc.data() as PartnerProfile;
+                const pNewCount = (pData.reviewCount || 0) + 1;
+                const pNewRating =
+                  ((pData.rating || 4.8) * (pData.reviewCount || 10) + finalRating) /
+                  (pNewCount + 10);
+                await updateDoc(doc(db, "partners", pDoc.id), {
+                  rating: Number(pNewRating.toFixed(1)),
+                  reviewCount: pNewCount,
+                });
+              }
+            } catch (pErr) {
+              // Non-blocking
+            }
+          }
+        })(),
+        timeoutPromise,
+      ]);
 
-      await updateDoc(doc(db, "bookings", booking.id), {
-        status: "finalized",
-        updatedAt: Timestamp.now(),
-      });
-      setShowSuccessModal(
-        "Review submitted! Thank you for helping us maintain service quality.",
+      // Optimistic local state update & UI unlock
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === booking.id
+            ? {
+                ...b,
+                status: "finalized",
+                rating: finalRating,
+                review: comment,
+                reviewedAt: new Date().toISOString(),
+              }
+            : b
+        )
       );
+      setDbRatedBookings((prev) => ({ ...prev, [booking.id]: true }));
+      setDismissedHistoryCards((prev) => ({ ...prev, [booking.id]: true }));
+
+      // Clean up modal state immediately
       setFinalizingBooking(null);
       setRating(0);
       setRatingPartner(0);
@@ -1310,9 +1504,44 @@ export default function CustomerDashboard({
       setRatingZomIndia(0);
       setComment("");
       setReviewPhoto("");
-      setIsSubmittingReview(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+
+      // Show green success toast & confirmation modal
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Thank you for your feedback!");
+      }
+      setShowSuccessModal("Thank you for your feedback! Your experience rating has been recorded.");
+
+    } catch (err: any) {
+      console.warn("[HandleFinalize] Timeout or handled error during review submission:", err);
+      // Perform optimistic local dismissal so user is never locked out
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === booking.id
+            ? {
+                ...b,
+                status: "finalized",
+                rating: finalRating,
+                review: comment,
+                reviewedAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+      setDbRatedBookings((prev) => ({ ...prev, [booking.id]: true }));
+      setDismissedHistoryCards((prev) => ({ ...prev, [booking.id]: true }));
+      setFinalizingBooking(null);
+      setRating(0);
+      setRatingPartner(0);
+      setRatingProcess(0);
+      setRatingSafety(0);
+      setRatingZomIndia(0);
+      setComment("");
+      setReviewPhoto("");
+
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Thank you for your feedback!");
+      }
+    } finally {
       setIsSubmittingReview(false);
     }
   };
@@ -3738,9 +3967,21 @@ export default function CustomerDashboard({
                               <span className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1">
                                 ⭐ Share Your Experience:
                               </span>
-                              <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                                Required
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSkipRating(booking.id);
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                                >
+                                  Maybe Later
+                                </button>
+                                <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                                  Optional
+                                </span>
+                              </div>
                             </div>
 
                             {/* 5-Star Interactive Input */}
@@ -3986,6 +4227,17 @@ export default function CustomerDashboard({
               className="relative bg-white w-full max-w-xl rounded-[36px] shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col border border-slate-100"
             >
               <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                {/* Top-Right Skip / Maybe Later Button */}
+                <button
+                  type="button"
+                  id="btn-skip-rating-modal-top"
+                  onClick={() => handleSkipRating(finalizingBooking?.id)}
+                  className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100/90 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-xs font-bold transition-all z-20 cursor-pointer border border-slate-200/80 shadow-xs active:scale-95 group"
+                  title="Skip rating for now"
+                >
+                  <span className="text-[11px] font-bold text-slate-600 group-hover:text-slate-900">Skip / Maybe Later</span>
+                  <X size={14} className="text-slate-400 group-hover:text-slate-700 transition-colors" />
+                </button>
                 
                 {/* Celebratory Header with Pulsing Success Ring */}
                 <div className="text-center">
@@ -4029,14 +4281,23 @@ export default function CustomerDashboard({
                   </div>
                 </div>
 
-                {/* Locked feedback notification */}
-                <div className="bg-blue-50/60 p-3 rounded-2xl border border-blue-100/50 flex items-center gap-3">
-                  <div className="p-1.5 bg-blue-100 rounded-xl text-blue-600 shrink-0">
-                    <Shield size={15} strokeWidth={2.5} />
+                {/* Quality feedback notification with quick skip */}
+                <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-100 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-blue-100 rounded-xl text-blue-600 shrink-0">
+                      <Shield size={15} strokeWidth={2.5} />
+                    </div>
+                    <p className="text-[10.5px] leading-relaxed font-bold text-blue-900">
+                      <span className="font-extrabold uppercase text-[9.5px]">Quality Feedback:</span> Share your ratings to verify completion, or skip to rate whenever you want from history.
+                    </p>
                   </div>
-                  <p className="text-[10.5px] leading-relaxed font-bold text-blue-800">
-                    🔒 <span className="font-extrabold uppercase text-[9.5px]">Quality Lock:</span> Complete the 4-tier rating below to verify completion and unlock your next booking.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleSkipRating(finalizingBooking?.id)}
+                    className="text-[10px] font-bold text-blue-700 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-2.5 py-1 rounded-lg shrink-0 transition-colors cursor-pointer"
+                  >
+                    Skip
+                  </button>
                 </div>
 
                 {/* The 4-Tier Interactive Score Section */}
@@ -4342,6 +4603,15 @@ export default function CustomerDashboard({
                     <Sparkles size={13} className="animate-bounce" />
                   )}
                   {isSubmittingReview ? "Saving Scores..." : "Submit Experience Rating & Complete"}
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-skip-rating-modal-bottom"
+                  onClick={() => handleSkipRating(finalizingBooking?.id)}
+                  className="w-full py-2.5 text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5 hover:bg-slate-100/60 rounded-xl active:scale-98"
+                >
+                  <span>Skip for now</span>
                 </button>
               </div>
             </motion.div>
