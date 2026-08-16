@@ -23,11 +23,13 @@ import {
   Landmark,
   DollarSign,
   Award,
-  User
+  User,
+  MessageSquareQuote,
+  ThumbsUp
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
-import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication } from '../../types';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
+import { doc, updateDoc, setDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 interface Props {
@@ -125,8 +127,53 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   // Overall completion rate
   const completionRate = myTotal > 0 ? Math.round((totalCompleted / (myTotal - totalCanceled || 1)) * 100) : 100;
   
+  // Real-time partner reviews
+  const [partnerReviews, setPartnerReviews] = useState<Review[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+
+  useEffect(() => {
+    const partnerId = partner?.id || partner?.userId || profile.uid;
+    if (!partnerId) return;
+
+    const q = query(
+      collection(db, "reviews"),
+      where("partnerId", "in", [partnerId, profile.uid, partner?.id || profile.uid].filter((v, i, a) => a.indexOf(v) === i && !!v))
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetched: Review[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as Review[];
+      // Sort newest first
+      fetched.sort((a, b) => {
+        const timeA = a.createdAt?.toDate?.()?.getTime() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const timeB = b.createdAt?.toDate?.()?.getTime() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return timeB - timeA;
+      });
+      setPartnerReviews(fetched);
+      setLoadingReviews(false);
+    }, (err) => {
+      console.warn("Reviews snapshot listener fallback:", err);
+      // Fallback query all reviews
+      const fallbackQ = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
+      const fallbackUnsub = onSnapshot(fallbackQ, (snap) => {
+        const pId = partner?.id || profile.uid;
+        const matched = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as Review))
+          .filter(r => r.partnerId === pId || r.partnerId === profile.uid);
+        setPartnerReviews(matched);
+        setLoadingReviews(false);
+      }, () => setLoadingReviews(false));
+      return fallbackUnsub;
+    });
+
+    return () => unsubscribe();
+  }, [partner?.id, partner?.userId, profile.uid]);
+
   // Overall rating context
-  const overallRating = partner?.rating || 4.9;
+  const overallRating = partner?.averageRating || partner?.rating || 4.9;
+  const totalReviewsCount = partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0;
 
   // Let's create beautiful series data for Sparklines
   const ratingTrendData = [
@@ -442,12 +489,23 @@ export default function PartnerHome({ partner, bookings, services, users, profil
               }
 
               return (
-                <div className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 active:scale-95 transition-all">
-                  <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mb-6 text-amber-400">
-                     <Star size={20} fill="currentColor" />
+                <div 
+                  onClick={() => onNavigate('settings')}
+                  className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 active:scale-95 transition-all cursor-pointer group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                       <Star size={20} fill="currentColor" />
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded-full text-blue-100">
+                      {totalReviewsCount} {totalReviewsCount === 1 ? 'Review' : 'Reviews'}
+                    </span>
                   </div>
-                  <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
-                  <p className="text-3xl font-black italic">{partner?.rating || '4.9'}</p>
+                  <p className="border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Overall Rating</p>
+                  <div className="flex items-baseline gap-1.5">
+                    <p className="text-3xl font-black italic">{Number(overallRating).toFixed(1)}</p>
+                    <span className="text-xs font-bold text-white/50">/ 5.0</span>
+                  </div>
                 </div>
               );
             })()}
@@ -784,6 +842,128 @@ export default function PartnerHome({ partner, bookings, services, users, profil
               </div>
             </section>
           )}
+
+          {/* Real-time Customer Reviews & Feedback Section */}
+          <section className="bg-white border border-slate-150 rounded-[36px] p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
+                    <MessageSquareQuote size={18} />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 italic">Customer Feedback & Reviews</h3>
+                </div>
+                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  Live verified reviews submitted by Indore customers
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 bg-amber-50/70 border border-amber-200/60 px-4 py-2 rounded-2xl">
+                <div className="flex items-center text-amber-500">
+                  <Star size={16} fill="currentColor" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-black text-slate-900 leading-none">
+                    {Number(overallRating).toFixed(1)} <span className="text-[10px] text-slate-500 font-semibold">/ 5.0</span>
+                  </p>
+                  <p className="text-[9px] text-amber-700 font-black uppercase tracking-wider mt-0.5">
+                    {totalReviewsCount} {totalReviewsCount === 1 ? 'Job Rated' : 'Jobs Rated'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {loadingReviews ? (
+              <div className="py-8 text-center text-slate-400 text-xs font-bold animate-pulse">
+                Syncing live customer reviews...
+              </div>
+            ) : partnerReviews.length === 0 ? (
+              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-2">
+                <p className="text-xs font-bold text-slate-700">No customer reviews yet</p>
+                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                  Complete assigned jobs with 5-star quality and customer written feedback will automatically appear here in real-time.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {partnerReviews.slice(0, 4).map((rev) => {
+                  const revDate = rev.createdAt?.toDate ? rev.createdAt.toDate() : (rev.createdAt ? new Date(rev.createdAt) : new Date());
+                  const formattedDate = revDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                  
+                  return (
+                    <div 
+                      key={rev.id}
+                      className="p-4 sm:p-5 bg-slate-50/80 rounded-2xl border border-slate-100 hover:border-blue-200 transition-colors space-y-3"
+                    >
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-blue-700 text-white font-black text-xs flex items-center justify-center shadow-sm">
+                            {(rev.customerName || 'C')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-900 leading-tight">
+                              {rev.customerName || 'Verified Client'}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                              {rev.serviceName ? `${rev.serviceName} • ` : ''}{formattedDate}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Star Score Badge */}
+                        <div className="flex items-center gap-1 bg-amber-100/70 border border-amber-200 text-amber-900 px-2.5 py-1 rounded-xl shrink-0">
+                          <Star size={12} className="text-amber-500 fill-amber-500" />
+                          <span className="text-xs font-black">{rev.rating || 5}.0</span>
+                        </div>
+                      </div>
+
+                      {/* Criteria Score Badges if present */}
+                      {rev.feedbackScores && typeof rev.feedbackScores === 'object' && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {rev.feedbackScores.hygiene !== undefined && (
+                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
+                              Hygiene: {rev.feedbackScores.hygiene}★
+                            </span>
+                          )}
+                          {rev.feedbackScores.safety !== undefined && (
+                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
+                              Safety: {rev.feedbackScores.safety}★
+                            </span>
+                          )}
+                          {(rev.feedbackScores.process !== undefined || rev.feedbackScores.partner !== undefined) && (
+                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
+                              Service Process: {rev.feedbackScores.process ?? rev.feedbackScores.partner}★
+                            </span>
+                          )}
+                          {rev.feedbackScores.appExperience !== undefined && (
+                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
+                              App: {rev.feedbackScores.appExperience}★
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Written Customer Feedback Text */}
+                      {(rev.reviewText || rev.comment || rev.review) && (
+                        <p className="text-xs text-slate-700 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-100 italic">
+                          "{rev.reviewText || rev.comment || rev.review}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {partnerReviews.length > 4 && (
+                  <button
+                    onClick={() => onNavigate('settings')}
+                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl transition-all"
+                  >
+                    View All {partnerReviews.length} Reviews in Settings →
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
 
           {/* Rewards Segment */}
           <section className="bg-white border border-slate-100 p-8 rounded-[40px] shadow-sm flex justify-between items-center overflow-hidden relative">

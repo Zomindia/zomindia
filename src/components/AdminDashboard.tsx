@@ -2078,7 +2078,7 @@ export default function AdminDashboard({
                 isAdminAuthorized("earnings") && (
                   <div className="space-y-8">
                     <EarningsView bookings={bookings} role="admin" />
-                    <PayoutManager />
+                    <PayoutManager partners={partners} users={users} />
                   </div>
                 )}
               {activeAdminTab === "partners" &&
@@ -5377,6 +5377,49 @@ function PartnerManager({
   const [editReviewCount, setEditReviewCount] = useState<number>(184);
   const [customBadgeText, setCustomBadgeText] = useState<string>("");
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [reviewingPartner, setReviewingPartner] = useState<PartnerProfile | null>(null);
+  const [adminPartnerReviews, setAdminPartnerReviews] = useState<any[]>([]);
+  const [loadingAdminReviews, setLoadingAdminReviews] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!reviewingPartner) {
+      setAdminPartnerReviews([]);
+      return;
+    }
+    setLoadingAdminReviews(true);
+    const partnerId = reviewingPartner.id;
+    const q = query(
+      collection(db, "reviews"),
+      where("partnerId", "==", partnerId),
+      orderBy("createdAt", "desc")
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        setAdminPartnerReviews(items);
+        setLoadingAdminReviews(false);
+      },
+      (err) => {
+        console.warn("Reviews onSnapshot in PartnerManager:", err);
+        const fallbackQ = query(
+          collection(db, "reviews"),
+          where("partnerId", "==", partnerId)
+        );
+        getDocs(fallbackQ)
+          .then((snap) => {
+            setAdminPartnerReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            setLoadingAdminReviews(false);
+          })
+          .catch(() => setLoadingAdminReviews(false));
+      }
+    );
+
+    return () => unsubscribe();
+  }, [reviewingPartner]);
 
   useEffect(() => {
     if (selectedEditPartner) {
@@ -6661,6 +6704,16 @@ function PartnerManager({
                     {p.approvalStatus === "blacklisted" ? "Restore / Approve" : "Blacklist"}
                   </button>
                 </div>
+
+                {/* View Live Reviews Button */}
+                <button
+                  type="button"
+                  onClick={() => setReviewingPartner(p)}
+                  className="w-full mt-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 py-2 px-3 rounded-xl text-[11px] font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Star size={13} className="text-amber-500 fill-amber-500" />
+                  <span>View Customer Reviews ({p.totalReviews || p.reviewCount || 0})</span>
+                </button>
               </div>
               <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-slate-50 rounded-full z-0 group-hover:scale-110 transition-transform" />
             </div>
@@ -6668,6 +6721,136 @@ function PartnerManager({
         })}
       </div>
       )}
+
+      {/* REVIEWING PARTNER LIVE REVIEWS MODAL */}
+      <AnimatePresence>
+        {reviewingPartner && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-[36px] max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+            >
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-extrabold italic">
+                    {reviewingPartner.displayName || "Partner"} — Customer Feedback
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Real-time aggregated customer reviews and quality breakdown
+                  </p>
+                </div>
+                <button
+                  onClick={() => setReviewingPartner(null)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-6">
+                {/* Aggregate Summary */}
+                <div className="p-5 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center shadow-md">
+                      <span className="text-2xl font-black leading-none">
+                        {reviewingPartner.averageRating || reviewingPartner.rating || 5.0}
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider">/ 5.0</span>
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-sm text-slate-900">
+                        {reviewingPartner.totalReviews || reviewingPartner.reviewCount || 0} Verified Customer Reviews
+                      </p>
+                      <p className="text-xs text-slate-500 font-medium">
+                        Real-time ratings updated across customer app and partner profile.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-bold text-slate-700 w-full sm:w-auto">
+                    <div className="bg-white px-3 py-1.5 rounded-xl border border-amber-200/60">
+                      <span className="text-slate-400 block text-[8px] uppercase">Hygiene</span>
+                      {reviewingPartner.feedbackScores?.hygiene || 5.0} / 5
+                    </div>
+                    <div className="bg-white px-3 py-1.5 rounded-xl border border-amber-200/60">
+                      <span className="text-slate-400 block text-[8px] uppercase">Safety</span>
+                      {reviewingPartner.feedbackScores?.safety || 5.0} / 5
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reviews List */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    Recent Customer Written Reviews
+                  </h4>
+
+                  {loadingAdminReviews ? (
+                    <div className="py-8 text-center text-slate-400 flex items-center justify-center gap-2">
+                      <LoadingSpinner size="sm" />
+                      <span className="text-xs font-medium">Fetching real-time reviews...</span>
+                    </div>
+                  ) : adminPartnerReviews.length === 0 ? (
+                    <div className="py-10 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                      <MessageSquare size={28} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs font-semibold text-slate-500">
+                        No customer reviews logged yet for this partner.
+                      </p>
+                    </div>
+                  ) : (
+                    adminPartnerReviews.map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2 relative group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-amber-500">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                size={12}
+                                className={i < (rev.rating || 5) ? "fill-amber-400 text-amber-400" : "text-slate-200"}
+                              />
+                            ))}
+                            <span className="text-xs font-black text-slate-900 ml-1.5">
+                              {rev.rating || 5}.0
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            {rev.createdAt?.toDate?.()?.toLocaleDateString() || "Recent"}
+                          </span>
+                        </div>
+
+                        {rev.comment && (
+                          <p className="text-xs text-slate-700 italic">
+                            "{rev.comment}"
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                          <span>By: {rev.userName || "Verified Customer"}</span>
+                          {rev.serviceName && <span>Service: {rev.serviceName}</span>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-100 text-right">
+                <button
+                  onClick={() => setReviewingPartner(null)}
+                  className="px-6 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl hover:bg-slate-900 transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selectedRewardPartner && (
@@ -9502,9 +9685,23 @@ function ReviewManager({ serviceId }: { serviceId: string }) {
   );
 }
 
-function PayoutManager() {
+function PayoutManager({
+  partners = [],
+  users = [],
+}: {
+  partners?: PartnerProfile[];
+  users?: UserProfile[];
+}) {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedReq, setSelectedReq] = useState<any | null>(null);
+  const [manualGrossAmount, setManualGrossAmount] = useState<number>(0);
+  const [manualCommission, setManualCommission] = useState<number>(0);
+  const [manualTds, setManualTds] = useState<number>(0);
+  const [manualNetPayable, setManualNetPayable] = useState<number>(0);
+  const [paymentRef, setPaymentRef] = useState<string>("");
+  const [adminNotes, setAdminNotes] = useState<string>("");
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   useEffect(() => {
     const q = query(
@@ -9518,46 +9715,95 @@ function PayoutManager() {
     return unsubscribe;
   }, []);
 
-  const handleProcess = async (
-    reqId: string,
-    partnerId: string,
-    amount: number,
-  ) => {
+  const openManualModal = (req: any) => {
+    setSelectedReq(req);
+    const amt = Number(req.amount || 0);
+    setManualGrossAmount(amt);
+    setManualCommission(Number(req.manualCommission || 0));
+    setManualTds(Number(req.manualTds || 0));
+    setManualNetPayable(amt);
+    setPaymentRef(req.paymentRef || `UTR-${Date.now().toString().slice(-8)}`);
+    setAdminNotes(req.adminNotes || "Processed manually after quality & performance review.");
+  };
+
+  const handleManualProcess = async () => {
+    if (!selectedReq) return;
+    setIsProcessing(true);
+    const partnerId = selectedReq.partnerId || selectedReq.partnerUserId;
+    const reqId = selectedReq.id;
+
     try {
-      // Create a transaction/withdrawal record in partner's history
+      // 1. Record manual transaction in partner's earningsHistory
       await addDoc(collection(db, "partners", partnerId, "earningsHistory"), {
-        amount: -amount,
-        type: "adjustment",
-        description: "Withdrawal to Bank Account (Processed)",
+        amount: -manualGrossAmount,
+        netDisbursed: manualNetPayable,
+        commissionDeducted: manualCommission,
+        tdsDeducted: manualTds,
+        paymentRef: paymentRef,
+        notes: adminNotes,
+        type: "payout_disbursement",
+        description: `Bank Withdrawal Processed (Ref: ${paymentRef})`,
         createdAt: Timestamp.now(),
       });
 
-      // Update partner total balance
+      // 2. Adjust partner balance
       const partnerRef = doc(db, "partners", partnerId);
       const partnerDoc = await getDoc(partnerRef);
       if (partnerDoc.exists()) {
         const currentBalance = partnerDoc.data().totalEarnings || 0;
         await updateDoc(partnerRef, {
-          totalEarnings: Math.max(0, currentBalance - amount),
+          totalEarnings: Math.max(0, currentBalance - manualGrossAmount),
+          lastPayoutAt: Timestamp.now(),
+          lastPayoutAmount: manualNetPayable,
+          updatedAt: Timestamp.now(),
         });
       }
 
+      // 3. Mark payout request processed
       await updateDoc(doc(db, "payoutRequests", reqId), {
         status: "processed",
+        grossAmount: manualGrossAmount,
+        approvedAmount: manualGrossAmount,
+        manualCommission: manualCommission,
+        manualTds: manualTds,
+        netPayable: manualNetPayable,
+        paymentRef: paymentRef,
+        adminNotes: adminNotes,
         processedAt: Timestamp.now(),
       });
-      alert("Payout processed successfully.");
+
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Manual payout disbursed and logged successfully.");
+      } else {
+        alert("Manual payout disbursed and logged successfully.");
+      }
+      setSelectedReq(null);
     } catch (err) {
-      console.error(err);
-      alert("Failed to process payout.");
+      console.error("Payout error:", err);
+      alert("Failed to process manual payout: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm mt-8">
-      <h3 className="text-xl font-bold font-display italic mb-6">
-        Payout Requests
-      </h3>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 className="text-xl font-bold font-display italic text-slate-900">
+            Partner Payout & Commission Ledger
+          </h3>
+          <p className="text-xs text-slate-500 font-medium">
+            100% Manual Payout Review: Review partner ratings, quality scores, and set custom commissions.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200/80 rounded-full">
+            No Auto Calculations
+          </span>
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex items-center gap-2 text-slate-400 py-4 font-semibold font-mono">
           <LoadingSpinner size="sm" />
@@ -9569,38 +9815,253 @@ function PayoutManager() {
         </p>
       ) : (
         <div className="space-y-4">
-          {requests.map((req) => (
-            <div
-              key={req.id}
-              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-slate-50 border border-slate-100 rounded-3xl gap-4"
-            >
-              <div>
-                <p className="text-slate-900 font-bold mb-1">₹{req.amount}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                  Partner: {req.partnerId} &bull;{" "}
-                  {req.createdAt?.toDate?.()?.toLocaleString()}
-                </p>
+          {requests.map((req) => {
+            const partner = partners.find(
+              (p) => p.id === req.partnerId || p.userId === req.partnerId || p.userId === req.partnerUserId
+            );
+            const user = users.find(
+              (u) => u.uid === req.partnerId || u.uid === req.partnerUserId
+            );
+            const partnerName = partner?.displayName || user?.displayName || req.partnerName || "Partner";
+
+            return (
+              <div
+                key={req.id}
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-slate-50 border border-slate-100 rounded-3xl gap-4 hover:border-slate-200 transition-all"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <p className="text-slate-900 font-extrabold text-lg">
+                      ₹{req.amount?.toLocaleString() || 0}
+                    </p>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                      {partnerName}
+                    </span>
+                    {partner?.averageRating ? (
+                      <span className="text-xs font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                        <Star size={11} className="fill-amber-500 text-amber-500" />
+                        {partner.averageRating} ({partner.totalReviews || partner.reviewCount || 0} revs)
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                    ID: {req.partnerId || req.partnerUserId} &bull;{" "}
+                    {req.createdAt?.toDate?.()?.toLocaleString() || "Recent"}
+                  </p>
+                  {req.paymentRef && (
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Ref: {req.paymentRef} {req.netPayable ? `• Disbursed: ₹${req.netPayable}` : ""}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {req.status === "pending" ? (
+                    <button
+                      onClick={() => openManualModal(req)}
+                      className="bg-blue-700 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-800 transition-all shadow-md shadow-blue-700/10 cursor-pointer active:scale-95"
+                    >
+                      Review & Process
+                    </button>
+                  ) : (
+                    <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                      <Check size={12} /> Disbursed
+                    </span>
+                  )}
+                </div>
               </div>
-              <div>
-                {req.status === "pending" ? (
-                  <button
-                    onClick={() =>
-                      handleProcess(req.id, req.partnerId, req.amount)
-                    }
-                    className="bg-blue-700 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-800 transition-colors"
-                  >
-                    Approve & Process
-                  </button>
-                ) : (
-                  <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest">
-                    Processed
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {/* Manual Payout & Commission Processing Modal */}
+      <AnimatePresence>
+        {selectedReq && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-[36px] max-w-xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-extrabold italic">Manual Payout Decision</h4>
+                  <p className="text-xs text-slate-400">
+                    Review partner performance and manually determine commission and payout amounts.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedReq(null)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-5">
+                {/* Partner Performance Summary */}
+                {(() => {
+                  const partner = partners.find(
+                    (p) => p.id === selectedReq.partnerId || p.userId === selectedReq.partnerId || p.userId === selectedReq.partnerUserId
+                  );
+                  return (
+                    <div className="p-4 bg-amber-50/60 border border-amber-200/70 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                          Partner Performance & Ratings
+                        </p>
+                        <span className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                          <Star size={13} className="fill-amber-500 text-amber-500" />
+                          {partner?.averageRating || partner?.rating || 4.9} ({partner?.totalReviews || partner?.reviewCount || 0} reviews)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[10px] font-bold text-slate-600">
+                        <div className="bg-white p-2 rounded-xl border border-amber-100">
+                          <p className="text-[8px] text-slate-400 uppercase">Hygiene</p>
+                          <p className="text-slate-900">{partner?.feedbackScores?.hygiene || 4.9} / 5</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-amber-100">
+                          <p className="text-[8px] text-slate-400 uppercase">Safety</p>
+                          <p className="text-slate-900">{partner?.feedbackScores?.safety || 5.0} / 5</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-amber-100">
+                          <p className="text-[8px] text-slate-400 uppercase">Skill/Process</p>
+                          <p className="text-slate-900">{partner?.feedbackScores?.process || 4.8} / 5</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-amber-100">
+                          <p className="text-[8px] text-slate-400 uppercase">App Exp</p>
+                          <p className="text-slate-900">{partner?.feedbackScores?.appExperience || 4.9} / 5</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 100% Manual Editable Fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Requested Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={manualGrossAmount}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setManualGrossAmount(val);
+                        setManualNetPayable(Math.max(0, val - manualCommission - manualTds));
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Manual Commission (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={manualCommission}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setManualCommission(val);
+                        setManualNetPayable(Math.max(0, manualGrossAmount - val - manualTds));
+                      }}
+                      placeholder="0"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      TDS / Tax Deductions (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={manualTds}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setManualTds(val);
+                        setManualNetPayable(Math.max(0, manualGrossAmount - manualCommission - val));
+                      }}
+                      placeholder="0"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Final Net Disbursed (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={manualNetPayable}
+                      onChange={(e) => setManualNetPayable(Number(e.target.value))}
+                      className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-3.5 py-2.5 text-sm font-black text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Payment Reference / UTR Number
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    placeholder="e.g. UTR-9821839201"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Admin Review Remarks
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    placeholder="Remarks on rating, performance, and commission adjustment..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedReq(null)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={handleManualProcess}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <LoadingSpinner /> Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} /> Disburse ₹{manualNetPayable}
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

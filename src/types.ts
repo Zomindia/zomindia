@@ -77,7 +77,10 @@ export interface UserProfile {
     bio?: string;
     status?: string;
     rating?: number;
+    averageRating?: number;
     reviewCount?: number;
+    totalReviews?: number;
+    totalRatingPoints?: number;
     isVerified?: boolean;
     kycStatus?: string;
   };
@@ -105,9 +108,13 @@ export interface Service {
   images?: string[];
   priceListPDF?: string;
   rating?: number;
+  averageRating?: number;
   reviewCount?: number;
+  totalReviews?: number;
+  totalRatingPoints?: number;
   predefinedTasks?: string[];
   createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface WorkingHours {
@@ -126,6 +133,7 @@ export interface KYCDocument {
 export interface PartnerProfile {
   id: string;
   userId: string;
+  displayName?: string;
   categories: string[];
   skills?: string[];
   city?: string;
@@ -134,7 +142,17 @@ export interface PartnerProfile {
   fullName?: string;
   bio?: string;
   rating: number;
+  averageRating?: number;
   reviewCount: number;
+  totalReviews?: number;
+  totalRatingPoints?: number;
+  feedbackScores?: {
+    hygiene?: number;
+    safety?: number;
+    process?: number;
+    appExperience?: number;
+    [key: string]: any;
+  };
   isVerified: boolean;
   status: 'active' | 'inactive' | 'pending';
   availabilityStatus?: 'Available' | 'Busy' | 'Offline';
@@ -246,6 +264,8 @@ export interface Booking {
   userId?: string;
   partnerId?: string;
   serviceId: string;
+  serviceName?: string;
+  isReviewed?: boolean;
   status: BookingStatus;
   paymentStatus: 'unpaid' | 'paid';
   paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
@@ -347,14 +367,30 @@ export interface Review {
   id: string;
   bookingId: string;
   customerUid: string;
+  customerId?: string;
+  customerName?: string;
   partnerId: string;
   serviceId?: string;
+  serviceName?: string;
   rating: number;
   comment: string;
+  review?: string;
+  reviewText?: string;
+  feedbackScores?: {
+    hygiene?: number;
+    safety?: number;
+    process?: number;
+    zomindia?: number;
+    appExperience?: number;
+    [key: string]: any;
+  };
+  ratingDetails?: any;
   photos?: string[];
+  photoURL?: string;
   partnerReply?: string;
   partnerReplyCreatedAt?: any;
   createdAt: any;
+  reviewedAt?: any;
 }
 
 export interface Redemption {

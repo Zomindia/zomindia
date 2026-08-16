@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   getDocs,
+  getDoc,
   documentId,
   updateDoc,
   doc,
@@ -1195,97 +1196,23 @@ export default function CustomerDashboard({
 
     setInlineSubmittingId(booking.id);
 
-    const reviewData: any = {
-      bookingId: booking.id,
-      customerId: profile?.uid || "",
-      customerUid: profile?.uid || "",
-      userId: profile?.uid || "",
-      partnerId: booking.partnerId || "",
-      serviceId: booking.serviceId || "",
-      rating: inlineRating,
-      ratingDetails: {
-        partner: inlineRating,
-        process: inlineRating,
-        safety: inlineRating,
-        zomindia: inlineRating,
-      },
-      feedbackScores: {
-        partner: inlineRating,
-        process: inlineRating,
-        safety: inlineRating,
-        zomindia: inlineRating,
-      },
-      comment: inlineComment,
-      review: inlineComment,
-      createdAt: Timestamp.now(),
+    const scores = {
+      hygiene: inlineRating,
+      safety: inlineRating,
+      process: inlineRating,
+      partner: inlineRating,
+      appExperience: inlineRating,
+      zomindia: inlineRating,
     };
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Request timed out after 5s")), 5000)
-    );
-
     try {
-      await Promise.race([
-        (async () => {
-          // 1. Try secure backend API first
-          try {
-            const apiRes = await fetch(`/api/bookings/${booking.id}/review`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(reviewData),
-            });
-            if (apiRes.ok) {
-              const resData = await apiRes.json();
-              if (resData.success) return;
-            }
-          } catch (apiErr) {
-            console.warn("[Inline Feedback] Backend API notice, proceeding with Firestore fallback:", apiErr);
-          }
-
-          // 2. Direct Firestore fallback
-          try {
-            await addDoc(collection(db, "reviews"), reviewData);
-          } catch (rErr) {
-            console.warn("[Inline Feedback] Review add doc notice:", rErr);
-          }
-
-          try {
-            await updateDoc(doc(db, "bookings", booking.id), {
-              status: "finalized",
-              rating: inlineRating,
-              review: inlineComment,
-              comment: inlineComment,
-              feedbackScores: reviewData.ratingDetails,
-              ratingDetails: reviewData.ratingDetails,
-              reviewedAt: Timestamp.now(),
-              updatedAt: Timestamp.now(),
-            });
-          } catch (bErr) {
-            console.warn("[Inline Feedback] Booking update notice:", bErr);
-          }
-
-          // Service rating sync
-          if (booking.serviceId) {
-            try {
-              const serviceRef = doc(db, "services", booking.serviceId);
-              const s = services[booking.serviceId];
-              if (s) {
-                const newCount = (s.reviewCount || 0) + 1;
-                const newRating =
-                  ((s.rating || 4.8) * (s.reviewCount || 10) + inlineRating) /
-                  (newCount + 10);
-                await updateDoc(serviceRef, {
-                  rating: Number(newRating.toFixed(1)),
-                  reviewCount: newCount,
-                });
-              }
-            } catch (sErr) {
-              // Non-blocking
-            }
-          }
-        })(),
-        timeoutPromise,
-      ]);
+      await syncReviewAndRatings(
+        booking,
+        inlineRating,
+        inlineComment,
+        scores,
+        null
+      );
 
       // Optimistic update & UI unlock
       setBookings((prev) =>
@@ -1348,6 +1275,203 @@ export default function CustomerDashboard({
     }
   };
 
+  // Helper for centralized, real-time rating and review synchronization across collections
+  const syncReviewAndRatings = async (
+    booking: Booking,
+    finalRating: number,
+    commentText: string,
+    scores: {
+      hygiene?: number;
+      safety?: number;
+      process?: number;
+      partner?: number;
+      appExperience?: number;
+      zomindia?: number;
+    },
+    photoURL?: string | null
+  ) => {
+    const effectiveScores = {
+      hygiene: scores.hygiene ?? scores.safety ?? finalRating,
+      safety: scores.safety ?? finalRating,
+      process: scores.process ?? scores.partner ?? finalRating,
+      partner: scores.partner ?? scores.process ?? finalRating,
+      appExperience: scores.appExperience ?? scores.zomindia ?? finalRating,
+      zomindia: scores.zomindia ?? scores.appExperience ?? finalRating,
+    };
+
+    const reviewDocPayload: any = {
+      bookingId: booking.id,
+      customerId: profile?.uid || "",
+      customerUid: profile?.uid || "",
+      userId: profile?.uid || "",
+      customerName: profile?.fullName || profile?.displayName || "Verified Customer",
+      partnerId: booking.partnerId || "",
+      serviceId: booking.serviceId || "",
+      serviceName: services[booking.serviceId]?.name || booking.serviceName || "Home Service",
+      rating: finalRating,
+      ratingDetails: effectiveScores,
+      feedbackScores: effectiveScores,
+      comment: commentText,
+      review: commentText,
+      reviewText: commentText,
+      createdAt: Timestamp.now(),
+      reviewedAt: Timestamp.now(),
+    };
+    if (photoURL) reviewDocPayload.photoURL = photoURL;
+
+    // 1. Add review document
+    try {
+      await addDoc(collection(db, "reviews"), reviewDocPayload);
+    } catch (rErr) {
+      console.warn("[Review Sync] Direct review doc write notice:", rErr);
+    }
+
+    // 2. Update booking document
+    try {
+      await updateDoc(doc(db, "bookings", booking.id), {
+        status: "finalized",
+        rating: finalRating,
+        review: commentText,
+        comment: commentText,
+        reviewText: commentText,
+        feedbackScores: effectiveScores,
+        ratingDetails: effectiveScores,
+        reviewedAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        isReviewed: true,
+      });
+    } catch (bErr) {
+      console.warn("[Review Sync] Direct booking update notice:", bErr);
+    }
+
+    // 3. Atomically sync Partner Document
+    if (booking.partnerId) {
+      try {
+        let pDocRef = doc(db, "partners", booking.partnerId);
+        let pSnap = await getDoc(pDocRef);
+
+        if (!pSnap.exists()) {
+          const pQuery = query(
+            collection(db, "partners"),
+            where("userId", "==", booking.partnerId)
+          );
+          const pQSnap = await getDocs(pQuery);
+          if (!pQSnap.empty) {
+            pDocRef = doc(db, "partners", pQSnap.docs[0].id);
+            pSnap = pQSnap.docs[0];
+          }
+        }
+
+        if (pSnap.exists()) {
+          const pData = pSnap.data() as any;
+          const currentReviews = Number(pData.totalReviews || pData.reviewCount || 0);
+          const currentPoints = Number(
+            pData.totalRatingPoints ||
+              (pData.averageRating || pData.rating || 4.9) * (currentReviews || 10)
+          );
+          const newTotalReviews = currentReviews + 1;
+          const newTotalPoints = currentPoints + finalRating;
+          const newAverage = Number(
+            (
+              newTotalPoints /
+              (pData.totalRatingPoints ? newTotalReviews : newTotalReviews + 10)
+            ).toFixed(1)
+          );
+
+          const prevScores = pData.feedbackScores || {};
+          const updatedFeedback = {
+            hygiene: Number(
+              (
+                ((prevScores.hygiene || 4.9) * (currentReviews || 5) +
+                  effectiveScores.hygiene) /
+                (currentReviews + 5 + 1)
+              ).toFixed(1)
+            ),
+            safety: Number(
+              (
+                ((prevScores.safety || 5.0) * (currentReviews || 5) +
+                  effectiveScores.safety) /
+                (currentReviews + 5 + 1)
+              ).toFixed(1)
+            ),
+            process: Number(
+              (
+                ((prevScores.process || 4.8) * (currentReviews || 5) +
+                  effectiveScores.process) /
+                (currentReviews + 5 + 1)
+              ).toFixed(1)
+            ),
+            appExperience: Number(
+              (
+                ((prevScores.appExperience || 4.9) * (currentReviews || 5) +
+                  effectiveScores.appExperience) /
+                (currentReviews + 5 + 1)
+              ).toFixed(1)
+            ),
+          };
+
+          await updateDoc(pDocRef, {
+            rating: newAverage,
+            averageRating: newAverage,
+            reviewCount: newTotalReviews,
+            totalReviews: newTotalReviews,
+            totalRatingPoints: newTotalPoints,
+            feedbackScores: updatedFeedback,
+            updatedAt: Timestamp.now(),
+          });
+        }
+      } catch (pErr) {
+        console.warn("[Review Sync] Partner rating sync notice:", pErr);
+      }
+    }
+
+    // 4. Atomically sync Service Document
+    if (booking.serviceId) {
+      try {
+        const serviceRef = doc(db, "services", booking.serviceId);
+        const sSnap = await getDoc(serviceRef);
+        if (sSnap.exists()) {
+          const sData = sSnap.data() as any;
+          const currentReviews = Number(sData.totalReviews || sData.reviewCount || 0);
+          const currentPoints = Number(
+            sData.totalRatingPoints ||
+              (sData.averageRating || sData.rating || 4.8) * (currentReviews || 10)
+          );
+          const newTotalReviews = currentReviews + 1;
+          const newTotalPoints = currentPoints + finalRating;
+          const newAverage = Number(
+            (
+              newTotalPoints /
+              (sData.totalRatingPoints ? newTotalReviews : newTotalReviews + 10)
+            ).toFixed(1)
+          );
+
+          await updateDoc(serviceRef, {
+            rating: newAverage,
+            averageRating: newAverage,
+            reviewCount: newTotalReviews,
+            totalReviews: newTotalReviews,
+            totalRatingPoints: newTotalPoints,
+            updatedAt: Timestamp.now(),
+          });
+        }
+      } catch (sErr) {
+        console.warn("[Review Sync] Service rating sync notice:", sErr);
+      }
+    }
+
+    // 5. Asynchronously notify backend API
+    try {
+      await fetch(`/api/bookings/${booking.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reviewDocPayload),
+      });
+    } catch (apiErr) {
+      console.info("[Review Sync] Backend API sync notice:", apiErr);
+    }
+  };
+
   const handleFinalize = async (booking: Booking) => {
     if (booking.paymentStatus === "unpaid" && booking.totalPrice > 0) {
       setBookingToPay(booking);
@@ -1361,31 +1485,14 @@ export default function CustomerDashboard({
 
     setIsSubmittingReview(true);
 
-    const reviewData: any = {
-      bookingId: booking.id,
-      customerId: profile?.uid || "",
-      customerUid: profile?.uid || "",
-      userId: profile?.uid || "",
-      partnerId: booking.partnerId || "",
-      serviceId: booking.serviceId || "",
-      rating: finalRating,
-      ratingDetails: {
-        partner: ratingPartner || 5,
-        process: ratingProcess || 5,
-        safety: ratingSafety || 5,
-        zomindia: ratingZomIndia || 5,
-      },
-      feedbackScores: {
-        partner: ratingPartner || 5,
-        process: ratingProcess || 5,
-        safety: ratingSafety || 5,
-        zomindia: ratingZomIndia || 5,
-      },
-      comment,
-      review: comment,
-      createdAt: Timestamp.now(),
+    const scores = {
+      partner: ratingPartner || 5,
+      process: ratingProcess || 5,
+      safety: ratingSafety || 5,
+      hygiene: ratingSafety || 5,
+      appExperience: ratingZomIndia || 5,
+      zomindia: ratingZomIndia || 5,
     };
-    if (reviewPhoto) reviewData.photoURL = reviewPhoto;
 
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("Request timed out after 5s")), 5000)
@@ -1393,88 +1500,7 @@ export default function CustomerDashboard({
 
     try {
       await Promise.race([
-        (async () => {
-          // 1. Try secure backend API endpoint first
-          try {
-            const apiRes = await fetch(`/api/bookings/${booking.id}/review`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(reviewData),
-            });
-            if (apiRes.ok) {
-              const resData = await apiRes.json();
-              if (resData.success) return;
-            }
-          } catch (apiErr) {
-            console.warn("[HandleFinalize] Backend API endpoint notice, falling back to direct Firestore:", apiErr);
-          }
-
-          // 2. Direct Firestore writes as fallback
-          try {
-            await addDoc(collection(db, "reviews"), reviewData);
-          } catch (rErr) {
-            console.warn("[HandleFinalize] Direct review doc write notice:", rErr);
-          }
-
-          // Update booking document
-          try {
-            await updateDoc(doc(db, "bookings", booking.id), {
-              status: "finalized",
-              rating: finalRating,
-              review: comment,
-              comment: comment,
-              feedbackScores: reviewData.feedbackScores,
-              ratingDetails: reviewData.ratingDetails,
-              reviewedAt: Timestamp.now(),
-              updatedAt: Timestamp.now(),
-            });
-          } catch (bErr) {
-            console.warn("[HandleFinalize] Direct booking update notice:", bErr);
-          }
-
-          // Non-blocking sync for service rating
-          if (booking.serviceId) {
-            try {
-              const serviceRef = doc(db, "services", booking.serviceId);
-              const s = services[booking.serviceId];
-              const newCount = (s?.reviewCount || 0) + 1;
-              const newRating =
-                ((s?.rating || 4.8) * (s?.reviewCount || 10) + finalRating) /
-                (newCount + 10);
-              await updateDoc(serviceRef, {
-                rating: Number(newRating.toFixed(1)),
-                reviewCount: newCount,
-              });
-            } catch (sErr) {
-              // Non-blocking
-            }
-          }
-
-          // Non-blocking sync for partner rating
-          if (booking.partnerId) {
-            try {
-              const partnerQuery = query(
-                collection(db, "partners"),
-                where("userId", "==", booking.partnerId)
-              );
-              const pSnap = await getDocs(partnerQuery);
-              if (!pSnap.empty) {
-                const pDoc = pSnap.docs[0];
-                const pData = pDoc.data() as PartnerProfile;
-                const pNewCount = (pData.reviewCount || 0) + 1;
-                const pNewRating =
-                  ((pData.rating || 4.8) * (pData.reviewCount || 10) + finalRating) /
-                  (pNewCount + 10);
-                await updateDoc(doc(db, "partners", pDoc.id), {
-                  rating: Number(pNewRating.toFixed(1)),
-                  reviewCount: pNewCount,
-                });
-              }
-            } catch (pErr) {
-              // Non-blocking
-            }
-          }
-        })(),
+        syncReviewAndRatings(booking, finalRating, comment, scores, reviewPhoto),
         timeoutPromise,
       ]);
 

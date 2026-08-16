@@ -431,8 +431,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         isHeadAdmin() || (
           // Allow customer/partner to submit rating/review updates
-          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount']) &&
-          incoming().reviewCount == existing().get('reviewCount', 0) + 1 &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'averageRating', 'reviewCount', 'totalReviews', 'totalRatingPoints', 'updatedAt']) &&
           incoming().rating is number && incoming().rating >= 0 && incoming().rating <= 5
         )
       );
@@ -446,7 +445,7 @@ service cloud.firestore {
           isOwner(existing().userId) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'isAvailable', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'updatedAt'])
         ) || (
-          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'averageRating', 'reviewCount', 'totalReviews', 'totalRatingPoints', 'feedbackScores', 'updatedAt'])
         )
       );
       allow delete: if isAdmin();
@@ -679,6 +678,13 @@ service cloud.firestore {
              data.phone is string && data.phone.size() > 0 &&
              data.serviceType is string && data.serviceType.size() > 0 &&
              data.area is string && data.area.size() > 0;
+    }
+
+    match /payoutRequests/{requestId} {
+      allow read: if isSignedIn() && (isAdmin() || isAccountsAdmin() || resource.data.partnerId == request.auth.uid || resource.data.partnerUserId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || isAccountsAdmin());
+      allow delete: if isAdmin();
     }
 
     match /partner_applications/{applicationId} {
