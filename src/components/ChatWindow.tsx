@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, FormEvent } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { ChatMessage, UserProfile, Booking } from '../types';
+import { formatTime12Hour } from '../utils/formatTime';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { LoadingSpinner } from './LoadingIndicator';
 import { motion, AnimatePresence } from 'motion/react';
@@ -239,7 +240,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
                     </div>
                     {isLastInGroup && (
                       <p className={`text-[9px] mt-1.5 font-bold uppercase tracking-widest opacity-30 ${isMe ? 'text-right mr-1' : 'text-left ml-1'}`}>
-                        {msg.createdAt instanceof Timestamp ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                        {formatTime12Hour(msg.createdAt) || 'Pending'}
                       </p>
                     )}
                   </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking, UserProfile } from '../types';
+import { formatTime12Hour } from '../utils/formatTime';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -431,7 +432,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           customerEmail={(booking as any).customerEmail || (booking as any).customerBookedEmail || profile.email || ''}
           bookingDetails={{
             date: booking.scheduledAt?.toDate?.() ? booking.scheduledAt.toDate().toLocaleDateString('en-IN') : 'Scheduled Slot',
-            time: booking.scheduledAt?.toDate?.() ? booking.scheduledAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            time: formatTime12Hour(booking.scheduledAt),
             address: booking.address || ''
           }}
           onClose={() => {

@@ -6,6 +6,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { sendNotification, NotificationEngine } from '../lib/notifications';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
 import { generateGoogleCalendarUrl, downloadICSFile } from '../utils/calendar';
+import { formatTime12Hour } from '../utils/formatTime';
 import { handleMapsError } from '../lib/maps-errors';
 import AuthModal from './AuthModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1910,7 +1911,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       <div className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-2.5">
                         <div className="col-span-1 text-left">
                           <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-0.5">Timeline</p>
-                          <p className="font-bold text-slate-900 text-xs">{date} @ {time}</p>
+                          <p className="font-bold text-slate-900 text-xs">{date} @ {formatTime12Hour(time)}</p>
                         </div>
                         <div className="col-span-2 text-left">
                           <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-0.5">Service</p>
@@ -2437,7 +2438,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                      </div>
                      <div className="flex justify-between items-center border-b border-slate-200 pb-3">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timeline</span>
-                        <span className="text-xs font-bold text-slate-900 text-right">{date} at {time}</span>
+                        <span className="text-xs font-bold text-slate-900 text-right">{date} at {formatTime12Hour(time)}</span>
                      </div>
                      <div className="flex justify-between items-center border-b border-slate-200 pb-3">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Bill</span>
@@ -2811,7 +2812,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 <div className="w-full bg-slate-50 rounded-2xl p-3.5 border border-slate-100 text-left space-y-2 mb-4 text-xs">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date & Time</span>
-                    <span className="font-bold text-slate-900">{date} @ {time}</span>
+                    <span className="font-bold text-slate-900">{date} @ {formatTime12Hour(time)}</span>
                   </div>
                   <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Address</span>

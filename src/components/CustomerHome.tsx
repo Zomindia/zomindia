@@ -28,6 +28,7 @@ import PaymentModal from "./PaymentModal";
 import { QRCodeSVG } from "qrcode.react";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
+import { formatTime12Hour } from "../utils/formatTime";
 import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
@@ -747,7 +748,7 @@ export default function CustomerHome({
         year: "numeric",
       }) +
       " @ " +
-      bookingDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      formatTime12Hour(bookingDate)
     );
   }, [activeBooking]);
 

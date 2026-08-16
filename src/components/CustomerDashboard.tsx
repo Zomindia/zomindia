@@ -28,6 +28,7 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
+import { formatTime12Hour } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import ChatWindow from "./ChatWindow";
 import { LoadingScreen, ServiceCardSkeleton } from "./LoadingIndicator";
@@ -2147,7 +2148,7 @@ export default function CustomerDashboard({
                           <div className="min-w-0">
                             <p className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold leading-none mb-1">Service Time</p>
                             <p className="font-extrabold text-[#002e6e] text-xs truncate">
-                              {booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "10:00 AM"}
+                              {formatTime12Hour(booking.scheduledAt) || "10:00 AM"}
                             </p>
                           </div>
                         </div>
@@ -2877,12 +2878,7 @@ export default function CustomerDashboard({
                                 Service Time
                               </p>
                               <p className="font-bold text-slate-900">
-                                {booking.scheduledAt
-                                  ?.toDate?.()
-                                  ?.toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }) || "Scheduled Time"}
+                                {formatTime12Hour(booking.scheduledAt) || "Scheduled Time"}
                               </p>
                             </div>
                           </div>
@@ -3156,12 +3152,7 @@ export default function CustomerDashboard({
                           </h3>
                           <div className="flex items-center gap-3 text-xs text-slate-500 font-bold uppercase tracking-wider">
                             <Clock size={13} className="text-[#002e6e]" />{" "}
-                            {booking.scheduledAt
-                              ?.toDate?.()
-                              ?.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                            {formatTime12Hour(booking.scheduledAt)}
                             <span className="text-slate-300">•</span>
                             <MapPin size={13} className="text-[#002e6e]" />{" "}
                             <span className="truncate max-w-[140px]">

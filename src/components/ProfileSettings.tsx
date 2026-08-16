@@ -27,6 +27,7 @@ import { offlineSyncEngine } from "../lib/offlineQueue";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { UserProfile } from "../types";
 import { buildDualPersonaUserDoc } from "../lib/user-schema";
+import { formatTime12Hour } from "../utils/formatTime";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
 import { motion, AnimatePresence } from "motion/react";
@@ -2957,16 +2958,14 @@ export default function ProfileSettings({
                                 <p className="text-xs text-neutral-400 font-bold mt-1">
                                   Scheduled:{" "}
                                   {booking.scheduledAt
-                                    ? (
+                                    ? `${(
                                         booking.scheduledAt.toDate?.() ||
                                         new Date(booking.scheduledAt)
                                       ).toLocaleDateString("en-IN", {
                                         weekday: "short",
                                         month: "short",
                                         day: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })
+                                      })} at ${formatTime12Hour(booking.scheduledAt)}`
                                     : "Flexible schedule"}
                                 </p>
                               </div>
@@ -3244,10 +3243,7 @@ export default function ProfileSettings({
                               year: "numeric",
                             }) +
                             " @ " +
-                            dateObj.toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
+                            formatTime12Hour(dateObj)
                           : "Flexible Schedule";
 
                         return (

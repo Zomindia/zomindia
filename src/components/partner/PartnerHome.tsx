@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
+import { formatTime12Hour } from '../../utils/formatTime';
 import { doc, updateDoc, setDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
@@ -685,7 +686,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   <div className="min-w-0 flex-1">
                     <h4 className="font-extrabold italic text-sm leading-snug group-hover:underline truncate">{nextService?.name || 'Assigned Duty'}</h4>
                     <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider mt-1">
-                      Slot, {nextUpcomingJob.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Client: {nextCustomer?.displayName.split(' ')[0] || 'Member'}
+                      Slot, {formatTime12Hour(nextUpcomingJob.scheduledAt)} · Client: {nextCustomer?.displayName.split(' ')[0] || 'Member'}
                     </p>
                   </div>
                 </div>
@@ -732,7 +733,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                       <div className="flex items-center gap-1 text-blue-700/80 mt-0.5">
                         <Clock size={11} strokeWidth={2.5} />
                         <span className="text-[11px] font-bold">
-                          {currentJob.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime12Hour(currentJob.scheduledAt)}
                         </span>
                       </div>
                     </div>

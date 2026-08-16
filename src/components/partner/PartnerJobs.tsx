@@ -43,6 +43,7 @@ import { QRScanner } from './QRScanner';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
 import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from '../../lib/telephony';
 import { triggerSecureCall } from '../../lib/twilio';
+import { formatTime12Hour } from '../../utils/formatTime';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -535,7 +536,7 @@ function AssignedTasksMiniMap({
                             <span className="font-extrabold text-slate-800 shrink-0 uppercase text-[9px] tracking-wider font-mono">Schedule:</span>
                             <span>
                               {highlightedBooking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at{' '}
-                              {highlightedBooking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {formatTime12Hour(highlightedBooking.scheduledAt)}
                             </span>
                           </p>
                           <p className="flex items-start gap-1.5">
@@ -1581,7 +1582,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                )}
                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-2">
                   <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-                  <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{booking.scheduledAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">{formatTime12Hour(booking.scheduledAt)}</span>
                   <span className="flex items-center px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap">
                     {isCompleted ? 'Access Masked' : (customer?.displayName || 'Client')}
                   </span>

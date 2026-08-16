@@ -38,6 +38,7 @@ import {
   PartnerApplication,
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
+import { formatTime12Hour, formatDateTime12Hour } from "../utils/formatTime";
 import { notifyBookingUpdate, sendEcosystemNotification } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
@@ -2078,7 +2079,7 @@ export default function AdminDashboard({
                 isAdminAuthorized("earnings") && (
                   <div className="space-y-8">
                     <EarningsView bookings={bookings} role="admin" />
-                    <PayoutManager partners={partners} users={users} />
+                    <PayoutManager bookings={bookings} partners={partners} users={users} />
                   </div>
                 )}
               {activeAdminTab === "partners" &&
@@ -2473,7 +2474,7 @@ function BookingManager({
           customerName: booking.customerName || booking.customerBookedName || "Customer",
           partnerName: resolvedPartner?.displayName || "Partner",
           serviceName: resolvedService?.name || "Service",
-          dateTime: booking.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+          dateTime: formatDateTime12Hour(booking.scheduledAt) || "N/A"
         }
       ).catch(e => console.error("Ecosystem notification failed:", e));
 
@@ -2527,7 +2528,7 @@ function BookingManager({
             customerName: b.customerName || b.customerBookedName || "Customer",
             partnerName: bPartner?.displayName || "Partner",
             serviceName: bService?.name || "Service",
-            dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+            dateTime: formatDateTime12Hour(b.scheduledAt) || "N/A"
           }
         ).catch(e => console.error("Ecosystem notification failed:", e));
       }
@@ -2630,7 +2631,7 @@ function BookingManager({
             customerName: bookingDataToNotify.customerName || bookingDataToNotify.customerBookedName || "Customer",
             partnerName: cancelPartner?.displayName || "Partner",
             serviceName: cancelService?.name || "Service",
-            dateTime: bookingDataToNotify.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+            dateTime: formatDateTime12Hour(bookingDataToNotify.scheduledAt) || "N/A"
           }
         ).catch(e => console.error("Ecosystem notification failed:", e));
       }
@@ -2712,7 +2713,7 @@ function BookingManager({
             customerName: b.customerName || b.customerBookedName || "Customer",
             partnerName: assignP?.displayName || "Partner",
             serviceName: assignS?.name || "Service",
-            dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+            dateTime: formatDateTime12Hour(b.scheduledAt) || "N/A"
           }
         ).catch(e => console.error("Ecosystem notification failed:", e));
       }
@@ -3870,12 +3871,7 @@ function BookingRow({
                     })}
                 </p>
                 <p className="text-[11px] font-bold text-slate-400 ml-5">
-                  {booking.scheduledAt
-                    ?.toDate?.()
-                    ?.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  {formatTime12Hour(booking.scheduledAt)}
                 </p>
               </div>
             </div>
@@ -9686,9 +9682,11 @@ function ReviewManager({ serviceId }: { serviceId: string }) {
 }
 
 function PayoutManager({
+  bookings = [],
   partners = [],
   users = [],
 }: {
+  bookings?: Booking[];
   partners?: PartnerProfile[];
   users?: UserProfile[];
 }) {

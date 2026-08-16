@@ -34,7 +34,7 @@ import {
   BatteryCharging,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-
+import { formatTime12Hour } from "../utils/formatTime";
 import { handleMapsError } from "../lib/maps-errors";
 
 interface PartnerTrackingMapProps {
@@ -1058,10 +1058,7 @@ export default function PartnerTrackingMap({
     if (diffSecs < 60) return `${diffSecs}s ago`;
     if (diffMins < 60) return `${diffMins}m ago`;
 
-    return dateObj.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatTime12Hour(dateObj);
   };
 
   if (!animatedLocation) {
