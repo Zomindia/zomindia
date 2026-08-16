@@ -1387,24 +1387,27 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       );
       const b = bookings.find(x => x.id === id);
       if (b) {
-         notifyBookingUpdate({ ...b, ...update }, update.status as any, partner?.userId || '');
          if (selectedBooking?.id === id) {
            setSelectedBooking(prev => prev ? { ...prev, ...update } : null);
          }
-         const resolvedService = services[b.serviceId];
-         sendEcosystemNotification(
-           'all',
-           update.status || b.status,
-           {
-             bookingId: id,
-             customerId: b.customerUid,
-             partnerId: b.partnerId,
-             customerName: b.customerName || b.customerBookedName || "Customer",
-             partnerName: profile?.displayName || partner?.fullName || "Partner",
-             serviceName: resolvedService?.name || "Service",
-             dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
-           }
-         ).catch(err => console.error("Ecosystem notification error:", err));
+         // Trigger notifications and ecosystem broadcasts ONLY on milestone status transitions (not on checklist toggles)
+         if (update.status && update.status !== b.status) {
+           notifyBookingUpdate({ ...b, ...update }, update.status as any, partner?.userId || profile?.uid || '');
+           const resolvedService = services[b.serviceId];
+           sendEcosystemNotification(
+             'all',
+             update.status,
+             {
+               bookingId: id,
+               customerId: b.customerUid,
+               partnerId: b.partnerId,
+               customerName: b.customerName || b.customerBookedName || "Customer",
+               partnerName: profile?.displayName || partner?.fullName || "Expert",
+               serviceName: resolvedService?.name || "Service",
+               dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
+             }
+           ).catch(err => console.error("Ecosystem notification error:", err));
+         }
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${id}`);
@@ -1880,6 +1883,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                              id={checkboxId}
                              checked={isCompleted}
                              onChange={() => {
+                               const isChecking = !isCompleted;
                                const currentTasks = booking.completedTasks || [];
                                const updatedTasks = isCompleted 
                                  ? currentTasks.filter(t => t !== task)
@@ -1889,8 +1893,10 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                handleBookingUpdate(booking.id, { 
                                  completedTasks: updatedTasks,
                                  progressPercentage: percent,
-                                 checklist: allTasks
-                               });
+                                 checklist: allTasks,
+                                 lastCompletedTask: isChecking ? task : (updatedTasks.length > 0 ? updatedTasks[updatedTasks.length - 1] : null),
+                                 taskActivity: isChecking ? `Step completed: ${task}` : null
+                                });
                              }}
                              className="w-5 h-5 rounded border-slate-300 text-blue-700 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer accent-blue-700 transition-all font-sans font-medium"
                            />

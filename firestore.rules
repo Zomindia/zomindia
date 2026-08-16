@@ -186,6 +186,9 @@ service cloud.firestore {
              (!('pendingResolveDuration' in data) || (data.pendingResolveDuration is string || data.pendingResolveDuration == null)) &&
              (!('previousStatus' in data) || (data.previousStatus is string || data.previousStatus == null)) &&
              (!('completedTasks' in data) || (data.completedTasks is list)) &&
+             (!('lastCompletedTask' in data) || (data.lastCompletedTask is string || data.lastCompletedTask == null)) &&
+             (!('currentTask' in data) || (data.currentTask is string || data.currentTask == null)) &&
+             (!('taskActivity' in data) || (data.taskActivity is string || data.taskActivity == null)) &&
              (!('completionPhotos' in data) || (data.completionPhotos is list)) &&
              (!('paymentMethod' in data) || (data.paymentMethod is string || data.paymentMethod == null)) &&
              (!('isAmcBooking' in data) || (data.isAmcBooking is bool)) &&
@@ -533,7 +536,8 @@ service cloud.firestore {
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
             'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 
             'address', 'updatedAt', 'activeCall', 'partnerLocation', 'completedAt',
-            'progressPercentage', 'checklist', 'serviceOtp', 'startOTP'
+            'progressPercentage', 'checklist', 'serviceOtp', 'startOTP',
+            'lastCompletedTask', 'currentTask', 'taskActivity'
           ])
         )) ||
         isAdmin()

@@ -391,7 +391,7 @@ export const NotificationEngine = {
     await sendNotification(
       data.customerId,
       'Service Completed!',
-      'Your service is finished. Please verify and pay.',
+      '✅ Service Completed! Please verify and share your OTP / feedback.',
       'job_completed',
       data.bookingId
     );
@@ -599,10 +599,11 @@ export const notifyBookingUpdate = async (booking: any, newStatus: string, actor
       break;
 
     case 'in_progress':
+      const expertName = payload.partnerName || 'Expert';
       await sendNotification(
         payload.customerId, 
         'Service Started!', 
-        'Your service is now in progress. Partner has reached.', 
+        `🔧 Your expert ${expertName} has started the service.`, 
         'job_started', 
         booking.id
       );
@@ -618,7 +619,7 @@ export const notifyBookingUpdate = async (booking: any, newStatus: string, actor
       await sendNotification(
         'sarthakwebtech@gmail.com', 
         'Job In Progress', 
-        `Work started on booking #${booking.id.slice(0, 8)}.`, 
+        `🔧 Expert ${expertName} started work on booking #${booking.id.slice(0, 8)}.`, 
         'job_started', 
         booking.id
       );

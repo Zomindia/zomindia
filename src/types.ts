@@ -299,6 +299,8 @@ export interface Booking {
   photoURL?: string;
   partnerPriority?: 'high' | 'medium' | 'low';
   completedTasks?: string[];
+  lastCompletedTask?: string | null;
+  taskActivity?: string | null;
   adminNotes?: string;
   isPriority?: boolean;
   notes?: string;

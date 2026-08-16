@@ -2204,18 +2204,29 @@ export default function CustomerDashboard({
 
                           {/* 3. In Progress Real-Time Progress Bar */}
                           {bookingStatus.toLowerCase() === 'in_progress' && (
-                            <div className="space-y-2.5 bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm">
+                            <div className="space-y-3 bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm">
                               <div className="flex justify-between items-center text-xs font-black uppercase tracking-wider text-slate-700">
-                                <span className="text-[#002e6e]">Service in Progress</span>
-                                <span className="text-emerald-600 font-extrabold">{booking.progressPercentage || 0}% Completed</span>
+                                <span className="text-[#002e6e] flex items-center gap-1.5">
+                                  <Zap size={14} className="text-amber-500 animate-pulse" /> Service in Progress
+                                </span>
+                                <span className="text-emerald-600 font-extrabold font-mono">{booking.progressPercentage || 0}% Completed</span>
                               </div>
                               <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200/80 relative">
                                 <motion.div
                                   initial={{ width: 0 }}
                                   animate={{ width: `${booking.progressPercentage || 0}%` }}
+                                  transition={{ duration: 0.5, ease: "easeOut" }}
                                   className="h-full bg-gradient-to-r from-[#002e6e] to-emerald-500 rounded-full"
                                 />
                               </div>
+                              {(booking.taskActivity || booking.lastCompletedTask) && (
+                                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50/90 px-3.5 py-2 rounded-xl border border-emerald-200/70 animate-in fade-in slide-in-from-bottom-1">
+                                  <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                                  <span className="font-semibold truncate">
+                                    {booking.taskActivity || `Step completed: ${booking.lastCompletedTask}`}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
 
