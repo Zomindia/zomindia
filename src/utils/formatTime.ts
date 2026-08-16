@@ -95,3 +95,63 @@ export function formatDateTime12Hour(input: any): string {
   const timePart = formatTime12HourFromDate(d);
   return `${datePart} at ${timePart}`;
 }
+
+/**
+ * Formats date into readable string like "16 Aug 2026"
+ */
+export function formatDate(dateInput: any): string {
+  if (!dateInput && dateInput !== 0) return "N/A";
+  let d: Date;
+  if (typeof dateInput === "object" && typeof dateInput.toDate === "function") {
+    d = dateInput.toDate();
+  } else if (dateInput?.seconds) {
+    d = new Date(dateInput.seconds * 1000);
+  } else if (dateInput instanceof Date) {
+    d = dateInput;
+  } else {
+    d = new Date(dateInput);
+  }
+
+  if (isNaN(d.getTime())) return "N/A";
+  return d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Formats notification / relative timestamps (e.g., 'Just now', '5m ago', '2h ago', 'Yesterday', or '16 Aug, 10:30 AM')
+ */
+export function formatNotificationTime(createdAt: any): string {
+  if (!createdAt) return 'Just now';
+  let date: Date;
+  if (typeof createdAt?.toDate === 'function') {
+    date = createdAt.toDate();
+  } else if (createdAt?.seconds) {
+    date = new Date(createdAt.seconds * 1000);
+  } else if (createdAt instanceof Date) {
+    date = createdAt;
+  } else if (typeof createdAt === 'string' || typeof createdAt === 'number') {
+    date = new Date(createdAt);
+  } else {
+    return 'Just now';
+  }
+
+  if (isNaN(date.getTime())) return 'Just now';
+
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 172800) return 'Yesterday';
+
+  return date.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}

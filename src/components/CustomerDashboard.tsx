@@ -25,6 +25,7 @@ import {
   Promotion,
   Category,
   Service,
+  SupportTicket,
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
@@ -43,6 +44,8 @@ import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
+import { WarrantySupportModal } from "./WarrantySupportModal";
+import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from "../lib/telephony";
 import { triggerSecureCall } from "../lib/twilio";
 import {
@@ -506,10 +509,9 @@ export default function CustomerDashboard({
   const [historyCategoryFilter, setHistoryCategoryFilter] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
 
-  // Support request states
-  const [supportBookingId, setSupportBookingId] = useState<string | null>(null);
-  const [supportReason, setSupportReason] = useState("");
-  const [supportSubmitted, setSupportSubmitted] = useState(false);
+  // Support and warranty ticket states
+  const [selectedSupportBooking, setSelectedSupportBooking] = useState<Booking | null>(null);
+  const [supportTickets, setSupportTickets] = useState<Record<string, SupportTicket>>({});
 
   // Rating & review states
   const [skippedRatingBookingIds, setSkippedRatingBookingIds] = useState<Record<string, boolean>>(() => {
@@ -720,34 +722,44 @@ export default function CustomerDashboard({
   };
 
   const handleInitiateSupport = (bookingId: string) => {
-    console.log(`Support request initiated for Booking ID: ${bookingId}`);
-    setSupportBookingId(bookingId);
-    setSupportReason("");
-    setSupportSubmitted(false);
-  };
-
-  const handleSubmitSupportRequest = async () => {
-    if (!supportBookingId) return;
-    try {
-      await addDoc(collection(db, "support_requests"), {
-        bookingId: supportBookingId,
-        customerId: profile.uid,
-        reason: supportReason,
-        createdAt: Timestamp.now(),
-        status: "open",
-      });
-      setSupportSubmitted(true);
-      setTimeout(() => {
-        setSupportBookingId(null);
-      }, 2000);
-    } catch (error) {
-      console.error("Error creating support request:", error);
-      setSupportSubmitted(true);
-      setTimeout(() => {
-        setSupportBookingId(null);
-      }, 2000);
+    const found = bookings.find((b) => b.id === bookingId);
+    if (found) {
+      setSelectedSupportBooking(found);
     }
   };
+
+  // Real-time listener for support & warranty tickets for customer's bookings
+  useEffect(() => {
+    if (!profile?.uid) return;
+    try {
+      const qCust = query(
+        collection(db, "support_tickets"),
+        where("customerId", "==", profile.uid)
+      );
+      const unsub = onSnapshot(
+        qCust,
+        (snapshot) => {
+          const ticketMap: Record<string, SupportTicket> = {};
+          snapshot.docs.forEach((doc) => {
+            const data = { id: doc.id, ...doc.data() } as SupportTicket;
+            if (data.bookingId) {
+              const prev = ticketMap[data.bookingId];
+              if (!prev || (data.createdAt && (!prev.createdAt || data.createdAt > prev.createdAt))) {
+                ticketMap[data.bookingId] = data;
+              }
+            }
+          });
+          setSupportTickets(ticketMap);
+        },
+        (err) => {
+          console.warn("Error subscribing to support_tickets in CustomerDashboard:", err);
+        }
+      );
+      return () => unsub();
+    } catch (e) {
+      console.warn("support_tickets query failed:", e);
+    }
+  }, [profile?.uid]);
 
   // Hook to check if a booking has already been rated and feedback is submitted to Firestore
   useEffect(() => {
@@ -1574,6 +1586,36 @@ export default function CustomerDashboard({
     }
   };
 
+  const handleDownloadInvoice = async (b: Booking) => {
+    const partnerUser = b.partnerId ? partners[b.partnerId] : null;
+    const partnerDetail = b.partnerId ? partnerDetails[b.partnerId] : null;
+    const service = services[b.serviceId];
+
+    try {
+      const success = await generateInvoicePDF({
+        booking: b,
+        service,
+        partnerUser,
+        partnerDetail,
+        customerProfile: profile,
+      });
+      if (success) {
+        if ((window as any).__showToast) {
+          (window as any).__showToast("Invoice downloaded successfully!");
+        }
+      } else {
+        if ((window as any).__showToast) {
+          (window as any).__showToast("Failed to generate invoice. Please try again.");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to generate invoice PDF:", err);
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Failed to generate invoice. Please try again.");
+      }
+    }
+  };
+
   const filteredServices = useMemo(() => {
     if (!searchQuery.trim()) {
       return allActiveServices.filter((s) => {
@@ -1941,6 +1983,8 @@ export default function CustomerDashboard({
                     service={services[booking.serviceId]}
                     partnerUser={partnerUser}
                     partnerDetail={partnerDetail}
+                    customerProfile={profile}
+                    activeTicket={supportTickets[booking.id] || null}
                     otpCode={otpCode}
                     isExpanded={expandedBookingId === booking.id}
                     onToggleExpand={() =>
@@ -1953,14 +1997,7 @@ export default function CustomerDashboard({
                     onScanQR={() => setIsPaymentScannerOpen(true)}
                     onCallPartner={(_p, b) => handleInitiateCall(b)}
                     onChatPartner={(b) => setActiveBookingChat(b)}
-                    onDownloadInvoice={(b) => {
-                      const link = document.createElement("a");
-                      link.href = `/api/download-invoice?bookingId=${b.id}&requesterUid=${profile?.uid || ""}`;
-                      link.setAttribute("download", `invoice_${b.id}.pdf`);
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
+                    onDownloadInvoice={handleDownloadInvoice}
                     onSupport={(id) => handleInitiateSupport(id)}
                     onReschedule={handleReschedule}
                     routingCallBookingId={routingCallBookingId}
@@ -3242,6 +3279,8 @@ export default function CustomerDashboard({
                   service={services[booking.serviceId]}
                   partnerUser={partnerUser}
                   partnerDetail={partnerDetail}
+                  customerProfile={profile}
+                  activeTicket={supportTickets[booking.id] || null}
                   isPast={true}
                   isExpanded={expandedBookingId === booking.id}
                   onToggleExpand={() =>
@@ -3253,14 +3292,7 @@ export default function CustomerDashboard({
                   onPayCash={(b) => handlePayWithCashByCustomer(b)}
                   onScanQR={() => setIsPaymentScannerOpen(true)}
                   onBookAgain={(svc) => setSelectedService(svc)}
-                  onDownloadInvoice={(b) => {
-                    const link = document.createElement("a");
-                    link.href = `/api/download-invoice?bookingId=${b.id}&requesterUid=${profile?.uid || ""}`;
-                    link.setAttribute("download", `invoice_${b.id}.pdf`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}
+                  onDownloadInvoice={handleDownloadInvoice}
                   onSupport={(id) => handleInitiateSupport(id)}
                   inlineRating={inlineRatings[booking.id] || 0}
                   inlineComment={inlineComments[booking.id] || ""}
@@ -3776,71 +3808,32 @@ export default function CustomerDashboard({
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {supportBookingId && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSupportBookingId(null)}
-              className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-slate-100 flex flex-col z-10 max-h-[85dvh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                  Help & Support
-                </h3>
-                <button
-                  onClick={() => setSupportBookingId(null)}
-                  className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer border-0 bg-transparent"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {supportSubmitted ? (
-                <div className="text-center py-6">
-                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle2 size={24} />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                    Support Ticket Raised
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Your support request has been initiated for Booking #{supportBookingId.toUpperCase().slice(-6)}. We'll contact you shortly.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Need help with your booking <strong>#{supportBookingId.toUpperCase().slice(-6)}</strong>? Please describe your issue below.
-                  </p>
-                  <textarea
-                    value={supportReason}
-                    onChange={(e) => setSupportReason(e.target.value)}
-                    placeholder="Describe how we can help you with this booking..."
-                    rows={4}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-700 transition-all font-sans font-medium"
-                  />
-                  <button
-                    onClick={handleSubmitSupportRequest}
-                    disabled={!supportReason.trim()}
-                    className="w-full py-3 bg-red-600 hover:bg-red-750 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer border-0"
-                  >
-                    Submit Support Request
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* 30-Day Service Guarantee & Warranty Support Modal */}
+      <WarrantySupportModal
+        isOpen={!!selectedSupportBooking}
+        onClose={() => setSelectedSupportBooking(null)}
+        booking={selectedSupportBooking}
+        service={selectedSupportBooking ? services[selectedSupportBooking.serviceId] : undefined}
+        partnerUser={
+          selectedSupportBooking && selectedSupportBooking.partnerId
+            ? partners[selectedSupportBooking.partnerId] || null
+            : null
+        }
+        partnerDetail={
+          selectedSupportBooking && selectedSupportBooking.partnerId
+            ? partnerDetails[selectedSupportBooking.partnerId] || null
+            : null
+        }
+        customerProfile={profile}
+        activeTicket={
+          selectedSupportBooking ? supportTickets[selectedSupportBooking.id] || null : null
+        }
+        onTicketCreated={(t) => {
+          if (selectedSupportBooking) {
+            setSupportTickets((prev) => ({ ...prev, [selectedSupportBooking.id]: t }));
+          }
+        }}
+      />
     </div>
   );
 }

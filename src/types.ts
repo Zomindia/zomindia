@@ -57,6 +57,7 @@ export interface UserProfile {
   ref2Address?: string;
   ref2Relation?: string;
   ref2Aadhaar?: string;
+  savedAddresses?: any[];
   customerData?: {
     fullName?: string;
     email?: string;
@@ -228,15 +229,34 @@ export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 
 export interface SupportTicket {
   id: string;
-  userId: string;
-  subject: string;
-  message: string;
+  userId?: string;
+  customerId: string;
+  bookingId?: string;
+  partnerId?: string;
+  partnerName?: string;
+  partnerPhone?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  serviceId?: string;
+  serviceName?: string;
+  subject?: string;
+  message?: string;
+  issueDescription?: string;
+  category: string;
   status: TicketStatus;
-  priority: 'low' | 'medium' | 'high';
-  category?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  photoUrl?: string;
+  photoURL?: string;
   adminResponse?: string;
+  adminNotes?: string;
+  assignedAgent?: string;
+  resolutionNote?: string;
+  warrantyClaim?: boolean;
+  warrantyBookingId?: string;
+  resolvedAt?: any;
   createdAt: any;
-  updatedAt: any;
+  updatedAt?: any;
 }
 
 export interface EarningsHistory {
@@ -455,6 +475,17 @@ export interface PartnerApplication {
   area: string;
   status?: 'pending' | 'approved' | 'rejected';
   createdAt: any;
+}
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  createdAt: any;
+  bookingId?: string;
 }
 
 export const COMPANY_NAME = "Zomindia Internet Technology" as const;

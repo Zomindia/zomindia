@@ -27,8 +27,9 @@ import {
   ArrowRight,
   ExternalLink,
 } from "lucide-react";
-import { Booking, Service, UserProfile, PartnerProfile } from "../types";
+import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
 import { formatTime12Hour } from "../utils/formatTime";
+import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import LogoIcon from "../assets/images/logo-icon.png";
 
@@ -37,6 +38,8 @@ export interface CustomerBookingCardProps {
   service?: Service;
   partnerUser?: UserProfile | null;
   partnerDetail?: PartnerProfile | null;
+  customerProfile?: UserProfile | null;
+  activeTicket?: SupportTicket | null;
   otpCode?: string;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
@@ -211,6 +214,8 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
   service,
   partnerUser,
   partnerDetail,
+  customerProfile,
+  activeTicket,
   otpCode,
   isExpanded = false,
   onToggleExpand,
@@ -237,6 +242,41 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
 }) => {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+
+  const handleDownloadInvoice = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsGeneratingInvoice(true);
+    try {
+      if (onDownloadInvoice) {
+        await onDownloadInvoice(booking);
+      } else {
+        const success = await generateInvoicePDF({
+          booking,
+          service,
+          partnerUser,
+          partnerDetail,
+          customerProfile,
+        });
+        if (success) {
+          if ((window as any).__showToast) {
+            (window as any).__showToast("Invoice downloaded successfully!");
+          }
+        } else {
+          if ((window as any).__showToast) {
+            (window as any).__showToast("Failed to generate invoice. Please try again.");
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to generate invoice PDF:", err);
+      if ((window as any).__showToast) {
+        (window as any).__showToast("Failed to generate invoice. Please try again.");
+      }
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
 
   const expanded = onToggleExpand ? isExpanded : internalExpanded;
   const toggleExpanded = onToggleExpand || (() => setInternalExpanded((prev) => !prev));
@@ -463,6 +503,36 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
             <AlertCircle size={11} className="text-amber-600 shrink-0" />
             Pay after service
           </span>
+        )}
+
+        {/* Real-Time Active Warranty / Support Ticket Pulsing Badge */}
+        {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onSupport) onSupport(booking.id);
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-300 text-amber-900 text-[10px] font-black uppercase tracking-wider shadow-2xs animate-pulse cursor-pointer hover:bg-amber-500/25"
+          >
+            <ShieldAlert size={12} className="text-amber-600 shrink-0" />
+            <span>🛡️ Warranty Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
+          </button>
+        )}
+
+        {/* Real-Time Resolved Warranty Ticket Badge */}
+        {activeTicket && activeTicket.status === "resolved" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onSupport) onSupport(booking.id);
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-black uppercase tracking-wider shadow-2xs cursor-pointer hover:bg-emerald-100"
+          >
+            <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
+            <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
+          </button>
         )}
       </div>
 
@@ -885,33 +955,55 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
               {isCompleted && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onDownloadInvoice) {
-                        onDownloadInvoice(booking);
-                      } else {
-                        const link = document.createElement("a");
-                        link.href = `/api/download-invoice?bookingId=${booking.id}`;
-                        link.setAttribute("download", `invoice_${booking.id}.pdf`);
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }
-                    }}
-                    className="text-[11px] font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5 hover:bg-sky-100 bg-sky-50 px-3.5 py-2 rounded-xl border border-sky-200 transition-all cursor-pointer"
+                    type="button"
+                    disabled={isGeneratingInvoice}
+                    onClick={handleDownloadInvoice}
+                    className="text-[11px] font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5 hover:bg-sky-100 bg-sky-50 px-3.5 py-2 rounded-xl border border-sky-200 transition-all cursor-pointer disabled:opacity-60"
                   >
-                    <Download size={13} /> Download Invoice PDF
+                    {isGeneratingInvoice ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-[#002e6e] border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span>Generating Invoice...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download size={13} className="shrink-0" />
+                        <span>Download Invoice PDF</span>
+                      </>
+                    )}
                   </button>
 
-                  {showSupportButton && onSupport && (
+                  {onSupport && (
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onSupport(booking.id);
                       }}
-                      className="text-[11px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 hover:bg-rose-100 px-3.5 py-2 rounded-xl border border-rose-200 transition-all flex items-center gap-1.5 cursor-pointer"
+                      className={`text-[11px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                        activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress")
+                          ? "text-amber-900 bg-amber-100 hover:bg-amber-200/90 border-amber-300 animate-pulse ring-2 ring-amber-400/30"
+                          : activeTicket && activeTicket.status === "resolved"
+                          ? "text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border-emerald-300"
+                          : "text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200"
+                      }`}
                     >
-                      <HelpCircle size={13} /> Warranty & Support
+                      {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") ? (
+                        <>
+                          <ShieldAlert size={13} className="text-amber-600 shrink-0" />
+                          <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
+                        </>
+                      ) : activeTicket && activeTicket.status === "resolved" ? (
+                        <>
+                          <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                          <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
+                        </>
+                      ) : (
+                        <>
+                          <HelpCircle size={13} className="shrink-0" />
+                          <span>Warranty & Support</span>
+                        </>
+                      )}
                     </button>
                   )}
                 </div>

@@ -251,6 +251,17 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "partnerName": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "category": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "assignedAgent": { "type": "string" },
+        "warrantyClaim": { "type": "boolean" },
         "subject": { "type": "string" },
         "message": { "type": "string" },
         "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"] },
@@ -363,6 +374,10 @@
     "/tickets/{ticketId}": {
       "schema": "Ticket",
       "description": "User support tickets."
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": "Ticket",
+      "description": "Customer warranty and support tickets."
     },
     "/categories/{categoryId}": {
       "schema": "Category",

@@ -264,7 +264,7 @@ service cloud.firestore {
 
     function isValidTicket(data) {
       return data.keys().hasAll(['userId', 'subject', 'message', 'status', 'priority']) &&
-             data.userId == request.auth.uid &&
+             (data.userId == request.auth.uid || data.get('customerId', '') == request.auth.uid) &&
              data.subject is string && data.subject.size() > 0 &&
              data.message is string && data.message.size() > 0 &&
              data.status in ['open', 'in_progress', 'resolved', 'closed'] &&
@@ -476,7 +476,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
       allow create: if isSignedIn() && isValidNotification(incoming());
       allow update: if isSignedIn() && isOwner(resource.data.userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
     }
 
     match /bookings/{bookingId} {
@@ -622,9 +622,18 @@ service cloud.firestore {
     }
 
     match /tickets/{ticketId} {
-      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid)));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid);
       allow create: if isSignedIn() && isValidTicket(incoming());
-      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid)));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid);
+      allow create: if isSignedIn() && isValidTicket(incoming());
+      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid);
       allow delete: if isAdmin();
     }
 

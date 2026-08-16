@@ -102,6 +102,10 @@ import {
   Zap,
   Edit3,
   Shield,
+  Copy,
+  ExternalLink,
+  Send,
+  Headphones,
 } from "lucide-react";
 import {
   AreaChart,
@@ -693,12 +697,37 @@ export default function AdminDashboard({
       (err) => handleFirestoreError(err, OperationType.LIST, "faqs"),
     );
 
-    const unsubTickets = onSnapshot(
-      query(collection(db, "tickets"), orderBy("createdAt", "desc")),
+    let ticketsFromSupport: SupportTicket[] = [];
+    let ticketsFromLegacy: SupportTicket[] = [];
+
+    const mergeAndSetTickets = () => {
+      const mergedMap = new Map<string, SupportTicket>();
+      ticketsFromSupport.forEach((t) => mergedMap.set(t.id, t));
+      ticketsFromLegacy.forEach((t) => {
+        if (!mergedMap.has(t.id)) mergedMap.set(t.id, t);
+      });
+      const list = Array.from(mergedMap.values()).sort((a, b) => {
+        const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0);
+        const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0);
+        return timeB - timeA;
+      });
+      setTickets(list);
+    };
+
+    const unsubSupportTickets = onSnapshot(
+      collection(db, "support_tickets"),
       (snap) => {
-        setTickets(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SupportTicket),
-        );
+        ticketsFromSupport = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SupportTicket);
+        mergeAndSetTickets();
+      },
+      (err) => console.warn("Error streaming support_tickets:", err)
+    );
+
+    const unsubTickets = onSnapshot(
+      collection(db, "tickets"),
+      (snap) => {
+        ticketsFromLegacy = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SupportTicket);
+        mergeAndSetTickets();
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "tickets"),
     );
@@ -730,6 +759,7 @@ export default function AdminDashboard({
       unsubServices();
       unsubPartners();
       unsubPromos();
+      unsubSupportTickets();
       unsubTickets();
       unsubAmcs();
       unsubPartnerApplications();
@@ -2131,10 +2161,22 @@ export default function AdminDashboard({
                 )}
               {activeAdminTab === "help-center" &&
                 isAdminAuthorized("help-center") && (
-                  <HelpCenterManager faqs={faqs} />
+                  <HelpCenterManager
+                    faqs={faqs}
+                    tickets={tickets}
+                    onNavigateToTickets={() => setActiveAdminTab("tickets")}
+                  />
                 )}
               {activeAdminTab === "tickets" && isAdminAuthorized("tickets") && (
-                <TicketManager tickets={tickets} users={users} />
+                <TicketManager
+                  tickets={tickets}
+                  users={users}
+                  bookings={bookings}
+                  partners={partners}
+                  services={services}
+                  onNavigateTab={(tab) => setActiveAdminTab(tab)}
+                  triggerToast={triggerToast}
+                />
               )}
               {activeAdminTab === "admin-management" &&
                 isAdminAuthorized("admin-management") && (
@@ -8984,7 +9026,15 @@ function PromoManager({
   );
 }
 
-function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
+function HelpCenterManager({
+  faqs,
+  tickets = [],
+  onNavigateToTickets,
+}: {
+  faqs: FAQ[];
+  tickets?: SupportTicket[];
+  onNavigateToTickets?: () => void;
+}) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingFaq, setEditingFaq] = useState<FAQ | null>(null);
   const [newFaq, setNewFaq] = useState<Partial<FAQ>>({
@@ -8995,6 +9045,13 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
     order: faqs.length + 1,
     popularity: 0,
   });
+
+  const warrantyTicketsCount = tickets.filter(
+    (t) => t.warrantyClaim || t.category === "Warranty Claim (30-day)"
+  ).length;
+  const openTicketsCount = tickets.filter(
+    (t) => t.status === "open" || t.status === "in_progress"
+  ).length;
 
   const handleCreateFaq = async () => {
     if (!newFaq.question || !newFaq.answer) return;
@@ -9043,14 +9100,47 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
 
   return (
     <div className="space-y-8">
+      {/* Ecosystem Help & Warranty Sync Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-indigo-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-widest border border-emerald-500/30 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              Live Ecosystem Sync
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-black uppercase tracking-widest border border-indigo-500/30">
+              30-Day Guarantee Hub
+            </span>
+          </div>
+          <h4 className="text-lg font-black tracking-tight flex items-center gap-2">
+            Help Center & Support Queue Integration
+          </h4>
+          <p className="text-xs text-slate-300">
+            {openTicketsCount} active support requests &bull; {warrantyTicketsCount} warranty claims in queue
+          </p>
+        </div>
+        {onNavigateToTickets && (
+          <button
+            onClick={onNavigateToTickets}
+            className="px-5 py-2.5 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 whitespace-nowrap cursor-pointer active:scale-95 border-0"
+          >
+            <Shield size={14} className="text-emerald-600" />
+            Open Support & Warranty Queue ({openTicketsCount})
+          </button>
+        )}
+      </div>
+
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-bold">FAQ & Knowledge Base</h3>
+        <div>
+          <h3 className="text-xl font-bold">FAQ & Knowledge Base</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Manage customer self-help articles and warranty guides</p>
+        </div>
         <button
           onClick={() => {
             setIsAdding(!isAdding);
             setEditingFaq(null);
           }}
-          className="bg-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-xs"
+          className="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-xs shadow-sm transition-all"
         >
           {isAdding ? <X size={16} /> : <Plus size={16} />}
           {isAdding ? "Cancel" : "New Article"}
@@ -9252,289 +9342,662 @@ function HelpCenterManager({ faqs }: { faqs: FAQ[] }) {
 function TicketManager({
   tickets,
   users,
+  bookings = [],
+  partners = [],
+  services = [],
+  onNavigateTab,
+  triggerToast,
 }: {
   tickets: SupportTicket[];
   users: UserProfile[];
+  bookings?: Booking[];
+  partners?: PartnerProfile[];
+  services?: Service[];
+  onNavigateTab?: (tab: AdminTab) => void;
+  triggerToast?: (msg: string) => void;
 }) {
-  const [statusFilter, setStatusFilter] = useState<
-    SupportTicket["status"] | "all"
-  >("all");
-  const [priorityFilter, setPriorityFilter] = useState<
-    SupportTicket["priority"] | "all"
-  >("all");
+  const [statusFilter, setStatusFilter] = useState<SupportTicket["status"] | "all">("all");
+  const [priorityFilter, setPriorityFilter] = useState<SupportTicket["priority"] | "all">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [warrantyOnlyFilter, setWarrantyOnlyFilter] = useState(false);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const [responseTime, setResponseTime] = useState("");
+  const [responseText, setResponseText] = useState("");
+  const [assignedAgentInput, setAssignedAgentInput] = useState<Record<string, string>>({});
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [dispatchingWarrantyTicketId, setDispatchingWarrantyTicketId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const updateTicketStatus = async (
-    id: string,
-    status: SupportTicket["status"],
-  ) => {
+  const notify = (msg: string) => {
+    if (triggerToast) triggerToast(msg);
+    else if (typeof (window as any).__showToast === "function") (window as any).__showToast(msg);
+    else console.log(msg);
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    notify(`Copied to clipboard: ${text}`);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const updateTicketField = async (id: string, updates: Partial<SupportTicket>) => {
     try {
-      await updateDoc(doc(db, "tickets", id), {
-        status,
+      const payload = {
+        ...updates,
         updatedAt: Timestamp.now(),
-      });
+      };
+      // Update in support_tickets collection
+      try {
+        await updateDoc(doc(db, "support_tickets", id), payload);
+      } catch (e) {
+        // Fallback to legacy tickets collection
+        await updateDoc(doc(db, "tickets", id), payload);
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
+      console.error("Failed to update ticket field:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `support_tickets/${id}`);
     }
   };
 
-  const updateTicketCategory = async (id: string, category: string) => {
-    try {
-      await updateDoc(doc(db, "tickets", id), {
-        category,
-        updatedAt: Timestamp.now(),
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
-    }
+  const handleStatusChange = async (id: string, status: SupportTicket["status"]) => {
+    await updateTicketField(id, { status });
+    notify(`Ticket #${id.slice(0, 8).toUpperCase()} marked as ${status.toUpperCase()}`);
   };
 
-  const handleRespond = async (id: string) => {
-    if (!responseTime) return;
+  const handleAgentAssign = async (id: string) => {
+    const agent = assignedAgentInput[id]?.trim();
+    if (!agent) return;
+    await updateTicketField(id, { assignedAgent: agent });
+    notify(`Assigned agent "${agent}" to Ticket #${id.slice(0, 8).toUpperCase()}`);
+  };
+
+  const handleRespond = async (ticket: SupportTicket) => {
+    if (!responseText.trim()) return;
     try {
-      await updateDoc(doc(db, "tickets", id), {
-        adminResponse: responseTime,
-        status: "in_progress",
+      const reply = responseText.trim();
+      await updateTicketField(ticket.id, {
+        adminResponse: reply,
+        status: ticket.status === "open" ? "in_progress" : ticket.status,
         updatedAt: Timestamp.now(),
       });
       setRespondingTo(null);
-      setResponseTime("");
-      console.log("Response recorded successfully.");
+      setResponseText("");
+      notify("Official response sent and synced in real-time with customer!");
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `tickets/${id}`);
+      console.error("Failed to record official response:", err);
+    }
+  };
+
+  const handleDispatchWarrantyRevisit = async (ticket: SupportTicket) => {
+    setDispatchingWarrantyTicketId(ticket.id);
+    try {
+      const linkedBooking = bookings.find((b) => b.id === ticket.bookingId);
+      const customer = users.find((u) => u.uid === (ticket.customerId || ticket.userId));
+
+      const customerName = ticket.customerName || customer?.displayName || linkedBooking?.customerBookedName || "Valued Customer";
+      const customerPhone = ticket.customerPhone || customer?.phoneNumber || linkedBooking?.customerBookedPhone || "";
+      const customerAddress = linkedBooking?.address || customer?.savedAddresses?.[0]?.addressLine || "Customer Registered Address";
+      const serviceName = ticket.serviceName || linkedBooking?.serviceName || "Service Warranty Rework";
+      const serviceId = ticket.serviceId || linkedBooking?.serviceId || "warranty-rework";
+      const partnerId = ticket.partnerId || linkedBooking?.partnerId || null;
+
+      // Create ₹0 Free Warranty Re-Visit booking
+      const newBookingRef = await addDoc(collection(db, "bookings"), {
+        customerId: ticket.customerId || ticket.userId || customer?.uid || "guest",
+        customerBookedName: customerName,
+        customerBookedPhone: customerPhone,
+        serviceId: serviceId,
+        serviceName: `[30-Day Warranty Re-Visit] ${serviceName}`,
+        price: 0,
+        totalPrice: 0,
+        totalAmount: 0,
+        finalAmount: 0,
+        paymentStatus: "paid",
+        paymentMethod: "warranty_guarantee",
+        status: "pending",
+        partnerId: partnerId,
+        address: customerAddress,
+        notes: `Free 30-Day Warranty Re-Visit dispatched for Ticket #${ticket.id.slice(0, 8).toUpperCase()}. Original Booking #${(ticket.bookingId || "N/A").slice(0, 8).toUpperCase()}. Issue: ${ticket.subject || ticket.message}`,
+        isWarrantyRevisit: true,
+        linkedTicketId: ticket.id,
+        parentBookingId: ticket.bookingId || null,
+        scheduledAt: Timestamp.now(),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+
+      const responseNote = `Official Update: Free Warranty Re-Visit scheduled & dispatched under Job #${newBookingRef.id.slice(0, 8).toUpperCase()}. Our service partner will re-inspect and resolve the issue free of charge.`;
+
+      await updateTicketField(ticket.id, {
+        status: "in_progress",
+        warrantyClaim: true,
+        adminResponse: responseNote,
+        warrantyBookingId: newBookingRef.id,
+      });
+
+      notify(`🛡️ Free Warranty Re-Visit Booking #${newBookingRef.id.slice(0, 8).toUpperCase()} created & dispatched!`);
+    } catch (err) {
+      console.error("Error creating warranty revisit booking:", err);
+      notify("Failed to create warranty revisit booking. Please try again.");
+    } finally {
+      setDispatchingWarrantyTicketId(null);
     }
   };
 
   const deleteTicket = async (id: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this ticket record?")) return;
     try {
-      await deleteDoc(doc(db, "tickets", id));
+      try {
+        await deleteDoc(doc(db, "support_tickets", id));
+      } catch (e) {
+        await deleteDoc(doc(db, "tickets", id));
+      }
+      notify(`Ticket #${id.slice(0, 8).toUpperCase()} deleted.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `tickets/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `support_tickets/${id}`);
     }
   };
 
+  // Metrics
+  const totalCount = tickets.length;
+  const warrantyCount = tickets.filter(
+    (t) => t.warrantyClaim || t.category === "Warranty Claim (30-day)" || (t.subject && t.subject.toLowerCase().includes("warranty"))
+  ).length;
+  const openCount = tickets.filter((t) => t.status === "open").length;
+  const inProgressCount = tickets.filter((t) => t.status === "in_progress").length;
+  const resolvedCount = tickets.filter((t) => t.status === "resolved" || t.status === "closed").length;
+
   const filteredTickets = tickets.filter((t) => {
+    const isWarranty = t.warrantyClaim || t.category === "Warranty Claim (30-day)" || (t.subject && t.subject.toLowerCase().includes("warranty"));
+    if (warrantyOnlyFilter && !isWarranty) return false;
+
     const sMatch = statusFilter === "all" || t.status === statusFilter;
     const pMatch = priorityFilter === "all" || t.priority === priorityFilter;
     const cMatch = categoryFilter === "all" || t.category === categoryFilter;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchId = t.id.toLowerCase().includes(q);
+      const matchBooking = t.bookingId ? t.bookingId.toLowerCase().includes(q) : false;
+      const matchCust = (t.customerName && t.customerName.toLowerCase().includes(q)) || (t.customerPhone && t.customerPhone.includes(q)) || (t.customerEmail && t.customerEmail.toLowerCase().includes(q));
+      const matchSubject = t.subject ? t.subject.toLowerCase().includes(q) : false;
+      const matchMessage = t.message ? t.message.toLowerCase().includes(q) : false;
+      const matchPartner = t.partnerName ? t.partnerName.toLowerCase().includes(q) : false;
+      return sMatch && pMatch && cMatch && (matchId || matchBooking || matchCust || matchSubject || matchMessage || matchPartner);
+    }
+
     return sMatch && pMatch && cMatch;
   });
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <h3 className="text-xl font-bold">Support Queue</h3>
-          <p className="text-sm text-slate-400">
-            Manage user issues and inquiries
+      {/* Overview Cards & Stats Header */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex justify-between items-center text-slate-400 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider">Total Tickets</span>
+            <MessageSquare size={16} />
+          </div>
+          <p className="text-2xl font-black text-slate-900">{totalCount}</p>
+          <p className="text-[10px] text-slate-400 mt-1 font-semibold">Across all services</p>
+        </div>
+
+        <div
+          onClick={() => setWarrantyOnlyFilter(!warrantyOnlyFilter)}
+          className={`p-5 rounded-2xl border shadow-sm transition-all cursor-pointer ${
+            warrantyOnlyFilter
+              ? "bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400"
+              : "bg-emerald-50 text-emerald-950 border-emerald-200 hover:border-emerald-400"
+          }`}
+        >
+          <div className="flex justify-between items-center mb-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${warrantyOnlyFilter ? "text-emerald-100" : "text-emerald-700"}`}>
+              🛡️ Warranty Claims
+            </span>
+            <Shield size={16} className={warrantyOnlyFilter ? "text-white animate-pulse" : "text-emerald-600"} />
+          </div>
+          <p className={`text-2xl font-black ${warrantyOnlyFilter ? "text-white" : "text-emerald-900"}`}>{warrantyCount}</p>
+          <p className={`text-[10px] mt-1 font-bold ${warrantyOnlyFilter ? "text-emerald-100" : "text-emerald-600"}`}>
+            {warrantyOnlyFilter ? "Active Filter (Click to reset)" : "30-Day Guarantee"}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-            <Filter size={14} className="text-slate-400" />
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-            >
-              <option value="all">All Categories</option>
-              <option value="Booking Issue">Booking Issue</option>
-              <option value="Payment Problem">Payment Problem</option>
-              <option value="Account Inquiry">Account Inquiry</option>
-              <option value="Feedback">Feedback</option>
-              <option value="Other">Other</option>
-            </select>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex justify-between items-center text-amber-500 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Open Queue</span>
+            <Clock size={16} />
           </div>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-            <Filter size={14} className="text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-            >
-              <option value="all">All Status</option>
-              <option value="open">Open</option>
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-            </select>
+          <p className="text-2xl font-black text-amber-600">{openCount}</p>
+          <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">Awaiting initial action</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex justify-between items-center text-blue-600 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">In Progress</span>
+            <RotateCw size={16} />
           </div>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-            <AlertCircle size={14} className="text-slate-400" />
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as any)}
-              className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
-            >
-              <option value="all">All Priority</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
+          <p className="text-2xl font-black text-blue-700">{inProgressCount}</p>
+          <p className="text-[10px] text-blue-600/80 mt-1 font-semibold">Technician / Agent engaged</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex justify-between items-center text-emerald-600 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Resolved</span>
+            <CheckCircle2 size={16} />
           </div>
+          <p className="text-2xl font-black text-emerald-700">{resolvedCount}</p>
+          <p className="text-[10px] text-emerald-600/80 mt-1 font-semibold">Closed successfully</p>
         </div>
       </div>
 
+      {/* Control Bar: Search & Filters */}
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by Ticket ID, Booking ID, Customer name, Phone, Partner..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-700 transition-all font-medium"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setWarrantyOnlyFilter(!warrantyOnlyFilter)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+              warrantyOnlyFilter
+                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                : "bg-slate-50 text-slate-600 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
+            }`}
+          >
+            <Shield size={13} className={warrantyOnlyFilter ? "text-white" : "text-emerald-600"} />
+            Warranty Only
+          </button>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-700 cursor-pointer"
+          >
+            <option value="all">All Categories</option>
+            <option value="Post-service issue">Post-service issue</option>
+            <option value="Warranty Claim (30-day)">30-Day Warranty Claim</option>
+            <option value="Quality / Rework">Quality / Rework</option>
+            <option value="Billing discrepancy">Billing discrepancy</option>
+            <option value="Technician feedback">Technician feedback</option>
+            <option value="Booking Issue">Booking Issue</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-700 cursor-pointer"
+          >
+            <option value="all">All Status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value as any)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-700 cursor-pointer"
+          >
+            <option value="all">All Priority</option>
+            <option value="high">High Priority</option>
+            <option value="medium">Medium Priority</option>
+            <option value="low">Low Priority</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tickets List */}
       <div className="grid grid-cols-1 gap-6">
         {filteredTickets.map((ticket) => {
-          const user = users.find((u) => u.uid === ticket.userId);
+          const user = users.find((u) => u.uid === (ticket.customerId || ticket.userId));
+          const booking = bookings.find((b) => b.id === ticket.bookingId);
+          const partner = partners.find((p) => p.userId === (ticket.partnerId || booking?.partnerId));
+          const partnerUser = users.find((u) => u.uid === (ticket.partnerId || booking?.partnerId));
+
+          const isWarranty = ticket.warrantyClaim || ticket.category === "Warranty Claim (30-day)" || (ticket.subject && ticket.subject.toLowerCase().includes("warranty"));
+
+          // SLA calculation (2-hour target response for Warranty / High Priority)
+          const createdDate = ticket.createdAt?.toDate ? ticket.createdAt.toDate() : (ticket.createdAt ? new Date(ticket.createdAt as any) : new Date());
+          const hoursElapsed = Math.max(0, (Date.now() - createdDate.getTime()) / (1000 * 60 * 60));
+          const isOverdue = hoursElapsed > 2 && (ticket.status === "open" || ticket.status === "in_progress");
+          const remainingMinutes = Math.max(0, Math.round((2 - hoursElapsed) * 60));
+
           return (
             <div
               key={ticket.id}
-              className="bg-white border border-slate-200 rounded-[32px] hover:border-blue-700 transition-all group overflow-hidden shadow-sm hover:shadow-md"
+              className={`bg-white border rounded-[32px] transition-all group overflow-hidden shadow-sm hover:shadow-md ${
+                isWarranty
+                  ? "border-emerald-200 hover:border-emerald-500 ring-1 ring-emerald-500/10"
+                  : "border-slate-200 hover:border-blue-700"
+              }`}
             >
-              <div className="p-8">
+              {/* Card Top Accent Bar for Warranty */}
+              {isWarranty && (
+                <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white px-6 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                  <span className="flex items-center gap-1.5">
+                    <Shield size={13} className="text-emerald-200 animate-pulse" />
+                    Zomindia 30-Day Service Guarantee Claim
+                  </span>
+                  <span className="bg-white/20 px-2.5 py-0.5 rounded-full backdrop-blur-sm">
+                    Priority SLA Target: 2 Hours
+                  </span>
+                </div>
+              )}
+
+              <div className="p-7">
                 <div className="flex flex-col lg:flex-row justify-between gap-8">
-                  <div className="space-y-4 flex-1">
-                    <div className="flex items-center gap-3">
+                  {/* Left Column: Details & Messages */}
+                  <div className="space-y-5 flex-1">
+                    {/* Header Badges */}
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <span
-                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
+                        className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
                           ticket.status === "open"
-                            ? "bg-amber-100 text-amber-700"
+                            ? "bg-amber-100 text-amber-800 border border-amber-200"
                             : ticket.status === "in_progress"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-emerald-100 text-emerald-700"
+                              ? "bg-blue-100 text-blue-800 border border-blue-200"
+                              : "bg-emerald-100 text-emerald-800 border border-emerald-200"
                         }`}
                       >
-                        {ticket.status}
+                        ● {ticket.status.replace("_", " ")}
                       </span>
+
                       <span
-                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
+                        className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
                           ticket.priority === "high"
-                            ? "bg-red-100 text-red-700"
+                            ? "bg-red-100 text-red-800 border border-red-200"
                             : ticket.priority === "medium"
-                              ? "bg-orange-100 text-orange-700"
-                              : "bg-slate-100 text-slate-500"
+                              ? "bg-orange-100 text-orange-800 border border-orange-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
                         }`}
                       >
                         {ticket.priority} Priority
                       </span>
+
                       {ticket.category && (
-                        <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                        <span className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
                           {ticket.category}
                         </span>
                       )}
-                      <span className="text-[10px] text-slate-300 font-medium font-mono">
-                        #ID-{ticket.id.slice(0, 8).toUpperCase()}
+
+                      {/* SLA Indicator */}
+                      <span
+                        className={`text-[9px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                          ticket.status === "resolved" || ticket.status === "closed"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : isOverdue
+                              ? "bg-red-50 text-red-700 border border-red-200 font-black animate-pulse"
+                              : "bg-amber-50 text-amber-800 border border-amber-200 font-semibold"
+                        }`}
+                      >
+                        <Clock size={11} />
+                        {ticket.status === "resolved" || ticket.status === "closed"
+                          ? "Resolved"
+                          : isOverdue
+                            ? `SLA Breached (${Math.round(hoursElapsed)}h ago)`
+                            : `SLA: ${remainingMinutes}m remaining`}
+                      </span>
+
+                      <span className="text-[10px] text-slate-400 font-medium font-mono ml-auto">
+                        #TICKET-{ticket.id.slice(0, 8).toUpperCase()}
                       </span>
                     </div>
-                    <h4 className="text-xl font-bold text-slate-900">
-                      {ticket.subject}
-                    </h4>
-                    <p className="text-sm text-slate-500 leading-relaxed font-medium">
-                      {ticket.message}
-                    </p>
 
-                    {ticket.adminResponse && (
-                      <div className="mt-4 p-5 bg-blue-700 text-white rounded-2xl relative">
-                        <div className="absolute -top-2 left-6 px-3 py-0.5 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">
-                          Official Response
+                    {/* Linked Booking Pill */}
+                    {ticket.bookingId && (
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-slate-900 text-white rounded-lg text-[9px] font-black font-mono tracking-wider">
+                            #{ticket.bookingId.slice(0, 8).toUpperCase()}
+                          </span>
+                          <span className="text-xs font-bold text-slate-800">
+                            {ticket.serviceName || booking?.serviceName || "Service Job"}
+                          </span>
+                          {booking && (
+                            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                              ₹{booking.totalPrice}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs italic text-slate-300">
+
+                        {ticket.warrantyBookingId && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-xl border border-emerald-300 flex items-center gap-1">
+                            <Shield size={12} />
+                            Re-visit Active: #{ticket.warrantyBookingId.slice(0, 8).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Subject & Message */}
+                    <div>
+                      <h4 className="text-base font-black text-slate-900 tracking-tight mb-1.5">
+                        {ticket.subject || "Customer Support Query"}
+                      </h4>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50/50 p-4 rounded-2xl border border-slate-100 whitespace-pre-wrap">
+                        {ticket.message}
+                      </p>
+                    </div>
+
+                    {/* Photo Attachment Preview if available */}
+                    {ticket.photoUrl && (
+                      <div className="flex items-center gap-3">
+                        <div
+                          onClick={() => setPreviewPhotoUrl(ticket.photoUrl || null)}
+                          className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer relative group/img shadow-sm"
+                        >
+                          <img
+                            src={ticket.photoUrl}
+                            alt="Attachment"
+                            className="w-full h-full object-cover group-hover/img:scale-110 transition-all duration-300"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold">
+                            View
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-700">Customer Photo Attachment</p>
+                          <p className="text-[10px] text-slate-400">Click image to enlarge</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Official Response Preview */}
+                    {ticket.adminResponse && (
+                      <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-2xl relative shadow-sm border border-blue-800/50">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-300 flex items-center gap-1">
+                            <CheckCircle2 size={12} />
+                            Official Resolution Note
+                          </span>
+                          {ticket.assignedAgent && (
+                            <span className="text-[9px] text-slate-300 font-bold">
+                              Agent: {ticket.assignedAgent}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-200 font-medium leading-relaxed">
                           "{ticket.adminResponse}"
                         </p>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-3 pt-4">
-                      <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-sm font-bold text-slate-900 border border-slate-200">
-                        {user?.displayName?.[0] || "U"}
+                    {/* Parties Meta: Customer & Partner */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                      {/* Customer Info */}
+                      <div className="flex items-center gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+                        <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center text-xs font-black">
+                          {ticket.customerName?.[0] || user?.displayName?.[0] || "C"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-900 truncate">
+                            {ticket.customerName || user?.displayName || "Customer"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {(ticket.customerPhone || user?.phoneNumber) && (
+                              <a
+                                href={`tel:${ticket.customerPhone || user?.phoneNumber}`}
+                                className="text-[10px] text-blue-700 font-bold hover:underline flex items-center gap-0.5"
+                              >
+                                <Phone size={10} />
+                                {ticket.customerPhone || user?.phoneNumber}
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">
-                          {user?.displayName || "Unknown User"}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-medium">
-                          {user?.email}
-                        </p>
+
+                      {/* Assigned Partner Info */}
+                      <div className="flex items-center gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+                        <div className="w-9 h-9 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center text-xs font-black">
+                          {ticket.partnerName?.[0] || partnerUser?.displayName?.[0] || "P"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-900 truncate">
+                            {ticket.partnerName || partnerUser?.displayName || "Partner Assigned"}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono truncate">
+                            ID: {(ticket.partnerId || booking?.partnerId || "Unassigned").slice(0, 10)}
+                          </p>
+                        </div>
                       </div>
-                      <span className="ml-auto text-[10px] text-slate-300 font-bold uppercase tracking-widest">
-                        {ticket.createdAt?.toDate?.()
-                          ? ticket.createdAt.toDate().toLocaleDateString()
-                          : new Date(ticket.createdAt).toLocaleDateString()}
-                      </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row lg:flex-col gap-3 justify-end min-w-[200px]">
-                    <select
-                      value={ticket.category || ""}
-                      onChange={(e) =>
-                        updateTicketCategory(ticket.id, e.target.value)
-                      }
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
-                    >
-                      <option value="" disabled>
-                        Assign Category
-                      </option>
-                      <option value="Booking Issue">Booking Issue</option>
-                      <option value="Payment Problem">Payment Problem</option>
-                      <option value="Account Inquiry">Account Inquiry</option>
-                      <option value="Feedback">Feedback</option>
-                      <option value="Other">Other</option>
-                    </select>
-                    <select
-                      value={ticket.status}
-                      onChange={(e) =>
-                        updateTicketStatus(ticket.id, e.target.value as any)
-                      }
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
-                    >
-                      <option value="open">Open</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                    <button
-                      onClick={() =>
-                        respondingTo === ticket.id
-                          ? setRespondingTo(null)
-                          : setRespondingTo(ticket.id)
-                      }
-                      className={`px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                        respondingTo === ticket.id
-                          ? "bg-slate-100 text-slate-500"
-                          : "bg-blue-700 text-white hover:bg-blue-800"
-                      }`}
-                    >
-                      <MessageSquare size={14} />{" "}
-                      {respondingTo === ticket.id ? "Cancel" : "Respond"}
-                    </button>
-                    <button
-                      onClick={() => deleteTicket(ticket.id)}
-                      className="p-3 text-slate-300 hover:text-red-600 transition-colors bg-slate-50 rounded-xl hover:bg-slate-100 flex items-center justify-center"
-                    >
-                      <X size={20} />
-                    </button>
+                  {/* Right Column: Actions & Controls */}
+                  <div className="flex flex-col gap-3 justify-between min-w-[220px] lg:border-l lg:border-slate-100 lg:pl-8">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                          Status Workflow
+                        </label>
+                        <select
+                          value={ticket.status}
+                          onChange={(e) => handleStatusChange(ticket.id, e.target.value as any)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-700 outline-none cursor-pointer"
+                        >
+                          <option value="open">Open (New)</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="resolved">Resolved</option>
+                          <option value="closed">Closed</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                          Assigned Support Agent
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="e.g. Agent Riya"
+                            value={assignedAgentInput[ticket.id] !== undefined ? assignedAgentInput[ticket.id] : (ticket.assignedAgent || "")}
+                            onChange={(e) => setAssignedAgentInput({ ...assignedAgentInput, [ticket.id]: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-700"
+                          />
+                          <button
+                            onClick={() => handleAgentAssign(ticket.id)}
+                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer border-0"
+                            title="Save Agent Assignment"
+                          >
+                            <Check size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 1-Click Dispatch Free Warranty Re-Visit */}
+                      {isWarranty && !ticket.warrantyBookingId && (
+                        <button
+                          onClick={() => handleDispatchWarrantyRevisit(ticket)}
+                          disabled={dispatchingWarrantyTicketId === ticket.id}
+                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-0 disabled:opacity-50"
+                        >
+                          {dispatchingWarrantyTicketId === ticket.id ? (
+                            <RotateCw size={14} className="animate-spin" />
+                          ) : (
+                            <Shield size={14} />
+                          )}
+                          Dispatch Free Warranty Re-Visit (₹0)
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() =>
+                          respondingTo === ticket.id ? setRespondingTo(null) : setRespondingTo(ticket.id)
+                        }
+                        className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border-0 ${
+                          respondingTo === ticket.id
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-blue-700 hover:bg-blue-800 text-white shadow-sm"
+                        }`}
+                      >
+                        <MessageSquare size={14} />
+                        {respondingTo === ticket.id ? "Cancel Response" : "Official Response"}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-[10px] text-slate-400">
+                      <span>
+                        Created: {createdDate.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <button
+                        onClick={() => deleteTicket(ticket.id)}
+                        className="text-slate-300 hover:text-red-600 transition-colors p-1 cursor-pointer bg-transparent border-0"
+                        title="Delete Ticket"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
+                {/* Inline Official Response Box */}
                 <AnimatePresence>
                   {respondingTo === ticket.id && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="mt-8 pt-8 border-t border-slate-100"
+                      className="mt-6 pt-6 border-t border-slate-100"
                     >
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                        Admin Response Message
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                        Type Official Response (Real-time synced to customer's booking card)
                       </label>
                       <textarea
-                        value={responseTime}
-                        onChange={(e) => setResponseTime(e.target.value)}
-                        placeholder="Type your response here. This will be visible to the user..."
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-700 outline-none h-32 mb-4"
+                        value={responseText}
+                        onChange={(e) => setResponseText(e.target.value)}
+                        placeholder="Explain resolution steps, warranty technician dispatch details, or customer guidance..."
+                        rows={3}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-medium focus:ring-2 focus:ring-blue-700 outline-none mb-3"
                       />
-                      <button
-                        onClick={() => handleRespond(ticket.id)}
-                        disabled={!responseTime}
-                        className="bg-blue-700 text-white px-8 py-3 rounded-xl font-bold text-xs hover:bg-blue-800 transition-all disabled:opacity-50 flex items-center gap-2 ml-auto"
-                      >
-                        Send Response <ChevronRight size={14} />
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setRespondingTo(null)}
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer border-0"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleRespond(ticket)}
+                          disabled={!responseText.trim()}
+                          className="px-6 py-2 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border-0 shadow-sm"
+                        >
+                          <Send size={13} />
+                          Send Official Response
+                        </button>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -9542,15 +10005,56 @@ function TicketManager({
             </div>
           );
         })}
+
         {filteredTickets.length === 0 && (
           <div className="py-24 text-center bg-white border border-dashed border-slate-200 rounded-[40px]">
-            <MessageSquare size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-slate-400 font-medium italic">
-              No tickets match your filters.
-            </p>
+            <MessageSquare size={44} className="mx-auto text-slate-200 mb-3" />
+            <p className="text-sm font-bold text-slate-500">No support tickets match your filters</p>
+            <p className="text-xs text-slate-400 mt-1">Try clearing search filters or changing the category selector.</p>
           </div>
         )}
       </div>
+
+      {/* Lightbox Photo Preview Modal */}
+      <AnimatePresence>
+        {previewPhotoUrl && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPreviewPhotoUrl(null)}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative max-w-2xl max-h-[85vh] bg-white rounded-3xl overflow-hidden z-10 shadow-2xl p-4 flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                  Customer Uploaded Photo Preview
+                </span>
+                <button
+                  onClick={() => setPreviewPhotoUrl(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-900 cursor-pointer bg-transparent border-0"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto rounded-2xl bg-slate-50 flex items-center justify-center p-2">
+                <img
+                  src={previewPhotoUrl}
+                  alt="Customer Attachment Full"
+                  className="max-h-[70vh] object-contain rounded-xl"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
