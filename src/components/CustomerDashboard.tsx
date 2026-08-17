@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -36,10 +36,6 @@ import { LoadingScreen, ServiceCardSkeleton } from "./LoadingIndicator";
 import PaymentModal from "./PaymentModal";
 import BookingModal from "./BookingModal";
 import AiSupportChat from "./AiSupportChat";
-import {
-  Map,
-  AdvancedMarker,
-} from "@vis.gl/react-google-maps";
 import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
@@ -83,6 +79,105 @@ import {
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
 const hasValidKey = Boolean(API_KEY) && API_KEY !== "YOUR_API_KEY";
+
+interface ServiceThumbnailProps {
+  service?: any;
+  size?: "sm" | "md";
+  bookingStatus?: string;
+}
+
+function ServiceThumbnail({
+  service,
+  size = "md",
+  bookingStatus,
+}: ServiceThumbnailProps) {
+  const serviceName = service?.name || "";
+
+  // Choose icon based on service name characteristics or default
+  let IconComponent: any = Zap;
+  let gradientClass = "from-indigo-600 to-blue-700 shadow-indigo-600/20";
+  let isCustomComposite = false;
+
+  if (bookingStatus && (bookingStatus.toLowerCase() === "assigned" || bookingStatus.toUpperCase() === "ASSIGNED")) {
+    isCustomComposite = true;
+    gradientClass = "from-blue-600 to-indigo-700 shadow-blue-500/20";
+  } else if (
+    serviceName.toLowerCase().includes("cleaning") ||
+    serviceName.toLowerCase().includes("wash")
+  ) {
+    IconComponent = Sparkles;
+    gradientClass = "from-emerald-400 to-teal-600 shadow-emerald-500/20";
+  } else if (
+    serviceName.toLowerCase().includes("repair") ||
+    serviceName.toLowerCase().includes("fix") ||
+    serviceName.toLowerCase().includes("install") ||
+    serviceName.toLowerCase().includes("plumbing") ||
+    serviceName.toLowerCase().includes("pest")
+  ) {
+    IconComponent = Zap;
+    gradientClass = "from-amber-500 to-orange-600 shadow-orange-500/20";
+  } else if (
+    serviceName.toLowerCase().includes("salon") ||
+    serviceName.toLowerCase().includes("spa") ||
+    serviceName.toLowerCase().includes("beauty") ||
+    serviceName.toLowerCase().includes("massage") ||
+    serviceName.toLowerCase().includes("hair")
+  ) {
+    IconComponent = Sparkles;
+    gradientClass = "from-rose-400 to-pink-650 shadow-rose-550/20";
+  } else if (
+    serviceName.toLowerCase().includes("ac") ||
+    serviceName.toLowerCase().includes("cool") ||
+    serviceName.toLowerCase().includes("appliance")
+  ) {
+    IconComponent = Compass;
+    gradientClass = "from-cyan-400 to-sky-600 shadow-cyan-500/20";
+  }
+
+  const dimensionClass =
+    size === "sm" ? "w-12 h-12 rounded-[18px]" : "w-16 h-16 rounded-[22px]";
+  const iconSize = size === "sm" ? 18 : 24;
+
+  if (service?.imageURL && !isCustomComposite) {
+    return (
+      <div
+        className={`${dimensionClass} relative overflow-hidden shrink-0 border-2 border-white shadow-md bg-slate-100 group`}
+      >
+        <img
+          src={service.imageURL}
+          alt={serviceName}
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
+  const subSize = Math.max(8, Math.floor(iconSize * 0.45));
+
+  return (
+    <div
+      className={`${dimensionClass} bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white shrink-0 relative overflow-hidden shadow-md border-2 border-white`}
+    >
+      {/* Ambient radial reflection glare */}
+      <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10 skew-y-12 origin-top-left" />
+      {isCustomComposite ? (
+        <div className="relative flex items-center justify-center shrink-0" style={{ width: iconSize, height: iconSize }}>
+          <Clock size={iconSize} className="text-white shrink-0 animate-pulse" />
+          <div className="absolute -bottom-1 -right-1 bg-blue-700 rounded-full p-0.5 border border-white shadow-sm flex items-center justify-center">
+            <User size={subSize} className="text-white fill-white" strokeWidth={3} />
+          </div>
+        </div>
+      ) : (
+        <IconComponent
+          size={iconSize}
+          className="relative z-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)] font-black"
+        />
+      )}
+    </div>
+  );
+}
 
 function PartnerLiveStatus({
   partnerId,
@@ -811,6 +906,41 @@ export default function CustomerDashboard({
       return matchesSearch && matchesCategory;
     });
   }, [pastBookings, services, historySearchQuery, historyCategoryFilter]);
+
+  const filteredServices = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return allActiveServices.filter((s) => {
+        return !activeCategoryFilter || s.categoryId === activeCategoryFilter;
+      });
+    }
+
+    const results = allActiveServices
+      .map((s) => {
+        const categoryName = allCategories.find((c) => c.id === s.categoryId)?.name || "";
+        const nameMatch = fuzzyMatch(s.name, searchQuery);
+        const descMatch = fuzzyMatch(s.description, searchQuery);
+        const catMatch = fuzzyMatch(categoryName, searchQuery);
+
+        // Calculate a prioritizing score
+        const bestScore = Math.max(
+          nameMatch.score,
+          descMatch.score * 0.8,
+          catMatch.score * 0.9
+        );
+        const matches = nameMatch.matches || descMatch.matches || catMatch.matches;
+
+        return { service: s, matches, score: bestScore };
+      })
+      .filter((item) => {
+        const matchesCategory =
+          !activeCategoryFilter || item.service.categoryId === activeCategoryFilter;
+        return item.matches && matchesCategory;
+      });
+
+    // Sort by the best match score
+    results.sort((a, b) => b.score - a.score);
+    return results.map((r) => r.service);
+  }, [allActiveServices, searchQuery, activeCategoryFilter, allCategories]);
 
   // Fetch Categories & Services for discovery
   useEffect(() => {
@@ -1616,41 +1746,6 @@ export default function CustomerDashboard({
     }
   };
 
-  const filteredServices = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allActiveServices.filter((s) => {
-        return !activeCategoryFilter || s.categoryId === activeCategoryFilter;
-      });
-    }
-
-    const results = allActiveServices
-      .map((s) => {
-        const categoryName = allCategories.find((c) => c.id === s.categoryId)?.name || "";
-        const nameMatch = fuzzyMatch(s.name, searchQuery);
-        const descMatch = fuzzyMatch(s.description, searchQuery);
-        const catMatch = fuzzyMatch(categoryName, searchQuery);
-
-        // Calculate a prioritizing score
-        const bestScore = Math.max(
-          nameMatch.score,
-          descMatch.score * 0.8,
-          catMatch.score * 0.9
-        );
-        const matches = nameMatch.matches || descMatch.matches || catMatch.matches;
-
-        return { service: s, matches, score: bestScore };
-      })
-      .filter((item) => {
-        const matchesCategory =
-          !activeCategoryFilter || item.service.categoryId === activeCategoryFilter;
-        return item.matches && matchesCategory;
-      });
-
-    // Sort by the best match score
-    results.sort((a, b) => b.score - a.score);
-    return results.map((r) => r.service);
-  }, [allActiveServices, searchQuery, activeCategoryFilter, allCategories]);
-
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12 select-none animate-pulse">
@@ -1695,100 +1790,6 @@ export default function CustomerDashboard({
       </div>
     );
   }
-
-  const renderServiceThumbnail = (
-    serviceId: string,
-    size: "sm" | "md" = "md",
-    bookingStatus?: string,
-  ) => {
-    const service = services[serviceId];
-    const serviceName = service?.name || "";
-
-    // Choose icon based on service name characteristics or default
-    let IconComponent: any = Zap;
-    let gradientClass = "from-indigo-600 to-blue-700 shadow-indigo-600/20";
-    let isCustomComposite = false;
-
-    if (bookingStatus && (bookingStatus.toLowerCase() === "assigned" || bookingStatus.toUpperCase() === "ASSIGNED")) {
-      isCustomComposite = true;
-      gradientClass = "from-blue-600 to-indigo-700 shadow-blue-500/20";
-    } else if (
-      serviceName.toLowerCase().includes("cleaning") ||
-      serviceName.toLowerCase().includes("wash")
-    ) {
-      IconComponent = Sparkles;
-      gradientClass = "from-emerald-400 to-teal-600 shadow-emerald-500/20";
-    } else if (
-      serviceName.toLowerCase().includes("repair") ||
-      serviceName.toLowerCase().includes("fix") ||
-      serviceName.toLowerCase().includes("install") ||
-      serviceName.toLowerCase().includes("plumbing") ||
-      serviceName.toLowerCase().includes("pest")
-    ) {
-      IconComponent = Zap;
-      gradientClass = "from-amber-500 to-orange-600 shadow-orange-500/20";
-    } else if (
-      serviceName.toLowerCase().includes("salon") ||
-      serviceName.toLowerCase().includes("spa") ||
-      serviceName.toLowerCase().includes("beauty") ||
-      serviceName.toLowerCase().includes("massage") ||
-      serviceName.toLowerCase().includes("hair")
-    ) {
-      IconComponent = Sparkles;
-      gradientClass = "from-rose-400 to-pink-650 shadow-rose-550/20";
-    } else if (
-      serviceName.toLowerCase().includes("ac") ||
-      serviceName.toLowerCase().includes("cool") ||
-      serviceName.toLowerCase().includes("appliance")
-    ) {
-      IconComponent = Compass;
-      gradientClass = "from-cyan-400 to-sky-600 shadow-cyan-500/20";
-    }
-
-    const dimensionClass =
-      size === "sm" ? "w-12 h-12 rounded-[18px]" : "w-16 h-16 rounded-[22px]";
-    const iconSize = size === "sm" ? 18 : 24;
-
-    if (service?.imageURL && !isCustomComposite) {
-      return (
-        <div
-          className={`${dimensionClass} relative overflow-hidden shrink-0 border-2 border-white shadow-md bg-slate-100 group`}
-        >
-          <img
-            src={service.imageURL}
-            alt={serviceName}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            referrerPolicy="no-referrer"
-            loading="lazy"
-          />
-        </div>
-      );
-    }
-
-    const subSize = Math.max(8, Math.floor(iconSize * 0.45));
-
-    return (
-      <div
-        className={`${dimensionClass} bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white shrink-0 relative overflow-hidden shadow-md border-2 border-white`}
-      >
-        {/* Ambient radial reflection glare */}
-        <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10 skew-y-12 origin-top-left" />
-        {isCustomComposite ? (
-          <div className="relative flex items-center justify-center shrink-0" style={{ width: iconSize, height: iconSize }}>
-            <Clock size={iconSize} className="text-white shrink-0 animate-pulse" />
-            <div className="absolute -bottom-1 -right-1 bg-blue-700 rounded-full p-0.5 border border-white shadow-sm flex items-center justify-center">
-              <User size={subSize} className="text-white fill-white" strokeWidth={3} />
-            </div>
-          </div>
-        ) : (
-          <IconComponent
-            size={iconSize}
-            className="relative z-10 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)] font-black"
-          />
-        )}
-      </div>
-    );
-  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
@@ -2085,7 +2086,11 @@ export default function CustomerDashboard({
                   {/* Header Module */}
                   <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200/80 pb-4 mb-6">
                     <div className="flex items-center gap-4 sm:gap-6">
-                      {renderServiceThumbnail(booking.serviceId, "md")}
+                      <ServiceThumbnail
+                        service={services[booking.serviceId]}
+                        bookingStatus={bookingStatus}
+                        size="md"
+                      />
                       <div>
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
                           <span className="text-[10px] font-mono tracking-widest bg-sky-100 text-sky-800 border border-sky-200 font-semibold uppercase px-2.5 py-0.5 rounded-full">
@@ -2512,7 +2517,11 @@ export default function CustomerDashboard({
                   >
                     <div className="flex flex-col gap-4 sm:gap-6 relative z-10">
                       <div className="flex gap-4 sm:gap-6 items-start">
-                        {renderServiceThumbnail(booking.serviceId, "md")}
+                        <ServiceThumbnail
+                          service={services[booking.serviceId]}
+                          bookingStatus={booking.status}
+                          size="md"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-3 mb-2">
                             <span
