@@ -3030,7 +3030,18 @@ export default function CustomerDashboard({
                   key={promo.id}
                   onClick={() => {
                     navigator.clipboard.writeText(promo.code);
-                    (window as any).__showCopyToast?.(promo.code);
+                    try {
+                      localStorage.setItem('activeCoupon', JSON.stringify(promo));
+                      localStorage.setItem('zomindia_active_coupon', promo.code);
+                    } catch {}
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('coupon-applied', { detail: promo }));
+                    }
+                    if (typeof (window as any).__showToast === 'function') {
+                      (window as any).__showToast(`Coupon ${promo.code} applied successfully! Check savings at checkout.`);
+                    } else if (typeof (window as any).__showCopyToast === 'function') {
+                      (window as any).__showCopyToast(promo.code);
+                    }
                   }}
                   className="flex-shrink-0 w-[290px] bg-white border border-slate-150/85 rounded-[24px] p-5 text-slate-800 relative overflow-hidden group shadow-sm cursor-pointer"
                   style={{ transition: 'all 0.3s ease-in-out' }}

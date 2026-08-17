@@ -599,6 +599,41 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   }, [redemptions, service, appliedPromo, step]);
 
+  // Synchronize activeCoupon from OffersView across booking & checkout
+  useEffect(() => {
+    if (!appliedPromo && service) {
+      try {
+        const storedCoupon = localStorage.getItem('activeCoupon');
+        if (storedCoupon) {
+          const promo = JSON.parse(storedCoupon) as Promotion;
+          const isCategoryValid = !promo.applicableCategories || promo.applicableCategories.length === 0 || promo.applicableCategories.includes(service.categoryId);
+          const isServiceValid = !promo.applicableServices || promo.applicableServices.length === 0 || promo.applicableServices.includes(service.id);
+          if (isCategoryValid && isServiceValid) {
+            setAppliedPromo(promo);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not read activeCoupon from localStorage:", err);
+      }
+    }
+
+    const handleCouponSync = (e: any) => {
+      const promo = e.detail as Promotion;
+      if (promo && service) {
+        const isCategoryValid = !promo.applicableCategories || promo.applicableCategories.length === 0 || promo.applicableCategories.includes(service.categoryId);
+        const isServiceValid = !promo.applicableServices || promo.applicableServices.length === 0 || promo.applicableServices.includes(service.id);
+        if (isCategoryValid && isServiceValid) {
+          setAppliedPromo(promo);
+        }
+      }
+    };
+
+    window.addEventListener('coupon-applied', handleCouponSync);
+    return () => {
+      window.removeEventListener('coupon-applied', handleCouponSync);
+    };
+  }, [service, appliedPromo]);
+
   const isSurgePricingActive = () => {
     if (profile?.isPremium) return false;
     if (!time) return false;

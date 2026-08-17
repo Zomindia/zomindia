@@ -55,11 +55,11 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       code: 'ZOMFIRST15%',
       discountType: 'percent',
       discountValue: 15,
-      description: 'Conquer the intense Indore summer heat. Get a premium high-pressure jet AC service, deep cooling coil sanitization & gas level checks by our top-tier rated professionals.',
+      description: 'Conquer the intense Indore summer heat. Get a premium high-pressure jet AC service & gas level checks.',
       active: true,
       applicableCategories: [], // Global
-      gradient: 'from-cyan-500 via-blue-600 to-indigo-700',
-      badgeText: 'Indore Heatwave Deal',
+      gradient: 'from-sky-100 to-blue-200 text-blue-900 border-blue-200/80',
+      badgeText: 'Summer Special',
     },
     {
       id: 'static_zomfirst99',
@@ -67,11 +67,11 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       code: 'ZOMFIRST99',
       discountType: 'flat',
       discountValue: 99,
-      description: "Protect your home appliances under Indore's extreme climate. Book any home appliance checkup, fault diagnostics, or safety inspection at a flat rate.",
+      description: "Protect your home appliances under Indore's climate. Flat ₹99 off on appliance checkup & diagnostics.",
       active: true,
       applicableCategories: [],
-      gradient: 'from-[#ff2d55] via-[#ff3b30] to-[#ff9500]',
-      badgeText: 'Ultimate Protection',
+      gradient: 'from-amber-100 to-orange-200 text-amber-950 border-amber-200/80',
+      badgeText: 'Appliance Shield',
     },
     {
       id: 'static_indore50',
@@ -79,11 +79,11 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       code: 'INDORE50',
       discountType: 'percent',
       discountValue: 20,
-      description: 'Premium home cleaning, wet sanitization, and dust prevention. Perfect for Indore households fighting seasonal dust, pollen, and high humidity.',
+      description: 'Premium home cleaning, wet sanitization, and dust prevention for Indore households.',
       active: true,
       applicableCategories: [],
-      gradient: 'from-[#bf5af2] via-[#ff375f] to-[#ff2d55]',
-      badgeText: 'Dust & Hygiene Buster',
+      gradient: 'from-emerald-100 to-teal-200 text-emerald-900 border-emerald-200/80',
+      badgeText: 'Hygiene Deal',
     },
   ],
   partner: [
@@ -93,11 +93,11 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       code: 'FUELBOOST',
       discountType: 'flat',
       discountValue: 150,
-      description: 'Maximize your field profits. Get a flat ₹150 fuel allowance added to your wallet upon successfully delivering 5 on-site bookings in Indore in a single day.',
+      description: 'Flat ₹150 fuel allowance added to your wallet upon delivering 5 bookings in Indore in a single day.',
       active: true,
       applicableCategories: [],
-      gradient: 'from-[#ff9f0a] via-[#ff375f] to-[#bf5af2]',
-      badgeText: 'Fuel Supercharge',
+      gradient: 'from-amber-100 to-orange-200 text-amber-950 border-amber-200/80',
+      badgeText: 'Fuel Boost',
     },
     {
       id: 'static_weekendpro',
@@ -105,11 +105,11 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       code: 'WEEKENDPRO',
       discountType: 'percent',
       discountValue: 50,
-      description: 'Earn 1.5x direct loyalty payouts and double Zomindia reward credits on all appliance repair and home deep cleaning bookings accomplished during weekends.',
+      description: 'Earn 1.5x direct loyalty payouts and double Zomindia reward credits on weekend bookings.',
       active: true,
       applicableCategories: [],
-      gradient: 'from-[#30d158] via-[#00c7be] to-[#007aff]',
-      badgeText: 'Weekend Pro Surge',
+      gradient: 'from-indigo-100 to-purple-200 text-indigo-900 border-indigo-200/80',
+      badgeText: 'Weekend Pro',
     }
   ]
 };
@@ -134,6 +134,20 @@ export default function OffersView({
   const [targetCategory, setTargetCategory] = useState<string>('');
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [activeCouponCode, setActiveCouponCode] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem('zomindia_active_coupon');
+      if (stored) return stored;
+      const jsonStored = localStorage.getItem('activeCoupon');
+      if (jsonStored) {
+        const parsed = JSON.parse(jsonStored);
+        return parsed?.code || null;
+      }
+    } catch {
+      // fallback
+    }
+    return null;
+  });
   const [showIOSPrompt, setShowIOSPrompt] = useState(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
@@ -223,6 +237,61 @@ export default function OffersView({
     return redemptions.some(r => r.promotionId === promoId);
   }, [redemptions]);
 
+  // Synchronized Global Coupon Application
+  const applyCouponGlobally = useCallback(async (promo: Promotion) => {
+    // 1. Copy code to clipboard
+    try {
+      await navigator.clipboard.writeText(promo.code);
+      setCopiedCode(promo.code);
+      setTimeout(() => setCopiedCode(null), 2500);
+    } catch {
+      // ignore clipboard failure
+    }
+
+    // 2. Persist active coupon in localStorage for BookingModal & CustomerDashboard sync
+    try {
+      localStorage.setItem('activeCoupon', JSON.stringify(promo));
+      localStorage.setItem('zomindia_active_coupon', promo.code);
+    } catch (err) {
+      console.warn("Could not save coupon to localStorage", err);
+    }
+
+    setActiveCouponCode(promo.code);
+
+    // 3. Dispatch window event for live in-session synchronization
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('coupon-applied', { detail: promo }));
+    }
+
+    // 4. Instant green toast notification
+    const toastMsg = `Coupon ${promo.code} applied successfully! Check savings at checkout.`;
+    if (typeof (window as any).__showToast === 'function') {
+      (window as any).__showToast(toastMsg);
+    } else if (typeof (window as any).__showCopyToast === 'function') {
+      (window as any).__showCopyToast(promo.code);
+    }
+
+    // 5. Lazy sync promotion in Firestore if static
+    if (promo.id.startsWith('static_')) {
+      try {
+        const promoRef = doc(db, 'promotions', promo.id);
+        await setDoc(promoRef, {
+          name: promo.name,
+          code: promo.code,
+          discountType: promo.discountType,
+          discountValue: promo.discountValue,
+          description: promo.description,
+          active: true,
+          applicableCategories: promo.applicableCategories || [],
+          targetAudience: promo.targetAudience || 'customer',
+          createdAt: Timestamp.now()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Background promo sync error:", err);
+      }
+    }
+  }, []);
+
   const handleRedeem = async () => {
     if (!profile) {
       onAuthRequired();
@@ -231,7 +300,7 @@ export default function OffersView({
     if (!selectedPromo) return;
     setIsRedeeming(true);
     try {
-      // Lazy initialize static promotions in Firestore on first use so the BookingModal checkout flow can find them perfectly
+      // Lazy initialize static promotions in Firestore on first use
       if (selectedPromo.id.startsWith('static_')) {
         const promoRef = doc(db, 'promotions', selectedPromo.id);
         await setDoc(promoRef, {
@@ -244,7 +313,7 @@ export default function OffersView({
           applicableCategories: selectedPromo.applicableCategories || [],
           targetAudience: selectedPromo.targetAudience || 'customer',
           createdAt: Timestamp.now()
-        });
+        }, { merge: true });
       }
 
       const redemptionData: Partial<Redemption> = {
@@ -256,9 +325,8 @@ export default function OffersView({
       };
       await addDoc(collection(db, 'redemptions'), redemptionData);
       
-      if (typeof (window as any).__showToast === 'function') {
-        (window as any).__showToast(`Successfully claimed! ${selectedPromo.code} is active on your checkout.`);
-      }
+      // Auto-apply globally
+      applyCouponGlobally(selectedPromo);
 
       setSelectedPromo(null);
       setTargetCategory('');
@@ -281,90 +349,91 @@ export default function OffersView({
   };
 
   const getPromoTheme = (promo: any, idx: number) => {
-    if (promo.gradient) {
-      return {
-        gradientClass: promo.gradient,
-        badgeBg: 'bg-white/15 backdrop-blur-md border border-white/20 text-white shadow-lg shadow-black/10',
-        glowBg: 'bg-white/10',
-        badgeText: promo.badgeText || 'Exclusive Deal'
-      };
-    }
-    
-    // Fallback premium gradients for database-seeded promos
-    const fallbacks = [
+    const pastelThemes = [
       {
-        gradientClass: 'from-[#007aff] via-[#5856d6] to-[#af52de]', // Indigo - Violet - Purple
-        badgeBg: 'bg-white/20 backdrop-blur-md border border-white/25 text-white shadow-lg shadow-indigo-950/20',
-        glowBg: 'bg-white/10',
-        badgeText: 'Member Special'
+        gradientClass: 'from-sky-100 to-blue-200 text-blue-900 border-blue-200/80',
+        badgeBg: 'bg-blue-50 text-blue-700 border-blue-200/70',
+        badgeText: promo.badgeText || 'Special Offer',
+        accentColor: 'text-blue-700'
       },
       {
-        gradientClass: 'from-[#ff2d55] via-[#ff3b30] to-[#ff9500]', // Red - Orange - Coral
-        badgeBg: 'bg-white/20 backdrop-blur-md border border-white/25 text-white shadow-lg shadow-rose-950/20',
-        glowBg: 'bg-white/10',
-        badgeText: 'Hot Deal'
+        gradientClass: 'from-emerald-100 to-teal-200 text-emerald-900 border-emerald-200/80',
+        badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
+        badgeText: promo.badgeText || 'Hot Deal',
+        accentColor: 'text-emerald-700'
       },
       {
-        gradientClass: 'from-[#34c759] via-[#00c7be] to-[#007aff]', // Green - Teal - Blue
-        badgeBg: 'bg-white/20 backdrop-blur-md border border-white/25 text-white shadow-lg shadow-emerald-950/20',
-        glowBg: 'bg-white/10',
-        badgeText: 'Pro Choice'
+        gradientClass: 'from-rose-100 to-pink-200 text-rose-900 border-rose-200/80',
+        badgeBg: 'bg-rose-50 text-rose-700 border-rose-200/70',
+        badgeText: promo.badgeText || 'Mega Savings',
+        accentColor: 'text-rose-700'
+      },
+      {
+        gradientClass: 'from-amber-100 to-orange-200 text-amber-950 border-amber-200/80',
+        badgeBg: 'bg-amber-50 text-amber-800 border-amber-200/70',
+        badgeText: promo.badgeText || 'Limited Period',
+        accentColor: 'text-amber-800'
+      },
+      {
+        gradientClass: 'from-indigo-100 to-purple-200 text-indigo-900 border-indigo-200/80',
+        badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+        badgeText: promo.badgeText || 'Member Special',
+        accentColor: 'text-indigo-700'
       }
     ];
-    
-    return fallbacks[idx % fallbacks.length];
+
+    if (promo.gradient && !promo.gradient.includes('slate') && !promo.gradient.includes('black') && !promo.gradient.includes('950')) {
+      return {
+        gradientClass: promo.gradient,
+        badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+        badgeText: promo.badgeText || 'Exclusive Deal',
+        accentColor: 'text-indigo-700'
+      };
+    }
+    return pastelThemes[idx % pastelThemes.length];
   };
 
   if (loading) return <LoadingScreen message="Unlocking exclusive partner & customer rewards..." />;
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-12 pb-14 sm:pb-24 overflow-x-hidden" id="offers-view-container">
+    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 pt-3 sm:pt-6 pb-12 sm:pb-16" id="offers-view-container">
       
-      {/* Premium Hero and Title section */}
-      <div className="relative mb-6 sm:mb-12">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-          className="absolute -top-16 -left-16 w-48 sm:w-80 h-48 sm:h-80 bg-gradient-to-r from-blue-600/10 to-indigo-600/5 rounded-full blur-[100px] pointer-events-none"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, ease: "easeOut", delay: 0.2 }}
-          className="absolute -top-20 -right-20 w-64 sm:w-96 h-64 sm:h-96 bg-gradient-to-r from-purple-600/10 to-pink-500/5 rounded-full blur-[120px] pointer-events-none"
-        />
-
-        <div className="relative z-10 text-center sm:text-left flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 sm:gap-6 pb-5 border-b border-slate-100">
+      {/* Clean, Bright, Soft-Tinted Hero Header (No Black/Dark Colors) */}
+      <div className="relative mb-4 bg-gradient-to-r from-sky-50 via-indigo-50/80 to-purple-50 border border-indigo-100/90 rounded-2xl p-4 sm:p-5 text-slate-800 shadow-2xs overflow-hidden" id="offers-hero-header">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-black uppercase tracking-[0.2em] mb-2.5">
-              <Sparkles size={10} className="fill-current animate-pulse text-blue-600" />
-              {context === 'partner' ? 'Partner Club' : 'Exclusive Access'}
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-indigo-200/70 text-indigo-700 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 shadow-2xs">
+              <Sparkles size={11} className="text-amber-500 animate-pulse" />
+              {context === 'partner' ? 'Partner Rewards' : 'Special Indore Deals'}
             </div>
-            <h2 className="text-xl sm:text-4xl md:text-5xl font-medium text-slate-900 tracking-wide leading-none uppercase">
-              {context === 'partner' ? 'Partner' : 'Member'} <br className="hidden sm:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 italic font-black">Privilege</span> Rewards
-            </h2>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+              {context === 'partner' ? 'Partner Boost & Rewards' : 'Exclusive Offers & Vouchers'}
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {context === 'partner'
+                ? 'Fuel bonuses, weekend surges, and direct payout incentives.'
+                : 'Exclusive vouchers & booking rewards for Indore residents.'}
+            </p>
           </div>
-          <p className="text-slate-500 text-xs sm:text-sm font-medium max-w-sm mx-auto sm:mx-0 sm:text-right leading-relaxed">
-            {context === 'partner' 
-              ? 'Accelerate and amplify your earnings with high-tier partner benefits and loyalty payouts.'
-              : 'Unlock premium incentives curated specifically for loyal patrons. Activate voucher keys to save on your next checkout.'}
-          </p>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto bg-white border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 shadow-2xs">
+            <TicketPercent size={14} className="text-indigo-600" />
+            <span>{visiblePromotions.length} active vouchers</span>
+          </div>
         </div>
       </div>
 
-      {/* Category Filter Pills (Sleek Modern Segmented Controls) */}
+      {/* Category Filter Pills (Compact Segmented Controls) */}
       <div 
-        className="flex gap-2 overflow-x-auto pb-2 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth items-center select-none"
+        className="flex gap-1.5 overflow-x-auto pb-2 mb-3.5 -mx-1 px-1 scroll-smooth items-center select-none"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         <button
           onClick={() => setSelectedCategoryFilter('all')}
-          className={`flex-shrink-0 px-4 py-2.5 rounded-2xl text-[10px] font-extrabold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+          className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
             selectedCategoryFilter === 'all'
-              ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-md shadow-blue-700/20'
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80 shadow-xs'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80'
           }`}
           id="filter-all-offers"
         >
@@ -377,16 +446,16 @@ export default function OffersView({
             <button
               key={cat.id}
               onClick={() => setSelectedCategoryFilter(cat.id)}
-              className={`flex-shrink-0 px-4 py-2.5 rounded-2xl text-[10px] font-extrabold uppercase tracking-wider transition-all duration-300 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 selectedCategoryFilter === cat.id
-                  ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-md shadow-blue-700/20'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80 shadow-xs'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80'
               }`}
               id={`filter-${cat.id}`}
             >
               {cat.name}
-              <span className={`text-[8px] font-black leading-none px-1.5 py-0.5 rounded-full ${
-                selectedCategoryFilter === cat.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                selectedCategoryFilter === cat.id ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
               }`}>
                 {count}
               </span>
@@ -395,114 +464,98 @@ export default function OffersView({
         })}
       </div>
 
-      {/* Grid of Redesigned Offers using Vibrant Gradients & Glassmorphism */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 justify-center">
+      {/* Ultra-Compact Coupon Cards (Zomato/Paytm Ticket Style) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 sm:gap-3">
         {filteredPromotions.map((promo, i) => {
           const redeemed = isRedeemed(promo.id);
+          const isApplied = activeCouponCode === promo.code;
           const theme = getPromoTheme(promo, i);
-          const IconComponent = PROMO_ICONS[promo.code] || ICON_MAP[promo.applicableCategories?.[0]] || Gift;
 
           return (
             <motion.div 
               key={promo.id}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-              whileHover={{ 
-                y: -6, 
-                scale: 1.02,
-              }}
-              whileTap={{ scale: 0.98 }}
-              className={`group relative rounded-[32px] overflow-hidden flex flex-col min-h-[380px] sm:min-h-[430px] transition-all duration-300 bg-gradient-to-br ${theme.gradientClass} ${
-                redeemed ? 'opacity-85 grayscale-[15%]' : 'shadow-lg hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.3)]'
-              } border border-white/10`}
+              transition={{ duration: 0.2, delay: i * 0.04 }}
+              className={`group relative bg-white border rounded-xl p-2.5 sm:p-3 transition-all duration-200 flex items-center justify-between gap-2.5 sm:gap-3 min-h-[75px] max-h-[88px] ${
+                isApplied
+                  ? 'border-emerald-400 ring-1 ring-emerald-300 bg-emerald-50/20'
+                  : redeemed 
+                    ? 'border-slate-200 bg-slate-50/70' 
+                    : 'border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
+              }`}
               id={`promo-card-${promo.id}`}
             >
-              {/* Absolute Decorative Shining Overlay */}
-              <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/15 rounded-full blur-3xl group-hover:bg-white/25 transition-all duration-500 pointer-events-none" />
-              <div className="absolute inset-0 bg-white/5 backdrop-blur-[1px] transition-all duration-500 group-hover:backdrop-blur-0 z-0 pointer-events-none" />
+              {/* Left Pastel Accent Block (Soft Pastel Gradient with Discount) */}
+              <div className={`w-14 sm:w-16 h-13 sm:h-14 rounded-lg shrink-0 flex flex-col items-center justify-center bg-gradient-to-br ${theme.gradientClass} border shadow-2xs text-center px-1`}>
+                <span className="text-[12px] sm:text-xs leading-none font-black uppercase">
+                  {promo.discountType === 'percent' ? `${promo.discountValue}%` : `₹${promo.discountValue}`}
+                </span>
+                <span className="text-[9px] uppercase tracking-wider font-bold opacity-85 mt-0.5">
+                  OFF
+                </span>
+              </div>
 
-              {/* Main Content Body */}
-              <div className="relative z-10 p-6 sm:p-8 flex flex-col h-full justify-between flex-1">
+              {/* Center Details */}
+              <div className="min-w-0 flex-1 py-0.5">
+                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                  <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded leading-none">
+                    {theme.badgeText}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+                    <Clock size={10} /> Valid 7 Days
+                  </span>
+                </div>
+
+                <h3 className="text-xs sm:text-sm font-bold text-gray-800 truncate">
+                  {getElegantName(promo.name)}
+                </h3>
                 
-                {/* Header Row: Floating Glassmorphic Badge & Clock */}
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-6">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md border border-white/25 text-white shadow-lg shadow-black/10`}>
-                      <Tag size={11} className="stroke-[2.5]" />
-                      {promo.discountType === 'percent' ? `${promo.discountValue}% OFF` : `Flat ₹${promo.discountValue} OFF`}
-                    </span>
-                    <span className="text-[10px] text-white/90 font-bold flex items-center gap-1 px-2 py-1 bg-white/10 rounded-lg border border-white/10 backdrop-blur-sm">
-                      <Clock size={11} className="text-white/80" /> 7 Days Left
-                    </span>
-                  </div>
+                <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">
+                  {promo.description}
+                </p>
+              </div>
 
-                  {/* Icon Area: Large Elegant Glass Circle */}
-                  <div className="mb-6 flex justify-start">
-                    <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-md shadow-black/5 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                      <IconComponent size={24} className="stroke-[2]" />
-                    </div>
-                  </div>
+              {/* Right Side Actions: Dashed Coupon Code + Apply Button */}
+              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(promo.code)}
+                  className="font-mono text-[11px] sm:text-xs text-indigo-700 bg-indigo-50/90 hover:bg-indigo-100 border-dashed border border-indigo-200 px-2 py-0.5 rounded font-bold cursor-pointer transition-colors flex items-center gap-1"
+                  title="Click to copy coupon code"
+                  id={`copy-pod-${promo.id}`}
+                >
+                  <span>{promo.code}</span>
+                  {copiedCode === promo.code ? (
+                    <Check size={11} className="text-emerald-600 stroke-[3]" />
+                  ) : (
+                    <Copy size={10} className="text-slate-400" />
+                  )}
+                </button>
 
-                  {/* Title & Description with Premium Typography */}
-                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug italic drop-shadow-sm mb-2.5">
-                    {getElegantName(promo.name)}
-                  </h3>
-                  <p className="text-white/85 text-xs sm:text-sm font-medium leading-relaxed mb-6 drop-shadow-xs line-clamp-3">
-                    {promo.description}
-                  </p>
-                </div>
-
-                {/* Footer Section: Promo Code Box & CTA */}
-                <div className="space-y-4">
-                  {/* Coupon Copy Pod */}
-                  <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      copyToClipboard(promo.code);
-                    }}
-                    className="group/code flex items-center justify-between gap-2 p-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 transition-all duration-200 cursor-pointer shadow-inner"
-                    title="Click to copy coupon code"
-                    id={`copy-pod-${promo.id}`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <TicketPercent size={14} className="text-white/70 group-hover/code:text-white shrink-0 animate-pulse" />
-                      <span className="font-mono text-xs sm:text-sm font-black text-white tracking-widest truncate">
-                        {promo.code}
-                      </span>
-                    </div>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-white/75 group-hover/code:text-white flex items-center gap-1 shrink-0 transition-colors">
-                      {copiedCode === promo.code ? (
-                        <>
-                          <Check size={11} className="stroke-[3] text-emerald-400" /> Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={11} /> Copy Code
-                        </>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* Main Action Button */}
-                  <div>
-                    {redeemed ? (
-                      <div className="w-full bg-white/10 backdrop-blur-md border border-white/10 text-white/95 py-4 rounded-2xl flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest select-none shadow-sm">
-                        <CheckCircle2 size={14} className="stroke-[3] text-emerald-400" /> Active in Account
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => setSelectedPromo(promo)}
-                        className="w-full py-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-950 font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 shadow-md cursor-pointer duration-200"
-                        id={`claim-btn-${promo.id}`}
-                      >
-                        Redeem Reward
-                        <ArrowRight size={14} className="stroke-[2.5]" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
+                {/* Apply / Applied Button */}
+                <button 
+                  onClick={() => applyCouponGlobally(promo)}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-md shadow-xs transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                    isApplied
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 font-bold'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                  id={`claim-btn-${promo.id}`}
+                  title={isApplied ? 'Coupon currently applied' : 'Apply coupon to checkout'}
+                >
+                  {isApplied ? (
+                    <>
+                      <Check size={12} className="stroke-[3]" />
+                      <span>Applied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={11} />
+                      <span>Apply</span>
+                    </>
+                  )}
+                </button>
               </div>
             </motion.div>
           );
@@ -510,19 +563,19 @@ export default function OffersView({
       </div>
 
       {visiblePromotions.length === 0 ? (
-        <div className="bg-slate-50 rounded-3xl p-16 text-center border border-slate-100 shadow-sm" id="empty-rewards-view">
-           <Gift size={48} className="mx-auto text-slate-300 mb-4 animate-bounce" />
-           <p className="text-slate-500 font-bold text-lg">No rewards available yet</p>
-           <p className="text-slate-400 text-xs mt-1">Make sure you have active bookings or check back later!</p>
+        <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs" id="empty-rewards-view">
+           <Gift size={32} className="mx-auto text-slate-300 mb-2" />
+           <p className="text-slate-700 font-bold text-sm">No rewards available yet</p>
+           <p className="text-slate-400 text-xs mt-0.5">Check back soon for new vouchers and seasonal deals!</p>
         </div>
       ) : filteredPromotions.length === 0 ? (
-        <div className="bg-slate-50 rounded-3xl p-16 text-center border border-slate-100 shadow-sm" id="empty-filtered-rewards">
-           <Tag size={48} className="mx-auto text-slate-300 mb-4 animate-pulse" />
-           <p className="text-slate-500 font-bold text-lg">No promotions here</p>
-           <p className="text-slate-400 text-xs mt-1">Try another category or view all available rewards</p>
+        <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs" id="empty-filtered-rewards">
+           <Tag size={32} className="mx-auto text-slate-300 mb-2" />
+           <p className="text-slate-700 font-bold text-sm">No promotions for this category</p>
+           <p className="text-slate-400 text-xs mt-0.5">Try selecting another category or show all offers.</p>
            <button
              onClick={() => setSelectedCategoryFilter('all')}
-             className="mt-4 px-5 py-2.5 bg-gradient-to-r from-blue-700 to-indigo-700 hover:opacity-90 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md cursor-pointer"
+             className="mt-3 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-all shadow-xs cursor-pointer"
              id="reset-category-filter"
            >
              Show All Offers
@@ -530,72 +583,67 @@ export default function OffersView({
         </div>
       ) : null}
 
-      {/* Directory Block with Sleek Light Theme */}
-      <section className="mt-12 sm:mt-24 rounded-2xl bg-white border border-slate-200/80 p-6 sm:p-12 md:p-16 relative overflow-hidden shadow-sm" id="offers-directory">
-        <div className="absolute -top-12 -right-12 w-80 h-80 bg-gradient-to-r from-blue-500/10 to-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
-        <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-gradient-to-r from-orange-500/10 to-amber-500/5 rounded-full blur-[90px] pointer-events-none" />
-
-        <div className="relative z-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 pb-6 border-b border-slate-100">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-4 border border-blue-100">
-                <Sparkles size={10} className="text-orange-500" />
-                Service Directory
-              </div>
-              <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight uppercase leading-none">
-                Apply Rewards <br />
-                <span className="text-blue-600 italic font-medium lowercase">to top categories</span>
-              </h3>
-            </div>
-            <p className="text-slate-600 text-xs sm:text-sm md:text-right max-w-xs leading-relaxed font-medium">
-              Pick a category to instantly browse our high-end professional roster and secure booking credits.
-            </p>
+      {/* Compact Categories Directory (Horizontal scroll row) */}
+      <section className="mt-6 bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-2xs" id="offers-directory">
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-1.5">
+            <Sparkles size={14} className="text-indigo-600" />
+            <h2 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+              Browse Categories to Apply Vouchers
+            </h2>
           </div>
+          <button 
+            onClick={() => setActiveTab('home')}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
+          >
+            View All <ArrowRight size={12} />
+          </button>
+        </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-            {categories.map((cat) => {
-              const Icon = ICON_MAP[cat.icon] || Sparkles;
-              return (
-                <motion.button
-                  key={cat.id}
-                  whileHover={{ y: -4, scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setActiveTab('home')}
-                  className="flex flex-col items-center p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/50 transition-all duration-300 group cursor-pointer"
-                  id={`directory-btn-${cat.id}`}
-                >
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 group-hover:bg-blue-600 group-hover:text-white group-hover:scale-110 shadow-sm transition-all duration-300 mb-3">
-                    <Icon size={18} strokeWidth={2} />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-700 group-hover:text-blue-900 text-center uppercase tracking-widest transition-colors line-clamp-1 w-full px-1">
-                    {cat.name}
-                  </span>
-                </motion.button>
-              );
-            })}
-          </div>
+        <div 
+          className="flex gap-2 overflow-x-auto pb-1 scroll-smooth"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {categories.map((cat) => {
+            const Icon = ICON_MAP[cat.icon] || Sparkles;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveTab('home')}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/60 border border-slate-200/70 hover:border-indigo-200 transition-all text-left shrink-0 cursor-pointer group"
+                id={`directory-btn-${cat.id}`}
+              >
+                <div className="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <Icon size={12} />
+                </div>
+                <span className="text-xs font-semibold text-slate-700 group-hover:text-indigo-950 whitespace-nowrap">
+                  {cat.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      {/* Redemption Modal - Centered with Slide-In Sheet */}
+      {/* Redemption Modal - Clean & Compact */}
       <AnimatePresence>
         {selectedPromo && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm" id="redemption-modal">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-xs" id="redemption-modal">
             <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              transition={{ duration: 0.3 }}
-              className="bg-white w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar flex flex-col"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl relative max-h-[90vh] overflow-y-auto flex flex-col border border-slate-100"
             >
-              <div className="shrink-0 flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shadow-inner">
-                    <TicketPercent size={20} className="stroke-[2.5]" />
+              <div className="shrink-0 flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                    <TicketPercent size={18} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900 leading-none uppercase">Claim Reward</h3>
-                    <p className="text-slate-400 text-[10px] font-bold tracking-wider mt-1 uppercase">Vouch for Service Credit</p>
+                    <h3 className="text-sm font-bold text-slate-900">Claim Voucher</h3>
+                    <p className="text-slate-400 text-[10px] font-medium">Activate for checkout discount</p>
                   </div>
                 </div>
 
@@ -604,58 +652,58 @@ export default function OffersView({
                     setSelectedPromo(null);
                     setTargetCategory('');
                   }}
-                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors cursor-pointer"
+                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                   title="Close Modal"
                   id="close-redemption-modal"
                 >
-                  <X size={18} className="stroke-[2.5]" />
+                  <X size={16} />
                 </button>
               </div>
 
-              <div className="space-y-6 flex-1">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">Offer Selected</p>
-                  <h4 className="text-xl font-black text-slate-900 mt-1 uppercase italic tracking-tight">{selectedPromo.name}</h4>
-                  <p className="text-slate-500 text-xs font-semibold mt-1">
-                    Value: {selectedPromo.discountType === 'percent' ? `${selectedPromo.discountValue}% Discount` : `₹${selectedPromo.discountValue} Off`}
+              <div className="space-y-4 flex-1">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected Voucher</p>
+                  <h4 className="text-base font-bold text-slate-900 mt-0.5">{getElegantName(selectedPromo.name)}</h4>
+                  <p className="text-indigo-600 text-xs font-semibold mt-0.5">
+                    Discount: {selectedPromo.discountType === 'percent' ? `${selectedPromo.discountValue}% OFF` : `₹${selectedPromo.discountValue} FLAT OFF`}
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 text-center">
-                    Apply this discount to:
+                  <label className="block text-xs font-semibold text-slate-700 mb-2">
+                    Select category to apply:
                   </label>
-                  <div className="max-h-48 sm:max-h-64 overflow-y-auto pr-1 select-none">
-                    <div className="grid grid-cols-2 gap-3 pb-1">
+                  <div className="max-h-48 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 gap-2">
                       {categories.filter(c => !selectedPromo.applicableCategories || selectedPromo.applicableCategories.length === 0 || selectedPromo.applicableCategories.includes(c.id)).map(cat => (
                         <button 
                           key={cat.id}
                           onClick={() => setTargetCategory(cat.id)}
-                          className={`p-3 sm:p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 group cursor-pointer ${
+                          className={`p-2.5 rounded-xl border transition-all flex items-center justify-center text-center cursor-pointer ${
                             targetCategory === cat.id 
-                              ? 'border-blue-700 bg-blue-50/40 text-blue-800 font-extrabold shadow-sm' 
-                              : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 text-slate-600 font-semibold'
+                              ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 font-bold shadow-2xs' 
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-medium text-xs'
                           }`}
                           id={`select-cat-${cat.id}`}
                         >
-                           <span className="text-xs sm:text-sm tracking-tight text-center">{cat.name}</span>
+                           <span className="text-xs truncate">{cat.name}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100">
+                <div className="pt-2 border-t border-slate-100">
                   <button 
                     disabled={!targetCategory || isRedeeming}
                     onClick={handleRedeem}
-                    className="w-full bg-gradient-to-r from-blue-700 to-indigo-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-95 transition-all shadow-xl shadow-blue-700/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
                     id="confirm-claim-btn"
                   >
-                    {isRedeeming ? 'Validating Voucher...' : 'Confirm Activation'}
+                    {isRedeeming ? 'Validating...' : 'Activate Voucher'}
                   </button>
-                  <p className="text-[10px] text-slate-400 text-center mt-4 italic font-medium">
-                    This reward ticket will lock as active and automatically apply on your checkout summary page.
+                  <p className="text-[10px] text-slate-400 text-center mt-2">
+                    Applies automatically on your next booking checkout.
                   </p>
                 </div>
               </div>
@@ -672,17 +720,17 @@ export default function OffersView({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-900 rounded-2xl p-5 shadow-2xl z-[150] flex flex-col gap-3"
+            className="fixed bottom-4 left-3 right-3 md:left-auto md:right-6 md:w-80 bg-white border border-slate-200 text-slate-900 rounded-2xl p-4 shadow-xl z-[150] flex flex-col gap-2.5"
             id="ios-pwa-prompt"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-                  <Smartphone size={18} className="text-white shrink-0" />
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+                  <Smartphone size={16} />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black tracking-wider uppercase text-blue-400">Add to Home Screen</h4>
-                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest mt-0.5">Zomindia Web App</p>
+                  <h4 className="text-xs font-bold text-slate-900">Add to Home Screen</h4>
+                  <p className="text-[10px] text-slate-400">Zomindia Web App</p>
                 </div>
               </div>
               <button
@@ -694,22 +742,17 @@ export default function OffersView({
                     console.warn('[PWA] Storage access denied', err);
                   }
                 }}
-                className="p-1 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors cursor-pointer"
-                title="Dismiss Guide"
+                className="p-1 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                title="Dismiss"
                 id="dismiss-ios-prompt"
               >
-                <X size={14} className="stroke-[2.5]" />
+                <X size={14} />
               </button>
             </div>
             
-            <p className="text-xs text-white/85 font-medium leading-relaxed">
-              Experience Zomindia directly from your iOS Home Screen. To install, tap the <span className="font-extrabold text-blue-400">Share [↑]</span> button in Safari and select <span className="font-extrabold text-blue-400">"Add to Home Screen"</span>.
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tap <span className="font-bold text-indigo-600">Share [↑]</span> in Safari and choose <span className="font-bold text-indigo-600">"Add to Home Screen"</span> for instant access.
             </p>
-            
-            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-white/50 pt-2 border-t border-white/5">
-              <span>⚡ Offline Access Active</span>
-              <span>• Secure & Masked</span>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
