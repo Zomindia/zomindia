@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { isPushPermissionDeniedOrRestricted } from '../lib/fcm';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, X, Info, CheckCircle, Smartphone, MapPin, ShieldCheck, Clock } from 'lucide-react';
+import { Bell, X, CheckCircle, ShieldCheck, Clock } from 'lucide-react';
 import { playSuccessChime } from '../lib/audio';
 import { LogoIcon } from './BrandLogo';
 const logoImg = LogoIcon;
@@ -19,9 +20,13 @@ export default function NotificationSystem({ onNavigate }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Request notification permission immediately on load
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    // Safely request notification permission only if supported, not in restricted iframe, and not denied
+    if (!isPushPermissionDeniedOrRestricted() && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        Notification.requestPermission().catch(() => {});
+      } catch {
+        // Silently catch permission request rejection in sandboxes
+      }
     }
   }, []);
 
@@ -33,12 +38,14 @@ export default function NotificationSystem({ onNavigate }: Props) {
   }, []);
 
   useEffect(() => {
-    // Request notification permission immediately after successful login handshake
-    if (user) {
+    // Request notification permission safely after successful login handshake
+    if (user && !isPushPermissionDeniedOrRestricted()) {
       if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then((perm) => {
-          console.log('[PWA] Notification permission requested after login handshake:', perm);
-        });
+        try {
+          Notification.requestPermission().catch(() => {});
+        } catch {
+          // Silently catch permission request rejection in sandboxes
+        }
       }
     }
   }, [user]);

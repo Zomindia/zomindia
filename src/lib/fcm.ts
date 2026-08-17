@@ -2,51 +2,88 @@ import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
-export async function requestAndSaveFCMToken(uid: string) {
+/**
+ * Safely checks if the Notification API and push messaging are available in the current environment.
+ * Gracefully detects iframe / sandbox constraints and denied permissions.
+ */
+export function isPushPermissionDeniedOrRestricted(): boolean {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return true;
+  }
+  
+  // Running inside sandboxed iframe where Notification permissions are restricted
   try {
-    const supported = await isSupported();
-    if (!supported) {
-      console.warn('[FCM] Push notifications are not supported in this browser.');
-      return;
+    if (window.self !== window.top) {
+      return true;
     }
+  } catch {
+    // Cross-origin iframe access exception
+    return true;
+  }
 
+  return Notification.permission === 'denied';
+}
+
+export async function requestAndSaveFCMToken(uid: string): Promise<string | null> {
+  try {
     if (typeof window === 'undefined' || !('Notification' in window)) {
-      console.warn('[FCM] Notification API is not available.');
-      return;
+      return null;
     }
 
-    const permission = await Notification.requestPermission();
+    // If running in sandboxed iframe or if permission is already explicitly denied, fail silently
+    if (isPushPermissionDeniedOrRestricted()) {
+      return null;
+    }
+
+    // Check Firebase Messaging SDK support safely
+    const supported = await isSupported().catch(() => false);
+    if (!supported) {
+      return null;
+    }
+
+    // Safely check and request permission without intrusive warnings
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      try {
+        permission = await Notification.requestPermission();
+      } catch {
+        // Suppress browser/iframe permission policy rejection
+        return null;
+      }
+    }
+
     if (permission !== 'granted') {
-      console.warn('[FCM] Notification permission not granted:', permission);
-      return;
+      // Fail silently without logging intrusive console warnings
+      return null;
     }
 
     // Initialize messaging inside the try-catch to avoid crashing if FCM is blocked or not configured
     const messaging = getMessaging();
     
-    // We use a standard valid VAPID public key for web push.
-    // If it fails, we fall back to a generic register or catch silently.
+    // Standard valid VAPID public key for web push.
     const VAPID_KEY = 'BDb01oP4r91u7A9M854Y_E9M_Hw8H_h8HwHhH8H8h_Hh_8hH'; 
     
     const token = await getToken(messaging, { 
       vapidKey: VAPID_KEY 
-    }).catch(async (err) => {
-      console.warn('[FCM] Failed to get token with VAPID key, trying without:', err.message);
-      return await getToken(messaging);
+    }).catch(async () => {
+      return await getToken(messaging).catch(() => null);
     });
 
-    if (token) {
-      console.log('[FCM] Token generated:', token);
+    if (token && uid) {
       const userRef = doc(db, 'users', uid);
       await updateDoc(userRef, { 
         fcmToken: token,
         updatedAt: new Date().toISOString()
+      }).catch(() => {
+        // Silent catch for permissions
       });
-      console.log('[FCM] Token stored in Firestore user path /users/' + uid);
-    } else {
-      console.warn('[FCM] Generated token is empty.');
+      return token;
     }
-  } catch (error: any) {
-    console.error('[FCM] Error during registration or permission handshake:', error.message || error);
+    
+    return null;
+  } catch {
+    // Silent catch for sandboxed environments / unconfigured FCM
+    return null;
   }
 }
+

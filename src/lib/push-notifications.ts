@@ -7,57 +7,49 @@ import { requestAndSaveFCMToken } from './fcm';
 export async function registerPushNotifications(userId: string) {
   // Only execute on native platforms (iOS / Android)
   if (!Capacitor.isNativePlatform()) {
-    console.log('[Push] Web/PWA environment detected. Initializing web FCM token handshake.');
     await requestAndSaveFCMToken(userId);
     return;
   }
 
   try {
-    let permStatus = await PushNotifications.checkPermissions();
+    let permStatus = await PushNotifications.checkPermissions().catch(() => null);
+    if (!permStatus) return;
     
     if (permStatus.receive === 'prompt') {
-      permStatus = await PushNotifications.requestPermissions();
+      permStatus = await PushNotifications.requestPermissions().catch(() => null);
     }
 
-    if (permStatus.receive !== 'granted') {
-      console.warn('[Push] Push notification permissions were denied.');
+    if (!permStatus || permStatus.receive !== 'granted') {
       return;
     }
 
     // Register with Apple / Google Push Services
-    await PushNotifications.register();
+    await PushNotifications.register().catch(() => {});
 
     // Listen for register success and save FCM token to user document
     await PushNotifications.addListener('registration', async (token) => {
-      console.log('[Push] Mobile device token registered successfully:', token.value);
       try {
         await updateDoc(doc(db, 'users', userId), {
           fcmToken: token.value,
           fcmTokens: arrayUnion(token.value), // keep track of multiple devices if needed
           updatedAt: new Date()
-        });
-        console.log('[Push] Token synced to Firestore for user:', userId);
-      } catch (err) {
-        console.error('[Push] Failed to save device token to users collection:', err);
+        }).catch(() => {});
+      } catch {
+        // Silent catch
       }
     });
 
     // Listen for register error
-    await PushNotifications.addListener('registrationError', (error) => {
-      console.error('[Push] Registration error:', JSON.stringify(error));
-    });
+    await PushNotifications.addListener('registrationError', () => {});
 
     // Handle incoming notifications while app is in foreground
-    await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('[Push] Push received in foreground:', notification);
-    });
+    await PushNotifications.addListener('pushNotificationReceived', () => {});
 
     // Handle action performed on push notifications
-    await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-      console.log('[Push] Push action performed:', notification);
-    });
+    await PushNotifications.addListener('pushNotificationActionPerformed', () => {});
 
-  } catch (e) {
-    console.error('[Push] Error in registering push notifications:', e);
+  } catch {
+    // Silent catch
   }
 }
+

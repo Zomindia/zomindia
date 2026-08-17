@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, addDoc, getDocs, Timestamp, setDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { collection, query, where, onSnapshot, doc, addDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, Promotion, Category, Redemption } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -8,7 +8,6 @@ import {
   Gift, 
   Clock, 
   CheckCircle2, 
-  ChevronRight, 
   X, 
   Sparkles, 
   Wrench, 
@@ -20,8 +19,6 @@ import {
   Check,
   Tag,
   ArrowRight,
-  TrendingUp,
-  Award,
   Snowflake,
   Zap
 } from 'lucide-react';
@@ -128,6 +125,7 @@ export default function OffersView({
   setActiveTab: (tab: any) => void,
   context?: 'customer' | 'partner'
 }) {
+  // Top-level state declarations
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -137,15 +135,16 @@ export default function OffersView({
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [showIOSPrompt, setShowIOSPrompt] = useState(false);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
-  const getElegantName = (name: string) => {
+  const getElegantName = useCallback((name: string) => {
     if (!name) return '';
     const upper = name.toUpperCase().trim();
     if (upper === 'COOLING DEALS/ COOL SUMMER 15% OFF' || upper.includes('COOLING DEALS') || upper.includes('COOL SUMMER 15%')) {
       return 'Cool Summer Special';
     }
     return name;
-  };
+  }, []);
 
   useEffect(() => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -203,6 +202,27 @@ export default function OffersView({
     }
   }, [promotions, categories]);
 
+  const visiblePromotions = useMemo(() => {
+    return promotions.filter(promo => {
+      if (context === 'partner') {
+        return promo.targetAudience === 'partner';
+      } else {
+        return promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all';
+      }
+    });
+  }, [promotions, context]);
+
+  const filteredPromotions = useMemo(() => {
+    return visiblePromotions.filter(promo => {
+      if (selectedCategoryFilter === 'all') return true;
+      return promo.applicableCategories?.includes(selectedCategoryFilter);
+    });
+  }, [visiblePromotions, selectedCategoryFilter]);
+
+  const isRedeemed = useCallback((promoId: string) => {
+    return redemptions.some(r => r.promotionId === promoId);
+  }, [redemptions]);
+
   const handleRedeem = async () => {
     if (!profile) {
       onAuthRequired();
@@ -259,23 +279,6 @@ export default function OffersView({
     }
     setTimeout(() => setCopiedCode(null), 2000);
   };
-
-  const isRedeemed = (promoId: string) => redemptions.some(r => r.promotionId === promoId);
-
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
-
-  const visiblePromotions = promotions.filter(promo => {
-    if (context === 'partner') {
-      return promo.targetAudience === 'partner';
-    } else {
-      return promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all';
-    }
-  });
-
-  const filteredPromotions = visiblePromotions.filter(promo => {
-    if (selectedCategoryFilter === 'all') return true;
-    return promo.applicableCategories?.includes(selectedCategoryFilter);
-  });
 
   const getPromoTheme = (promo: any, idx: number) => {
     if (promo.gradient) {
