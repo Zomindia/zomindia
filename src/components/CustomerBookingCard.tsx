@@ -28,7 +28,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
-import { formatTime12Hour } from "../utils/formatTime";
+import { formatTime12Hour, formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import LogoIcon from "../assets/images/logo-icon.png";
@@ -87,11 +87,9 @@ export function getServiceCategoryTheme(
     return {
       type: "ac",
       name: "AC Service",
-      cardGradient:
-        "bg-gradient-to-br from-cyan-50/90 via-sky-50/40 to-blue-50/70 hover:from-cyan-50 hover:to-blue-50/80",
-      borderColor: "border-cyan-200/90 hover:border-cyan-400/90",
-      activeGlow:
-        "shadow-[0_4px_24px_-4px_rgba(6,182,212,0.22)] ring-1 ring-cyan-400/30",
+      cardGradient: "bg-white",
+      borderColor: "border-slate-100",
+      activeGlow: "shadow-xs",
       iconGrad: "from-cyan-500 to-blue-600 shadow-cyan-500/25",
       badgeClass: "bg-cyan-100/90 text-cyan-900 border-cyan-200/90",
       accentText: "text-cyan-700",
@@ -111,11 +109,9 @@ export function getServiceCategoryTheme(
     return {
       type: "ro",
       name: "Water Purifier",
-      cardGradient:
-        "bg-gradient-to-br from-teal-50/90 via-emerald-50/40 to-cyan-50/70 hover:from-teal-50 hover:to-cyan-50/80",
-      borderColor: "border-teal-200/90 hover:border-teal-400/90",
-      activeGlow:
-        "shadow-[0_4px_24px_-4px_rgba(20,184,166,0.22)] ring-1 ring-teal-400/30",
+      cardGradient: "bg-white",
+      borderColor: "border-slate-100",
+      activeGlow: "shadow-xs",
       iconGrad: "from-teal-500 to-emerald-600 shadow-teal-500/25",
       badgeClass: "bg-teal-100/90 text-teal-900 border-teal-200/90",
       accentText: "text-teal-700",
@@ -132,11 +128,9 @@ export function getServiceCategoryTheme(
     return {
       type: "fridge",
       name: "Refrigerator",
-      cardGradient:
-        "bg-gradient-to-br from-violet-50/90 via-purple-50/40 to-indigo-50/70 hover:from-violet-50 hover:to-indigo-50/80",
-      borderColor: "border-violet-200/90 hover:border-violet-400/90",
-      activeGlow:
-        "shadow-[0_4px_24px_-4px_rgba(139,92,246,0.22)] ring-1 ring-violet-400/30",
+      cardGradient: "bg-white",
+      borderColor: "border-slate-100",
+      activeGlow: "shadow-xs",
       iconGrad: "from-violet-500 to-indigo-600 shadow-violet-500/25",
       badgeClass: "bg-violet-100/90 text-violet-900 border-violet-200/90",
       accentText: "text-violet-700",
@@ -160,11 +154,9 @@ export function getServiceCategoryTheme(
     return {
       type: "electrical",
       name: "Electrical & TV",
-      cardGradient:
-        "bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/70 hover:from-amber-50 hover:to-orange-50/80",
-      borderColor: "border-amber-200/90 hover:border-amber-400/90",
-      activeGlow:
-        "shadow-[0_4px_24px_-4px_rgba(245,158,11,0.22)] ring-1 ring-amber-400/30",
+      cardGradient: "bg-white",
+      borderColor: "border-slate-100",
+      activeGlow: "shadow-xs",
       iconGrad: "from-amber-500 to-orange-600 shadow-amber-500/25",
       badgeClass: "bg-amber-100/90 text-amber-900 border-amber-200/90",
       accentText: "text-amber-700",
@@ -181,11 +173,9 @@ export function getServiceCategoryTheme(
     return {
       type: "washing",
       name: "Washing Machine",
-      cardGradient:
-        "bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-blue-50/70 hover:from-emerald-50 hover:to-teal-50/80",
-      borderColor: "border-emerald-200/90 hover:border-emerald-400/90",
-      activeGlow:
-        "shadow-[0_4px_24px_-4px_rgba(16,185,129,0.22)] ring-1 ring-emerald-400/30",
+      cardGradient: "bg-white",
+      borderColor: "border-slate-100",
+      activeGlow: "shadow-xs",
       iconGrad: "from-emerald-500 to-teal-600 shadow-emerald-500/25",
       badgeClass: "bg-emerald-100/90 text-emerald-900 border-emerald-200/90",
       accentText: "text-emerald-700",
@@ -197,11 +187,9 @@ export function getServiceCategoryTheme(
   return {
     type: "default",
     name: "Home Service",
-    cardGradient:
-      "bg-gradient-to-br from-blue-50/90 via-slate-50/40 to-indigo-50/70 hover:from-blue-50 hover:to-indigo-50/80",
-    borderColor: "border-blue-200/90 hover:border-blue-400/90",
-    activeGlow:
-      "shadow-[0_4px_24px_-4px_rgba(37,99,235,0.22)] ring-1 ring-blue-400/30",
+    cardGradient: "bg-white",
+    borderColor: "border-slate-100",
+    activeGlow: "shadow-xs",
     iconGrad: "from-[#002e6e] to-[#004bb5] shadow-blue-500/25",
     badgeClass: "bg-blue-100/90 text-[#002e6e] border-blue-200/90",
     accentText: "text-[#002e6e]",
@@ -297,7 +285,9 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
   const isActive = !isCompleted && !isCancelled;
   const hasPartner = !!(booking.partnerId || partnerUser);
 
-  // Formatted date and time
+  const isPaid = (booking.paymentStatus || "").toLowerCase() === "paid";
+
+  // Formatted date and time (standardized to platform time slots)
   const getBookingDate = (b: Booking): Date | null => {
     if (b.scheduledAt) {
       if (typeof b.scheduledAt.toDate === "function") return b.scheduledAt.toDate();
@@ -319,7 +309,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
         day: "numeric",
       })
     : "Today";
-  const timeDisplay = formatTime12Hour(booking.scheduledAt) || "10:00 AM";
+  const timeDisplay = formatBookingTime(booking.scheduledAt) || "11:00 AM";
 
   // Check 30-day warranty for support
   let showSupportButton = false;
@@ -352,9 +342,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -16 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className={`rounded-2xl border ${theme.borderColor} ${theme.cardGradient} p-4 sm:p-5 relative overflow-hidden transition-all duration-300 backdrop-blur-md shadow-xs ${
-        isActive ? theme.activeGlow : "hover:shadow-md"
-      }`}
+      className={`rounded-2xl border border-orange-100/90 hover:border-orange-300 bg-white p-4 sm:p-5 relative overflow-hidden transition-all duration-300 shadow-xs hover:shadow-md hover:shadow-orange-500/5`}
     >
       {/* Privacy Shield Routing Overlay */}
       {routingCallBookingId === booking.id && (
@@ -370,9 +358,6 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
           </p>
         </div>
       )}
-
-      {/* Subtle Background Glow Accent */}
-      <div className="absolute top-0 right-0 w-36 h-36 bg-white/40 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
 
       {/* 1. Header Row: Service Icon + Service Name + Live Status Pill */}
       <div className="flex items-start justify-between gap-3 relative z-10">
@@ -492,17 +477,34 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
           </div>
         )}
 
-        {/* Payment Status Chip */}
-        {booking.paymentStatus === "paid" ? (
+        {/* Payment Status & Dual Payment Switch */}
+        {isPaid ? (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase tracking-wider shadow-2xs">
             <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
             Paid
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-            <AlertCircle size={11} className="text-amber-600 shrink-0" />
-            Pay after service
-          </span>
+          <div className="inline-flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+              <AlertCircle size={11} className="text-rose-500 shrink-0" />
+              Pay after service
+            </span>
+            {onPayOnline && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPayOnline(booking);
+                }}
+                className="bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer"
+                title="Pay now online via Native UPI / Dynamic QR"
+              >
+                <CreditCard size={12} className="shrink-0" />
+                <span>Pay Now</span>
+              </motion.button>
+            )}
+          </div>
         )}
 
         {/* Real-Time Active Warranty / Support Ticket Pulsing Badge */}
@@ -513,9 +515,9 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
               e.stopPropagation();
               if (onSupport) onSupport(booking.id);
             }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-300 text-amber-900 text-[10px] font-black uppercase tracking-wider shadow-2xs animate-pulse cursor-pointer hover:bg-amber-500/25"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-orange-50 border border-orange-300 text-orange-900 text-[10px] font-black uppercase tracking-wider shadow-2xs animate-pulse cursor-pointer hover:bg-orange-100"
           >
-            <ShieldAlert size={12} className="text-amber-600 shrink-0" />
+            <ShieldAlert size={12} className="text-orange-600 shrink-0" />
             <span>🛡️ Warranty Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
           </button>
         )}
@@ -541,30 +543,15 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
         {/* Left: Total Amount */}
         <div className="flex flex-col justify-center">
           <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none mb-0.5">
-            {booking.paymentStatus === "paid" ? "Paid Total" : "Estimated Total"}
+            {isPaid ? "Paid Total" : "Estimated Total"}
           </span>
-          <span className="text-base sm:text-lg font-black text-[#002e6e] font-display leading-tight">
+          <span className="text-base sm:text-lg font-black text-slate-900 font-display leading-tight">
             ₹{booking.totalPrice || 0}
           </span>
         </div>
 
-        {/* Right: Consolidated Action Buttons */}
+        {/* Right: Consolidated Action Buttons (Single View Details & OTP or Book Again) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Pay Now Button (Compact Dark Emerald) */}
-          {booking.paymentStatus !== "paid" && (isPaymentPending || isCompleted) && onPayOnline && (
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPayOnline(booking);
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <CreditCard size={13} className="shrink-0" />
-              <span>Pay Now</span>
-            </motion.button>
-          )}
-
           {/* Book Again Button */}
           {isCompleted && onBookAgain && (
             <motion.button
@@ -573,31 +560,31 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 e.stopPropagation();
                 if (service) onBookAgain(service);
               }}
-              className="bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+              className="bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
             >
               <RotateCcw size={12} className="shrink-0" />
               <span>Book Again</span>
             </motion.button>
           )}
 
-          {/* Expand Accordion Button */}
+          {/* Primary View Details & OTP Action Button */}
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={(e) => {
               e.stopPropagation();
               toggleExpanded();
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
               expanded
                 ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
                 : isActive
-                ? "bg-[#002e6e] text-white hover:bg-[#001f4d]"
-                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                ? "bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 text-white hover:from-orange-600 hover:to-rose-600 border border-orange-500/20 shadow-orange-500/10"
+                : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50"
             }`}
           >
             {isActive ? (
               <>
-                <ShieldCheck size={13} className="shrink-0" />
+                <ShieldCheck size={13} className="shrink-0 text-orange-400" />
                 <span>{expanded ? "Hide Details" : "View Details & OTP"}</span>
               </>
             ) : (

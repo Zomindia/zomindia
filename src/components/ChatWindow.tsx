@@ -240,7 +240,7 @@ export default function ChatWindow({ booking, otherUser, onClose, isEmbedded = f
                     </div>
                     {isLastInGroup && (
                       <p className={`text-[9px] mt-1.5 font-bold uppercase tracking-widest opacity-30 ${isMe ? 'text-right mr-1' : 'text-left ml-1'}`}>
-                        {formatTime12Hour(msg.createdAt) || 'Pending'}
+                        {formatTime12Hour(msg.createdAt, false) || 'Pending'}
                       </p>
                     )}
                   </div>

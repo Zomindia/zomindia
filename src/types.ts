@@ -287,8 +287,9 @@ export interface Booking {
   serviceName?: string;
   isReviewed?: boolean;
   status: BookingStatus;
-  paymentStatus: 'unpaid' | 'paid';
+  paymentStatus: 'unpaid' | 'paid' | 'PAY_AFTER_SERVICE' | 'pay_after_service' | string;
   paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
+  paidAt?: any;
   paymentIntentId?: string;
   scheduledAt: any; // Firestore Timestamp
   address: string;

@@ -32,21 +32,29 @@ export function PWAInstallBanner() {
       return false;
     };
 
-    if (checkStandalone()) {
+    // 2. Check if user dismissed within the last 7 days
+    const isDismissedRecently = (): boolean => {
+      try {
+        const dismissedUntil = localStorage.getItem('zomindia_pwa_dismissed_until');
+        if (dismissedUntil) {
+          const expiry = parseInt(dismissedUntil, 10);
+          if (Date.now() < expiry) {
+            return true;
+          } else {
+            localStorage.removeItem('zomindia_pwa_dismissed_until');
+          }
+        }
+      } catch {}
+      return false;
+    };
+
+    if (checkStandalone() || isDismissedRecently()) {
       setShowBanner(false);
       return;
     }
 
-    // 2. Check if user dismissed for this browser session
-    try {
-      if (sessionStorage.getItem('zomindia_pwa_dismissed') === 'true') {
-        setShowBanner(false);
-        return;
-      }
-    } catch {}
-
-    // If deferredPrompt is already cached on the window, display banner
-    if ((window as any).deferredPrompt) {
+    // If deferredPrompt is already cached on the window and not dismissed, display banner
+    if ((window as any).deferredPrompt && !isDismissedRecently()) {
       setShowBanner(true);
     }
 
@@ -54,26 +62,14 @@ export function PWAInstallBanner() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       (window as any).deferredPrompt = e;
-      if (!checkStandalone()) {
-        try {
-          if (sessionStorage.getItem('zomindia_pwa_dismissed') !== 'true') {
-            setShowBanner(true);
-          }
-        } catch {
-          setShowBanner(true);
-        }
+      if (!checkStandalone() && !isDismissedRecently()) {
+        setShowBanner(true);
       }
     };
 
     const handlePromptAvailable = () => {
-      if (!checkStandalone()) {
-        try {
-          if (sessionStorage.getItem('zomindia_pwa_dismissed') !== 'true') {
-            setShowBanner(true);
-          }
-        } catch {
-          setShowBanner(true);
-        }
+      if (!checkStandalone() && !isDismissedRecently()) {
+        setShowBanner(true);
       }
     };
 
@@ -88,7 +84,9 @@ export function PWAInstallBanner() {
     };
 
     const handleTriggerPrompt = () => {
-      setShowBanner(true);
+      if (!checkStandalone()) {
+        setShowBanner(true);
+      }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -99,14 +97,8 @@ export function PWAInstallBanner() {
 
     // Initial check for mobile/desktop after short mount delay
     const initialTimer = setTimeout(() => {
-      if (!checkStandalone()) {
-        try {
-          if (sessionStorage.getItem('zomindia_pwa_dismissed') !== 'true') {
-            setShowBanner(true);
-          }
-        } catch {
-          setShowBanner(true);
-        }
+      if (!checkStandalone() && !isDismissedRecently()) {
+        setShowBanner(true);
       }
     }, 2500);
 
@@ -120,7 +112,7 @@ export function PWAInstallBanner() {
     };
   }, []);
 
-  // Direct Native PWA Install Execution using single source of truth window.deferredPrompt
+  // Direct 1-Tap Native PWA Install Execution using window.deferredPrompt (No instruction modals/guides)
   const handleInstall = async () => {
     const prompt = (window as any).deferredPrompt;
 
@@ -129,7 +121,6 @@ export function PWAInstallBanner() {
         setIsInstalling(true);
         await prompt.prompt();
         const choice = await prompt.userChoice;
-        console.log(`[PWA] Install choice outcome: ${choice?.outcome}`);
         if (choice?.outcome === 'accepted') {
           try {
             localStorage.setItem('zomindia_pwa_installed', 'true');
@@ -140,20 +131,26 @@ export function PWAInstallBanner() {
           if (typeof (window as any).__showToast === 'function') {
             (window as any).__showToast('Zomindia app installed successfully!', 'success');
           }
+        } else {
+          setShowBanner(false);
         }
       } catch (err) {
         console.error('[PWA] Direct prompt invocation error:', err);
       } finally {
         setIsInstalling(false);
       }
+    } else {
+      setShowBanner(false);
     }
   };
 
+  // 7-day dismissal handler
   const handleDismiss = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setShowBanner(false);
     try {
-      sessionStorage.setItem('zomindia_pwa_dismissed', 'true');
+      const dismissedUntil = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      localStorage.setItem('zomindia_pwa_dismissed_until', dismissedUntil.toString());
     } catch {}
   };
 
@@ -173,7 +170,7 @@ export function PWAInstallBanner() {
             stiffness: 300,
             mass: 0.8,
           }}
-          className="fixed bottom-24 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 z-[110000] max-w-sm w-full mx-auto sm:mx-0 pointer-events-auto"
+          className="fixed bottom-28 md:bottom-8 left-3 right-3 sm:left-auto sm:right-6 z-[60] max-w-sm w-full mx-auto sm:mx-0 pointer-events-auto"
         >
           <div className="relative bg-white/95 backdrop-blur-md rounded-3xl pt-3.5 pb-3 pl-3.5 pr-4 border border-slate-200/90 shadow-[0_16px_36px_-6px_rgba(0,46,110,0.18)] overflow-hidden">
             {/* Animated progress bar during install flow */}
@@ -192,12 +189,12 @@ export function PWAInstallBanner() {
               </div>
             )}
 
-            {/* Session Dismiss Button */}
+            {/* 7-Day Dismiss Button */}
             <button
               onClick={handleDismiss}
               className="absolute top-2.5 right-2.5 z-10 w-6 h-6 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer border-0"
               aria-label="Dismiss install banner"
-              title="Dismiss for this session"
+              title="Dismiss for 7 days"
             >
               <X className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>

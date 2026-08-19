@@ -1,13 +1,125 @@
 /**
  * Global 12-Hour AM/PM Time Formatter & Ecosystem Time Utilities
- * Standardizes time representations (e.g. "15:00" -> "03:00 PM", "21:48" -> "09:48 PM", "09:00" -> "09:00 AM")
+ * Standardizes time representations and snaps booking slots to standard platform slots:
+ * ['09:00 AM', '11:00 AM', '01:00 PM', '03:00 PM', '05:00 PM', '07:00 PM']
  */
+
+export const STANDARD_BOOKING_SLOTS = [
+  '09:00 AM',
+  '10:00 AM',
+  '11:00 AM',
+  '01:00 PM',
+  '03:00 PM',
+  '05:00 PM',
+  '07:00 PM',
+  '09:00 PM'
+] as const;
+
+export const STANDARD_SLOT_MINUTES = [
+  { slot: '09:00 AM', minutes: 9 * 60 },      // 540
+  { slot: '10:00 AM', minutes: 10 * 60 },     // 600
+  { slot: '11:00 AM', minutes: 11 * 60 },     // 660
+  { slot: '01:00 PM', minutes: 13 * 60 },     // 780
+  { slot: '03:00 PM', minutes: 15 * 60 },     // 900
+  { slot: '05:00 PM', minutes: 17 * 60 },     // 1020
+  { slot: '07:00 PM', minutes: 19 * 60 },     // 1140
+  { slot: '09:00 PM', minutes: 21 * 60 }      // 1260
+] as const;
+
+/**
+ * Snaps any timestamp, date, or arbitrary time string to the nearest standard platform booking slot.
+ */
+export function snapToStandardSlot(timeInput: any): string {
+  if (timeInput === null || timeInput === undefined || timeInput === "") {
+    return '11:00 AM';
+  }
+
+  // If already an exact standard slot
+  const strTrim = String(timeInput).trim();
+  const exactMatch = STANDARD_BOOKING_SLOTS.find(
+    s => s.toLowerCase() === strTrim.toLowerCase()
+  );
+  if (exactMatch) return exactMatch;
+
+  let totalMinutes = -1;
+
+  // Handle Firestore Timestamp or object with .toDate()
+  if (typeof timeInput === "object" && typeof timeInput.toDate === "function") {
+    const d: Date = timeInput.toDate();
+    totalMinutes = d.getHours() * 60 + d.getMinutes();
+  } else if (timeInput instanceof Date) {
+    totalMinutes = timeInput.getHours() * 60 + timeInput.getMinutes();
+  } else if (typeof timeInput === "object" && typeof timeInput.seconds === "number") {
+    const d = new Date(timeInput.seconds * 1000);
+    totalMinutes = d.getHours() * 60 + d.getMinutes();
+  } else {
+    const str = String(timeInput).trim();
+
+    // Check 12-hour AM/PM e.g. "09:48 PM", "9:48 pm", "3:00 PM"
+    const amPmMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)$/i);
+    if (amPmMatch) {
+      let hours = parseInt(amPmMatch[1], 10);
+      const minutes = parseInt(amPmMatch[2], 10);
+      const isPM = amPmMatch[4].toLowerCase() === 'pm';
+      if (isPM && hours < 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
+      totalMinutes = hours * 60 + minutes;
+    } else {
+      // Check 24-hour "HH:MM" e.g. "15:00", "21:48", "09:00"
+      const time24Match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (time24Match) {
+        const hours = parseInt(time24Match[1], 10);
+        const minutes = parseInt(time24Match[2], 10);
+        totalMinutes = hours * 60 + minutes;
+      } else if (str.includes("T") || (str.includes("-") && str.includes(":")) || (str.includes("/") && str.includes(":"))) {
+        const parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) {
+          totalMinutes = parsed.getHours() * 60 + parsed.getMinutes();
+        }
+      }
+    }
+  }
+
+  if (totalMinutes < 0) {
+    return '11:00 AM';
+  }
+
+  // Find nearest slot
+  let closestSlot: string = STANDARD_BOOKING_SLOTS[0];
+  let minDiff = Infinity;
+
+  for (const s of STANDARD_SLOT_MINUTES) {
+    const diff = Math.abs(s.minutes - totalMinutes);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestSlot = s.slot;
+    }
+  }
+
+  return closestSlot;
+}
+
+/**
+ * Standardized booking time formatter that strictly resolves all booking times
+ * to the platform's standard time slots.
+ */
+export function formatBookingTime(timeInput: any): string {
+  if (timeInput === null || timeInput === undefined || timeInput === "") {
+    return '11:00 AM';
+  }
+  return snapToStandardSlot(timeInput);
+}
 
 /**
  * Formats any raw 24-hr time string ("15:00"), ISO date string, Timestamp, or Date instance into "hh:mm A" (12-hour format).
+ * Automatically snaps legacy/arbitrary times to standard slots if snapToStandard is true.
  */
-export function formatTime12Hour(timeInput: any): string {
+export function formatTime12Hour(timeInput: any, snapToStandard: boolean = true): string {
   if (timeInput === null || timeInput === undefined || timeInput === "") return "";
+
+  if (snapToStandard) {
+    return snapToStandardSlot(timeInput);
+  }
 
   // Handle Firestore Timestamp or object with .toDate()
   if (typeof timeInput === "object" && typeof timeInput.toDate === "function") {
@@ -75,7 +187,7 @@ export function formatTime12HourFromDate(d: Date): string {
 }
 
 /**
- * Formats a timestamp/date into combined readable date + 12-hour time (e.g., "Aug 16, 2026 at 03:00 PM")
+ * Formats a timestamp/date into combined readable date + standard 12-hour time (e.g., "Aug 16, 2026 at 03:00 PM")
  */
 export function formatDateTime12Hour(input: any): string {
   if (!input && input !== 0) return "";
@@ -92,7 +204,7 @@ export function formatDateTime12Hour(input: any): string {
 
   if (!d || isNaN(d.getTime())) return String(input || "");
   const datePart = d.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
-  const timePart = formatTime12HourFromDate(d);
+  const timePart = snapToStandardSlot(d);
   return `${datePart} at ${timePart}`;
 }
 
@@ -155,3 +267,4 @@ export function formatNotificationTime(createdAt: any): string {
     minute: '2-digit',
   });
 }
+

@@ -29,7 +29,7 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
-import { formatTime12Hour } from "../utils/formatTime";
+import { formatTime12Hour, formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import ChatWindow from "./ChatWindow";
 import { LoadingScreen, ServiceCardSkeleton } from "./LoadingIndicator";
@@ -2261,7 +2261,7 @@ export default function CustomerDashboard({
                                 Service Time
                               </p>
                               <p className="font-bold text-slate-900">
-                                {formatTime12Hour(booking.scheduledAt) || "Scheduled Time"}
+                                {formatBookingTime(booking.scheduledAt) || "11:00 AM"}
                               </p>
                             </div>
                           </div>
@@ -2508,7 +2508,7 @@ export default function CustomerDashboard({
                     id={`booking-card-${booking.id}`}
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`bg-white border transition-all duration-300 ${expandedBookingId === booking.id ? "border-[#002e6e] shadow-lg" : "border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300"} rounded-2xl p-5 cursor-pointer relative overflow-hidden`}
+                    className={`bg-white border transition-all duration-300 ${expandedBookingId === booking.id ? "border-[#002e6e] shadow-lg" : "border-slate-100 shadow-xs hover:shadow-md hover:border-slate-200"} rounded-2xl p-5 cursor-pointer relative overflow-hidden`}
                     onClick={() =>
                       setExpandedBookingId(
                         expandedBookingId === booking.id ? null : booking.id,
@@ -2539,7 +2539,7 @@ export default function CustomerDashboard({
                           </h3>
                           <div className="flex items-center gap-3 text-xs text-slate-500 font-bold uppercase tracking-wider">
                             <Clock size={13} className="text-[#002e6e]" />{" "}
-                            {formatTime12Hour(booking.scheduledAt)}
+                            {formatBookingTime(booking.scheduledAt)}
                             <span className="text-slate-300">•</span>
                             <MapPin size={13} className="text-[#002e6e]" />{" "}
                             <span className="truncate max-w-[140px]">
@@ -3800,6 +3800,8 @@ export default function CustomerDashboard({
             onClose={() => setBookingToPay(null)}
             onSuccess={() => {
               const paidBookingId = bookingToPay.id;
+              const paidAmount = bookingToPay.totalPrice || 0;
+              const paidAtIso = new Date().toISOString();
               setBookings((prev) =>
                 prev.map((b) =>
                   b.id === paidBookingId
@@ -3807,11 +3809,15 @@ export default function CustomerDashboard({
                         ...b,
                         paymentStatus: "paid",
                         paymentMethod: "online",
+                        paidAt: paidAtIso,
                         status: b.status === "payment_pending" ? "completed" : b.status,
                       }
                     : b
                 )
               );
+              if (typeof (window as any).__showToast === 'function') {
+                (window as any).__showToast(`Payment of ₹${paidAmount} received successfully! Status updated to PAID.`);
+              }
               setBookingToPay(null);
             }}
           />
