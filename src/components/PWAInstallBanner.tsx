@@ -58,15 +58,7 @@ export function PWAInstallBanner() {
       setShowBanner(true);
     }
 
-    // 3. Clean event listeners for beforeinstallprompt and custom notification bridge
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      (window as any).deferredPrompt = e;
-      if (!checkStandalone() && !isDismissedRecently()) {
-        setShowBanner(true);
-      }
-    };
-
+    // 3. Consolidated event listeners: rely on central main.tsx beforeinstallprompt event bridge
     const handlePromptAvailable = () => {
       if (!checkStandalone() && !isDismissedRecently()) {
         setShowBanner(true);
@@ -89,7 +81,6 @@ export function PWAInstallBanner() {
       }
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('pwa-prompt-available', handlePromptAvailable);
     window.addEventListener('appinstalled', handleAppInstalled);
     window.addEventListener('trigger-pwa-install', handleTriggerPrompt);
@@ -104,7 +95,6 @@ export function PWAInstallBanner() {
 
     return () => {
       clearTimeout(initialTimer);
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('trigger-pwa-install', handleTriggerPrompt);

@@ -70,20 +70,30 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const recaptchaRef = useRef<any>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchBonus = async () => {
       try {
         const docRef = doc(db, 'system_config', 'global');
         const snap = await getDoc(docRef);
-        if (snap.exists() && snap.data().walletJoiningBonus !== undefined) {
-          setWalletJoiningBonus(snap.data().walletJoiningBonus);
+        if (isMounted && snap.exists()) {
+          const val = snap.data().walletJoiningBonus;
+          if (typeof val === 'number') {
+            setWalletJoiningBonus(val);
+          }
         }
-      } catch (err) {
-        console.warn("Unable to fetch wallet joining bonus setting:", err);
+      } catch (err: any) {
+        // Safe default fallback (e.g. ₹100 or default bonus) without intrusive warning logs
+        if (isMounted) {
+          setWalletJoiningBonus(100);
+        }
       }
     };
     if (isOpen) {
       fetchBonus();
     }
+    return () => {
+      isMounted = false;
+    };
   }, [isOpen]);
 
   useEffect(() => {

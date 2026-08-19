@@ -77,14 +77,27 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
     startCamera();
 
     return () => {
-      if (activeStream) {
-        activeStream.getTracks().forEach(track => {
-          track.stop();
-          console.log(`CustomerPaymentScanner clean stop: ${track.label}`);
-        });
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
+      try {
+        if (activeStream) {
+          activeStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (e) {}
+          });
+        }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => {
+            try {
+              t.stop();
+            } catch (e) {}
+          });
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+      } catch (cleanupErr) {
+        console.warn("[CustomerPaymentScanner] Camera stream cleanup:", cleanupErr);
       }
     };
   }, []); // Run ONLY on mount to prevent infinite toggle loops

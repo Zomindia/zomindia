@@ -186,11 +186,12 @@ export default function App() {
   const [showPartnerStatusPopup, setShowPartnerStatusPopup] = useState(true);
   const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false);
   const [selectedCity, setSelectedCityState] = useState<string>(() => {
-    return localStorage.getItem('selectedCity') || 'Indore';
+    return localStorage.getItem('zomindia_selected_city') || localStorage.getItem('selectedCity') || 'Indore';
   });
 
   const handleSelectCity = async (city: string) => {
     setSelectedCityState(city);
+    localStorage.setItem('zomindia_selected_city', city);
     localStorage.setItem('selectedCity', city);
     if (profile && profile.uid) {
       try {
@@ -205,6 +206,7 @@ export default function App() {
   useEffect(() => {
     if (profile?.city) {
       setSelectedCityState(profile.city);
+      localStorage.setItem('zomindia_selected_city', profile.city);
       localStorage.setItem('selectedCity', profile.city);
     }
   }, [profile?.city]);
@@ -519,69 +521,6 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [activeTab, selectedServiceId]);
-
-  useEffect(() => {
-    let isDown = false;
-    let startX: number;
-    let scrollLeft: number;
-    let activeContainer: HTMLElement | null = null;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.no-scrollbar') as HTMLElement;
-      if (!target) return;
-
-      const targetTag = (e.target as HTMLElement).tagName;
-      if (targetTag === 'BUTTON' || targetTag === 'INPUT' || targetTag === 'A' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return;
-      if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
-
-      isDown = true;
-      activeContainer = target;
-      activeContainer.style.cursor = 'grabbing';
-      activeContainer.style.userSelect = 'none';
-      startX = e.pageX - activeContainer.offsetLeft;
-      scrollLeft = activeContainer.scrollLeft;
-    };
-
-    const handleMouseLeaveAndUp = () => {
-      if (!isDown || !activeContainer) return;
-      isDown = false;
-      activeContainer.style.cursor = '';
-      activeContainer.style.removeProperty('user-select');
-      activeContainer = null;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDown || !activeContainer) return;
-      e.preventDefault();
-      const x = e.pageX - activeContainer.offsetLeft;
-      const walk = (x - startX) * 1.5;
-      activeContainer.scrollLeft = scrollLeft - walk;
-    };
-
-    const handleWheel = (e: WheelEvent) => {
-      const target = (e.target as HTMLElement).closest('.no-scrollbar') as HTMLElement;
-      if (!target) return;
-
-      if (target.scrollWidth > target.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        target.scrollBy({ left: e.deltaY * 0.8, behavior: 'auto' });
-      }
-    };
-
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseleave', handleMouseLeaveAndUp);
-    window.addEventListener('mouseup', handleMouseLeaveAndUp);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('wheel', handleWheel, { passive: false });
-
-    return () => {
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseleave', handleMouseLeaveAndUp);
-      window.removeEventListener('mouseup', handleMouseLeaveAndUp);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('wheel', handleWheel);
-    };
-  }, []);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasActiveArrival, setHasActiveArrival] = useState(false);

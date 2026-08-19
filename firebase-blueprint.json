@@ -348,9 +348,30 @@
         "processedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["partnerId", "amount", "status", "createdAt"]
+    },
+    "SystemSetting": {
+      "title": "System Setting",
+      "description": "Global application and system configuration settings.",
+      "type": "object",
+      "properties": {
+        "walletJoiningBonus": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
+    "/system_settings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Global system settings."
+    },
+    "/settings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Application settings."
+    },
+    "/system_config/{configId}": {
+      "schema": "SystemSetting",
+      "description": "System configuration documents."
+    },
     "/payoutRequests/{requestId}": {
       "schema": "PayoutRequest",
       "description": "Requests from partners to withdraw their earnings to a bank account."
