@@ -1430,7 +1430,7 @@ export default function AiSupportChat({
           initial={{ opacity: 0, y: 30, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 right-4 sm:right-8 w-12 h-12 rounded-full bg-white p-0.5 border border-slate-200/80 shadow-2xl hover:scale-[1.08] active:scale-[0.92] transition-all duration-300 z-[110] flex items-center justify-center cursor-pointer select-none zomindia-glow-pulse"
+          className="fixed bottom-24 right-4 sm:right-8 w-12 h-12 rounded-full bg-white p-0.5 border border-slate-200/80 shadow-2xl hover:scale-[1.08] active:scale-[0.92] transition-all duration-300 z-[50] flex items-center justify-center cursor-pointer select-none zomindia-glow-pulse"
           id="zomi-compact-floating-fab"
           title="Ask ZOMINI AI Assistant"
         >

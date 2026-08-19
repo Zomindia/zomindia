@@ -918,35 +918,53 @@ export default function PartnerTrackingMap({
     if (!partnerId) return;
     if (!autoRefreshEnabled) return; // disable snapshot listeners to conserve battery
 
-    const unsubPartner = onSnapshot(doc(db, "partners", partnerId), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as PartnerProfile;
-        if (data.lat && data.lng) {
-          setPartnerLocation({ lat: data.lat, lng: data.lng });
+    const unsubPartner = onSnapshot(
+      doc(db, "partners", partnerId),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as PartnerProfile;
+          if (data.lat && data.lng) {
+            setPartnerLocation({ lat: data.lat, lng: data.lng });
+          }
+          setPartnerInfo(data);
         }
-        setPartnerInfo(data);
+      },
+      (err) => {
+        console.warn("[PartnerTrackingMap] partners snapshot warning:", err?.message);
       }
-    });
+    );
 
-    const unsubUser = onSnapshot(doc(db, "users", partnerId), (snap) => {
-      if (snap.exists()) {
-        setUserInfo(snap.data() as UserProfile);
+    const unsubUser = onSnapshot(
+      doc(db, "users", partnerId),
+      (snap) => {
+        if (snap.exists()) {
+          setUserInfo(snap.data() as UserProfile);
+        }
+      },
+      (err) => {
+        console.warn("[PartnerTrackingMap] users snapshot warning:", err?.message);
       }
-    });
+    );
 
     let unsubBooking: (() => void) | undefined;
     if (bookingId) {
-      unsubBooking = onSnapshot(doc(db, "bookings", bookingId), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data && data.partnerLocation && typeof data.partnerLocation.lat === "number" && typeof data.partnerLocation.lng === "number") {
-            setPartnerLocation({ lat: data.partnerLocation.lat, lng: data.partnerLocation.lng });
-            console.log("[Map Sync] Received live partner position from booking doc:", data.partnerLocation);
-          } else if (data && typeof data.lat === "number" && typeof data.lng === "number") {
-            setPartnerLocation({ lat: data.lat, lng: data.lng });
+      unsubBooking = onSnapshot(
+        doc(db, "bookings", bookingId),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data && data.partnerLocation && typeof data.partnerLocation.lat === "number" && typeof data.partnerLocation.lng === "number") {
+              setPartnerLocation({ lat: data.partnerLocation.lat, lng: data.partnerLocation.lng });
+              console.log("[Map Sync] Received live partner position from booking doc:", data.partnerLocation);
+            } else if (data && typeof data.lat === "number" && typeof data.lng === "number") {
+              setPartnerLocation({ lat: data.lat, lng: data.lng });
+            }
           }
+        },
+        (err) => {
+          console.warn("[PartnerTrackingMap] bookings snapshot warning:", err?.message);
         }
-      });
+      );
     }
 
     return () => {

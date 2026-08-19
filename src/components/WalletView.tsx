@@ -30,7 +30,11 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
     );
     const unsubscribe = onSnapshot(q, (snap) => {
       const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WalletTransaction));
-      txs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+      txs.sort((a, b) => {
+        const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
+        const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
+        return timeB - timeA;
+      });
       setTransactions(txs);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'walletTransactions'));
 

@@ -182,21 +182,29 @@ export default function NotificationsView({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     const q = query(
       collection(db, 'notifications'),
-      where('userId', '==', profile.uid),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', profile.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Notification)));
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Notification));
+      list.sort((a, b) => {
+        const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
+        const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
+        return timeB - timeA;
+      });
+      setNotifications(list);
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'notifications'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'notifications');
+      setLoading(false);
+    });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile?.uid]);
 
   const markAsRead = async (id: string) => {
     try {

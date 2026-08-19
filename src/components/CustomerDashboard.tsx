@@ -746,6 +746,10 @@ export default function CustomerDashboard({
             }));
           }
         },
+        (err) => {
+          // Graceful fallback for security rule / offline restrictions
+          console.warn(`[CustomerDashboard] OTP snapshot handler for ${booking.id}:`, err?.message);
+        }
       );
     });
 

@@ -40,15 +40,30 @@ export default function CustomerAmcView({ profile, onBack }: CustomerAmcViewProp
 
   useEffect(() => {
     const unsubAmcs = onSnapshot(
-      query(collection(db, 'amcs'), where('customerId', '==', profile.uid), orderBy('createdAt', 'desc')),
+      query(collection(db, 'amcs'), where('customerId', '==', profile.uid)),
       (snap) => {
-        setMyAmcs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AMC)));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as AMC));
+        list.sort((a, b) => {
+          const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
+          const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
+          return timeB - timeA;
+        });
+        setMyAmcs(list);
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'amcs');
       }
     );
 
-    const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
-    });
+    const unsubServices = onSnapshot(
+      collection(db, 'services'),
+      (snap) => {
+        setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'services');
+      }
+    );
 
     setLoading(false);
     return () => {
