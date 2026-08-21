@@ -781,17 +781,28 @@ export default function App() {
 
   // Generic live pipeline listener for system-critical backend force-reloads (Permanently Deprecated)
   useEffect(() => {
+    // Only activate for authenticated admin users
+    if (!profile || profile.role !== 'admin') {
+      return;
+    }
+
     const updatesColRef = collection(db, 'system_updates');
 
-    const unsubscribeSystemUpdates = onSnapshot(updatesColRef, (snapshot) => {
-      // Logic bypassed to permanently prevent blocking promotional update alerts
-      console.log("Ecosystem update system check bypassed.");
-    }, (error) => {
-      console.warn("Firestore 'system_updates' subscription bypassed:", error);
-    });
+    const unsubscribeSystemUpdates = onSnapshot(
+      updatesColRef,
+      (snapshot) => {
+        // Logic bypassed to permanently prevent blocking promotional update alerts
+      },
+      (error) => {
+        // Gracefully fall back without logging runtime permission warnings
+        if ((error as any)?.code !== 'permission-denied') {
+          console.debug("system_updates subscription notification:", (error as any)?.message);
+        }
+      }
+    );
 
     return () => unsubscribeSystemUpdates();
-  }, [skippedUpdate]);
+  }, [profile?.role, skippedUpdate]);
 
   // 90 second interval re-prompt if update dismissed but not yet updated (Permanently Deprecated)
   useEffect(() => {
