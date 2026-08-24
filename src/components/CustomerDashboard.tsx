@@ -98,7 +98,7 @@ function ServiceThumbnail({
   let gradientClass = "from-indigo-600 to-blue-700 shadow-indigo-600/20";
   let isCustomComposite = false;
 
-  if (bookingStatus && (bookingStatus.toLowerCase() === "assigned" || bookingStatus.toUpperCase() === "ASSIGNED")) {
+  if (bookingStatus && bookingStatus.toLowerCase() === "assigned") {
     isCustomComposite = true;
     gradientClass = "from-blue-600 to-indigo-700 shadow-blue-500/20";
   } else if (
@@ -481,7 +481,7 @@ interface Props {
 const BookingStatusTracker = ({ status }: { status: Booking["status"] }) => {
   const stages: { key: Booking["status"][]; label: string; icon: any }[] = [
     {
-      key: ["pending", "pending_parts"],
+      key: ["pending", "pending_acceptance", "pending_parts", "confirmed_pay_after_service"],
       label: "Confirmed",
       icon: Clock,
     },
@@ -708,8 +708,8 @@ export default function CustomerDashboard({
           "pending",
           "pending_acceptance",
           "confirmed",
+          "confirmed_pay_after_service",
           "assigned",
-          "ASSIGNED",
           "on_the_way",
           "arrived",
           "in_progress",
@@ -729,7 +729,7 @@ export default function CustomerDashboard({
 
   useEffect(() => {
     const activeWithOtpBookings = activeBookings.filter((b) =>
-      ["pending", "assigned", "ASSIGNED", "confirmed", "on_the_way", "arrived"].includes(
+      ["pending", "assigned", "confirmed", "on_the_way", "arrived"].includes(
         b.status,
       ),
     );
@@ -1942,7 +1942,6 @@ export default function CustomerDashboard({
         [
           "pending",
           "assigned",
-          "ASSIGNED",
           "confirmed",
           "on_the_way",
           "arrived",
@@ -1963,7 +1962,6 @@ export default function CustomerDashboard({
                 [
                   "pending",
                   "assigned",
-                  "ASSIGNED",
                   "confirmed",
                   "on_the_way",
                   "arrived",

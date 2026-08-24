@@ -228,8 +228,8 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     try {
       const bRef = doc(db, 'bookings', booking.id);
       await updateDoc(bRef, {
-        paymentMethod: 'CASH',
-        paymentStatus: 'PAY_AFTER_SERVICE',
+        paymentMethod: 'cash',
+        paymentStatus: 'pay_after_service',
         status: booking.status === 'payment_pending' ? 'payment_pending' : 'confirmed',
         updatedAt: Timestamp.now()
       });

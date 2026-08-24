@@ -287,7 +287,7 @@ export interface Booking {
   serviceName?: string;
   isReviewed?: boolean;
   status: BookingStatus;
-  paymentStatus: 'unpaid' | 'paid' | 'PAY_AFTER_SERVICE' | 'pay_after_service' | string;
+  paymentStatus: 'paid' | 'unpaid' | 'pay_after_service';
   paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
   paidAt?: any;
   paymentIntentId?: string;

@@ -178,6 +178,26 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
   const [useAmc, setUseAmc] = useState(savedState?.useAmc ?? false);
 
+  // Submission & Idempotency Refs
+  const isSubmittingRef = useRef<boolean>(false);
+  const draftBookingIdRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!draftBookingIdRef.current) {
+      draftBookingIdRef.current = doc(collection(db, 'bookings')).id;
+    }
+    return () => {
+      draftBookingIdRef.current = '';
+      isSubmittingRef.current = false;
+    };
+  }, [service?.id]);
+
+  const handleModalClose = () => {
+    draftBookingIdRef.current = '';
+    isSubmittingRef.current = false;
+    onClose();
+  };
+
   // Maps State
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(savedState?.location || null);
   const [isGeocoding, setIsGeocoding] = useState(false);
@@ -824,6 +844,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     overridePhone?: string,
     onlinePaymentData?: PaymentSuccessData
   ) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     setLoading(true);
     setError(null);
 
@@ -832,6 +855,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       setShowLocalLogin(true);
       setError("Authentication required: Please sign in with an active customer account to confirm your booking.");
       setLoading(false);
+      isSubmittingRef.current = false;
       return;
     }
 
@@ -839,6 +863,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (activeMode === 'partner') {
       setError("Bookings can only be created while operating in Customer Mode. Please switch to Customer Mode from your profile menu to book.");
       setLoading(false);
+      isSubmittingRef.current = false;
       return;
     }
 
@@ -846,6 +871,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (isGenericAddress(address)) {
       setError("Please specify your complete doorstep, house/flat number, or colony address in Indore (e.g., 'Flat 102, Vijay Nagar, Indore'). Generic city-only addresses are rejected.");
       setLoading(false);
+      isSubmittingRef.current = false;
       return;
     }
 
@@ -1079,21 +1105,32 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         console.error("Partner matching failed:", matchErr);
       }
 
-      const bookingRef = doc(collection(db, bookingPath));
-      const bookingId = bookingRef.id;
+      if (!draftBookingIdRef.current) {
+        draftBookingIdRef.current = doc(collection(db, bookingPath)).id;
+      }
+      const bookingId = draftBookingIdRef.current;
+      const bookingRef = doc(db, bookingPath, bookingId);
       setLastBookingId(bookingId);
 
       const totalBill = finalPrice;
       const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
       const remainingDue = totalBill - walletDeduction;
 
-      let computedPaymentMethod = useAmc ? 'wallet' : paymentMethod;
-      if (useWalletBalance) {
-        if (remainingDue > 0) {
-          computedPaymentMethod = `wallet+${paymentMethod}` as any;
-        } else {
-          computedPaymentMethod = 'wallet' as any;
-        }
+      // Strict Payment Status Guard:
+      // Mark paymentStatus = 'paid' ONLY if:
+      // useAmc === true OR (walletDeduction > 0 && walletDeduction >= totalBill) OR Boolean(onlinePaymentData?.txnId && onlinePaymentData?.amount > 0).
+      // In all other scenarios, strictly set paymentStatus = 'unpaid'.
+      const isOnlineConfirmed = Boolean(onlinePaymentData?.txnId && (onlinePaymentData?.amount ?? 0) > 0);
+      const isFullyPaidByWallet = walletDeduction > 0 && walletDeduction >= totalBill;
+      const resolvedPaymentStatus: 'paid' | 'unpaid' = (useAmc === true || isFullyPaidByWallet || isOnlineConfirmed) ? 'paid' : 'unpaid';
+
+      let resolvedPaymentMethod: string = paymentMethod;
+      if (useAmc) {
+        resolvedPaymentMethod = 'wallet';
+      } else if (isOnlineConfirmed) {
+        resolvedPaymentMethod = walletDeduction > 0 ? 'wallet+online' : 'online';
+      } else if (useWalletBalance) {
+        resolvedPaymentMethod = remainingDue > 0 ? `wallet+${paymentMethod}` : 'wallet';
       }
 
       if (walletDeduction > 0 && profile?.uid) {
@@ -1126,14 +1163,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
 
       resolvedMobile = cleanPhone || cleanPhoneTo10(resolvedMobile);
-
-      const isOnlineConfirmed = !!onlinePaymentData;
-      const resolvedPaymentStatus = useAmc ? 'paid' : (isOnlineConfirmed || remainingDue === 0 ? 'paid' : 'unpaid');
-      const resolvedPaymentMethod = useAmc 
-        ? 'wallet' 
-        : (isOnlineConfirmed 
-          ? (walletDeduction > 0 ? 'wallet+online' : 'online') 
-          : computedPaymentMethod);
 
       const bookingPayload = {
         customerUid: activeUid,
@@ -1295,6 +1324,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       setShowFinalConfirmation(false);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -1486,7 +1516,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             As a registered <b>Service Partner</b>, you cannot book services for yourself. The home page is available for your reference only to see how your services appear to customers.
           </p>
           <button 
-            onClick={onClose}
+            onClick={handleModalClose}
             className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition-all"
           >
             I Understand
@@ -1541,7 +1571,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Step {step > 3 ? 3 : step} of 3</p>
                  </div>
               </div>
-              <button onClick={onClose} className="p-1.5 hover:bg-slate-50 rounded-full transition-colors cursor-pointer">
+              <button onClick={handleModalClose} className="p-1.5 hover:bg-slate-50 rounded-full transition-colors cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -2805,7 +2835,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 onClick={() => {
                   setShowSuccessModal(false);
                   onSuccess();
-                  onClose();
+                  handleModalClose();
                 }}
                 className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
               />
@@ -2820,7 +2850,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   onClick={() => {
                     setShowSuccessModal(false);
                     onSuccess();
-                    onClose();
+                    handleModalClose();
                   }}
                   className="absolute top-4 right-4 p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-full transition-colors cursor-pointer"
                   title="Close"
@@ -2901,7 +2931,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     onClick={() => {
                       setShowSuccessModal(false);
                       onSuccess();
-                      onClose();
+                      handleModalClose();
                     }}
                     className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md mt-1 cursor-pointer"
                   >

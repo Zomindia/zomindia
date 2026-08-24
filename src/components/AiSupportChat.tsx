@@ -382,6 +382,7 @@ export default function AiSupportChat({
   const [selectedSlots, setSelectedSlots] = useState<Record<string, { date: string; slot: string }>>({});
   const [selectedAddresses, setSelectedAddresses] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef<boolean>(false);
   
   // PhonePe Payment Gateway In Chat State
   const [activePhonePePayment, setActivePhonePePayment] = useState<{
@@ -478,7 +479,8 @@ export default function AiSupportChat({
   };
 
   const handlePayAfterService = async (bookingId: string) => {
-    if (isSubmitting) return;
+    if (isSubmittingRef.current || isSubmitting) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -502,24 +504,47 @@ export default function AiSupportChat({
       const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
       const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
 
+      const resolvedEmail = userProfile?.email || auth.currentUser?.email || "";
+
       const bookingRef = doc(db, "bookings", bookingId);
+      const fee = bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195;
       const confirmedPayload = {
-        ...(bookingPayload || {}),
-        id: bookingId,
         customerUid: activeUid,
         userId: activeUid,
         customerId: activeUid,
+        serviceId: bookingPayload?.serviceId || "service_home_service",
+        partnerId: bookingPayload?.partnerId || null,
         serviceType: bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service",
         issueDetails: bookingPayload?.issueDetails || bookingPayload?.serviceType || "Home Service",
-        visitationFee: bookingPayload?.visitationFee || 195,
-        totalPrice: bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195,
+        visitationFee: fee,
+        totalPrice: fee,
+        originalBillValue: fee,
+        paidAmount: 0,
+        walletDeductAmount: 0,
+        discountApplied: 0,
+        promoCode: null,
+        isAmcBooking: false,
+        amcId: null,
         scheduledSlot,
+        scheduledAt: Timestamp.now(),
         address: selectedAddress,
-        status: "confirmed_pay_after_service",
+        lat: bookingPayload?.lat || null,
+        lng: bookingPayload?.lng || null,
+        status: "pending",
         paymentMethod: "cash",
-        paymentStatus: "unpaid",
+        paymentStatus: "pay_after_service",
+        serviceOtp: bookingPayload?.serviceOtp || String(Math.floor(1000 + Math.random() * 9000)),
+        otpVerified: false,
+        customerBookedName: resolvedName,
+        customerBookedPhone: resolvedMobile,
+        customerBookedEmail: resolvedEmail,
         customerName: resolvedName,
         customerMobile: resolvedMobile,
+        customerData: {
+          fullName: resolvedName,
+          mobile: resolvedMobile,
+          email: resolvedEmail
+        },
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       };
@@ -534,8 +559,8 @@ export default function AiSupportChat({
               text: "✅ Cash Booking Confirmed - Pay After Service",
               bookingData: {
                 ...m.bookingData,
-                status: "confirmed_pay_after_service",
-                paymentStatus: "unpaid",
+                status: "pending",
+                paymentStatus: "pay_after_service",
                 paymentMethod: "cash"
               }
             };
@@ -563,12 +588,14 @@ export default function AiSupportChat({
       console.error("Error confirming Pay After Service:", err);
       alert("Failed to confirm booking. Please try again.");
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   const handlePayOnline = async (bookingId: string) => {
-    if (isSubmitting) return;
+    if (isSubmittingRef.current || isSubmitting) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setPhonePeError(null);
 
@@ -661,6 +688,7 @@ export default function AiSupportChat({
       console.error("Error launching PhonePe payment:", err);
       alert(`Error starting PhonePe checkout: ${err.message || err}`);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
