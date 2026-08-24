@@ -12,7 +12,6 @@ import {
   Phone,
   MessageSquare,
   CreditCard,
-  QrCode,
   ChevronDown,
   ChevronUp,
   Star,
@@ -20,15 +19,14 @@ import {
   HelpCircle,
   Compass,
   FileText,
-  Sparkles,
-  Navigation,
   RotateCcw,
   ShieldAlert,
-  ArrowRight,
-  ExternalLink,
+  Navigation,
+  XCircle,
+  Lock,
 } from "lucide-react";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
-import { formatTime12Hour, formatBookingTime } from "../utils/formatTime";
+import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import LogoIcon from "../assets/images/logo-icon.png";
@@ -88,10 +86,9 @@ export function getServiceCategoryTheme(
       type: "ac",
       name: "AC Service",
       cardGradient: "bg-white",
-      borderColor: "border-slate-100",
-      activeGlow: "shadow-xs",
+      borderColor: "border-slate-150",
       iconGrad: "from-cyan-500 to-blue-600 shadow-cyan-500/25",
-      badgeClass: "bg-cyan-100/90 text-cyan-900 border-cyan-200/90",
+      badgeClass: "bg-cyan-50 text-cyan-800 border-cyan-200",
       accentText: "text-cyan-700",
       pulseColor: "bg-cyan-500",
     };
@@ -110,10 +107,9 @@ export function getServiceCategoryTheme(
       type: "ro",
       name: "Water Purifier",
       cardGradient: "bg-white",
-      borderColor: "border-slate-100",
-      activeGlow: "shadow-xs",
+      borderColor: "border-slate-150",
       iconGrad: "from-teal-500 to-emerald-600 shadow-teal-500/25",
-      badgeClass: "bg-teal-100/90 text-teal-900 border-teal-200/90",
+      badgeClass: "bg-teal-50 text-teal-800 border-teal-200",
       accentText: "text-teal-700",
       pulseColor: "bg-teal-500",
     };
@@ -129,10 +125,9 @@ export function getServiceCategoryTheme(
       type: "fridge",
       name: "Refrigerator",
       cardGradient: "bg-white",
-      borderColor: "border-slate-100",
-      activeGlow: "shadow-xs",
+      borderColor: "border-slate-150",
       iconGrad: "from-violet-500 to-indigo-600 shadow-violet-500/25",
-      badgeClass: "bg-violet-100/90 text-violet-900 border-violet-200/90",
+      badgeClass: "bg-violet-50 text-violet-800 border-violet-200",
       accentText: "text-violet-700",
       pulseColor: "bg-violet-500",
     };
@@ -155,10 +150,9 @@ export function getServiceCategoryTheme(
       type: "electrical",
       name: "Electrical & TV",
       cardGradient: "bg-white",
-      borderColor: "border-slate-100",
-      activeGlow: "shadow-xs",
+      borderColor: "border-slate-150",
       iconGrad: "from-amber-500 to-orange-600 shadow-amber-500/25",
-      badgeClass: "bg-amber-100/90 text-amber-900 border-amber-200/90",
+      badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
       accentText: "text-amber-700",
       pulseColor: "bg-amber-500",
     };
@@ -174,27 +168,125 @@ export function getServiceCategoryTheme(
       type: "washing",
       name: "Washing Machine",
       cardGradient: "bg-white",
-      borderColor: "border-slate-100",
-      activeGlow: "shadow-xs",
+      borderColor: "border-slate-150",
       iconGrad: "from-emerald-500 to-teal-600 shadow-emerald-500/25",
-      badgeClass: "bg-emerald-100/90 text-emerald-900 border-emerald-200/90",
+      badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
       accentText: "text-emerald-700",
       pulseColor: "bg-emerald-500",
     };
   }
 
-  // 6. Default / All other services (Plumbing, Cleaning, Pest, etc.)
+  // 6. Default / All other services
   return {
     type: "default",
     name: "Home Service",
     cardGradient: "bg-white",
-    borderColor: "border-slate-100",
-    activeGlow: "shadow-xs",
+    borderColor: "border-slate-150",
     iconGrad: "from-[#002e6e] to-[#004bb5] shadow-blue-500/25",
-    badgeClass: "bg-blue-100/90 text-[#002e6e] border-blue-200/90",
+    badgeClass: "bg-blue-50 text-[#002e6e] border-blue-200",
     accentText: "text-[#002e6e]",
     pulseColor: "bg-[#002e6e]",
   };
+}
+
+/**
+ * Formats scheduledAt timestamp into a human-friendly string:
+ * e.g., "Today, 02:00 PM - 04:00 PM" or "Wed, 26 Aug • 02:00 PM - 04:00 PM"
+ */
+export function formatBookingSchedule(scheduledAt: any): {
+  dateLabel: string;
+  timeSlot: string;
+  fullDisplay: string;
+} {
+  let dateObj: Date | null = null;
+  if (scheduledAt) {
+    if (typeof scheduledAt.toDate === "function") {
+      dateObj = scheduledAt.toDate();
+    } else if (scheduledAt.seconds) {
+      dateObj = new Date(scheduledAt.seconds * 1000);
+    } else if (scheduledAt instanceof Date) {
+      dateObj = scheduledAt;
+    } else {
+      dateObj = new Date(scheduledAt);
+    }
+  }
+
+  const rawSlotTime = formatBookingTime(scheduledAt) || "11:00 AM";
+
+  // Build slot range e.g. "02:00 PM - 04:00 PM"
+  const buildSlotRange = (startSlot: string): string => {
+    const match = startSlot.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return startSlot;
+    let hour = parseInt(match[1], 10);
+    const min = match[2];
+    const period = match[3].toUpperCase();
+    let endHour = hour + 2;
+    let endPeriod = period;
+    if (hour < 12 && endHour >= 12) {
+      endPeriod = period === "AM" ? "PM" : "AM";
+    }
+    if (endHour > 12) endHour = endHour - 12;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(hour)}:${min} ${period} - ${pad(endHour)}:${min} ${endPeriod}`;
+  };
+
+  const slotRange = buildSlotRange(rawSlotTime);
+
+  if (!dateObj || isNaN(dateObj.getTime())) {
+    return {
+      dateLabel: "Today",
+      timeSlot: slotRange,
+      fullDisplay: `Today, ${slotRange}`,
+    };
+  }
+
+  const now = new Date();
+  const isToday =
+    dateObj.getDate() === now.getDate() &&
+    dateObj.getMonth() === now.getMonth() &&
+    dateObj.getFullYear() === now.getFullYear();
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow =
+    dateObj.getDate() === tomorrow.getDate() &&
+    dateObj.getMonth() === tomorrow.getMonth() &&
+    dateObj.getFullYear() === tomorrow.getFullYear();
+
+  let dateLabel = "";
+  if (isToday) {
+    dateLabel = "Today";
+  } else if (isTomorrow) {
+    dateLabel = "Tomorrow";
+  } else {
+    dateLabel = dateObj.toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
+
+  return {
+    dateLabel,
+    timeSlot: slotRange,
+    fullDisplay: `${dateLabel}, ${slotRange}`,
+  };
+}
+
+/**
+ * Format payment method for display
+ */
+function formatPaymentMethodName(method?: string): string {
+  if (!method) return "Online";
+  const m = method.toLowerCase();
+  if (m === "phonepe" || m === "phonepe_qr") return "PhonePe / UPI";
+  if (m === "upi") return "UPI";
+  if (m === "cash") return "Cash on Delivery";
+  if (m === "wallet") return "ZomIndia Wallet";
+  if (m === "amc_pass" || m === "amc") return "AMC Annual Pass";
+  if (m === "card" || m === "cards") return "Credit / Debit Card";
+  if (m === "pay_after_service") return "Pay After Service";
+  return method.charAt(0).toUpperCase() + method.slice(1);
 }
 
 export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
@@ -204,19 +296,19 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
   partnerDetail,
   customerProfile,
   activeTicket,
-  otpCode,
+  otpCode: propOtpCode,
   isExpanded = false,
   onToggleExpand,
   onPayOnline,
-  onPayCash,
-  onScanQR,
+  onPayCash: _onPayCash,
+  onScanQR: _onScanQR,
   onBookAgain,
-  onTrack,
+  onTrack: _onTrack,
   onCallPartner,
   onChatPartner,
   onDownloadInvoice,
   onSupport,
-  onReschedule,
+  onReschedule: _onReschedule,
   isPast = false,
   inlineRating = 0,
   inlineComment = "",
@@ -231,6 +323,74 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+
+  const expanded = onToggleExpand ? isExpanded : internalExpanded;
+  const toggleExpanded = onToggleExpand || (() => setInternalExpanded((prev) => !prev));
+
+  const serviceName = service?.name || booking.serviceName || "Professional Service";
+  const theme = getServiceCategoryTheme(serviceName, service?.categoryId || booking.serviceId);
+
+  // Status breakdown
+  const rawStatus = (booking.status || "pending").toLowerCase();
+  const isCompleted = ["completed", "finalized", "closed"].includes(rawStatus);
+  const isCancelled = rawStatus === "cancelled";
+  const isInProgress = rawStatus === "in_progress";
+  const isArrived = rawStatus === "arrived";
+  const isOnTheWay = rawStatus === "on_the_way";
+  const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
+  const isPaymentPending = rawStatus === "payment_pending";
+  const isPending = [
+    "pending",
+    "pending_acceptance",
+    "pending_assignment",
+    "pending_parts",
+    "pending_checkout",
+    "confirmed_pay_after_service",
+  ].includes(rawStatus);
+
+  const isActive = !isCompleted && !isCancelled;
+  const hasPartner = !!(booking.partnerId || partnerUser);
+
+  // Dynamic OTP calculation
+  const otp = propOtpCode || booking.serviceOtp || booking.startOTP;
+  // OTP box rendered ONLY when status is between assigned, confirmed, on_the_way, and arrived, and not yet verified
+  const showOtpBox =
+    Boolean(otp) &&
+    !booking.otpVerified &&
+    !isCompleted &&
+    !isCancelled &&
+    (isAssigned || isOnTheWay || isArrived);
+
+  // Payment status resolution
+  const isPaid = (booking.paymentStatus || "").toLowerCase() === "paid";
+  const isPayAfterService =
+    !isPaid &&
+    (booking.paymentStatus === "pay_after_service" ||
+      booking.paymentMethod === "cash" ||
+      booking.paymentMethod === "pay_after_service" ||
+      rawStatus === "confirmed_pay_after_service");
+  const isOnlineUnpaid = !isPaid && !isPayAfterService;
+
+  // Formatted schedule info
+  const scheduleInfo = formatBookingSchedule(booking.scheduledAt);
+
+  // Stepper pipeline stages
+  const stages = [
+    { label: "Confirmed", icon: Clock },
+    { label: "Assigned", icon: User },
+    { label: "On The Way", icon: Navigation },
+    { label: "In Progress", icon: Zap },
+    { label: "Completed", icon: CheckCircle2 },
+  ];
+
+  const currentStageIndex = (() => {
+    if (isPending) return 0;
+    if (isAssigned) return 1;
+    if (isOnTheWay || isArrived) return 2;
+    if (isInProgress || isPaymentPending) return 3;
+    if (isCompleted) return 4;
+    return 0;
+  })();
 
   const handleDownloadInvoice = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -266,85 +426,16 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
     }
   };
 
-  const expanded = onToggleExpand ? isExpanded : internalExpanded;
-  const toggleExpanded = onToggleExpand || (() => setInternalExpanded((prev) => !prev));
-
-  const serviceName = service?.name || booking.serviceName || "Professional Service";
-  const theme = getServiceCategoryTheme(serviceName, service?.categoryId || booking.serviceId);
-
-  const rawStatus = (booking.status || "pending").toLowerCase();
-  const isCompleted = ["completed", "finalized", "closed"].includes(rawStatus);
-  const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
-  const isOnTheWay = rawStatus === "on_the_way";
-  const isArrived = rawStatus === "arrived";
-  const isInProgress = rawStatus === "in_progress";
-  const isPaymentPending = rawStatus === "payment_pending";
-  const isPending = ["pending", "pending_parts", "pending_acceptance", "pending_assignment"].includes(rawStatus);
-  const isCancelled = rawStatus === "cancelled";
-
-  const isActive = !isCompleted && !isCancelled;
-  const hasPartner = !!(booking.partnerId || partnerUser);
-
-  const isPaid = (booking.paymentStatus || "").toLowerCase() === "paid";
-
-  // Formatted date and time (standardized to platform time slots)
-  const getBookingDate = (b: Booking): Date | null => {
-    if (b.scheduledAt) {
-      if (typeof b.scheduledAt.toDate === "function") return b.scheduledAt.toDate();
-      return new Date(b.scheduledAt);
-    }
-    if ((b as any).dateTime) return new Date((b as any).dateTime);
-    if (b.createdAt) {
-      if (typeof b.createdAt.toDate === "function") return b.createdAt.toDate();
-      return new Date(b.createdAt);
-    }
-    return null;
-  };
-
-  const bookingDateObj = getBookingDate(booking);
-  const dateDisplay = bookingDateObj
-    ? bookingDateObj.toLocaleDateString("en-IN", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })
-    : "Today";
-  const timeDisplay = formatBookingTime(booking.scheduledAt) || "11:00 AM";
-
-  // Check 30-day warranty for support
-  let showSupportButton = false;
-  if (isCompleted && bookingDateObj) {
-    const daysDiff = Math.abs(Date.now() - bookingDateObj.getTime()) / (1000 * 60 * 60 * 24);
-    showSupportButton = daysDiff <= 30;
-  }
-
-  // Stepper Stage Calculation
-  const stages = [
-    { label: "Confirmed", icon: Clock },
-    { label: "Assigned", icon: User },
-    { label: "On The Way", icon: Navigation },
-    { label: "In Progress", icon: Zap },
-    { label: "Completed", icon: CheckCircle2 },
-  ];
-
-  const currentStageIndex = (() => {
-    if (isPending) return 0;
-    if (isAssigned) return 1;
-    if (isOnTheWay || isArrived) return 2;
-    if (isInProgress || isPaymentPending) return 3;
-    if (isCompleted) return 4;
-    return 0;
-  })();
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      id={`booking-card-${booking.id}`}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -16 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className={`rounded-2xl border border-orange-100/90 hover:border-orange-300 bg-white p-4 sm:p-5 relative overflow-hidden transition-all duration-300 shadow-xs hover:shadow-md hover:shadow-orange-500/5`}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="rounded-2xl border border-slate-200/90 hover:border-blue-300 bg-white p-4 sm:p-5 relative overflow-hidden transition-all duration-300 shadow-xs hover:shadow-md"
     >
-      {/* Privacy Shield Routing Overlay */}
+      {/* Privacy Shield Active Call Routing Overlay */}
       {routingCallBookingId === booking.id && (
         <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-6 rounded-2xl">
           <div className="w-14 h-14 bg-emerald-50 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-3 animate-bounce shadow-md">
@@ -354,15 +445,15 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
             Connecting via Secure Shield...
           </h4>
           <p className="text-slate-600 text-[11px] max-w-xs leading-relaxed font-medium">
-            ZomIndia privacy shield active. Connecting safely to technician.
+            Privacy shield active. Connecting safely to your assigned technician.
           </p>
         </div>
       )}
 
-      {/* 1. Header Row: Service Icon + Service Name + Live Status Pill */}
+      {/* 1. Header Row: Service Icon + Service Name + Real-Time Lifecycle Status Badge */}
       <div className="flex items-start justify-between gap-3 relative z-10">
         <div className="flex items-center gap-3 min-w-0">
-          {/* Service Icon with Glow */}
+          {/* Service Icon with Theme Gradient */}
           <div
             className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl shrink-0 overflow-hidden bg-gradient-to-br ${theme.iconGrad} p-0.5 flex items-center justify-center text-white shadow-md relative group`}
           >
@@ -386,7 +477,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 #{booking.id.slice(-6).toUpperCase()}
               </span>
               {booking.isAmcBooking && (
-                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.2 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
                   AMC Plan
                 </span>
               )}
@@ -397,67 +488,75 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
           </div>
         </div>
 
-        {/* Live Status Pill */}
+        {/* Real-Time Lifecycle Status Badge */}
         <div className="shrink-0">
-          {isInProgress ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
+          {isPending && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
+              <Clock size={11} className="text-amber-600 shrink-0 animate-spin" />
+              Assigning Pro
+            </span>
+          )}
+          {isAssigned && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-[#2563EB] border border-blue-300 shadow-2xs inline-flex items-center gap-1.5">
+              <User size={11} className="text-[#2563EB] shrink-0" />
+              Pro Assigned
+            </span>
+          )}
+          {isOnTheWay && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
+              <Navigation size={11} className="text-sky-600 shrink-0" />
+              Pro En-Route
+            </span>
+          )}
+          {isArrived && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-300 shadow-2xs inline-flex items-center gap-1.5">
+              <MapPin size={11} className="text-indigo-600 shrink-0" />
+              Pro Arrived at Location
+            </span>
+          )}
+          {isInProgress && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              In Progress
+              Job In Progress
             </span>
-          ) : isOnTheWay ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/15 text-sky-800 border border-sky-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
-              <Navigation size={11} className="text-sky-600 shrink-0" />
-              Pro En-Route
+          )}
+          {isCompleted && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
+              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+              Service Completed
             </span>
-          ) : isArrived ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-800 border border-indigo-300 shadow-2xs inline-flex items-center gap-1.5">
-              <MapPin size={11} className="text-indigo-600 shrink-0" />
-              Pro Arrived
+          )}
+          {isCancelled && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-300 shadow-2xs inline-flex items-center gap-1.5">
+              <XCircle size={11} className="text-rose-600 shrink-0" />
+              Cancelled
             </span>
-          ) : isAssigned ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/15 text-[#002e6e] border border-blue-300 shadow-2xs inline-flex items-center gap-1.5">
-              <User size={11} className="text-[#002e6e] shrink-0" />
-              Pro Assigned
-            </span>
-          ) : isPending ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-900 border border-amber-300 shadow-2xs inline-flex items-center gap-1.5">
-              <Clock size={11} className="text-amber-600 shrink-0 animate-spin" />
-              Assigning Pro
-            </span>
-          ) : isPaymentPending ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-500/15 text-orange-900 border border-orange-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
+          )}
+          {isPaymentPending && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-50 text-orange-900 border border-orange-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
               <CreditCard size={11} className="text-orange-600 shrink-0" />
               Pay Invoice
-            </span>
-          ) : isCompleted ? (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
-              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
-              Completed
-            </span>
-          ) : (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-              {rawStatus.replace("_", " ")}
             </span>
           )}
         </div>
       </div>
 
-      {/* 2. Middle Row: Chips (Date/Time, Service Area, Assigned Pro, Payment Status) */}
+      {/* 2. Middle Row: Chips (Date & Time Range, Location Area, Support Badge) */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-3 relative z-10">
-        {/* Date & Time Chip (12-hr AM/PM format) */}
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/95 border border-slate-200/80 text-slate-700 text-[11px] font-bold shadow-2xs">
-          <Calendar size={12} className="text-slate-400 shrink-0" />
-          <span>{dateDisplay}</span>
+        {/* Scheduled Date & Time Slot Chip */}
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200/90 text-slate-700 text-[11px] font-bold shadow-2xs">
+          <Calendar size={12} className="text-blue-600 shrink-0" />
+          <span>{scheduleInfo.dateLabel}</span>
           <span className="text-slate-300">•</span>
           <Clock size={12} className="text-slate-400 shrink-0" />
-          <span className="text-slate-900 font-extrabold">{timeDisplay}</span>
+          <span className="text-slate-900 font-extrabold">{scheduleInfo.timeSlot}</span>
         </div>
 
         {/* Service Area Chip */}
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/95 border border-slate-200/80 text-slate-700 text-[11px] font-bold shadow-2xs max-w-[210px] truncate">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200/90 text-slate-700 text-[11px] font-bold shadow-2xs max-w-[220px] truncate">
           <MapPin size={12} className="text-slate-400 shrink-0" />
           <span className="truncate">
             {booking.address ? booking.address.split(",")[0] : "Indore"}
@@ -466,48 +565,18 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
 
         {/* Assigned Partner Chip (if assigned) */}
         {hasPartner && (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold shadow-2xs">
-            <User size={12} className="text-emerald-600 shrink-0" />
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-bold shadow-2xs">
+            <User size={12} className="text-blue-600 shrink-0" />
             <span className="truncate">
-              Pro: {partnerUser?.displayName || (booking as any).partnerName || "Vikas C."}
+              Pro: {partnerUser?.displayName || (booking as any).partnerName || "Assigned Pro"}
             </span>
-            <span className="text-[10px] font-black text-amber-600 flex items-center gap-0.5">
-              ★ {partnerDetail?.rating || 4.9}
+            <span className="text-[10px] font-black text-amber-600 flex items-center gap-0.5 ml-0.5">
+              ★ {(partnerDetail?.rating || 4.9).toFixed(1)}
             </span>
           </div>
         )}
 
-        {/* Payment Status & Dual Payment Switch */}
-        {isPaid ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-            <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
-            Paid
-          </span>
-        ) : (
-          <div className="inline-flex items-center gap-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-              <AlertCircle size={11} className="text-rose-500 shrink-0" />
-              Pay after service
-            </span>
-            {onPayOnline && (
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPayOnline(booking);
-                }}
-                className="bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer"
-                title="Pay now online via Native UPI / Dynamic QR"
-              >
-                <CreditCard size={12} className="shrink-0" />
-                <span>Pay Now</span>
-              </motion.button>
-            )}
-          </div>
-        )}
-
-        {/* Real-Time Active Warranty / Support Ticket Pulsing Badge */}
+        {/* Real-Time Active Support/Warranty Ticket Badge */}
         {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") && (
           <button
             type="button"
@@ -518,11 +587,10 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-orange-50 border border-orange-300 text-orange-900 text-[10px] font-black uppercase tracking-wider shadow-2xs animate-pulse cursor-pointer hover:bg-orange-100"
           >
             <ShieldAlert size={12} className="text-orange-600 shrink-0" />
-            <span>🛡️ Warranty Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
+            <span>Warranty #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
           </button>
         )}
 
-        {/* Real-Time Resolved Warranty Ticket Badge */}
         {activeTicket && activeTicket.status === "resolved" && (
           <button
             type="button"
@@ -533,64 +601,112 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-black uppercase tracking-wider shadow-2xs cursor-pointer hover:bg-emerald-100"
           >
             <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
-            <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
+            <span>Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
           </button>
         )}
       </div>
 
-      {/* 3. Action & Price Bar */}
-      <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-200/70 relative z-10 gap-2 flex-wrap">
-        {/* Left: Total Amount */}
-        <div className="flex flex-col justify-center">
-          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none mb-0.5">
-            {isPaid ? "Paid Total" : "Estimated Total"}
-          </span>
-          <span className="text-base sm:text-lg font-black text-slate-900 font-display leading-tight">
-            ₹{booking.totalPrice || 0}
-          </span>
+      {/* 3. Single Dynamic Payment & Action Bar (Eliminates Dual-Payment Button Conflict) */}
+      <div className="flex items-center justify-between pt-3.5 mt-3.5 border-t border-slate-200/80 relative z-10 gap-3 flex-wrap">
+        {/* Left: Total & Context-Aware Payment Indicator */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none block mb-0.5">
+              {isPaid ? "Total Paid" : "Total Payable"}
+            </span>
+            <span className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+              ₹{booking.totalPrice || 0}
+            </span>
+          </div>
+
+          {/* Context-Aware Dynamic Payment Badge / Indicator (Single Source of Truth) */}
+          <div className="flex items-center gap-2">
+            {/* Scenario A (Paid): Verified Green Badge & HIDE all payment trigger buttons */}
+            {isPaid && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-black uppercase tracking-wider shadow-2xs">
+                <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                <span>Paid via {formatPaymentMethodName(booking.paymentMethod)}</span>
+              </span>
+            )}
+
+            {/* Scenario B (Pay After Service / Cash): Clear indicator + subtle optional outline button: Pay Online Instead */}
+            {isPayAfterService && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold shadow-2xs">
+                  <span>💵 Cash / UPI on Completion (₹{booking.totalPrice || 0})</span>
+                </span>
+                {onPayOnline && !isCompleted && !isCancelled && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPayOnline(booking);
+                    }}
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Pay Online Instead
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Scenario C (Unpaid / Online Pending): Exactly ONE prominent Royal Blue button */}
+            {isOnlineUnpaid && !isCompleted && !isCancelled && onPayOnline && (
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPayOnline(booking);
+                }}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black tracking-wide px-4 py-2 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
+              >
+                <Lock size={12} className="shrink-0" />
+                <span>Pay ₹{booking.totalPrice || 0} Now</span>
+              </motion.button>
+            )}
+          </div>
         </div>
 
-        {/* Right: Consolidated Action Buttons (Single View Details & OTP or Book Again) */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Book Again Button */}
-          {isCompleted && onBookAgain && (
+        {/* Right: Consolidated Action Buttons */}
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Book Again Button for Completed Jobs */}
+          {isCompleted && onBookAgain && service && (
             <motion.button
               whileTap={{ scale: 0.96 }}
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (service) onBookAgain(service);
+                onBookAgain(service);
               }}
-              className="bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+              className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
             >
               <RotateCcw size={12} className="shrink-0" />
               <span>Book Again</span>
             </motion.button>
           )}
 
-          {/* Primary View Details & OTP Action Button */}
+          {/* Primary View Details / OTP Toggle */}
           <motion.button
             whileTap={{ scale: 0.96 }}
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               toggleExpanded();
             }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
               expanded
-                ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
-                : isActive
-                ? "bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 text-white hover:from-orange-600 hover:to-rose-600 border border-orange-500/20 shadow-orange-500/10"
+                ? "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200"
                 : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50"
             }`}
           >
-            {isActive ? (
+            {showOtpBox ? (
               <>
-                <ShieldCheck size={13} className="shrink-0 text-orange-400" />
+                <ShieldCheck size={13} className="shrink-0 text-blue-600" />
                 <span>{expanded ? "Hide Details" : "View Details & OTP"}</span>
               </>
             ) : (
-              <>
-                <span>{expanded ? "Hide Details" : "View Details"}</span>
-              </>
+              <span>{expanded ? "Hide Details" : "View Details"}</span>
             )}
             <motion.span
               animate={{ rotate: expanded ? 180 : 0 }}
@@ -603,33 +719,33 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
         </div>
       </div>
 
-      {/* 4. Animated Expandable Drawer (Details on Tap) */}
+      {/* 4. Animated Expandable Drawer (Details & Real-Time Modules on Tap) */}
       <AnimatePresence>
         {expanded && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.32, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
             className="overflow-hidden relative z-10"
           >
-            <div className="pt-4 mt-3 border-t border-slate-200/70 space-y-4">
-              {/* A. Security OTP Box (for Active Bookings) */}
-              {otpCode && !isCompleted && (
-                <div className="p-4 bg-white/95 rounded-2xl border border-orange-200/90 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="pt-4 mt-3 border-t border-slate-200/80 space-y-4">
+              {/* A. Dynamic 4-Digit Security OTP Block (ONLY between 'assigned' and 'arrived', hidden once verified or in_progress/completed) */}
+              {showOtpBox && otp && (
+                <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-center sm:text-left">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-3 py-0.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                      <ShieldCheck size={12} className="text-orange-600" /> Security Verification OTP
+                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-white border border-blue-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                      <ShieldCheck size={12} className="text-blue-600" /> 4-Digit Security Verification PIN
                     </span>
-                    <p className="text-xs text-slate-600 font-bold mt-1">
-                      Share this 4-digit token with the technician <span className="text-orange-700">ONLY after they arrive</span>.
+                    <p className="text-xs text-slate-700 font-bold mt-1.5">
+                      Share this OTP with your technician <span className="text-blue-800 font-black">ONLY when they arrive</span> at your location.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {otpCode.toString().split("").map((digit, idx) => (
+                    {otp.toString().split("").map((digit, idx) => (
                       <div
                         key={idx}
-                        className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center text-lg font-black font-mono shadow-sm"
+                        className="w-11 h-12 bg-white text-blue-700 border-2 border-blue-600 rounded-xl flex items-center justify-center text-xl font-black font-mono shadow-sm"
                       >
                         {digit}
                       </div>
@@ -638,8 +754,16 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 </div>
               )}
 
+              {/* In-Progress OTP Verified Notification */}
+              {isInProgress && (
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>Security OTP Verified • Technician is actively performing your service.</span>
+                </div>
+              )}
+
               {/* B. Stepper Progress Pipeline */}
-              <div className="bg-white/95 p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
                 <div className="relative w-full max-w-xl mx-auto py-1">
                   {/* Progress Line Track */}
                   <div className="absolute top-[18px] left-5 right-5 h-[3px] bg-slate-200 rounded-full z-0" />
@@ -651,8 +775,8 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                         ? "100%"
                         : `${(currentStageIndex / (stages.length - 1)) * 100}%`,
                     }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
-                    className="absolute top-[18px] left-5 h-[3px] bg-gradient-to-r from-[#002e6e] to-[#22c55e] rounded-full z-0"
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                    className="absolute top-[18px] left-5 h-[3px] bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 rounded-full z-0"
                   />
 
                   <div className="flex items-center justify-between relative z-10">
@@ -666,10 +790,10 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                           <div
                             className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                               isPastStep
-                                ? "bg-[#22c55e] border-[#22c55e] text-white shadow-sm"
+                                ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
                                 : isCurrentStep
-                                ? "bg-[#002e6e] border-[#002e6e] text-white ring-4 ring-[#002e6e]/15 shadow-md scale-105"
-                                : "bg-white border-slate-200 text-slate-300"
+                                ? "bg-[#2563EB] border-[#2563EB] text-white ring-4 ring-blue-500/20 shadow-md scale-105"
+                                : "bg-white border-slate-300 text-slate-300"
                             }`}
                           >
                             <StageIcon size={15} />
@@ -679,7 +803,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                               isPastStep
                                 ? "text-emerald-700"
                                 : isCurrentStep
-                                ? "text-[#002e6e]"
+                                ? "text-blue-700"
                                 : "text-slate-400"
                             }`}
                           >
@@ -692,9 +816,9 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 </div>
               </div>
 
-              {/* C. Assigned Partner Card & Direct Actions (if partner assigned) */}
+              {/* C. Dynamic Partner Details Tile (Rendered if booking.partnerId exists) */}
               {hasPartner && (
-                <div className="p-4 bg-white/95 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="p-4 bg-white rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 bg-slate-100 shadow-2xs">
                       <img
@@ -712,21 +836,24 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-black text-slate-900 text-sm">
-                          {partnerUser?.displayName || (booking as any).partnerName || "Vikas Chopra"}
+                          {partnerUser?.displayName || (booking as any).partnerName || "Expert Technician"}
                         </span>
-                        <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-black uppercase tracking-wider">
+                          <CheckCircle2 size={10} className="text-emerald-600 shrink-0" /> Verified Pro
+                        </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 font-bold">
-                        Verified Expert Technician • ★ {partnerDetail?.rating || 4.9} ({partnerDetail?.reviewCount || 42} jobs)
+                      <p className="text-[11px] text-slate-500 font-bold mt-0.5">
+                        ★ {(partnerDetail?.rating || 4.9).toFixed(1)} Rating • {partnerDetail?.reviewCount || 38} completed jobs
                       </p>
                     </div>
                   </div>
 
-                  {/* Call & Chat Action Buttons */}
+                  {/* Direct Call & Chat Buttons */}
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                     {partnerUser && onCallPartner && (
                       <motion.button
                         whileTap={{ scale: 0.96 }}
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onCallPartner(partnerUser, booking);
@@ -741,14 +868,15 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                     {onChatPartner && (
                       <motion.button
                         whileTap={{ scale: 0.96 }}
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onChatPartner(booking);
                         }}
-                        className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-[#002e6e] border border-sky-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                        className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
                         title="Open direct live chat"
                       >
-                        <MessageSquare size={13} className="text-[#002e6e]" />
+                        <MessageSquare size={13} className="text-blue-600" />
                         <span>Chat</span>
                       </motion.button>
                     )}
@@ -757,9 +885,9 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
               )}
 
               {/* D. Full Address & Notes */}
-              <div className="p-3.5 bg-white/95 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1.5 text-xs">
+              <div className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1.5 text-xs">
                 <div className="flex items-start gap-2 text-slate-700">
-                  <MapPin size={14} className="text-[#002e6e] shrink-0 mt-0.5" />
+                  <MapPin size={14} className="text-blue-600 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-black text-slate-900 block uppercase text-[10px] tracking-wider">
                       Service Address
@@ -768,20 +896,20 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                   </div>
                 </div>
                 {booking.notes && (
-                  <div className="pt-2 border-t border-slate-100 text-slate-600 text-[11px]">
-                    <span className="font-bold text-slate-800">Special Notes:</span> {booking.notes}
+                  <div className="pt-2 border-t border-slate-200/60 text-slate-600 text-[11px]">
+                    <span className="font-bold text-slate-800">Special Instructions:</span> {booking.notes}
                   </div>
                 )}
               </div>
 
               {/* E. Service Protocol Checklist */}
-              <div className="p-3.5 bg-white/95 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
-                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5">
-                    <FileText size={13} /> Service Tasks & Protocol
+              <div className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <FileText size={13} className="text-blue-600" /> Service Protocol Checklist
                   </span>
                   <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-mono">
-                    Progress: {booking.progressPercentage || 0}%
+                    Progress: {booking.progressPercentage || (isCompleted ? 100 : 0)}%
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -796,11 +924,11 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                         "Final quality check & work area cleanup",
                       ]
                   ).map((task, idx) => {
-                    const isDone = booking.completedTasks?.includes(task);
+                    const isDone = isCompleted || booking.completedTasks?.includes(task);
                     return (
                       <div
                         key={idx}
-                        className="flex items-center gap-2 p-2 rounded-xl bg-slate-50/80 border border-slate-200/60 text-xs"
+                        className="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200/70 text-xs"
                       >
                         <div
                           className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
@@ -824,10 +952,11 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 </div>
               </div>
 
-              {/* F. Live Tracking Map Toggle (if en-route or in-progress) */}
+              {/* F. Live Tracking Map Toggle (if en-route, arrived, or in-progress) */}
               {hasPartner && (isOnTheWay || isArrived || isInProgress) && (
                 <div className="space-y-2">
                   <button
+                    type="button"
                     onClick={() => setShowLiveMap((prev) => !prev)}
                     className="w-full text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                   >
@@ -856,17 +985,17 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
               )}
 
               {/* G. Completed Feedback & Rating Section */}
-              {isCompleted && booking.paymentStatus === "paid" && (
-                <div className="p-4 bg-sky-50/70 rounded-2xl border border-sky-200/80 space-y-3">
+              {isCompleted && (
+                <div className="p-4 bg-blue-50/40 rounded-2xl border border-blue-200/70 space-y-3">
                   {isReviewSubmitted ? (
                     <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
                       <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                      <span className="text-xs font-bold">Review successfully captured. Thank you!</span>
+                      <span className="text-xs font-bold">Review captured. Thank you for rating your expert!</span>
                     </div>
                   ) : (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
                           <Star size={13} className="text-amber-500 fill-amber-500" /> Share Your Rating & Experience:
                         </span>
                         {onSkipReview && (
@@ -914,9 +1043,9 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                           <textarea
                             value={inlineComment}
                             onChange={(e) => onCommentChange(booking.id, e.target.value)}
-                            placeholder="Write a quick comment about the expert's work..."
+                            placeholder="Write a quick note about your experience..."
                             rows={2}
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002e6e] font-medium"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
                           />
                           <div className="flex justify-end">
                             <button
@@ -926,7 +1055,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                                 e.stopPropagation();
                                 if (onSubmitReview) onSubmitReview(booking);
                               }}
-                              className="text-xs font-black uppercase tracking-wider text-white bg-[#002e6e] hover:bg-[#001f4d] disabled:bg-slate-300 disabled:text-slate-500 px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
+                              className="text-xs font-black uppercase tracking-wider text-white bg-[#2563EB] hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
                             >
                               {isReviewSubmitting ? "Submitting..." : "Submit Review"}
                             </button>
@@ -940,16 +1069,16 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
 
               {/* H. Invoice & Support Buttons (for completed bookings) */}
               {isCompleted && (
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70">
                   <button
                     type="button"
                     disabled={isGeneratingInvoice}
                     onClick={handleDownloadInvoice}
-                    className="text-[11px] font-black uppercase tracking-wider text-[#002e6e] flex items-center gap-1.5 hover:bg-sky-100 bg-sky-50 px-3.5 py-2 rounded-xl border border-sky-200 transition-all cursor-pointer disabled:opacity-60"
+                    className="text-[11px] font-black uppercase tracking-wider text-blue-700 flex items-center gap-1.5 hover:bg-blue-100 bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-200 transition-all cursor-pointer disabled:opacity-60"
                   >
                     {isGeneratingInvoice ? (
                       <>
-                        <div className="w-3.5 h-3.5 border-2 border-[#002e6e] border-t-transparent rounded-full animate-spin shrink-0" />
+                        <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
                         <span>Generating Invoice...</span>
                       </>
                     ) : (
@@ -978,12 +1107,12 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                       {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") ? (
                         <>
                           <ShieldAlert size={13} className="text-amber-600 shrink-0" />
-                          <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
+                          <span>Warranty #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
                         </>
                       ) : activeTicket && activeTicket.status === "resolved" ? (
                         <>
                           <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
-                          <span>🛡️ Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
+                          <span>Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
                         </>
                       ) : (
                         <>
@@ -996,13 +1125,14 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 </div>
               )}
 
-              {/* I. Collapse Button */}
+              {/* I. Collapse Drawer Button */}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleExpanded();
                 }}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
                 <ChevronUp size={14} />
                 <span>Hide Details</span>

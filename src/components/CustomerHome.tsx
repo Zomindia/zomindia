@@ -3759,9 +3759,10 @@ export default function CustomerHome({
                                 onAuthRequired();
                               }
                             }}
-                            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-xs font-semibold uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-orange-500/20 shrink-0 font-sans cursor-pointer"
+                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] transition-all duration-200 shrink-0 font-sans cursor-pointer flex items-center justify-center gap-1.5"
                           >
-                            Instant Booking ⚡
+                            <span>Instant Booking</span>
+                            <span>⚡</span>
                           </button>
                         </div>
                       </div>
