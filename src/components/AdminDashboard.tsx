@@ -2362,10 +2362,27 @@ function BookingManager({
   const handleSendBill = async (bookingId: string) => {
     setSendingBillId(bookingId);
     try {
+      const targetBooking = bookings.find((b) => b.id === bookingId);
       const response = await fetch("/api/send-final-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, requesterUid: profile?.uid }),
+        body: JSON.stringify({
+          bookingId,
+          requesterUid: profile?.uid,
+          bookingData: targetBooking ? {
+            customerId: targetBooking.customerId || targetBooking.userId,
+            partnerId: targetBooking.partnerId,
+            scheduledAt: targetBooking.scheduledAt,
+            address: targetBooking.address,
+            totalPrice: targetBooking.totalPrice,
+            additionalCharges: targetBooking.additionalCharges || []
+          } : undefined,
+          userData: targetBooking ? {
+            displayName: targetBooking.customerName || targetBooking.customerBookedName || "Customer",
+            email: (targetBooking as any)?.customerBookedEmail || targetBooking.customerData?.email || "",
+            phoneNumber: targetBooking.customerBookedPhone || targetBooking.customerMobile || targetBooking.customerPhone || ""
+          } : undefined
+        }),
       });
       const data = await response.json();
       if (response.ok && data.success) {

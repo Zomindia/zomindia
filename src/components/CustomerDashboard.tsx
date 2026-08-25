@@ -2551,28 +2551,58 @@ export default function CustomerDashboard({
                           
                           <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 flex-wrap">
                             <div>
-                              {booking.paymentStatus === 'paid' ? (
-                                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
-                                  <CheckCircle2 size={11} className="text-emerald-600" />
-                                  {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1 shadow-2xs">
-                                  <AlertCircle size={11} className="text-amber-600" /> PAY AFTER SERVICE (UNPAID)
-                                </span>
-                              )}
+                              {(() => {
+                                const isAmc = Boolean(
+                                  booking.isAmcBooking ||
+                                  booking.isAmcCovered ||
+                                  booking.tier === "amc"
+                                );
+                                const hasValidOnlineTxn = Boolean(
+                                  booking.transactionId &&
+                                    booking.paymentStatus === "paid" &&
+                                    booking.paymentMethod !== "cash" &&
+                                    booking.paymentMethod !== "pay_after_service"
+                                );
+                                const isPaidBooking =
+                                  isAmc ||
+                                  (booking.paymentMethod === "wallet" &&
+                                    (booking.walletDeductAmount ?? 0) > 0) ||
+                                  hasValidOnlineTxn;
+
+                                if (isPaidBooking) {
+                                  return (
+                                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
+                                      <CheckCircle2 size={11} className="text-emerald-600" />
+                                      {booking.paymentMethod === "wallet"
+                                        ? "✓ PAID VIA WALLET"
+                                        : isAmc
+                                        ? "✓ PAID VIA AMC"
+                                        : "✓ PAID ONLINE"}
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 inline-flex items-center gap-1 shadow-2xs">
+                                    <span>💵 Cash / UPI on Completion</span>
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-base font-black text-[#002e6e]">₹{booking.totalPrice}</span>
-                              {booking.paymentStatus !== 'paid' && (
+                              {!(
+                                Boolean(booking.isAmcBooking || booking.isAmcCovered || booking.tier === "amc") ||
+                                (booking.paymentMethod === "wallet" && (booking.walletDeductAmount ?? 0) > 0) ||
+                                (booking.paymentStatus === "paid" && Boolean(booking.transactionId) && booking.transactionId.trim() !== "")
+                              ) && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setBookingToPay(booking);
                                   }}
-                                  className="text-[11px] font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                                  className="text-[11px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
                                 >
-                                  <CreditCard size={12} /> Pay Now Online (₹{booking.totalPrice})
+                                  Pay Online Instead
                                 </button>
                               )}
                             </div>
@@ -2765,39 +2795,70 @@ export default function CustomerDashboard({
                                 </div>
                               ) : null}
 
-                               <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-2 flex-wrap gap-2">
+                              <div className="flex justify-between items-center text-slate-900 border-t border-slate-200/80 pt-3 mt-2 flex-wrap gap-2">
                                 <div>
                                   <span className="font-black uppercase tracking-wider text-xs text-[#002e6e] block">
                                     Total Net Payable
                                   </span>
-                                  {booking.paymentStatus === 'paid' ? (
-                                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
-                                      <CheckCircle2 size={11} className="text-emerald-600" />
-                                      {booking.paymentMethod === 'phonepe' || booking.paymentMethod === 'upi' || booking.paymentMethod === 'phonepe_qr' ? '✓ PAID VIA PHONEPE/UPI' : '✓ PAID ONLINE'}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
-                                      <AlertCircle size={11} className="text-amber-600" /> PAY AFTER SERVICE (UNPAID)
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const isAmc = Boolean(
+                                      booking.isAmcBooking ||
+                                      booking.isAmcCovered ||
+                                      booking.tier === "amc"
+                                    );
+                                    const hasValidOnlineTxn = Boolean(
+                                      booking.transactionId &&
+                                        booking.paymentStatus === "paid" &&
+                                        booking.paymentMethod !== "cash" &&
+                                        booking.paymentMethod !== "pay_after_service"
+                                    );
+                                    const isPaidBooking =
+                                      isAmc ||
+                                      (booking.paymentMethod === "wallet" &&
+                                        (booking.walletDeductAmount ?? 0) > 0) ||
+                                      hasValidOnlineTxn;
+
+                                    if (isPaidBooking) {
+                                      return (
+                                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                          <CheckCircle2 size={11} className="text-emerald-600" />
+                                          {booking.paymentMethod === "wallet"
+                                            ? "✓ PAID VIA WALLET"
+                                            : isAmc
+                                            ? "✓ PAID VIA AMC"
+                                            : "✓ PAID ONLINE"}
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 inline-flex items-center gap-1 mt-1 shadow-2xs">
+                                        <span>💵 Cash / UPI on Completion</span>
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="text-right flex flex-col items-end">
                                   <span className="text-xl font-black text-[#002e6e]">
                                     ₹{booking.totalPrice}
                                   </span>
-                                  {booking.paymentStatus !== 'paid' && (
+                                  {!(
+                                    Boolean(booking.isAmcBooking || booking.isAmcCovered || booking.tier === "amc") ||
+                                    (booking.paymentMethod === "wallet" && (booking.walletDeductAmount ?? 0) > 0) ||
+                                    (booking.paymentStatus === "paid" && Boolean(booking.transactionId) && booking.transactionId.trim() !== "")
+                                  ) && (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setBookingToPay(booking);
                                       }}
-                                      className="mt-1.5 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-[#002e6e] to-[#004bb5] hover:from-[#001f4d] hover:to-[#002e6e] px-3.5 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ml-auto"
+                                      className="mt-1.5 text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ml-auto"
                                     >
-                                      <CreditCard size={13} /> Pay Now Online (₹{booking.totalPrice})
+                                      Pay Online Instead
                                     </button>
                                   )}
                                 </div>
                               </div>
+                            </div>
 
                               {(booking.status === "payment_pending" || booking.status === "completed") && booking.paymentStatus !== "paid" && (
                                 <div className="mt-4 p-4 bg-sky-50/50 rounded-2xl border border-sky-200/80 flex flex-col md:flex-row items-center justify-between gap-3">
@@ -2841,7 +2902,6 @@ export default function CustomerDashboard({
                                 </div>
                               )}
                             </div>
-                          </div>
 
                           {/* Technician Card or Assignment Status */}
                           {booking.partnerId && !['completed', 'finalized', 'closed'].includes(booking.status) ? (

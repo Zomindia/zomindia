@@ -205,6 +205,7 @@ service cloud.firestore {
              (!('onlinePaymentProvider' in data) || (data.onlinePaymentProvider is string || data.onlinePaymentProvider == null)) &&
              (!('onlinePaymentMethod' in data) || (data.onlinePaymentMethod is string || data.onlinePaymentMethod == null)) &&
              (!('paidAmount' in data) || (data.paidAmount is number || data.paidAmount == null)) &&
+             (!('paidAt' in data) || (data.paidAt is timestamp || data.paidAt is string || data.paidAt == null)) &&
              (!('additionalCharges' in data) || (data.additionalCharges is list)) &&
              (!('activeCall' in data) || (data.activeCall is map || data.activeCall == null)) &&
              (!('secondaryContact' in data) || (data.secondaryContact is string || data.secondaryContact == null)) &&
@@ -511,7 +512,7 @@ service cloud.firestore {
           existing().get('userId', '') == request.auth.uid) && (
           incoming().diff(existing()).affectedKeys().hasOnly([
             'status', 'paymentStatus', 'paymentMethod', 'transactionId', 'onlinePaymentProvider', 
-            'onlinePaymentMethod', 'paidAmount', 'razorpayPaymentId', 'razorpayOrderId', 
+            'onlinePaymentMethod', 'paidAmount', 'paidAt', 'razorpayPaymentId', 'razorpayOrderId', 
             'razorpaySignature', 'paymentIntentId', 'scheduledAt', 'partnerId', 'activeCall', 
             'secondaryContact', 'updatedAt', 'cancellationReason', 'walletDeductAmount', 
             'originalBillValue', 'discountApplied', 'promoCode', 'address', 'customerData', 

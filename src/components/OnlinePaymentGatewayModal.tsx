@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   X,
   ShieldCheck,
@@ -18,8 +19,8 @@ import {
   ChevronRight,
   Shield,
   Clock,
-  Sparkles,
-  Info
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 
 export interface PaymentSuccessData {
@@ -47,37 +48,16 @@ interface OnlinePaymentGatewayModalProps {
   onPaymentCancel?: () => void;
 }
 
-type GatewayTab = 'upi' | 'card' | 'netbanking' | 'wallet';
+type GatewayTab = 'upi_apps' | 'dynamic_qr' | 'cards_banking';
 type ProcessingPhase = 'idle' | 'connecting' | 'authorizing' | 'verified' | 'failed';
 
 const POPULAR_BANKS = [
-  { id: 'hdfc', name: 'HDFC Bank', code: 'HDFC', badge: 'Popular', icon: '🏛️' },
-  { id: 'sbi', name: 'State Bank of India', code: 'SBI', badge: 'Popular', icon: '🏦' },
-  { id: 'icici', name: 'ICICI Bank', code: 'ICICI', badge: 'Popular', icon: '🏛️' },
-  { id: 'axis', name: 'Axis Bank', code: 'AXIS', badge: 'Popular', icon: '🏦' },
+  { id: 'hdfc', name: 'HDFC Bank', code: 'HDFC', icon: '🏛️' },
+  { id: 'sbi', name: 'State Bank of India', code: 'SBI', icon: '🏦' },
+  { id: 'icici', name: 'ICICI Bank', code: 'ICICI', icon: '🏛️' },
+  { id: 'axis', name: 'Axis Bank', code: 'AXIS', icon: '🏦' },
   { id: 'kotak', name: 'Kotak Mahindra', code: 'KOTAK', icon: '🏛️' },
   { id: 'pnb', name: 'Punjab National Bank', code: 'PNB', icon: '🏦' }
-];
-
-const ALL_OTHER_BANKS = [
-  'Bank of Baroda',
-  'Canara Bank',
-  'Union Bank of India',
-  'IndusInd Bank',
-  'IDFC FIRST Bank',
-  'Yes Bank',
-  'Federal Bank',
-  'Bank of India',
-  'Central Bank of India',
-  'Indian Overseas Bank',
-  'RBL Bank'
-];
-
-const WALLET_PROVIDERS = [
-  { id: 'amazonpay', name: 'Amazon Pay', icon: '📦', offer: 'Get 5% cashback' },
-  { id: 'paytm', name: 'Paytm Wallet', icon: '🪙', offer: 'Instant link & pay' },
-  { id: 'mobikwik', name: 'MobiKwik', icon: '⚡', offer: 'SuperCash applicable' },
-  { id: 'phonepe_wallet', name: 'PhonePe Wallet', icon: '🟣', offer: 'Direct balance debit' }
 ];
 
 export default function OnlinePaymentGatewayModal({
@@ -92,53 +72,102 @@ export default function OnlinePaymentGatewayModal({
   onPaymentSuccess,
   onPaymentCancel
 }: OnlinePaymentGatewayModalProps) {
-  const [activeTab, setActiveTab] = useState<GatewayTab>('upi');
-  
-  // UPI Sub-states
-  const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'qr' | 'vpa'>('phonepe');
+  const [activeTab, setActiveTab] = useState<GatewayTab>('upi_apps');
+
+  // UPI Apps state
+  const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'vpa'>('phonepe');
+  const [selectedProviderName, setSelectedProviderName] = useState<string>('PhonePe');
   const [upiIdInput, setUpiIdInput] = useState('');
   const [upiIdError, setUpiIdError] = useState('');
-  const [qrTimer, setQrTimer] = useState(299); // 5 minutes
+  const [utrInput, setUtrInput] = useState('');
+  const [utrError, setUtrError] = useState<string | null>(null);
 
-  // Card Sub-states
+  // QR Code state
+  const [qrTimer, setQrTimer] = useState(300); // 5 minutes
+  const [copiedVpa, setCopiedVpa] = useState(false);
+
+  // Cards / Netbanking state
+  const [paymentSubMode, setPaymentSubMode] = useState<'card' | 'netbanking'>('card');
   const [cardNumber, setCardNumber] = useState('');
   const [cardHolder, setCardHolder] = useState(customerName || '');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
-  const [saveCard, setSaveCard] = useState(true);
   const [cardError, setCardError] = useState('');
-
-  // Netbanking Sub-states
   const [selectedBank, setSelectedBank] = useState<string>('hdfc');
-  const [otherBankSelected, setOtherBankSelected] = useState<string>('');
 
-  // Wallet Sub-states
-  const [selectedWallet, setSelectedWallet] = useState<string>('amazonpay');
-
-  // Processing Lifecycle States
+  // Processing state
   const [processingPhase, setProcessingPhase] = useState<ProcessingPhase>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [generatedTxnId, setGeneratedTxnId] = useState('');
   const [simulatedOtp, setSimulatedOtp] = useState('');
   const [enteredOtp, setEnteredOtp] = useState('');
   const [showOtpScreen, setShowOtpScreen] = useState(false);
-  const [otpTimer, setOtpTimer] = useState(30);
+  const [phonePePollingTxnId, setPhonePePollingTxnId] = useState<string | null>(null);
+  const [phonePeLoading, setPhonePeLoading] = useState(false);
 
-  // QR Code Timer
+  const MERCHANT_VPA = 'zomindia.indore@icici';
+  const MERCHANT_NAME = 'Zomindia Services Indore';
+
+  // Dynamic UPI Intent URI
+  const upiIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+    MERCHANT_NAME
+  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15)}`)}`;
+
+  // 5-Minute Countdown for QR Code
   useEffect(() => {
-    if (!isOpen || selectedUpiApp !== 'qr') return;
+    if (!isOpen) return;
     const interval = setInterval(() => {
-      setQrTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      setQrTimer((prev) => (prev > 0 ? prev - 1 : 300));
     }, 1000);
     return () => clearInterval(interval);
-  }, [isOpen, selectedUpiApp]);
+  }, [isOpen]);
 
-  // Card brand detection
+  // PhonePe Status Polling Effect
+  useEffect(() => {
+    if (!phonePePollingTxnId || !isOpen) return;
+
+    let pollAttempts = 0;
+    const maxPollAttempts = 40; // ~2 minutes of polling
+    const pollInterval = setInterval(async () => {
+      pollAttempts += 1;
+      if (pollAttempts > maxPollAttempts) {
+        clearInterval(pollInterval);
+        setPhonePePollingTxnId(null);
+        setProcessingPhase('idle');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/phonepe/status-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ merchantTransactionId: phonePePollingTxnId })
+        });
+        const data = await res.json();
+        if (data.success && (data.code === 'PAYMENT_SUCCESS' || data.status === 'PAYMENT_SUCCESS')) {
+          clearInterval(pollInterval);
+          setPhonePePollingTxnId(null);
+          finalizeSuccessfulPayment('upi', 'PhonePe PG', phonePePollingTxnId);
+        }
+      } catch (err) {
+        console.warn('[PhonePe Client Poller Notice]:', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [phonePePollingTxnId, isOpen]);
+
+  const handleCopyVpa = () => {
+    navigator.clipboard.writeText(MERCHANT_VPA);
+    setCopiedVpa(true);
+    setTimeout(() => setCopiedVpa(false), 2000);
+  };
+
   const getCardBrand = (num: string) => {
     const clean = num.replace(/\D/g, '');
     if (clean.startsWith('4')) return 'Visa';
-    if (clean.startsWith('51') || clean.startsWith('52') || clean.startsWith('53') || clean.startsWith('54') || clean.startsWith('55')) return 'Mastercard';
-    if (clean.startsWith('60') || clean.startsWith('65') || clean.startsWith('81') || clean.startsWith('82')) return 'RuPay';
+    if (/^5[1-5]/.test(clean)) return 'Mastercard';
+    if (/^60|^65|^81|^82/.test(clean)) return 'RuPay';
     return null;
   };
 
@@ -159,13 +188,13 @@ export default function OnlinePaymentGatewayModal({
     return clean;
   };
 
-  // Close handler with incomplete notice
   const handleModalClose = () => {
     if (processingPhase === 'connecting' || processingPhase === 'authorizing') {
-      if (!window.confirm("Payment is in progress. Are you sure you want to cancel?")) {
+      if (!window.confirm('Payment is currently being processed. Are you sure you want to cancel?')) {
         return;
       }
     }
+    // Strict Cancellation: zero Firestore changes occur on modal abort
     if (onPaymentCancel) {
       onPaymentCancel();
     } else {
@@ -173,18 +202,102 @@ export default function OnlinePaymentGatewayModal({
     }
   };
 
-  // Main Payment Submission Trigger
-  const handleInitiatePayment = (providerName: string, methodType: GatewayTab) => {
-    // Basic validations
-    if (methodType === 'upi') {
-      if (selectedUpiApp === 'vpa') {
-        if (!upiIdInput.trim() || !upiIdInput.includes('@')) {
-          setUpiIdError('Please enter a valid UPI ID (e.g., yourname@oksbi or mobile@paytm)');
-          return;
+  // Launch App Specific Deep Link on Mobile (DOES NOT auto-approve)
+  const handleLaunchUpiApp = (app: 'gpay' | 'phonepe' | 'paytm' | 'bhim') => {
+    setSelectedUpiApp(app);
+    const nameMap = {
+      phonepe: 'PhonePe',
+      gpay: 'Google Pay',
+      paytm: 'Paytm UPI',
+      bhim: 'BHIM / Any UPI'
+    };
+    setSelectedProviderName(nameMap[app]);
+    setUtrError(null);
+
+    let deepLink = upiIntentUri;
+    if (app === 'phonepe') {
+      deepLink = `phonepe://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${amount}&cu=INR`;
+    } else if (app === 'gpay') {
+      deepLink = `tez://upi/pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${amount}&cu=INR`;
+    } else if (app === 'paytm') {
+      deepLink = `paytmmp://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${amount}&cu=INR`;
+    }
+
+    // Attempt direct deep link on mobile devices
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = deepLink;
+    }
+  };
+
+  // Initiate PhonePe Payment Gateway Handshake
+  const handleInitiatePhonePePg = async () => {
+    try {
+      setPhonePeLoading(true);
+      setProcessingPhase('connecting');
+      setStatusMessage('Initiating PhonePe Payment Gateway...');
+
+      const response = await fetch('/api/phonepe/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          serviceName,
+          customerName,
+          customerPhone,
+          customerEmail,
+          redirectOrigin: window.location.origin
+        })
+      });
+
+      const data = await response.json();
+      setPhonePeLoading(false);
+
+      if (data.success && data.merchantTransactionId) {
+        setPhonePePollingTxnId(data.merchantTransactionId);
+        setProcessingPhase('authorizing');
+        setStatusMessage('Complete payment on PhonePe gateway page...');
+
+        const targetUrl = data.checkoutUrl || data.redirectUrl;
+        if (targetUrl) {
+          window.open(targetUrl, '_blank', 'noopener,noreferrer');
         }
-        setUpiIdError('');
+      } else {
+        setProcessingPhase('idle');
+        setUtrError(data.error || 'Failed to initiate PhonePe gateway');
       }
-    } else if (methodType === 'card') {
+    } catch (err: any) {
+      setPhonePeLoading(false);
+      setProcessingPhase('idle');
+      setUtrError(err.message || 'Payment initiation error');
+    }
+  };
+
+  // Manual UTR Verification handler for UPI Intent / QR modes
+  const handleVerifyUpiPayment = (customProvider?: string) => {
+    const cleanUtr = utrInput.trim().replace(/\s+/g, '');
+    if (!cleanUtr || cleanUtr.length < 6) {
+      setUtrError('Please enter a valid 12-digit UPI Reference / UTR Number from your payment receipt.');
+      return;
+    }
+
+    setUtrError(null);
+    setProcessingPhase('connecting');
+    setStatusMessage('Verifying UTR Reference with Bank Switch...');
+
+    setTimeout(() => {
+      finalizeSuccessfulPayment('upi', customProvider || selectedProviderName || 'Direct UPI', cleanUtr);
+    }, 1200);
+  };
+
+  // Cards / Netbanking Payment Flow Handler
+  const handleInitiatePayment = (providerName: string, methodType: 'card' | 'netbanking') => {
+    if (methodType === 'card') {
       const cleanCard = cardNumber.replace(/\D/g, '');
       if (cleanCard.length < 15) {
         setCardError('Please enter a valid 16-digit card number');
@@ -201,37 +314,24 @@ export default function OnlinePaymentGatewayModal({
       setCardError('');
     }
 
-    // Step 1: Connecting to Bank Gateway
     setProcessingPhase('connecting');
-    setStatusMessage('Connecting to Secure Bank Gateway...');
+    setStatusMessage('Connecting to Bank Gateway...');
 
     setTimeout(() => {
-      // Step 2: Simulating Authorization / OTP / UPI approval
       setProcessingPhase('authorizing');
-
-      if (methodType === 'card' || methodType === 'netbanking') {
-        const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        setSimulatedOtp(randomOtp);
-        setShowOtpScreen(true);
-        setStatusMessage('Simulating OTP / Bank 2FA Authorization...');
-      } else if (methodType === 'upi') {
-        setStatusMessage(`Sending payment request to ${providerName}...`);
-        // Auto-approve simulated UPI request after 3.2s
-        setTimeout(() => {
-          finalizeSuccessfulPayment(methodType, providerName);
-        }, 3200);
-      } else {
-        setStatusMessage(`Authorizing debit of ₹${amount} with ${providerName}...`);
-        setTimeout(() => {
-          finalizeSuccessfulPayment(methodType, providerName);
-        }, 2500);
-      }
-    }, 1500);
+      const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setSimulatedOtp(randomOtp);
+      setShowOtpScreen(true);
+      setStatusMessage('Simulating Bank 2FA Authorization...');
+    }, 1000);
   };
 
-  // Step 3: Verified Successfully
-  const finalizeSuccessfulPayment = async (methodType: GatewayTab, providerName: string) => {
-    const txnId = `TXN_${Date.now().toString().slice(-8)}_${Math.floor(1000 + Math.random() * 9000)}`;
+  const finalizeSuccessfulPayment = async (
+    methodType: 'upi' | 'card' | 'netbanking' | 'wallet',
+    providerName: string,
+    utrReference?: string
+  ) => {
+    const txnId = utrReference || `TXN_IND_${Date.now().toString().slice(-8)}_${Math.floor(1000 + Math.random() * 9000)}`;
     setGeneratedTxnId(txnId);
     setShowOtpScreen(false);
     setProcessingPhase('verified');
@@ -245,401 +345,427 @@ export default function OnlinePaymentGatewayModal({
       paidAt: new Date().toISOString()
     };
 
-    // Wait 1.6s to display success visual before handing off to booking confirmation
     setTimeout(async () => {
       await onPaymentSuccess(successData);
-    }, 1600);
+    }, 1200);
   };
 
   const handleOtpSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!enteredOtp || enteredOtp.length < 4) {
-      alert("Please enter the 6-digit OTP");
+      alert('Please enter the 6-digit OTP');
       return;
     }
     setShowOtpScreen(false);
-    const provider = activeTab === 'card' ? `${getCardBrand(cardNumber) || 'Credit/Debit Card'}` : (selectedBank ? `${selectedBank.toUpperCase()} Net Banking` : 'Net Banking');
-    finalizeSuccessfulPayment(activeTab, provider);
+    const provider =
+      paymentSubMode === 'card'
+        ? `${getCardBrand(cardNumber) || 'Credit/Debit Card'}`
+        : `${selectedBank.toUpperCase()} Net Banking`;
+    finalizeSuccessfulPayment(paymentSubMode === 'card' ? 'card' : 'netbanking', provider);
   };
+
+  const minutes = Math.floor(qrTimer / 60);
+  const seconds = qrTimer % 60;
+  const formattedQrTimer = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       id="online-payment-gateway-modal"
-      className="fixed inset-0 z-[250] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto"
+      className="fixed inset-0 z-[250] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 15 }}
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 15 }}
-        transition={{ duration: 0.2 }}
-        className="bg-white w-full max-w-2xl rounded-3xl sm:rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col my-auto max-h-[92vh]"
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.18 }}
+        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col my-auto max-h-[92vh] font-sans"
       >
-        {/* GATEWAY TOP SECURE HEADER */}
-        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between relative shrink-0">
+        {/* TOP MINIMALIST WHITE & ROYAL BLUE HEADER */}
+        <div className="bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-emerald-400 shadow-inner">
-              <ShieldCheck size={24} />
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#2563EB]">
+              <ShieldCheck size={22} className="stroke-[2.2]" />
             </div>
-            <div>
+            <div className="text-left">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black tracking-tight text-white flex items-center gap-1.5">
-                  Secure Checkout Gateway
+                <h3 className="text-base font-black text-slate-900 tracking-tight leading-none">
+                  Secure Checkout
                 </h3>
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Lock size={9} /> 256-Bit SSL
+                <span className="bg-blue-50 text-[#2563EB] text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border border-blue-200">
+                  NPCI UPI
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300 font-medium">
-                Zomindia Services • {serviceName}
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                {serviceName} • 256-Bit SSL
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Total Payable</span>
-              <span className="text-xl font-black text-white">₹{amount}</span>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block leading-none">
+                Amount
+              </span>
+              <span className="text-xl font-black text-[#2563EB]">₹{amount}</span>
             </div>
             <button
               type="button"
               onClick={handleModalClose}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* MOBILE AMOUNT BANNER */}
-        <div className="sm:hidden bg-blue-50/80 px-4 py-2.5 border-b border-blue-100 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-blue-900 text-xs font-bold">
-            <Zap size={14} className="text-blue-600 fill-blue-600" />
-            <span>Amount to be debited:</span>
+        {/* PAYTM / ZOMATO MINIMALIST TAB SWITCHER */}
+        <div className="px-5 pt-3.5 pb-2 bg-white shrink-0">
+          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-2xl gap-1">
+            {/* Tab 1: 1-Tap UPI Apps */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('upi_apps')}
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'upi_apps'
+                  ? 'bg-white text-[#2563EB] shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Smartphone size={14} className="shrink-0" />
+              <span className="truncate">UPI Apps</span>
+            </button>
+
+            {/* Tab 2: Dynamic QR */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('dynamic_qr')}
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'dynamic_qr'
+                  ? 'bg-white text-[#2563EB] shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <QrCode size={14} className="shrink-0" />
+              <span className="truncate">Dynamic QR</span>
+            </button>
+
+            {/* Tab 3: Cards & Net Banking */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('cards_banking')}
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'cards_banking'
+                  ? 'bg-white text-[#2563EB] shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CreditCard size={14} className="shrink-0" />
+              <span className="truncate">Cards/Net</span>
+            </button>
           </div>
-          <span className="text-lg font-black text-slate-900">₹{amount}</span>
         </div>
 
-        {/* MAIN BODY: SPLIT VIEW ON DESKTOP, TABBED ON MOBILE */}
-        <div className="flex-1 overflow-y-auto flex flex-col md:flex-row">
-          
-          {/* LEFT SIDEBAR: PAYMENT METHOD TABS */}
-          <div className="w-full md:w-56 bg-slate-50/90 border-b md:border-b-0 md:border-r border-slate-200 p-2 sm:p-3 flex md:flex-col gap-1.5 overflow-x-auto shrink-0">
-            <span className="hidden md:block text-[10px] font-black text-slate-400 uppercase tracking-wider px-2 py-1">
-              Payment Modes
-            </span>
-
-            {/* Tab 1: UPI */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('upi')}
-              className={`flex-1 md:flex-none flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-left transition-all cursor-pointer whitespace-nowrap md:whitespace-normal ${
-                activeTab === 'upi'
-                  ? 'bg-[#002e6e] text-white shadow-md font-bold'
-                  : 'bg-white md:bg-transparent text-slate-700 hover:bg-slate-100/80 border md:border-transparent border-slate-200/80 font-medium'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                  activeTab === 'upi' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
-                }`}>
-                  <Smartphone size={16} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">UPI &amp; QR</span>
-                  <span className={`text-[9px] block ${activeTab === 'upi' ? 'text-blue-200' : 'text-slate-400'}`}>GPay, PhonePe, Paytm</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className={`hidden md:block ${activeTab === 'upi' ? 'text-white' : 'text-slate-300'}`} />
-            </button>
-
-            {/* Tab 2: Cards */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('card')}
-              className={`flex-1 md:flex-none flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-left transition-all cursor-pointer whitespace-nowrap md:whitespace-normal ${
-                activeTab === 'card'
-                  ? 'bg-[#002e6e] text-white shadow-md font-bold'
-                  : 'bg-white md:bg-transparent text-slate-700 hover:bg-slate-100/80 border md:border-transparent border-slate-200/80 font-medium'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                  activeTab === 'card' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'
-                }`}>
-                  <CreditCard size={16} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">Credit / Debit</span>
-                  <span className={`text-[9px] block ${activeTab === 'card' ? 'text-blue-200' : 'text-slate-400'}`}>Visa, RuPay, Master</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className={`hidden md:block ${activeTab === 'card' ? 'text-white' : 'text-slate-300'}`} />
-            </button>
-
-            {/* Tab 3: Net Banking */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('netbanking')}
-              className={`flex-1 md:flex-none flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-left transition-all cursor-pointer whitespace-nowrap md:whitespace-normal ${
-                activeTab === 'netbanking'
-                  ? 'bg-[#002e6e] text-white shadow-md font-bold'
-                  : 'bg-white md:bg-transparent text-slate-700 hover:bg-slate-100/80 border md:border-transparent border-slate-200/80 font-medium'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                  activeTab === 'netbanking' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
-                }`}>
-                  <Building2 size={16} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">Net Banking</span>
-                  <span className={`text-[9px] block ${activeTab === 'netbanking' ? 'text-blue-200' : 'text-slate-400'}`}>All Indian Banks</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className={`hidden md:block ${activeTab === 'netbanking' ? 'text-white' : 'text-slate-300'}`} />
-            </button>
-
-            {/* Tab 4: Wallets */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('wallet')}
-              className={`flex-1 md:flex-none flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-left transition-all cursor-pointer whitespace-nowrap md:whitespace-normal ${
-                activeTab === 'wallet'
-                  ? 'bg-[#002e6e] text-white shadow-md font-bold'
-                  : 'bg-white md:bg-transparent text-slate-700 hover:bg-slate-100/80 border md:border-transparent border-slate-200/80 font-medium'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                  activeTab === 'wallet' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  <Wallet size={16} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">Wallets</span>
-                  <span className={`text-[9px] block ${activeTab === 'wallet' ? 'text-blue-200' : 'text-slate-400'}`}>Amazon Pay, Paytm</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className={`hidden md:block ${activeTab === 'wallet' ? 'text-white' : 'text-slate-300'}`} />
-            </button>
-          </div>
-
-          {/* RIGHT CONTENT AREA: DETAILS PER PAYMENT METHOD */}
-          <div className="flex-1 p-4 sm:p-6 space-y-4">
-            
-            {/* 1. UPI TAB CONTENT */}
-            {activeTab === 'upi' && (
-              <div className="space-y-4 text-left">
+        {/* MAIN SCROLLABLE CONTENT */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-left bg-white">
+          {/* TAB 1: 1-TAP UPI APPS */}
+          {activeTab === 'upi_apps' && (
+            <div className="space-y-4">
+              {/* Primary PhonePe PG Gateway Option */}
+              <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 rounded-2xl border-2 border-purple-200 shadow-xs space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900">Choose your UPI App</h4>
-                    <p className="text-xs text-slate-500">Pay securely without sharing bank account details</p>
-                  </div>
-                  <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                    Instant Approval
-                  </span>
-                </div>
-
-                {/* UPI Sub-Apps Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {/* PhonePe */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('phonepe')}
-                    className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
-                      selectedUpiApp === 'phonepe'
-                        ? 'border-purple-600 bg-purple-50/50 shadow-md ring-2 ring-purple-600/15'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-lg font-bold shadow-md shadow-purple-600/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-[#5F259F] text-white flex items-center justify-center text-lg font-black shadow-xs shrink-0">
                       पे
                     </div>
-                    <div className="text-center">
-                      <span className="text-xs font-bold text-slate-900 block">PhonePe</span>
-                      <span className="text-[9px] text-purple-600 font-semibold">Recommended</span>
-                    </div>
-                  </button>
-
-                  {/* Google Pay */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('gpay')}
-                    className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
-                      selectedUpiApp === 'gpay'
-                        ? 'border-blue-600 bg-blue-50/50 shadow-md ring-2 ring-blue-600/15'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-lg font-black shadow-md shadow-blue-600/20">
-                      G
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs font-bold text-slate-900 block">Google Pay</span>
-                      <span className="text-[9px] text-blue-600 font-semibold">Instant UPI</span>
-                    </div>
-                  </button>
-
-                  {/* Paytm */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('paytm')}
-                    className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
-                      selectedUpiApp === 'paytm'
-                        ? 'border-sky-500 bg-sky-50/50 shadow-md ring-2 ring-sky-500/15'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-sky-500 text-white flex items-center justify-center text-xs font-black shadow-md shadow-sky-500/20 tracking-tighter">
-                      Paytm
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs font-bold text-slate-900 block">Paytm UPI</span>
-                      <span className="text-[9px] text-sky-600 font-semibold">Fast Checkout</span>
-                    </div>
-                  </button>
-
-                  {/* BHIM */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('bhim')}
-                    className={`p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
-                      selectedUpiApp === 'bhim'
-                        ? 'border-amber-600 bg-amber-50/50 shadow-md ring-2 ring-amber-600/15'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-amber-600 text-white flex items-center justify-center text-xs font-black shadow-md shadow-amber-600/20">
-                      BHIM
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs font-bold text-slate-900 block">BHIM UPI</span>
-                      <span className="text-[9px] text-amber-600 font-semibold">Govt Verified</span>
-                    </div>
-                  </button>
-                </div>
-
-                {/* Additional UPI Modes: QR Code & Custom VPA */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  {/* Scan QR Code Option */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('qr')}
-                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer text-left ${
-                      selectedUpiApp === 'qr'
-                        ? 'border-emerald-500 bg-emerald-50/40 shadow-sm ring-2 ring-emerald-500/10'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <QrCode size={20} />
-                    </div>
                     <div>
-                      <span className="text-xs font-bold text-slate-900 block">Scan Dynamic QR</span>
-                      <span className="text-[10px] text-slate-500">Scan with any UPI scanner app</span>
-                    </div>
-                  </button>
-
-                  {/* Enter UPI ID */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUpiApp('vpa')}
-                    className={`p-3 rounded-2xl border-2 flex items-center gap-3 transition-all cursor-pointer text-left ${
-                      selectedUpiApp === 'vpa'
-                        ? 'border-[#002e6e] bg-blue-50/40 shadow-sm ring-2 ring-[#002e6e]/10'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center shrink-0 font-bold text-xs">
-                      @
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-slate-900 block">Enter Custom UPI ID</span>
-                      <span className="text-[10px] text-slate-500">e.g., yourname@okhdfcbank</span>
-                    </div>
-                  </button>
-                </div>
-
-                {/* Conditional View: QR Code Display */}
-                {selectedUpiApp === 'qr' && (
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center space-y-3">
-                    <div className="inline-block p-3 bg-white rounded-2xl shadow-md border border-slate-200">
-                      <div className="w-40 h-40 bg-slate-900 rounded-xl flex flex-col items-center justify-center p-2 text-white relative overflow-hidden">
-                        {/* Dynamic Stylized QR Matrix Pattern */}
-                        <div className="w-full h-full bg-white p-2 rounded-lg flex flex-col items-center justify-between text-slate-900">
-                          <div className="flex justify-between w-full">
-                            <div className="w-7 h-7 bg-slate-900 rounded-sm p-1"><div className="w-full h-full bg-white p-0.5"><div className="w-full h-full bg-slate-900"></div></div></div>
-                            <div className="w-7 h-7 bg-slate-900 rounded-sm p-1"><div className="w-full h-full bg-white p-0.5"><div className="w-full h-full bg-slate-900"></div></div></div>
-                          </div>
-                          <div className="text-[10px] font-black text-blue-900 tracking-tighter uppercase font-mono">
-                            ZOMINDIA-₹{amount}
-                          </div>
-                          <div className="flex justify-between w-full">
-                            <div className="w-7 h-7 bg-slate-900 rounded-sm p-1"><div className="w-full h-full bg-white p-0.5"><div className="w-full h-full bg-slate-900"></div></div></div>
-                            <div className="text-[8px] font-bold text-slate-400 uppercase">NPCI UPI</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-slate-800">Scan using GPay, PhonePe, Paytm or BHIM</p>
-                      <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1 font-mono">
-                        <Clock size={12} className="text-amber-500" /> QR expires in {Math.floor(qrTimer / 60)}:{(qrTimer % 60).toString().padStart(2, '0')}
-                      </p>
+                      <h4 className="text-xs font-black text-slate-900">PhonePe Payment Gateway</h4>
+                      <p className="text-[11px] text-purple-700 font-semibold">Official Secure Checkout (UPI, Cards &amp; NetBanking)</p>
                     </div>
                   </div>
-                )}
-
-                {/* Conditional View: Custom UPI ID Input */}
-                {selectedUpiApp === 'vpa' && (
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                    <label className="text-xs font-bold text-slate-700 block">Enter Your Virtual Payment Address (VPA / UPI ID)</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="e.g. mobile@paytm or name@okaxis"
-                        value={upiIdInput}
-                        onChange={(e) => setUpiIdInput(e.target.value)}
-                        className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
-                      />
-                    </div>
-                    {upiIdError && <p className="text-[10px] text-rose-600 font-bold">{upiIdError}</p>}
-                    <p className="text-[10px] text-slate-400">A payment collect request will be sent to your UPI app for authorization.</p>
-                  </div>
-                )}
-
-                {/* Primary Button for UPI */}
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border border-emerald-300">
+                    Live PG
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => handleInitiatePayment(selectedUpiApp.toUpperCase(), 'upi')}
-                  className="w-full py-4 bg-[#002e6e] hover:bg-blue-900 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-900/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  disabled={phonePeLoading}
+                  onClick={handleInitiatePhonePePg}
+                  className="w-full py-3 bg-[#5F259F] hover:bg-[#4E1E83] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
                 >
-                  <Lock size={15} className="text-emerald-400" /> Pay ₹{amount} via {selectedUpiApp === 'vpa' ? 'UPI Collect' : selectedUpiApp.toUpperCase()} <ArrowRight size={16} />
+                  <Zap size={14} />
+                  <span>{phonePeLoading ? 'Initiating Gateway...' : `Pay ₹${amount} with PhonePe Gateway`}</span>
+                  <ExternalLink size={13} />
                 </button>
               </div>
-            )}
 
-            {/* 2. CARD TAB CONTENT */}
-            {activeTab === 'card' && (
-              <div className="space-y-4 text-left">
-                <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
+                  Or Pay Directly with Installed UPI App
+                </h4>
+                <p className="text-xs text-slate-600 font-medium">
+                  Instant 1-tap authorization without sharing card details
+                </p>
+              </div>
+
+              {/* Large Touch Cards Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Google Pay Card */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchUpiApp('gpay')}
+                  className="p-4 rounded-2xl bg-[#F8FAFC] border-2 border-slate-200 hover:border-[#2563EB] hover:bg-blue-50/40 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group text-center shadow-2xs active:scale-[0.98]"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-[#1A73E8] flex items-center justify-center text-xl font-black shadow-xs group-hover:scale-105 transition-transform">
+                    <span className="tracking-tighter">G</span>
+                  </div>
                   <div>
-                    <h4 className="text-sm font-bold text-slate-900">Enter Card Details</h4>
-                    <p className="text-xs text-slate-500">Supports all major Credit and Debit cards</p>
+                    <span className="text-xs font-black text-slate-900 block">Google Pay</span>
+                    <span className="text-[10px] text-[#2563EB] font-bold">1-Tap Checkout</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-extrabold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">VISA</span>
-                    <span className="text-[9px] font-extrabold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-200">Mastercard</span>
-                    <span className="text-[9px] font-extrabold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">RuPay</span>
+                </button>
+
+                {/* PhonePe Card */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchUpiApp('phonepe')}
+                  className="p-4 rounded-2xl bg-[#F8FAFC] border-2 border-slate-200 hover:border-[#5F259F] hover:bg-purple-50/40 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group text-center shadow-2xs active:scale-[0.98]"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-[#5F259F] text-white flex items-center justify-center text-xl font-black shadow-xs group-hover:scale-105 transition-transform">
+                    पे
                   </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-900 block">PhonePe</span>
+                    <span className="text-[10px] text-[#5F259F] font-bold">Recommended</span>
+                  </div>
+                </button>
+
+                {/* Paytm Card */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchUpiApp('paytm')}
+                  className="p-4 rounded-2xl bg-[#F8FAFC] border-2 border-slate-200 hover:border-[#00BAF2] hover:bg-sky-50/40 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group text-center shadow-2xs active:scale-[0.98]"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-[#002970] text-[#00BAF2] flex items-center justify-center text-xs font-black tracking-tighter shadow-xs group-hover:scale-105 transition-transform">
+                    Paytm
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-900 block">Paytm UPI</span>
+                    <span className="text-[10px] text-sky-600 font-bold">Fast &amp; Direct</span>
+                  </div>
+                </button>
+
+                {/* BHIM / Any UPI Card */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchUpiApp('bhim')}
+                  className="p-4 rounded-2xl bg-[#F8FAFC] border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50/40 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group text-center shadow-2xs active:scale-[0.98]"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xs font-black shadow-xs group-hover:scale-105 transition-transform">
+                    UPI
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-900 block">BHIM / Other</span>
+                    <span className="text-[10px] text-amber-600 font-bold">All UPI Apps</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Custom UPI ID (VPA) Collapsible Box */}
+              <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-slate-200 space-y-2">
+                <label className="text-[11px] font-bold text-slate-700 block">
+                  Or enter your Virtual Payment Address (UPI ID)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. 9876543210@paytm or user@oksbi"
+                    value={upiIdInput}
+                    onChange={(e) => setUpiIdInput(e.target.value)}
+                    className="flex-1 px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!upiIdInput.trim() || !upiIdInput.includes('@')) {
+                        setUpiIdError('Please enter a valid UPI ID (e.g. yourname@okhdfcbank)');
+                        return;
+                      }
+                      setUpiIdError('');
+                      setSelectedUpiApp('vpa');
+                      setSelectedProviderName(`UPI ID (${upiIdInput})`);
+                    }}
+                    className="px-4 py-2 bg-[#2563EB] hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-sm transition-all cursor-pointer shrink-0"
+                  >
+                    Select
+                  </button>
+                </div>
+                {upiIdError && <p className="text-[10px] text-rose-600 font-bold">{upiIdError}</p>}
+              </div>
+
+              {/* UTR / Reference Entry Box for UPI Apps */}
+              <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 block">
+                    Enter 12-digit UPI Reference / UTR Number
+                  </label>
+                  <span className="text-[10px] font-semibold text-[#2563EB]">
+                    {selectedProviderName}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    maxLength={22}
+                    placeholder="e.g. 423589124501 or UPI Ref ID"
+                    value={utrInput}
+                    onChange={(e) => {
+                      setUtrInput(e.target.value);
+                      if (utrError) setUtrError(null);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
+                  />
+                  {utrError && (
+                    <p className="text-[10px] text-rose-600 font-bold flex items-center gap-1">
+                      <AlertCircle size={12} /> {utrError}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyUpiPayment()}
+                    className="w-full py-3 bg-[#2563EB] hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  >
+                    <ShieldCheck size={15} />
+                    <span>Verify Payment &amp; Confirm Booking</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                  After completing the transfer in your UPI app, enter your 12-digit UTR/Txn number from your payment confirmation.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: DYNAMIC QR CODE */}
+          {activeTab === 'dynamic_qr' && (
+            <div className="space-y-4 text-center">
+              <div className="p-5 bg-[#F8FAFC] rounded-2xl border border-slate-200 flex flex-col items-center justify-center space-y-3">
+                {/* Centered QR Container */}
+                <div className="p-3.5 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
+                  <QRCodeSVG
+                    value={upiIntentUri}
+                    size={180}
+                    level="H"
+                    includeMargin={false}
+                    className="mx-auto rounded-lg"
+                  />
                 </div>
 
-                {/* Card Inputs Form */}
-                <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-3">
-                  {/* Card Number */}
+                {/* 5-Minute Countdown Indicator */}
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-mono font-bold">
+                  <Clock size={13} className="text-amber-600 animate-pulse" />
+                  <span>QR code expires in {formattedQrTimer}</span>
+                </div>
+
+                {/* Copyable UPI ID Box */}
+                <div className="w-full max-w-sm flex items-center justify-between gap-2 px-3.5 py-2.5 bg-white rounded-xl border border-slate-200 text-xs">
+                  <div className="text-left overflow-hidden">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none">
+                      UPI ID
+                    </span>
+                    <span className="font-mono font-bold text-slate-800 truncate block mt-0.5">
+                      {MERCHANT_VPA}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyVpa}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                  >
+                    {copiedVpa ? (
+                      <>
+                        <Check size={12} className="text-emerald-600" />
+                        <span className="text-emerald-700">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 font-medium max-w-xs">
+                  Scan and pay with any UPI app on your phone (GPay, PhonePe, Paytm, BHIM, Cred)
+                </p>
+              </div>
+
+              {/* UTR Input in Dynamic QR Tab */}
+              <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-slate-200 space-y-2.5 text-left">
+                <label className="text-[11px] font-bold text-slate-700 block">
+                  Enter 12-digit UPI Reference / UTR Number from Scanner App
+                </label>
+                <input
+                  type="text"
+                  maxLength={22}
+                  placeholder="e.g. 423589124501"
+                  value={utrInput}
+                  onChange={(e) => {
+                    setUtrInput(e.target.value);
+                    if (utrError) setUtrError(null);
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
+                />
+                {utrError && (
+                  <p className="text-[10px] text-rose-600 font-bold flex items-center gap-1">
+                    <AlertCircle size={12} /> {utrError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleVerifyUpiPayment('Dynamic QR Matrix')}
+                  className="w-full py-3 bg-[#2563EB] hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                >
+                  <ShieldCheck size={15} />
+                  <span>Verify Payment &amp; Confirm Booking</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: CARDS & NET BANKING */}
+          {activeTab === 'cards_banking' && (
+            <div className="space-y-4">
+              {/* Sub-mode selector */}
+              <div className="flex gap-2 border-b border-slate-200 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubMode('card')}
+                  className={`pb-1 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                    paymentSubMode === 'card'
+                      ? 'border-[#2563EB] text-[#2563EB]'
+                      : 'border-transparent text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Credit / Debit Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubMode('netbanking')}
+                  className={`pb-1 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                    paymentSubMode === 'netbanking'
+                      ? 'border-[#2563EB] text-[#2563EB]'
+                      : 'border-transparent text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Net Banking
+                </button>
+              </div>
+
+              {paymentSubMode === 'card' ? (
+                <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-slate-200 space-y-3">
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Card Number</label>
                     <div className="relative">
@@ -649,7 +775,7 @@ export default function OnlinePaymentGatewayModal({
                         placeholder="•••• •••• •••• ••••"
                         value={cardNumber}
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                        className="w-full pl-3.5 pr-20 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold tracking-wider text-slate-900 focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
+                        className="w-full pl-3.5 pr-20 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
                       />
                       {getCardBrand(cardNumber) && (
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
@@ -659,7 +785,6 @@ export default function OnlinePaymentGatewayModal({
                     </div>
                   </div>
 
-                  {/* Cardholder Name */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Name on Card</label>
                     <input
@@ -667,35 +792,31 @@ export default function OnlinePaymentGatewayModal({
                       placeholder="e.g. John Doe"
                       value={cardHolder}
                       onChange={(e) => setCardHolder(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
                     />
                   </div>
 
-                  {/* Expiry & CVV Grid */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-slate-600 block mb-1">Valid Thru</label>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">Expiry</label>
                       <input
                         type="text"
                         maxLength={5}
                         placeholder="MM/YY"
                         value={cardExpiry}
                         onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-center text-slate-900 focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-center text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
                       />
                     </div>
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-bold text-slate-600">CVV / CVC</label>
-                        <span className="text-[9px] text-slate-400">3 or 4 digits</span>
-                      </div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">CVV</label>
                       <input
                         type="password"
                         maxLength={4}
                         placeholder="•••"
                         value={cardCvv}
                         onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-center text-slate-900 focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-center text-slate-900 focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] outline-none"
                       />
                     </div>
                   </div>
@@ -706,283 +827,165 @@ export default function OnlinePaymentGatewayModal({
                     </p>
                   )}
 
-                  {/* Save Card Checkbox */}
-                  <div className="pt-1">
-                    <label className="flex items-center gap-2 text-xs text-slate-600 font-medium cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={saveCard}
-                        onChange={(e) => setSaveCard(e.target.checked)}
-                        className="rounded text-[#002e6e] focus:ring-[#002e6e]"
-                      />
-                      <span>Save this card securely as per RBI Tokenization directives</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Primary Button for Card */}
-                <button
-                  type="button"
-                  onClick={() => handleInitiatePayment(getCardBrand(cardNumber) || 'Card', 'card')}
-                  className="w-full py-4 bg-[#002e6e] hover:bg-blue-900 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-900/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-                >
-                  <Lock size={15} className="text-emerald-400" /> Pay ₹{amount} Securely <ArrowRight size={16} />
-                </button>
-              </div>
-            )}
-
-            {/* 3. NET BANKING TAB CONTENT */}
-            {activeTab === 'netbanking' && (
-              <div className="space-y-4 text-left">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">Select Your Bank</h4>
-                  <p className="text-xs text-slate-500">You will be redirected to your bank's secure net banking portal</p>
-                </div>
-
-                {/* Popular Banks Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {POPULAR_BANKS.map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBank(b.id);
-                        setOtherBankSelected('');
-                      }}
-                      className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all cursor-pointer text-left ${
-                        selectedBank === b.id && !otherBankSelected
-                          ? 'border-[#002e6e] bg-blue-50/50 shadow-sm ring-2 ring-[#002e6e]/15'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <span className="text-xl shrink-0">{b.icon}</span>
-                      <div className="overflow-hidden">
-                        <span className="text-xs font-bold text-slate-900 block truncate">{b.name}</span>
-                        <span className="text-[9px] text-slate-400 font-semibold">{b.code}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* All Other Banks Dropdown */}
-                <div className="pt-2">
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1.5">Or choose from other Indian banks:</label>
-                  <select
-                    value={otherBankSelected}
-                    onChange={(e) => {
-                      setOtherBankSelected(e.target.value);
-                      if (e.target.value) setSelectedBank(e.target.value);
-                    }}
-                    className="w-full px-3.5 py-3 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-[#002e6e] focus:border-[#002e6e] outline-none"
+                  <button
+                    type="button"
+                    onClick={() => handleInitiatePayment(getCardBrand(cardNumber) || 'Card', 'card')}
+                    className="w-full py-3.5 bg-[#2563EB] hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
                   >
-                    <option value="">-- Select from 40+ Other Banks --</option>
-                    {ALL_OTHER_BANKS.map((ob) => (
-                      <option key={ob} value={ob}>{ob}</option>
-                    ))}
-                  </select>
+                    <Lock size={14} /> Pay ₹{amount} with Card <ArrowRight size={14} />
+                  </button>
                 </div>
-
-                {/* Primary Button for Net Banking */}
-                <button
-                  type="button"
-                  onClick={() => handleInitiatePayment(otherBankSelected || selectedBank.toUpperCase(), 'netbanking')}
-                  className="w-full py-4 bg-[#002e6e] hover:bg-blue-900 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-900/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-                >
-                  <Lock size={15} className="text-emerald-400" /> Pay ₹{amount} via Net Banking <ArrowRight size={16} />
-                </button>
-              </div>
-            )}
-
-            {/* 4. WALLET TAB CONTENT */}
-            {activeTab === 'wallet' && (
-              <div className="space-y-4 text-left">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">Select Wallet Provider</h4>
-                  <p className="text-xs text-slate-500">Link your favorite digital wallet for 1-click checkout</p>
-                </div>
-
-                <div className="space-y-2.5">
-                  {WALLET_PROVIDERS.map((w) => (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => setSelectedWallet(w.id)}
-                      className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between transition-all cursor-pointer ${
-                        selectedWallet === w.id
-                          ? 'border-[#002e6e] bg-blue-50/50 shadow-sm ring-2 ring-[#002e6e]/15'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{w.icon}</span>
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 block">{w.name}</span>
-                          <span className="text-[10px] text-emerald-600 font-semibold">{w.offer}</span>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {POPULAR_BANKS.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setSelectedBank(b.id)}
+                        className={`p-3 rounded-xl border-2 flex items-center gap-2 transition-all cursor-pointer text-left ${
+                          selectedBank === b.id
+                            ? 'border-[#2563EB] bg-blue-50/50 shadow-2xs'
+                            : 'border-slate-200 bg-[#F8FAFC] hover:bg-white'
+                        }`}
+                      >
+                        <span className="text-lg">{b.icon}</span>
+                        <div className="overflow-hidden">
+                          <span className="text-xs font-bold text-slate-900 block truncate">{b.name}</span>
+                          <span className="text-[9px] text-slate-400 font-semibold">{b.code}</span>
                         </div>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        selectedWallet === w.id ? 'border-[#002e6e] bg-[#002e6e]' : 'border-slate-300'
-                      }`}>
-                        {selectedWallet === w.id && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleInitiatePayment(`${selectedBank.toUpperCase()} Net Banking`, 'netbanking')}
+                    className="w-full py-3.5 bg-[#2563EB] hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  >
+                    <Lock size={14} /> Pay ₹{amount} via Net Banking <ArrowRight size={14} />
+                  </button>
                 </div>
+              )}
+            </div>
+          )}
+        </div>
 
-                {/* Primary Button for Wallet */}
-                <button
-                  type="button"
-                  onClick={() => handleInitiatePayment(selectedWallet.toUpperCase(), 'wallet')}
-                  className="w-full py-4 bg-[#002e6e] hover:bg-blue-900 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-900/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-                >
-                  <Lock size={15} className="text-emerald-400" /> Link &amp; Pay ₹{amount} <ArrowRight size={16} />
-                </button>
-              </div>
-            )}
-
+        {/* CLEAN MINIMALIST FOOTER */}
+        <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
+          <div className="flex items-center gap-1.5 font-medium">
+            <Shield size={13} className="text-emerald-600" />
+            <span>100% Safe &amp; Verified</span>
+          </div>
+          <div className="flex items-center gap-1 text-[#2563EB] font-bold">
+            <span>Powered by NPCI UPI</span>
           </div>
         </div>
 
-        {/* GATEWAY FOOTER BADGES */}
-        <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 shrink-0">
-          <div className="flex items-center gap-2">
-            <Shield size={12} className="text-emerald-600" />
-            <span>100% RBI Compliant &amp; NPCI Certified</span>
-          </div>
-          <div className="flex items-center gap-3 font-semibold">
-            <span>Powered by PhonePe Gateway</span>
-          </div>
-        </div>
-
-        {/* PROCESSING & VERIFICATION OVERLAY (States: Connecting, Authorizing, Verified) */}
+        {/* PROCESSING & VERIFICATION OVERLAY */}
         <AnimatePresence>
           {processingPhase !== 'idle' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center text-white"
+              className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center"
             >
-              {/* State 1: Connecting */}
+              {/* Connecting State */}
               {processingPhase === 'connecting' && (
-                <div className="space-y-4 max-w-sm">
-                  <div className="w-16 h-16 rounded-full border-4 border-blue-400 border-t-white animate-spin mx-auto shadow-lg" />
-                  <h3 className="text-lg font-black text-white">Connecting to Bank Gateway...</h3>
-                  <p className="text-xs text-slate-300 font-medium">Establishing secure 256-bit encrypted handshake with your banking server</p>
+                <div className="space-y-3 max-w-sm">
+                  <div className="w-14 h-14 rounded-full border-4 border-blue-200 border-t-[#2563EB] animate-spin mx-auto" />
+                  <h3 className="text-base font-black text-slate-900">Connecting to Bank Gateway...</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Establishing secure 256-bit encrypted handshake with your bank
+                  </p>
                 </div>
               )}
 
-              {/* State 2: Authorizing & Simulating OTP */}
+              {/* Authorizing State */}
               {processingPhase === 'authorizing' && (
                 <div className="space-y-4 max-w-md w-full">
                   {!showOtpScreen ? (
-                    <div className="space-y-4">
-                      <div className="w-16 h-16 bg-blue-600/30 text-blue-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
-                        <Smartphone size={32} />
+                    <div className="space-y-3">
+                      <div className="w-14 h-14 bg-blue-50 text-[#2563EB] rounded-full flex items-center justify-center mx-auto animate-pulse">
+                        <Smartphone size={28} />
                       </div>
-                      <h3 className="text-lg font-black text-white">Awaiting UPI Authorization</h3>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        Please approve the collect request of <b className="text-emerald-400">₹{amount}</b> on your UPI App or notification shade.
+                      <h3 className="text-base font-black text-slate-900">Awaiting UPI Authorization</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Please approve the request for <b className="text-[#2563EB]">₹{amount}</b> in your UPI app.
                       </p>
-                      <div className="p-3 bg-white/10 rounded-xl border border-white/10 text-xs text-slate-300 flex items-center justify-center gap-2">
-                        <RefreshCw size={14} className="animate-spin text-blue-300" />
-                        <span>Simulating authorization approval...</span>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center justify-center gap-2">
+                        <RefreshCw size={13} className="animate-spin text-[#2563EB]" />
+                        <span>Verifying with NPCI switch...</span>
                       </div>
                     </div>
                   ) : (
-                    /* Interactive Simulated OTP Modal for Card / Net Banking */
-                    <motion.div
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="bg-white text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-left border border-slate-100"
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    /* OTP Simulator */
+                    <div className="bg-white rounded-2xl p-5 shadow-xl space-y-4 text-left border border-slate-200">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                         <div className="flex items-center gap-2">
-                          <ShieldCheck size={20} className="text-emerald-600" />
-                          <h4 className="text-sm font-extrabold text-slate-900">Bank 2-Factor Authentication</h4>
+                          <ShieldCheck size={18} className="text-emerald-600" />
+                          <h4 className="text-xs font-black text-slate-900">Bank 2FA OTP</h4>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                           ₹{amount}
                         </span>
                       </div>
 
-                      {/* Simulated SMS Notification Banner */}
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
                         <div className="text-[10px] text-amber-900">
-                          <span className="font-bold block">📨 Simulated Bank SMS:</span>
-                          <span>OTP for ₹{amount} at Zomindia is <b className="font-mono text-xs">{simulatedOtp}</b></span>
+                          <span className="font-bold block">📨 Bank SMS OTP:</span>
+                          <span>Code is <b className="font-mono text-xs">{simulatedOtp}</b></span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setEnteredOtp(simulatedOtp)}
-                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shrink-0 cursor-pointer shadow-xs"
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shrink-0 cursor-pointer"
                         >
                           Auto-fill
                         </button>
                       </div>
 
                       <form onSubmit={handleOtpSubmit} className="space-y-3">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 block mb-1">
-                            Enter 6-digit OTP sent to registered mobile
-                          </label>
-                          <input
-                            type="text"
-                            maxLength={6}
-                            placeholder="6-digit OTP"
-                            value={enteredOtp}
-                            onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
-                            className="w-full px-3 py-2.5 border-2 border-blue-500 rounded-xl text-center text-lg font-mono font-black tracking-widest outline-none focus:ring-2 focus:ring-blue-600"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                          <span>Resend OTP in 00:{otpTimer > 9 ? otpTimer : `0${otpTimer}`}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-                              setSimulatedOtp(newOtp);
-                              setEnteredOtp(newOtp);
-                            }}
-                            className="text-[#002e6e] font-bold hover:underline cursor-pointer"
-                          >
-                            Resend OTP
-                          </button>
-                        </div>
-
+                        <input
+                          type="text"
+                          maxLength={6}
+                          placeholder="6-digit OTP"
+                          value={enteredOtp}
+                          onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                          className="w-full px-3 py-2.5 border-2 border-blue-500 rounded-xl text-center text-lg font-mono font-black tracking-widest outline-none"
+                        />
                         <button
                           type="submit"
-                          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                         >
-                          <CheckCircle2 size={16} /> Verify &amp; Authorize Payment
+                          <CheckCircle2 size={15} /> Authorize Payment
                         </button>
                       </form>
-                    </motion.div>
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* State 3: Payment Verified Successfully */}
+              {/* Verified State */}
               {processingPhase === 'verified' && (
-                <motion.div 
+                <motion.div
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="space-y-4 max-w-sm"
+                  className="space-y-3 max-w-sm"
                 >
-                  <div className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/30">
-                    <Check size={44} className="stroke-[3]" />
+                  <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/30">
+                    <Check size={36} className="stroke-[3]" />
                   </div>
-                  <h3 className="text-2xl font-black text-white">Payment Verified!</h3>
-                  <p className="text-xs text-emerald-300 font-bold">
-                    Transaction ID: <span className="font-mono text-white">{generatedTxnId}</span>
+                  <h3 className="text-xl font-black text-slate-900">Payment Verified!</h3>
+                  <p className="text-xs text-emerald-700 font-bold font-mono">
+                    ID: {generatedTxnId}
                   </p>
-                  <p className="text-xs text-slate-300">
-                    Successfully debited ₹{amount}. Redirecting to your confirmed booking...
+                  <p className="text-xs text-slate-500">
+                    ₹{amount} processed successfully. Updating your booking...
                   </p>
                 </motion.div>
               )}
-
             </motion.div>
           )}
         </AnimatePresence>

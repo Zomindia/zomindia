@@ -1139,8 +1139,24 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       fetch('/api/send-final-bill', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ bookingId: booking.id, requesterUid: partner?.userId || profile?.uid })
-      }).catch(err => console.error('Failed to trigger bill email', err));
+         body: JSON.stringify({
+           bookingId: booking.id,
+           requesterUid: partner?.userId || profile?.uid,
+           bookingData: {
+             customerId: booking.customerId || booking.userId,
+             partnerId: booking.partnerId || partner?.userId,
+             scheduledAt: booking.scheduledAt,
+             address: booking.address,
+             totalPrice: booking.totalPrice,
+             additionalCharges: booking.additionalCharges || []
+           },
+           userData: {
+             displayName: booking.customerName || booking.customerBookedName || "Customer",
+             email: (booking as any)?.customerBookedEmail || booking.customerData?.email || "",
+             phoneNumber: booking.customerBookedPhone || booking.customerMobile || booking.customerPhone || ""
+           }
+         })
+      }).catch(err => console.warn('Final bill notification notice:', err));
 
       await notifyBookingUpdate({ ...booking, status: 'completed', completedAt: Timestamp.now() }, 'completed', partner?.userId || '');
       setCompletingBookingId(null);

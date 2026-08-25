@@ -361,15 +361,25 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
     !isCancelled &&
     (isAssigned || isOnTheWay || isArrived);
 
-  // Payment status resolution
-  const isPaid = (booking.paymentStatus || "").toLowerCase() === "paid";
-  const isPayAfterService =
-    !isPaid &&
-    (booking.paymentStatus === "pay_after_service" ||
-      booking.paymentMethod === "cash" ||
-      booking.paymentMethod === "pay_after_service" ||
-      rawStatus === "confirmed_pay_after_service");
-  const isOnlineUnpaid = !isPaid && !isPayAfterService;
+  // Payment status resolution: strict resolution guard
+  const isAmc = Boolean(
+    booking.isAmcBooking || booking.isAmcCovered || booking.tier === "amc"
+  );
+  const hasValidOnlineTxn = Boolean(
+    booking.transactionId &&
+      booking.paymentStatus === "paid" &&
+      booking.paymentMethod !== "cash" &&
+      booking.paymentMethod !== "pay_after_service"
+  );
+
+  const isPaid =
+    isAmc ||
+    (booking.paymentMethod === "wallet" &&
+      (booking.walletDeductAmount ?? 0) > 0) ||
+    hasValidOnlineTxn;
+
+  const isPayAfterService = !isPaid;
+  const isOnlineUnpaid = false; // Always show Pay on Completion + Pay Online Instead if not paid
 
   // Formatted schedule info
   const scheduleInfo = formatBookingSchedule(booking.scheduledAt);
@@ -625,7 +635,14 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
             {isPaid && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-black uppercase tracking-wider shadow-2xs">
                 <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                <span>Paid via {formatPaymentMethodName(booking.paymentMethod)}</span>
+                <span>
+                  Paid via{" "}
+                  {booking.paymentMethod === "wallet"
+                    ? "Wallet"
+                    : isAmc
+                    ? "AMC Plan"
+                    : booking.onlinePaymentProvider || "Online / UPI"}
+                </span>
               </span>
             )}
 

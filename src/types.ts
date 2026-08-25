@@ -290,6 +290,11 @@ export interface Booking {
   paymentStatus: 'paid' | 'unpaid' | 'pay_after_service';
   paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
   paidAt?: any;
+  transactionId?: string;
+  onlinePaymentProvider?: string;
+  paidAmount?: number;
+  isAmcCovered?: boolean;
+  tier?: string;
   paymentIntentId?: string;
   scheduledAt: any; // Firestore Timestamp
   address: string;
@@ -327,6 +332,7 @@ export interface Booking {
   notes?: string;
   discountApplied?: number;
   promoCode?: string | null;
+  walletDeductAmount?: number;
   isAmcBooking?: boolean;
   amcId?: string | null;
   activeCall?: ActiveCallInfo | null;
