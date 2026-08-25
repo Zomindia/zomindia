@@ -78,7 +78,6 @@ const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
 
 import ElitePartnerModal from './components/ElitePartnerModal';
 
-import { useTranslation } from './lib/i18n';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
 import { LogoHorizontal, LogoIcon } from './components/BrandLogo';
