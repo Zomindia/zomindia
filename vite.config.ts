@@ -21,6 +21,9 @@ export default defineConfig(({ mode }) => {
         srcDir: 'public',
         filename: 'sw.js',
         injectRegister: null, // manually registered in src/main.tsx
+        injectManifest: {
+          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+        },
         devOptions: {
           // Disable PWA in dev to avoid [vite] middleware and service worker errors
           enabled: false
@@ -107,10 +110,22 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
-          manualChunks: {
-            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          manualChunks(id) {
+            if (id.includes('node_modules/firebase')) {
+              return 'firebase';
+            }
+            if (id.includes('node_modules/jspdf') || id.includes('node_modules/pdfkit') || id.includes('node_modules/html2canvas')) {
+              return 'pdf-vendor';
+            }
+            if (id.includes('node_modules/recharts')) {
+              return 'charts';
+            }
+            if (id.includes('node_modules/lucide-react')) {
+              return 'lucide-icons';
+            }
           }
         }
       }

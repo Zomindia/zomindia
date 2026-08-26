@@ -59,22 +59,22 @@ import AboutUs from './components/AboutUs';
 import Footer from './components/Footer';
 import AiSupportChat from './components/AiSupportChat';
 
-// Lazy loaded sub-views for ultra-fast loading speed (under 1 second)
-const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const SignUpAsPartner = lazy(() => import('./components/SignUpAsPartner'));
-const StaticPage = lazy(() => import('./components/StaticPage'));
-const ProfileSettings = lazy(() => import('./components/ProfileSettings'));
-const ServiceDetails = lazy(() => import('./components/ServiceDetails'));
-const NotificationsView = lazy(() => import('./components/NotificationsView'));
-const OffersView = lazy(() => import('./components/OffersView'));
-const PartnerApp = lazy(() => import('./components/PartnerApp'));
-const PartnerPortalLanding = lazy(() => import('./components/partner/PartnerPortalLanding'));
-const CustomerAmcView = lazy(() => import('./components/CustomerAmcView'));
-const SupportTicketsView = lazy(() => import('./components/SupportTicketsView'));
-const WalletView = lazy(() => import('./components/WalletView'));
-const ReferralsView = lazy(() => import('./components/ReferralsView'));
-const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
+// Direct static imports for robust component resolution
+import CustomerDashboard from './components/CustomerDashboard';
+import AdminDashboard from './components/AdminDashboard';
+import SignUpAsPartner from './components/SignUpAsPartner';
+import StaticPage from './components/StaticPage';
+import ProfileSettings from './components/ProfileSettings';
+import ServiceDetails from './components/ServiceDetails';
+import NotificationsView from './components/NotificationsView';
+import OffersView from './components/OffersView';
+import PartnerApp from './components/PartnerApp';
+import PartnerPortalLanding from './components/partner/PartnerPortalLanding';
+import CustomerAmcView from './components/CustomerAmcView';
+import SupportTicketsView from './components/SupportTicketsView';
+import WalletView from './components/WalletView';
+import ReferralsView from './components/ReferralsView';
+import PrivacyPolicy from './components/PrivacyPolicy';
 
 import ElitePartnerModal from './components/ElitePartnerModal';
 

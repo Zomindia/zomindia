@@ -3085,68 +3085,82 @@ export default function CustomerDashboard({
           </div>
           <div className="flex gap-4 overflow-x-auto pb-6 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
             {promotions.map((promo, idx) => {
+              const isPercent = promo.discountType === "percent";
+              const isFestive = (promo.code || '').includes('SUMMER') || (promo.name || '').includes('Summer');
+              const pillarGradient = isFestive
+                ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
+                : isPercent
+                  ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white'
+                  : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white';
+
               return (
                 <motion.div
-                  whileHover={{ scale: 1.02, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ y: -3, boxShadow: '0 8px 20px rgba(0,0,0,0.06)' }}
                   key={promo.id}
-                  onClick={() => {
-                    navigator.clipboard.writeText(promo.code);
-                    try {
-                      localStorage.setItem('activeCoupon', JSON.stringify(promo));
-                      localStorage.setItem('zomindia_active_coupon', promo.code);
-                    } catch {}
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('coupon-applied', { detail: promo }));
-                    }
-                    if (typeof (window as any).__showToast === 'function') {
-                      (window as any).__showToast(`Coupon ${promo.code} applied successfully! Check savings at checkout.`);
-                    } else if (typeof (window as any).__showCopyToast === 'function') {
-                      (window as any).__showCopyToast(promo.code);
-                    }
-                  }}
-                  className="flex-shrink-0 w-[290px] bg-white border border-slate-150/85 rounded-[24px] p-5 text-slate-800 relative overflow-hidden group shadow-sm cursor-pointer"
-                  style={{ transition: 'all 0.3s ease-in-out' }}
+                  className="flex-shrink-0 w-[320px] bg-white border border-slate-200/80 rounded-2xl flex flex-row items-stretch relative overflow-hidden group shadow-sm transition-all duration-300"
                 >
-                  {/* Image Background or Thumbnail if present */}
-                  {promo.imageUrl && (
-                    <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 group-hover:opacity-20 transition-opacity duration-300 pointer-events-none">
-                      <img
-                        src={promo.imageUrl}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
+                  {/* Left Offer Badge Pillar */}
+                  <div className={`w-20 shrink-0 relative flex flex-col items-center justify-center p-2.5 text-center ${pillarGradient} select-none`}>
+                    <span className="text-lg sm:text-xl font-black leading-none tracking-tight">
+                      {isPercent ? `${promo.discountValue}%` : `₹${promo.discountValue}`}
+                    </span>
+                    <span className="bg-white/20 backdrop-blur-xs text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full mt-1 border border-white/20">
+                      OFF
+                    </span>
+                  </div>
 
-                  <div className="relative z-10 flex flex-col h-full justify-between gap-4 text-left">
+                  {/* Semicircular Ticket Notch Divider */}
+                  <div className="relative w-0 flex flex-col justify-between items-center z-10">
+                    <div className="absolute -top-3 -left-3 w-6 h-6 rounded-full bg-slate-50 border-b border-slate-200/80 shadow-inner" />
+                    <div className="h-full border-r-2 border-dashed border-slate-200/90 my-2" />
+                    <div className="absolute -bottom-3 -left-3 w-6 h-6 rounded-full bg-slate-50 border-t border-slate-200/80 shadow-inner" />
+                  </div>
+
+                  {/* Right Content */}
+                  <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0 bg-white pl-4">
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <span className="bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider select-none">
-                          {promo.discountType === "percent"
-                            ? `${promo.discountValue}% OFF`
-                            : `₹${promo.discountValue} OFF`}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.2 rounded">
+                          Exclusive
                         </span>
-                        <div className="bg-slate-100 hover:bg-slate-200 border border-slate-200/50 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold uppercase text-slate-600 transition-colors">
-                          <Zap size={10} className="text-[#22c55e]" fill="currentColor" />
-                          {promo.code}
-                        </div>
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-full border border-amber-200/60">
+                          ⚡ 7 Days
+                        </span>
                       </div>
-                      
-                      <h3 className="text-base font-extrabold text-slate-900 mb-1 leading-tight tracking-tight">
+                      <h3 className="text-xs sm:text-sm font-black text-slate-900 leading-snug truncate">
                         {promo.name}
                       </h3>
-                      <p className="text-slate-500 text-[11px] line-clamp-2 font-medium leading-normal">
+                      <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mt-0.5">
                         {promo.description}
                       </p>
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-900 group-hover:text-[#22c55e] transition-colors flex items-center gap-1">
-                        Claim Discount <ChevronRight size={12} className="stroke-[3]" />
-                      </span>
+                    <div className="flex items-center justify-between gap-1.5 pt-2.5 mt-2 border-t border-slate-100">
+                      <div className="border-dashed border-2 border-blue-300 bg-blue-50/50 px-2 py-0.5 rounded-lg text-[11px] font-mono font-black text-blue-700 tracking-wider flex items-center gap-1">
+                        <span>{promo.code}</span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(promo.code);
+                          try {
+                            localStorage.setItem('activeCoupon', JSON.stringify(promo));
+                            localStorage.setItem('zomindia_active_coupon', promo.code);
+                          } catch {}
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('coupon-applied', { detail: promo }));
+                          }
+                          if (typeof (window as any).__showToast === 'function') {
+                            (window as any).__showToast(`Coupon ${promo.code} applied successfully! Check savings at checkout.`);
+                          } else if (typeof (window as any).__showCopyToast === 'function') {
+                            (window as any).__showCopyToast(promo.code);
+                          }
+                        }}
+                        className="bg-[#2563EB] hover:bg-blue-700 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles size={11} />
+                        <span>APPLY</span>
+                      </button>
                     </div>
                   </div>
                 </motion.div>

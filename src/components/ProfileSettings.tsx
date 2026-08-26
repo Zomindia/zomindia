@@ -32,10 +32,7 @@ import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
 import { motion, AnimatePresence } from "motion/react";
 import Avatar from "./Avatar";
-
-const HardwarePermissionDiagnoser = React.lazy(
-  () => import("./HardwarePermissionDiagnoser"),
-);
+import HardwarePermissionDiagnoser from "./HardwarePermissionDiagnoser";
 import {
   User,
   Bell,
