@@ -1229,587 +1229,501 @@ export default function ProfileSettings({
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 text-slate-900 flex flex-col justify-between">
-      {/* Absolute Back Header inside our full screen layout */}
-      <div className="max-w-6xl mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
-        <button
-          onClick={() => setActiveTab("home")}
-          className="inline-flex items-center gap-2 text-xs font-black uppercase text-slate-800 bg-slate-200/80 hover:bg-slate-200 px-4.5 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
-        >
-          <ArrowLeft size={14} />
-          <span>Back to Home</span>
-        </button>
-        <span className="text-[10px] font-black uppercase tracking-widest text-[#22c55e] flex items-center gap-1.5 bg-[#22c55e]/10 border border-[#22c55e]/20 px-3.5 py-1.5 rounded-xl">
-          <span className="text-cyan-600 font-extrabold text-sm animate-pulse">
-            •
-          </span>
-          <span>नमस्ते{profile?.displayName || profile?.fullName || auth.currentUser?.displayName ? ", " : ""}</span>
-          {(profile?.displayName || profile?.fullName || auth.currentUser?.displayName) && (
-            <span className="text-slate-900">{profile.displayName || profile.fullName || auth.currentUser?.displayName}</span>
-          )}
-        </span>
-      </div>
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900 flex flex-col">
+      {/* 1. Single Clean Sticky Top Navigation Bar (Eliminates Header Redundancy) */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3.5 py-2.5 shadow-2xs">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <button
+            onClick={() => {
+              if (activeSub) {
+                setActiveSub(null);
+              } else {
+                setActiveTab("home");
+              }
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-black uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+            id="profile-back-btn"
+          >
+            <ArrowLeft size={13} />
+            <span>{activeSub ? "Back" : "Home"}</span>
+          </button>
 
-      <div
-        id="profile-settings-container"
-        className="max-w-6xl mx-auto px-4 py-6 sm:py-12"
-      >
-        {/* SECTION 1: Zomato/Urban Company Inspired High-Trust Header card */}
-        <div className="relative p-[3.5px] rounded-[24px] sm:rounded-[32px] mb-6 sm:mb-8 overflow-hidden">
-          {/* Rotating border background layer (perfectly centered giant circle to prevent clipping on rectangular card) */}
-          <div
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300%] h-[300%] rounded-full origin-center ${
-              (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
-                ? "animate-spin-gold conic-gold-bg"
-                : "animate-spin-rgb conic-rgb-bg"
-            }`}
-          />
-          {/* Shimmer wipe overlay for Founder / Premium (z-30 so it sweeps on top of card content at z-20) */}
-          {(profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium) && (
-            <div className="absolute inset-0 rounded-[24px] sm:rounded-[32px] animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay pointer-events-none z-30" />
-          )}
-          {/* Inner card content wrapper */}
-          <div className={`relative rounded-[21px] sm:rounded-[29px] p-4.5 sm:p-8 z-20 shadow-xs ${
-            (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
-              ? "premium-gold-card"
-              : "bg-white"
-          }`}>
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 sm:gap-6">
-            {/* User Basic Badges */}
-            <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
-              <div className="relative shrink-0">
-                <Avatar
-                  photoURL={profile.photoURL}
-                  displayName={profile.displayName || profile.fullName}
-                  email={profile.email}
-                  isPremium={profile.isPremium}
-                  sizeClass="w-14 h-14 sm:w-20 sm:h-20"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 sm:p-1 rounded-full text-[8px] sm:text-[9px] font-bold border-2 border-white z-30">
-                  ✓
-                </span>
-              </div>
+          <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight">
+            {activeSub === "basic"
+              ? "Basic Profile"
+              : activeSub === "wallet"
+              ? "Zomindia Wallet"
+              : activeSub === "addresses"
+              ? "Saved Addresses"
+              : activeSub === "history"
+              ? "Booking History"
+              : activeSub === "active"
+              ? "Live Trackers"
+              : activeSub === "referrals"
+              ? "Refer & Earn"
+              : activeSub === "alerts"
+              ? "Notifications"
+              : activeSub === "privacy"
+              ? "Privacy & Security"
+              : activeSub === "hardware"
+              ? "App Permissions"
+              : activeSub === "faq"
+              ? "Help Desk"
+              : "Profile & Settings"}
+          </h2>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <h1
-                    className="text-lg sm:text-2xl font-black text-neutral-900 tracking-tight truncate max-w-[150px] sm:max-w-xs"
-                    title={
-                      profile.fullName ||
-                      profile.displayName ||
-                      "Authorized Client"
-                    }
-                  >
-                    {profile.fullName ||
-                      profile.displayName ||
-                      "Authorized Client"}
-                  </h1>
-                  <span className="bg-[#050CA6]/10 text-[#050CA6] border border-[#050CA6]/5 text-[8.5px] uppercase px-1.5 py-0.5 rounded-md font-black tracking-wider flex items-center gap-1 shrink-0">
-                    <Award size={9} className="fill-[#050CA6]/25" />
-                    {profile.role === "admin"
-                      ? `${profile.adminSubRole || "Admin"} Panel`
-                      : "zomindia Gold"}
-                  </span>
-                </div>
-
-                <p className="text-[11px] sm:text-xs text-neutral-500 mt-1 font-medium flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="truncate max-w-[160px] sm:max-w-none">
-                    {profile.email}
-                  </span>
-                  {profile.phoneNumber && (
-                    <>
-                      <span className="text-neutral-300 hidden sm:inline">
-                        •
-                      </span>
-                      <span className="shrink-0">
-                        {profile.phoneNumber.startsWith("+91")
-                          ? `+91 •••••• ${profile.phoneNumber.replace("+91", "").slice(-4)}`
-                          : `+91 •••••• ${profile.phoneNumber.slice(-4)}`}
-                      </span>
-                    </>
-                  )}
-                </p>
-
-                {(() => {
-                  const isMobileOTP =
-                    auth.currentUser?.providerData.some(
-                      (p) => p.providerId === "phone",
-                    ) ||
-                    (!!auth.currentUser?.phoneNumber &&
-                      !auth.currentUser?.email);
-                  if (isMobileOTP) {
-                    const hasVerifiedPhone =
-                      !!auth.currentUser?.phoneNumber ||
-                      !!profile.phoneNumberVerified;
-                    return hasVerifiedPhone ? (
-                      <span className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1 mt-1 select-none">
-                        Phone: Verified ✓
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-amber-600 font-extrabold flex items-center gap-1 mt-1 select-none">
-                        Phone: Not Verified ⚠️
-                      </span>
-                    );
-                  } else {
-                    const isGoogleOrEmail =
-                      auth.currentUser?.providerData.some(
-                        (p) =>
-                          p.providerId === "google.com" ||
-                          p.providerId === "password",
-                      ) ||
-                      (!!auth.currentUser?.email &&
-                        !auth.currentUser?.phoneNumber);
-                    const isEmailVerified =
-                      !(isMobileOTP && !auth.currentUser?.emailVerified) &&
-                      (isGoogleOrEmail || auth.currentUser?.emailVerified);
-                    return isEmailVerified ? (
-                      <span className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1 mt-1 select-none">
-                        Email: Verified ✓
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-amber-600 font-extrabold flex items-center gap-1 mt-1 select-none">
-                        Email: Not Verified ⚠️
-                      </span>
-                    );
-                  }
-                })()}
-
-                <p className="text-[9px] sm:text-[10px] text-[#050CA6] font-extrabold uppercase tracking-widest mt-1.5 bg-blue-50/50 py-0.5 px-1.5 sm:px-2 rounded-lg inline-block">
-                  Member Since{" "}
-                  {profile.createdAt
-                    ? new Date(
-                        profile.createdAt.toDate?.() || profile.createdAt,
-                      ).toLocaleDateString("en-IN", {
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "June 2026"}
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Metrics Columns (Zomato stats integration to understand our user better) */}
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-4 w-full lg:w-auto p-2 sm:p-3 bg-neutral-50/70 rounded-xl sm:rounded-2xl border border-neutral-100">
-              <button
-                onClick={() => setActiveTab("wallet")}
-                className="text-center px-0.5 py-1.5 hover:bg-neutral-100 hover:shadow-xs rounded-lg sm:rounded-xl transition-all cursor-pointer flex flex-col justify-center items-center group active:scale-95"
-              >
-                <span className="text-[9.5px] sm:text-xs text-neutral-400 font-bold block mb-1 group-hover:text-[#050CA6] whitespace-nowrap">
-                  Wallet Cash
-                </span>
-                <span className="text-xs sm:text-lg font-black text-neutral-900 leading-none">
-                  ₹{profile.walletBalance ?? 100}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("bookings")}
-                className="text-center px-0.5 py-1.5 border-x border-neutral-200 hover:bg-neutral-100 hover:shadow-xs rounded-lg sm:rounded-xl transition-all cursor-pointer flex flex-col justify-center items-center group active:scale-95"
-              >
-                <span className="text-[9.5px] sm:text-xs text-neutral-400 font-bold block mb-1 group-hover:text-[#050CA6] whitespace-nowrap">
-                  Bookings
-                </span>
-                <span className="text-xs sm:text-lg font-black text-[#050CA6] leading-none">
-                  {stats.totalBookings} Done
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("amcs")}
-                className="text-center px-0.5 py-1.5 hover:bg-neutral-100 hover:shadow-xs rounded-lg sm:rounded-xl transition-all cursor-pointer flex flex-col justify-center items-center group active:scale-95"
-              >
-                <span className="text-[9.5px] sm:text-xs text-neutral-400 font-bold block mb-1 group-hover:text-[#050CA6] whitespace-nowrap">
-                  Care Plan
-                </span>
-                <span className="text-[8.5px] sm:text-xs font-black bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded-md inline-block mt-0.5 whitespace-nowrap">
-                  {stats.activeAmcs > 0
-                    ? `${stats.activeAmcs} Active`
-                    : "Upgrade"}
-                </span>
-              </button>
-            </div>
+          <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2.5 py-1 rounded-full select-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{profile?.displayName || profile?.fullName || "Active"}</span>
           </div>
         </div>
-      </div>
+      </header>
 
-        {/* SECTION 2: Split Layout (Left list options panel like Urban Company / Right details body form) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Option List Panel */}
-          <div
-            className={`${activeSub ? "hidden" : "col-span-12 lg:col-span-12"} bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm space-y-1`}
-          >
-            <button
-              onClick={() => handleSelectSub("basic")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "basic"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "basic" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
-                >
-                  <User size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Basic Profile</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "basic" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Name, credentials & email
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "basic" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+      {/* 3. Viewport Height & Safe-Area Container */}
+      <main
+        id="profile-settings-container"
+        className="max-w-md mx-auto w-full pb-28 px-3 sm:px-4 pt-3.5 overflow-y-auto flex-1"
+      >
+        {/* COMPACT USER HERO CARD (Only shown on main view or in compact mode) */}
+        {!activeSub && (
+          <div className="relative p-[3px] rounded-2xl mb-3.5 overflow-hidden shadow-sm">
+            {/* Animated RGB rotating border background layer */}
+            <div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300%] h-[300%] rounded-full origin-center animate-spin-rgb conic-rgb-bg"
+            />
+            {/* Shimmer wipe overlay */}
+            <div className="absolute inset-0 rounded-2xl animate-shimmer-wipe bg-shimmer-wipe mix-blend-overlay pointer-events-none z-30" />
 
-            <button
-              onClick={() => handleSelectSub("wallet")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "wallet"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "wallet" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
-                >
-                  <Wallet size={15} />
+            {/* Inner Card Content Wrapper */}
+            <div className={`relative rounded-[13px] p-3.5 z-20 ${
+              (profile.email?.toLowerCase().trim() === "sarthakwebtech@gmail.com" || profile.isPremium)
+                ? "premium-gold-card"
+                : "bg-white border border-slate-200/80"
+            }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Compact Avatar (w-14 h-14) */}
+                <div className="relative shrink-0">
+                  <Avatar
+                    photoURL={profile.photoURL}
+                    displayName={profile.displayName || profile.fullName}
+                    email={profile.email}
+                    isPremium={profile.isPremium}
+                    sizeClass="w-14 h-14"
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white w-4 h-4 rounded-full text-[8px] font-bold border-2 border-white flex items-center justify-center z-30">
+                    ✓
+                  </span>
                 </div>
-                <div>
-                  <p className="font-extrabold text-sm">zomindia Wallet</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "wallet" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Load cash & coupons
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "wallet" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
 
-            <button
-              onClick={() => handleSelectSub("addresses")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "addresses"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "addresses" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
-                >
-                  <MapPin size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Saved Addresses</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "addresses" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Default location mapping
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "addresses" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
-
-            <button
-              onClick={() => handleSelectSub("active")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "active"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "active" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
-                >
-                  <RefreshCw size={15} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-extrabold text-sm">
-                      Live Active Trackers
-                    </p>
-                    {activeBookings.length > 0 && (
-                      <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse shrink-0" />
-                    )}
+                {/* User Info with Dynamic Font & Proper Truncate Handling */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <h1
+                      className="text-base sm:text-lg font-black text-slate-900 tracking-tight truncate max-w-[170px] sm:max-w-[200px]"
+                      title={profile.fullName || profile.displayName || "Authorized Client"}
+                    >
+                      {profile.fullName || profile.displayName || "Authorized Client"}
+                    </h1>
+                    <span className="bg-[#050CA6]/10 text-[#050CA6] border border-[#050CA6]/10 text-[8.5px] uppercase px-1.5 py-0.5 rounded-md font-black tracking-wider flex items-center gap-0.5 shrink-0">
+                      <Award size={9} className="fill-[#050CA6]/25" />
+                      {profile.role === "admin"
+                        ? `${profile.adminSubRole || "Admin"}`
+                        : "Gold"}
+                    </span>
                   </div>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "active" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    {activeBookings.length > 0
-                      ? `${activeBookings.length} active service tracker(s)`
-                      : "No active services running"}
+
+                  <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                    {profile.email || profile.phoneNumber || "No contact linked"}
                   </p>
+
+                  <div className="flex items-center gap-2 mt-1">
+                    {(() => {
+                      const isMobileOTP =
+                        auth.currentUser?.providerData.some(
+                          (p) => p.providerId === "phone",
+                        ) ||
+                        (!!auth.currentUser?.phoneNumber &&
+                          !auth.currentUser?.email);
+                      if (isMobileOTP) {
+                        const hasVerifiedPhone =
+                          !!auth.currentUser?.phoneNumber ||
+                          !!profile.phoneNumberVerified;
+                        return hasVerifiedPhone ? (
+                          <span className="text-[9.5px] text-emerald-600 font-bold flex items-center gap-0.5">
+                            <CheckCircle2 size={10} /> Phone Verified
+                          </span>
+                        ) : (
+                          <span className="text-[9.5px] text-amber-600 font-bold flex items-center gap-0.5">
+                            <AlertCircle size={10} /> Phone Unverified
+                          </span>
+                        );
+                      } else {
+                        const isGoogleOrEmail =
+                          auth.currentUser?.providerData.some(
+                            (p) =>
+                              p.providerId === "google.com" ||
+                              p.providerId === "password",
+                          ) ||
+                          (!!auth.currentUser?.email &&
+                            !auth.currentUser?.phoneNumber);
+                        const isEmailVerified =
+                          !(isMobileOTP && !auth.currentUser?.emailVerified) &&
+                          (isGoogleOrEmail || auth.currentUser?.emailVerified);
+                        return isEmailVerified ? (
+                          <span className="text-[9.5px] text-emerald-600 font-bold flex items-center gap-0.5">
+                            <CheckCircle2 size={10} /> Email Verified
+                          </span>
+                        ) : (
+                          <span className="text-[9.5px] text-amber-600 font-bold flex items-center gap-0.5">
+                            <AlertCircle size={10} /> Email Unverified
+                          </span>
+                        );
+                      }
+                    })()}
+
+                    <span className="text-[9.5px] text-slate-400 font-bold">
+                      • Since {profile.createdAt
+                        ? new Date(
+                            profile.createdAt.toDate?.() || profile.createdAt,
+                          ).toLocaleDateString("en-IN", {
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "2026"}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "active" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
 
-            <button
-              onClick={() => handleSelectSub("history")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "history"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "history" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+              {/* Quick Stats: Sleek Compact 3-Column Pill Grid */}
+              <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-slate-50/90 rounded-xl border border-slate-100 mt-3 text-center">
+                <button
+                  onClick={() => handleSelectSub("wallet")}
+                  className="px-1 py-1.5 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer flex flex-col items-center group active:scale-95"
+                  id="stats-wallet-btn"
                 >
-                  <History size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">
-                    Booking & Order History
-                  </p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "history" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    View all receipts & status logs
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "history" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+                  <span className="text-[9.5px] text-slate-400 font-bold block mb-0.5 group-hover:text-blue-600">
+                    Wallet
+                  </span>
+                  <span className="text-xs font-black text-slate-900 leading-tight">
+                    ₹{profile.walletBalance ?? 100}
+                  </span>
+                </button>
 
-            <button
-              onClick={() => handleSelectSub("referrals")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "referrals"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "referrals" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                <button
+                  onClick={() => handleSelectSub("history")}
+                  className="px-1 py-1.5 border-x border-slate-200 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer flex flex-col items-center group active:scale-95"
+                  id="stats-bookings-btn"
                 >
-                  <Gift size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Refer & Claim Cash</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "referrals" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Share with friends, get ₹100
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "referrals" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+                  <span className="text-[9.5px] text-slate-400 font-bold block mb-0.5 group-hover:text-blue-600">
+                    Bookings
+                  </span>
+                  <span className="text-xs font-black text-blue-700 leading-tight">
+                    {stats.totalBookings} Done
+                  </span>
+                </button>
 
-            <button
-              onClick={() => handleSelectSub("alerts")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "alerts"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "alerts" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                <button
+                  onClick={() => setActiveTab("amcs")}
+                  className="px-1 py-1.5 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer flex flex-col items-center group active:scale-95"
+                  id="stats-careplan-btn"
                 >
-                  <Bell size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Notification Alerts</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "alerts" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    App updates & promo alerts
-                  </p>
-                </div>
+                  <span className="text-[9.5px] text-slate-400 font-bold block mb-0.5 group-hover:text-blue-600">
+                    Care Plan
+                  </span>
+                  <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded leading-tight">
+                    {stats.activeAmcs > 0 ? `${stats.activeAmcs} Active` : "Upgrade"}
+                  </span>
+                </button>
               </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "alerts" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+            </div>
+          </div>
+        )}
 
-            <button
-              onClick={() => handleSelectSub("privacy")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "privacy"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "privacy" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+        {/* 2. GROUPED COMPACT ACCORDION / MENU GRID (3 Organized Sections) */}
+        {!activeSub ? (
+          <div className="space-y-3.5" id="profile-menu-grouped">
+            {/* SECTION A: Account & Orders */}
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1 mb-1 block">
+                Account & Orders
+              </span>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                <button
+                  onClick={() => handleSelectSub("basic")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-basic-profile"
                 >
-                  <Shield size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Privacy & Session</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "privacy" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Manage session & data rules
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "privacy" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <User size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Basic Profile</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Name, credentials & email</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
 
-            <button
-              onClick={() => handleSelectSub("hardware")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "hardware"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "hardware" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                <button
+                  onClick={() => handleSelectSub("addresses")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-saved-addresses"
                 >
-                  <Cpu size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">
-                    App Permissions & Safety
-                  </p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "hardware" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Configure Location, Camera & Microphone
-                  </p>
-                </div>
-              </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "hardware" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <MapPin size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Saved Addresses</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Default delivery locations</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
 
-            <button
-              onClick={() => handleSelectSub("faq")}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all ${
-                activeSub === "faq"
-                  ? "bg-[#050CA6] text-white shadow-md shadow-[#050CA6]/10"
-                  : "text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSub === "faq" ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                <button
+                  onClick={() => handleSelectSub("history")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-booking-history"
                 >
-                  <HelpCircle size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Help & FAQ Desk</p>
-                  <p
-                    className={`text-[10px] mt-0.5 font-medium ${activeSub === "faq" ? "text-white/60" : "text-neutral-400"}`}
-                  >
-                    Answers to common questions
-                  </p>
-                </div>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <History size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Booking & Order History</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">View all receipts & status logs</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => handleSelectSub("active")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-active-trackers"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Navigation size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-black text-slate-800">Live Active Trackers</p>
+                        {activeBookings.length > 0 && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">
+                        {activeBookings.length > 0
+                          ? `${activeBookings.length} active service(s) running`
+                          : "Track ongoing service partners"}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
               </div>
-              <ChevronRight
-                size={14}
-                className={
-                  activeSub === "faq" ? "text-white" : "text-neutral-400"
-                }
-              />
-            </button>
+            </div>
 
+            {/* SECTION B: Wallet & Perks */}
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1 mb-1 block">
+                Wallet & Perks
+              </span>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                <button
+                  onClick={() => handleSelectSub("wallet")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-wallet"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Wallet size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Zomindia Wallet</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Load cash & redeem coupons</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                      ₹{profile.walletBalance ?? 100}
+                    </span>
+                    <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </button>
 
-            <button
-              onClick={handleRefreshData}
-              disabled={refreshing}
-              className="w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all text-indigo-600 hover:bg-indigo-50/50 active:scale-98 disabled:opacity-75"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 ${refreshing ? "animate-spin" : ""}`}>
-                  <RefreshCw size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Refresh Data</p>
-                  <p className="text-[10px] mt-0.5 font-medium text-indigo-400">
-                    {refreshing ? "Clearing caches & syncing..." : "Clear local caches & sync data"}
-                  </p>
-                </div>
+                <button
+                  onClick={() => handleSelectSub("referrals")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-referrals"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Gift size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Refer & Earn (₹100)</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Share with friends, get ₹100</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[9px] font-black text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                      ₹100
+                    </span>
+                    <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("amcs")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-care-plan"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Award size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">AMC Care Plan</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Annual maintenance & priority</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[9px] font-black text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-100">
+                      {stats.activeAmcs > 0 ? `${stats.activeAmcs} Active` : "Get Care"}
+                    </span>
+                    <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </button>
               </div>
-              <ChevronRight size={14} className="text-indigo-400" />
-            </button>
+            </div>
 
-            <button
-              onClick={() => {
-                signOut(auth);
-              }}
-              className="w-full flex items-center justify-between p-4 rounded-2xl font-bold text-left text-xs transition-all text-rose-600 hover:bg-rose-50/50 active:scale-98"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600">
-                  <LogOut size={15} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">Log Out</p>
-                  <p className="text-[10px] mt-0.5 font-medium text-rose-400">
-                    End active session securely
-                  </p>
-                </div>
+            {/* SECTION C: App & Security */}
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1 mb-1 block">
+                App & Security
+              </span>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                <button
+                  onClick={() => handleSelectSub("alerts")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-alerts"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Bell size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Notification Alerts</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">App updates & booking alerts</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => handleSelectSub("hardware")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-hardware"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Cpu size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">App Permissions & Safety</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Location, camera & audio</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => handleSelectSub("privacy")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-privacy"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Shield size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Privacy & Security</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Session & data privacy rules</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => handleSelectSub("faq")}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-faq"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <HelpCircle size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Help Desk & FAQ</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Answers to common queries</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={handleRefreshData}
+                  disabled={refreshing}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
+                  id="menu-refresh-data"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 ${refreshing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}`}>
+                      <RefreshCw size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800">Sync & Refresh Cache</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">
+                        {refreshing ? "Syncing in progress..." : "Clear local data cache"}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => signOut(auth)}
+                  className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-rose-50/60 transition-colors text-left group cursor-pointer"
+                  id="menu-logout"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <LogOut size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-rose-600">Log Out</p>
+                      <p className="text-[10px] text-rose-400 font-medium truncate">End active session securely</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} className="text-rose-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
               </div>
-              <ChevronRight size={14} className="text-rose-400" />
-            </button>
+            </div>
 
-            {/* Quick shortcuts */}
-            <div className="pt-4 mt-4 border-t border-neutral-100 px-3 pb-3 space-y-2">
+            {/* Quick action banners at bottom */}
+            <div className="space-y-2 pt-1">
               {profile.role === "admin" && (
                 <button
                   onClick={() => setActiveTab("admin")}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95"
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-2xs cursor-pointer"
                 >
                   <Shield size={13} />
-                  <span>Go to Admin Panel</span>
+                  <span>Open Admin Control Panel</span>
                 </button>
               )}
 
@@ -1822,14 +1736,19 @@ export default function ProfileSettings({
                       window.dispatchEvent(new CustomEvent('open-partner-modal'));
                     }
                   }}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-[#0a2540] hover:from-emerald-700 hover:to-slate-900 text-white py-4 px-4 rounded-2xl text-xs font-black flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-md shadow-emerald-900/10 cursor-pointer border border-emerald-500/20"
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white py-3 px-3.5 rounded-2xl text-xs font-black flex items-center justify-between transition-all active:scale-95 shadow-sm cursor-pointer border border-emerald-500/20"
                   id="profile-join-partner-card"
                 >
-                  <div className="flex items-center gap-2">
-                    <Award size={14} className="text-emerald-300 animate-pulse" />
-                    <span className="font-sans font-extrabold tracking-wide text-[11px]">Earn with Zomindia?</span>
+                  <div className="flex items-center gap-2.5 text-left">
+                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                      <Award size={16} className="text-white animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="font-black text-xs text-white leading-tight">Earn with Zomindia</p>
+                      <p className="text-[10px] text-emerald-100 font-medium">Register as a Service Partner</p>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-emerald-100 font-semibold opacity-90">Register as a Service Partner</span>
+                  <ChevronRight size={16} className="text-emerald-200" />
                 </button>
               )}
 
@@ -1841,27 +1760,30 @@ export default function ProfileSettings({
                     }),
                   );
                 }}
-                className="w-full bg-neutral-900 text-white py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95"
+                className="w-full bg-slate-900 hover:bg-black text-white py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                id="profile-ai-chat-btn"
               >
                 <MessageSquare size={13} />
                 <span>Open 24/7 Support AI</span>
               </button>
             </div>
           </div>
-
-          {/* Right sub-view form display panel */}
-          <div
-            className={`${activeSub ? "col-span-12" : "hidden"} bg-white rounded-3xl border border-neutral-100 p-6 sm:p-8 shadow-sm`}
-          >
-            {activeSub && (
+        ) : (
+          /* SUBVIEW RENDERER: Compact Card layout */
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs mb-4">
+            <div className="mb-4 pb-2.5 border-b border-slate-100 flex items-center justify-between">
               <button
                 onClick={() => setActiveSub(null)}
-                className="mb-8 inline-flex items-center gap-2 text-xs font-black uppercase text-[#050CA6] bg-[#050CA6]/5 hover:bg-[#050CA6]/10 px-4 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-black uppercase text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+                id="back-to-menu-btn"
               >
-                <ArrowLeft size={14} />
+                <ArrowLeft size={13} />
                 <span>← Back to Menu</span>
               </button>
-            )}
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                {activeSub}
+              </span>
+            </div>
 
             <AnimatePresence mode="wait">
               {/* VIEW 1: Basic Information */}
@@ -3412,9 +3334,10 @@ export default function ProfileSettings({
               )}
             </AnimatePresence>
           </div>
-        </div>
+        )}
+      </main>
 
-        {/* Tabbed Credentials Verification Modal Popup */}
+      {/* Tabbed Credentials Verification Modal Popup */}
         <AnimatePresence>
           {isVerifyModalOpen && (
             <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -3752,7 +3675,6 @@ export default function ProfileSettings({
             </div>
           )}
         </AnimatePresence>
-      </div>
     </div>
   );
 }
