@@ -3,6 +3,7 @@ import {
   Map,
   AdvancedMarker,
   useMap,
+  useMapsLibrary,
 } from "@vis.gl/react-google-maps";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -91,7 +92,7 @@ function calculateHaversineDistance(
 function generateCurvedPath(
   start: { lat: number; lng: number },
   end: { lat: number; lng: number },
-  numPoints: number = 30
+  numPoints: number = 25
 ): Array<{ lat: number; lng: number }> {
   const points: Array<{ lat: number; lng: number }> = [];
   const midLat = (start.lat + end.lat) / 2;
@@ -127,13 +128,14 @@ function generateCurvedPath(
 // Dedicated React Google Maps Polyline Component
 function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) {
   const map = useMap();
+  const mapsLib = useMapsLibrary("maps");
   const polylineRef = useRef<google.maps.Polyline | null>(null);
 
   useEffect(() => {
-    if (!map || path.length < 2) return;
+    if (!map || !mapsLib || path.length < 2) return;
 
     if (!polylineRef.current) {
-      polylineRef.current = new google.maps.Polyline({
+      polylineRef.current = new mapsLib.Polyline({
         strokeColor: "#2563EB", // Royal Blue
         strokeOpacity: 0.95,
         strokeWeight: 5,
@@ -149,7 +151,7 @@ function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) 
         polylineRef.current = null;
       }
     };
-  }, [map, path]);
+  }, [map, mapsLib, path]);
 
   return null;
 }
@@ -173,7 +175,7 @@ function MapCanvas({
   const dLat = destCoords?.lat;
   const dLng = destCoords?.lng;
 
-  // 1. Compute stable static array of route points immediately (30 interpolated points)
+  // 1. Compute stable static array of route points immediately (25 interpolated points)
   const routePath = useMemo(() => {
     if (
       typeof pLat !== "number" ||
@@ -185,7 +187,7 @@ function MapCanvas({
     }
     const start = { lat: pLat, lng: pLng };
     const end = { lat: dLat, lng: dLng };
-    const curved = generateCurvedPath(start, end, 30);
+    const curved = generateCurvedPath(start, end, 25);
     return curved.length >= 2 ? curved : [start, end];
   }, [pLat, pLng, dLat, dLng]);
 
