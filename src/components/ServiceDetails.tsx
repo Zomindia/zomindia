@@ -48,6 +48,7 @@ import BookingModal from "./BookingModal";
 import PartnerIdentityMarker from "./PartnerIdentityMarker";
 import { LoadingScreen } from "./LoadingIndicator";
 import { Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
+import { GOOGLE_MAPS_MAP_ID } from "../lib/maps-config";
 import FAQList from "./FAQ";
 import { getEstimatedDurationDetails } from "../lib/durationEstimator";
 
@@ -213,7 +214,7 @@ function NearbyProsMap({ partners }: { partners: PartnerWithUserInfo[] }) {
         center={center}
         onCameraChanged={(e) => setCenter(e.detail.center)}
         defaultZoom={12}
-        mapId="DEMO_MAP_ID"
+        mapId={GOOGLE_MAPS_MAP_ID}
         mapTypeId={mapType}
         className="w-full h-full"
         gestureHandling="greedy"

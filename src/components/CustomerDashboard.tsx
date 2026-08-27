@@ -2473,6 +2473,8 @@ export default function CustomerDashboard({
                                   destinationAddress={booking.address}
                                   bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
                                   bookingId={booking.id}
+                                  serviceName={booking.serviceName}
+                                  heightClassName="h-[340px] sm:h-[380px]"
                                 />
                               </motion.div>
                             )}

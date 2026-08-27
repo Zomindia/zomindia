@@ -23,6 +23,8 @@ import {
   ShieldAlert,
   Navigation,
   XCircle,
+  X,
+  Maximize2,
   Lock,
 } from "lucide-react";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
@@ -322,6 +324,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
 }) => {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
+  const [isFullscreenTrackingOpen, setIsFullscreenTrackingOpen] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
   const expanded = onToggleExpand ? isExpanded : internalExpanded;
@@ -336,7 +339,10 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
   const isCancelled = rawStatus === "cancelled";
   const isInProgress = rawStatus === "in_progress";
   const isArrived = rawStatus === "arrived";
-  const isOnTheWay = rawStatus === "on_the_way";
+  const isOnTheWay =
+    rawStatus === "on_the_way" ||
+    rawStatus === "in_transit" ||
+    rawStatus === "pro_en_route";
   const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
   const isPaymentPending = rawStatus === "payment_pending";
   const isPending = [
@@ -615,6 +621,40 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
           </button>
         )}
       </div>
+
+      {/* 2.5. Embedded Live Tracking Mini-Map (Zomato/Uber Style for PRO EN-ROUTE) */}
+      {hasPartner && isOnTheWay && (
+        <div className="mt-3 relative z-10">
+          <PartnerTrackingMap
+            partnerId={booking.partnerId!}
+            partnerLat={booking.partnerLocation?.lat}
+            partnerLng={booking.partnerLocation?.lng}
+            customerLat={booking.lat}
+            customerLng={booking.lng}
+            destinationAddress={booking.address}
+            bookingLocation={
+              booking.lat && booking.lng
+                ? { lat: booking.lat, lng: booking.lng }
+                : undefined
+            }
+            bookingId={booking.id}
+            serviceName={serviceName}
+            variant="mini"
+            heightClassName="h-36 sm:h-44"
+            onExpand={() => setIsFullscreenTrackingOpen(true)}
+            onCall={() => {
+              if (partnerUser && onCallPartner) {
+                onCallPartner(partnerUser, booking);
+              }
+            }}
+            onChat={() => {
+              if (onChatPartner) {
+                onChatPartner(booking);
+              }
+            }}
+          />
+        </div>
+      )}
 
       {/* 3. Single Dynamic Payment & Action Bar (Eliminates Dual-Payment Button Conflict) */}
       <div className="flex items-center justify-between pt-3.5 mt-3.5 border-t border-slate-200/80 relative z-10 gap-3 flex-wrap">
@@ -994,6 +1034,18 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                           destinationAddress={booking.address}
                           bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
                           bookingId={booking.id}
+                          serviceName={booking.serviceName}
+                          onCall={() => {
+                            if (partnerUser && onCallPartner) {
+                              onCallPartner(partnerUser, booking);
+                            }
+                          }}
+                          onChat={() => {
+                            if (onChatPartner) {
+                              onChatPartner(booking);
+                            }
+                          }}
+                          heightClassName="h-[340px] sm:h-[380px]"
                         />
                       </motion.div>
                     )}
@@ -1155,6 +1207,120 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                 <span>Hide Details</span>
               </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Live Navigation Modal / Bottom Sheet */}
+      <AnimatePresence>
+        {isFullscreenTrackingOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsFullscreenTrackingOpen(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 80, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 80, scale: 0.96 }}
+              transition={{ type: "spring", damping: 26, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/80 bg-slate-50/90 backdrop-blur-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
+                    <Navigation size={17} className="animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                      Live Navigation • {serviceName}
+                    </h3>
+                    <p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                      <span>Technician is actively en-route to your doorstep</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreenTrackingOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
+                  title="Close Live Navigation"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+
+              {/* Full Map Canvas */}
+              <div className="p-3 sm:p-4 overflow-y-auto space-y-3">
+                <PartnerTrackingMap
+                  partnerId={booking.partnerId!}
+                  partnerLat={booking.partnerLocation?.lat}
+                  partnerLng={booking.partnerLocation?.lng}
+                  customerLat={booking.lat}
+                  customerLng={booking.lng}
+                  destinationAddress={booking.address}
+                  bookingLocation={
+                    booking.lat && booking.lng
+                      ? { lat: booking.lat, lng: booking.lng }
+                      : undefined
+                  }
+                  bookingId={booking.id}
+                  serviceName={serviceName}
+                  variant="full"
+                  heightClassName="h-[380px] sm:h-[430px]"
+                  onCall={() => {
+                    if (partnerUser && onCallPartner) {
+                      onCallPartner(partnerUser, booking);
+                    }
+                  }}
+                  onChat={() => {
+                    if (onChatPartner) {
+                      onChatPartner(booking);
+                    }
+                  }}
+                />
+
+                {/* Additional Info Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5 shadow-2xs">
+                    <MapPin size={15} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                        Service Destination
+                      </span>
+                      <span className="font-bold text-slate-800 line-clamp-2 mt-0.5">
+                        {booking.address || "Indore, Madhya Pradesh"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {showOtpBox && otp && (
+                    <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 block">
+                          Security Verification PIN
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-600">
+                          Share with pro on arrival
+                        </span>
+                      </div>
+                      <span className="text-lg font-black font-mono tracking-widest text-blue-700 bg-white px-2.5 py-1 rounded-xl border border-blue-300 shadow-2xs">
+                        {otp}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

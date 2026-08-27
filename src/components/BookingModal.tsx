@@ -26,6 +26,7 @@ import {
   AdvancedMarker,
   Pin
 } from '@vis.gl/react-google-maps';
+import { GOOGLE_MAPS_MAP_ID } from '../lib/maps-config';
 import { 
   X, 
   Clock, 
@@ -1289,7 +1290,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         setMapZoom(e.detail.zoom);
                       }}
                       defaultZoom={15}
-                      mapId="DEMO_MAP_ID"
+                      mapId={GOOGLE_MAPS_MAP_ID}
                       gestureHandling="greedy"
                       disableDefaultUI={false}
                       zoomControl={true}

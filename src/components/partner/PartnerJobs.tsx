@@ -38,6 +38,7 @@ import { notifyBookingUpdate, sendEcosystemNotification } from '../../lib/notifi
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import ChatWindow from '../ChatWindow';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { GOOGLE_MAPS_MAP_ID } from '../../lib/maps-config';
 import { useLocationTracking } from '../../hooks/useLocationTracking';
 import { QRScanner } from './QRScanner';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
@@ -195,7 +196,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
           center={coords}
           onCameraChanged={(e) => setCoords(e.detail.center)}
           defaultZoom={15}
-          mapId="DEMO_MAP_ID"
+          mapId={GOOGLE_MAPS_MAP_ID}
           gestureHandling="auto"
           disableDefaultUI
           className="w-full h-full"
@@ -352,7 +353,7 @@ function AssignedTasksMiniMap({
                 onCameraChanged={(e) => setCurrentMapCenter(e.detail.center)}
                 defaultZoom={11}
                 zoom={activeMarkerId ? 14 : 11}
-                mapId="DEMO_MAP_ID"
+                mapId={GOOGLE_MAPS_MAP_ID}
                 gestureHandling="auto"
                 disableDefaultUI
                 className="w-full h-full"
