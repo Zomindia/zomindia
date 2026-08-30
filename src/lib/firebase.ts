@@ -1,39 +1,69 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  doc,
+  getDocFromServer,
+  setLogLevel,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { offlineSyncEngine } from './offlineQueue';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Set log level to prevent benign connection warning spam in sandboxed iframe environments
+setLogLevel('error');
+
+// Initialize Firestore with auto-detect long polling and multi-tab persistent cache
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(
+    app,
+    {
+      experimentalAutoDetectLongPolling: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    },
+    firebaseConfig.firestoreDatabaseId
+  );
+} catch {
+  firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+}
+
+export const db = firestoreDb;
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 offlineSyncEngine.setDb(db);
 
-// Connection Test with graceful error reporting after connection stabilizes
+// Connection Test with graceful handling
 async function testConnection() {
   try {
-    // Attempting to reach the Cloud Firestore backend to verify state
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firestore connection test: SUCCESS");
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message.includes('offline') || error.message.includes('unavailable') || error.message.includes('Could not reach')) {
-        console.warn("Firestore connection: Offline mode activated (using local persistent cache).");
+      if (
+        error.message.includes('offline') ||
+        error.message.includes('unavailable') ||
+        error.message.includes('Could not reach') ||
+        error.message.includes('Failed to get document because the client is offline')
+      ) {
+        console.warn("Firestore: Operating with offline cache until connection is established.");
       } else {
-        console.error("Firestore connection tested, please check Firebase configuration:", error.message);
+        console.error("Firestore connection notice:", error.message);
       }
-    } else {
-      console.error("Firestore connection test: FAILED", error);
     }
   }
 }
 
-// Delay the initial connection check so that background network/WS setup completes first,
-// preventing false alarms during initial bundle execution.
+// Perform connection verification
 setTimeout(() => {
-  testConnection().catch(console.error);
+  testConnection().catch(() => {});
 }, 3000);
+
