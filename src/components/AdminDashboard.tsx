@@ -2370,11 +2370,16 @@ function BookingManager({
           bookingId,
           requesterUid: profile?.uid,
           bookingData: targetBooking ? {
-            customerId: targetBooking.customerId || targetBooking.userId,
+            id: targetBooking.id,
+            customerUid: targetBooking.customerUid || targetBooking.customerId || targetBooking.userId,
+            customerId: targetBooking.customerUid || targetBooking.customerId || targetBooking.userId,
             partnerId: targetBooking.partnerId,
             scheduledAt: targetBooking.scheduledAt,
             address: targetBooking.address,
             totalPrice: targetBooking.totalPrice,
+            discountApplied: targetBooking.discountApplied || 0,
+            promoCode: targetBooking.promoCode || "",
+            serviceName: targetBooking.serviceName || "",
             additionalCharges: targetBooking.additionalCharges || []
           } : undefined,
           userData: targetBooking ? {
@@ -11853,10 +11858,9 @@ function AnalyticsView({
                       </tr>
                     </thead>
                     <tbody>
-                      {cityDemands.map((log) => {
-                        const dateStr = log.clicked_timestamp?.toDate
-                          ? log.clicked_timestamp.toDate().toLocaleString()
-                          : log.clicked_timestamp
-                            ? new Date(log.clicked_timestamp).toLocaleString()
-                         xœ´”ÏnÂ0Æï<…ÕÓ8dí$Æ$V&í¸ì8MUÒd]Dš ÇE­ï¾lüQ´0!rrü}²‰£ À¢Yü= c¡¢
--Üu RÂ`®šéÊ¸â^Ëu¯17Üû/Õ4"U«=‡R!»ÀNŠ=&¬4Ù&ørK…Qìõ8X¹õš´³,wÆ¡zº¿ô’¥$Ût‹šaÑ°|:K¬tÖÁ/ñûC²¨?6ñ%‰úk¬dp¾ößN“¼åèÊŸV^avn×’zUjáŒl>]J˜WˆÊRâBÉLÛÌ†·†çó­¶R/Å%…¢,×ÔÜŒñğ9n_ƒ’º*ÿÅè)T¸2èØ­»¾¡õğtÛPN8Ùœª$.Œ:–ÒXêåßô‰äQªÅp µ6û0œd=ø  ÿÿ ß+®
+      xœ´”ßOÂ0Çßı+.{ÚÆ0AL4&>_|4féÚs6tíÒ!üïvˆd«CŸn÷ã{Ÿ¶·ì¯—´|ÀŠiáz«ãX™2É-¬. cq£`„Ïda¾¢Ç•äS9É
+±ª¾ë‘yğ)* wí•ÛÂ8ñÆ£áL5m¤.ã$ 5j×
+T4ı5~À¦WkñI Bô”İG7Iif5Ä•1Ù`).'«VŠu0‘+æÜ«p.(]8(ŒhÓâÛpÊï<½êƒO¥ÑÖÙ‡w3G;*ÊŸxæSÈ2í$I£Sn”±.
+t¿’IìÒÕ‹tõ2À›Ñ”VFØ¿\öëÅë—ıÒÂÚ~·c>qFâ\”ƒc(›+œ9´ù_÷ø_R‡•,Œ»„×Çò™µ¨)÷vé©sí{œ¸PŒO¿h¥²4éğX\b¶DÊ›ílŒûã¸rVÄèßúçAú¸í']ÏĞ:ioëå
+#–mŠ>Ä
+…‡¡q&äü·»ÅyàÚaØ‹í|ü˜~'ë‹O   ÿÿ ~…

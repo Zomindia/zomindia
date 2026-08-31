@@ -1153,7 +1153,7 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
                     ) : (
                       <>
                         <Download size={13} className="shrink-0" />
-                        <span>Download Invoice PDF</span>
+                        <span>Download Invoice</span>
                       </>
                     )}
                   </button>

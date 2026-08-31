@@ -1091,7 +1091,7 @@ async function startServer() {
         return res.status(500).json({ error: "Database not initialized" });
       }
 
-      const bookingRef = db.collection("bookings").doc(bookingId);
+      const bookingRef = db.collection("bookings").doc(bookingId as string);
       const bookingDoc = await bookingRef.get();
 
       if (!bookingDoc.exists) return res.status(404).json({ error: "Booking not found" });
@@ -1108,15 +1108,61 @@ async function startServer() {
       }
       const requesterData = requesterDoc.data()!;
       const isAdmin = requesterData.role === "admin" || requesterData.isAdmin === true;
-      const isAssociated = actualRequesterUid === bookingData.customerId || actualRequesterUid === bookingData.partnerId || isAdmin;
+
+      const customerId = bookingData.customerUid || bookingData.customerId || bookingData.userId;
+      const isAssociated =
+        actualRequesterUid === customerId ||
+        actualRequesterUid === bookingData.partnerId ||
+        isAdmin;
 
       if (!isAssociated) {
         return res.status(403).json({ error: "Access denied: You are not authorized to view this booking's invoice" });
       }
 
-      const userDoc = await db.collection("users").doc(bookingData.customerId).get();
-      if (!userDoc.exists) return res.status(404).json({ error: "Customer not found" });
-      const userData = userDoc.data()!;
+      let userData: any = {
+        displayName: bookingData.customerName || bookingData.customerBookedName || "Customer",
+        email: bookingData.customerEmail || bookingData.customerBookedEmail || "N/A",
+        phoneNumber: bookingData.customerPhone || bookingData.customerBookedPhone || "N/A",
+      };
+
+      if (customerId) {
+        try {
+          const userDoc = await db.collection("users").doc(customerId).get();
+          if (userDoc.exists) {
+            userData = { ...userData, ...userDoc.data() };
+          }
+        } catch (uErr) {
+          console.warn("[Download Invoice] User document lookup notice:", uErr);
+        }
+      }
+
+      let partnerName = (bookingData as any).partnerName || "Assigned Certified Partner";
+      if (bookingData.partnerId) {
+        try {
+          const partnerDoc = await db.collection("users").doc(bookingData.partnerId).get();
+          if (partnerDoc.exists) {
+            partnerName = partnerDoc.data()?.displayName || partnerName;
+          }
+        } catch (partnerErr) {
+          console.warn("[Download Invoice] Partner details lookup notice:", partnerErr);
+        }
+      }
+
+      // Accurate Billing Math
+      const additionalCharges = (bookingData.additionalCharges || []).filter(
+        (c: any) => Number(c.amount) > 0
+      );
+      const extraAmt = additionalCharges.reduce(
+        (acc: any, c: any) => acc + (Number(c.amount) || 0),
+        0
+      );
+      const discount = Math.max(0, Number(bookingData.discountApplied || 0));
+      const grandTotal = Math.max(0, Number(bookingData.totalPrice || 0));
+      let baseAmt = grandTotal - extraAmt + discount;
+      if (baseAmt < 0 || (baseAmt === 0 && grandTotal === 0)) {
+        baseAmt = Math.max(0, Number(bookingData.basePrice || grandTotal));
+      }
+      const grossSubtotal = baseAmt + extraAmt;
 
       // Generate PDF
       const docPdf = new PDFDocument({ margin: 50 });
@@ -1129,12 +1175,14 @@ async function startServer() {
         });
       });
 
-      // PDF Content (mirrors the original PDFKit logic in server.ts but adapted for invoice downloading)
-      docPdf.fontSize(18).font('Helvetica-Bold').text("Zomindia Internet Technology", { align: "center" });
-      docPdf.moveDown(0.3);
+      // PDF Content
+      docPdf.fontSize(18).font('Helvetica-Bold').text("ZOMINDIA INTERNET TECHNOLOGY", { align: "center" });
+      docPdf.moveDown(0.2);
+      docPdf.fontSize(8.5).font('Helvetica').text("Indore, Madhya Pradesh | support@zomindia.com", { align: "center" });
+      docPdf.moveDown(0.4);
       docPdf.fontSize(14).font('Helvetica-Bold').text("TAX INVOICE / SERVICE BILL", { align: "center", underline: true });
       docPdf.moveDown();
-      docPdf.fontSize(12).font('Helvetica').text(`Invoice Reference: INV-${(bookingId as string).slice(0, 8).toUpperCase()}`);
+      docPdf.fontSize(10).font('Helvetica').text(`Invoice Reference: INV-${(bookingId as string).slice(0, 8).toUpperCase()}`);
       
       let dateText = "N/A";
       if (bookingData.scheduledAt) {
@@ -1147,43 +1195,36 @@ async function startServer() {
         }
       }
       docPdf.text(`Date of Service: ${dateText}`);
-      docPdf.text(`Customer Name: ${userData.displayName || "Customer"}`);
+      docPdf.text(`Customer Name: ${userData.displayName || userData.fullName || "Customer"}`);
+      docPdf.text(`Phone: ${userData.phoneNumber || userData.mobile || bookingData.customerBookedPhone || "N/A"}`);
       docPdf.text(`Email Address: ${userData.email || "N/A"}`);
-      docPdf.text(`Service Address: ${bookingData.address || "N/A"}`);
-      
-      if (bookingData.partnerId) {
-        try {
-          const partnerDoc = await db.collection("users").doc(bookingData.partnerId).get();
-          if (partnerDoc.exists) {
-            docPdf.text(`Assigned Pro: ${partnerDoc.data()?.displayName || "Verified Partner"}`);
-          }
-        } catch (partnerErr) {
-          console.error("Partner details fetch error:", partnerErr);
-        }
-      }
+      docPdf.text(`Service Address: ${bookingData.address || "Indore, Madhya Pradesh"}`);
+      docPdf.text(`Assigned Pro: ${partnerName}`);
 
       docPdf.moveDown();
-
-      docPdf.fontSize(16).font('Helvetica-Bold').text("Charges Breakdown:", { underline: true });
+      docPdf.fontSize(12).font('Helvetica-Bold').text("Charges Breakdown:", { underline: true });
       docPdf.moveDown(0.5);
       
-      const extraAmt = bookingData.additionalCharges?.reduce((acc: any, c: any) => acc + c.amount, 0) || 0;
-      const baseAmt = bookingData.totalPrice - extraAmt;
+      docPdf.fontSize(10).font('Helvetica').text(`Base Price of Service: ₹${baseAmt}`);
       
-      docPdf.fontSize(12).font('Helvetica').text(`Base Price of Service: ₹${baseAmt}`);
-      
-      if (bookingData.additionalCharges && bookingData.additionalCharges.length > 0) {
-        docPdf.moveDown(0.5);
-        docPdf.text("Add-on / Extra Charges:");
-        bookingData.additionalCharges.forEach((charge: any) => {
-          docPdf.text(`- ${charge.reason}: ₹${charge.amount}`);
+      if (additionalCharges.length > 0) {
+        additionalCharges.forEach((charge: any) => {
+          docPdf.text(`- Spare Part / Extra (${charge.reason || 'Additional Charge'}): ₹${charge.amount}`);
         });
       }
 
-      docPdf.moveDown();
-      docPdf.fontSize(16).font('Helvetica-Bold').text(`Grand Total Paid: ₹${bookingData.totalPrice}`);
-      docPdf.moveDown(2);
-      docPdf.fontSize(10).font('Helvetica-Bold').text("Thank you for choosing Zomindia Internet Technology! Generated electronically.", { align: "center" });
+      docPdf.text(`Gross Subtotal: ₹${grossSubtotal}`);
+      docPdf.text("Taxes & Platform Fee: ₹0 (Inclusive of applicable charges)");
+      if (discount > 0) {
+        docPdf.text(`Discount Savings: -₹${discount}`);
+      }
+
+      docPdf.moveDown(0.5);
+      docPdf.fontSize(13).font('Helvetica-Bold').text(`Net Total Amount: ₹${grandTotal}`);
+      docPdf.moveDown(1.5);
+      docPdf.fontSize(8.5).font('Helvetica').text("FOR ZOMINDIA INTERNET TECHNOLOGY [DIGITALLY VERIFIED]", { align: "center" });
+      docPdf.moveDown(0.2);
+      docPdf.fontSize(8).font('Helvetica').text("This is a computer-generated tax invoice. Thank you for choosing Zomindia Internet Technology!", { align: "center" });
       
       docPdf.end();
       const pdfBuffer = await pdfBufferPromise;
@@ -1226,14 +1267,15 @@ async function startServer() {
         bookingData = {
           id: bookingId,
           totalPrice: clientBookingData?.totalPrice || 0,
-          address: clientBookingData?.address || "Doorstep Address in Indore",
+          address: clientBookingData?.address || "Indore, Madhya Pradesh",
           scheduledAt: clientBookingData?.scheduledAt || new Date(),
           additionalCharges: clientBookingData?.additionalCharges || [],
+          discountApplied: clientBookingData?.discountApplied || 0,
           ...(clientBookingData || {})
         };
       }
 
-      const customerId = bookingData.customerId || bookingData.userId || clientUserData?.uid || requesterUid;
+      const customerId = bookingData.customerUid || bookingData.customerId || bookingData.userId || clientUserData?.uid || requesterUid;
       if (db && customerId && !userData?.email) {
         try {
           const userDoc = await db.collection("users").doc(customerId).get();
@@ -1255,6 +1297,22 @@ async function startServer() {
         };
       }
 
+      // Accurate Billing Math
+      const additionalCharges = (bookingData.additionalCharges || []).filter(
+        (c: any) => Number(c.amount) > 0
+      );
+      const extraTotal = additionalCharges.reduce(
+        (acc: any, c: any) => acc + (Number(c.amount) || 0),
+        0
+      );
+      const discount = Math.max(0, Number(bookingData.discountApplied || 0));
+      const grandTotal = Math.max(0, Number(bookingData.totalPrice || 0));
+      let baseAmt = grandTotal - extraTotal + discount;
+      if (baseAmt < 0 || (baseAmt === 0 && grandTotal === 0)) {
+        baseAmt = Math.max(0, Number(bookingData.basePrice || grandTotal));
+      }
+      const grossSubtotal = baseAmt + extraTotal;
+
       // 1. Generate PDF
       const docPdf = new PDFDocument({ margin: 50 });
       let buffers: any[] = [];
@@ -1267,11 +1325,13 @@ async function startServer() {
       });
 
       // PDF Content
-      docPdf.fontSize(18).font('Helvetica-Bold').text("Zomindia Internet Technology", { align: "center" });
-      docPdf.moveDown(0.3);
-      docPdf.fontSize(14).font('Helvetica-Bold').text("FINAL BILL & RECEIPT", { align: "center" });
+      docPdf.fontSize(18).font('Helvetica-Bold').text("ZOMINDIA INTERNET TECHNOLOGY", { align: "center" });
+      docPdf.moveDown(0.2);
+      docPdf.fontSize(8.5).font('Helvetica').text("Indore, Madhya Pradesh | support@zomindia.com", { align: "center" });
+      docPdf.moveDown(0.4);
+      docPdf.fontSize(14).font('Helvetica-Bold').text("FINAL BILL & RECEIPT", { align: "center", underline: true });
       docPdf.moveDown();
-      docPdf.fontSize(12).text(`Booking ID: ${bookingId}`);
+      docPdf.fontSize(10).text(`Booking Reference: #${bookingId.slice(0, 8).toUpperCase()}`);
       
       let dateDisplay = new Date().toLocaleDateString();
       if (bookingData.scheduledAt?.toDate) {
@@ -1283,28 +1343,34 @@ async function startServer() {
       }
 
       docPdf.text(`Date: ${dateDisplay}`);
-      docPdf.text(`Customer Name: ${userData.displayName || "Customer"}`);
-      docPdf.text(`Address: ${bookingData.address || "Indore, Madhya Pradesh"}`);
+      docPdf.text(`Customer Name: ${userData.displayName || userData.fullName || "Customer"}`);
+      docPdf.text(`Phone: ${userData.phoneNumber || userData.mobile || bookingData.customerBookedPhone || "N/A"}`);
+      docPdf.text(`Service Address: ${bookingData.address || "Indore, Madhya Pradesh"}`);
       docPdf.moveDown();
 
-      docPdf.fontSize(16).text("Charges Details:", { underline: true });
+      docPdf.fontSize(12).font('Helvetica-Bold').text("Charges Breakdown:", { underline: true });
       docPdf.moveDown(0.5);
-      const extraTotal = (bookingData.additionalCharges?.reduce((acc: any, c: any) => acc + (Number(c.amount) || 0), 0) || 0);
-      const grandTotal = Number(bookingData.totalPrice) || 0;
-      const baseAmt = Math.max(0, grandTotal - extraTotal);
 
-      docPdf.fontSize(12).text(`Base Amount: ₹${baseAmt}`);
+      docPdf.fontSize(10).font('Helvetica').text(`Base Price of Service: ₹${baseAmt}`);
       
-      if (bookingData.additionalCharges && bookingData.additionalCharges.length > 0) {
-        docPdf.moveDown(0.5);
-        docPdf.text("Extra Charges:");
-        bookingData.additionalCharges.forEach((charge: any) => {
-          docPdf.text(`- ${charge.reason || 'Additional Charge'}: ₹${charge.amount}`);
+      if (additionalCharges.length > 0) {
+        additionalCharges.forEach((charge: any) => {
+          docPdf.text(`- Spare Part / Extra (${charge.reason || 'Additional Charge'}): ₹${charge.amount}`);
         });
       }
 
-      docPdf.moveDown();
-      docPdf.fontSize(16).font('Helvetica-Bold').text(`Total Amount: ₹${grandTotal}`);
+      docPdf.text(`Gross Subtotal: ₹${grossSubtotal}`);
+      docPdf.text("Taxes & Platform Fee: ₹0 (Inclusive of applicable charges)");
+      if (discount > 0) {
+        docPdf.text(`Discount Savings: -₹${discount}`);
+      }
+
+      docPdf.moveDown(0.5);
+      docPdf.fontSize(13).font('Helvetica-Bold').text(`Net Total Amount: ₹${grandTotal}`);
+      docPdf.moveDown(1.5);
+      docPdf.fontSize(8.5).font('Helvetica').text("FOR ZOMINDIA INTERNET TECHNOLOGY [DIGITALLY VERIFIED]", { align: "center" });
+      docPdf.moveDown(0.2);
+      docPdf.fontSize(8).font('Helvetica').text("Thank you for choosing Zomindia Internet Technology! Generated electronically.", { align: "center" });
       
       docPdf.end();
       const pdfBuffer = await pdfBufferPromise;

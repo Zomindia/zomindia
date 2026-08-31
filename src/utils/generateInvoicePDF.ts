@@ -46,7 +46,7 @@ export async function generateInvoicePDF({
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(0, 46, 110);
-    doc.text("ZOMINDIA HOME SERVICES", margin, currentY);
+    doc.text("ZOMINDIA INTERNET TECHNOLOGY", margin, currentY);
 
     currentY += 5;
     doc.setFont("helvetica", "normal");
@@ -55,7 +55,7 @@ export async function generateInvoicePDF({
     doc.text("Smart Appliance Repair & Home Care Solutions", margin, currentY);
 
     currentY += 4;
-    doc.text("GSTIN: 07AABCZ1234D1Z9 | support@zomindia.com", margin, currentY);
+    doc.text("Indore, Madhya Pradesh | support@zomindia.com", margin, currentY);
 
     // Right: Invoice Title & Badges
     const invId = `INV-${booking.id.slice(0, 8).toUpperCase()}`;
@@ -134,7 +134,11 @@ export async function generateInvoicePDF({
       customerProfile?.mobile ||
       "Verified on App";
 
-    const address = booking.address || customerProfile?.address || "Service Location Provided in App";
+    const address =
+      booking.address ||
+      (booking.customerData as any)?.address ||
+      customerProfile?.address ||
+      "Indore, Madhya Pradesh";
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.5);
@@ -196,7 +200,24 @@ export async function generateInvoicePDF({
 
     currentY += 44;
 
-    // --- 4. Itemized Service Table ---
+    // --- 4. Billing & Price Calculation Math Logic ---
+    const additionalChargesList = (booking.additionalCharges || []).filter(
+      (c) => Number(c.amount) > 0
+    );
+    const totalAdditionalCharges = additionalChargesList.reduce(
+      (acc, c) => acc + (Number(c.amount) || 0),
+      0
+    );
+    const discount = Math.max(0, Number(booking.discountApplied || 0));
+    const netTotal = Math.max(0, Number(booking.totalPrice || 0));
+
+    // Base Price = booking.totalPrice - (Sum of additionalCharges) + (discountApplied || 0)
+    let basePrice = netTotal - totalAdditionalCharges + discount;
+    if (basePrice < 0 || (basePrice === 0 && netTotal === 0)) {
+      basePrice = Math.max(0, Number(service?.basePrice || 0));
+    }
+    const grossSubtotal = basePrice + totalAdditionalCharges;
+
     // Table Header
     doc.setFillColor(0, 46, 110); // Navy Blue
     doc.rect(margin, currentY, contentWidth, 7.5, "F");
@@ -225,8 +246,6 @@ export async function generateInvoicePDF({
       booking.serviceName ||
       "Appliance Inspection & Maintenance Service";
 
-    const basePrice = Number(service?.basePrice || booking.totalPrice || 0);
-
     doc.setFillColor(255, 255, 255);
     doc.rect(margin, currentY, contentWidth, 8.5, "F");
     doc.setDrawColor(241, 245, 249);
@@ -248,14 +267,14 @@ export async function generateInvoicePDF({
     let itemIdx = 2;
 
     // Optional Additional Charges
-    if (booking.additionalCharges && booking.additionalCharges.length > 0) {
-      booking.additionalCharges.forEach((charge) => {
+    if (additionalChargesList.length > 0) {
+      additionalChargesList.forEach((charge) => {
         doc.setFillColor(255, 255, 255);
         doc.rect(margin, currentY, contentWidth, 8, "F");
         doc.line(margin, currentY + 8, margin + contentWidth, currentY + 8);
 
         doc.text(String(itemIdx++), col1, currentY + 5);
-        const wrappedReason = doc.splitTextToSize(`Spare Part / Extra: ${charge.reason}`, 88);
+        const wrappedReason = doc.splitTextToSize(`Spare Part / Extra: ${charge.reason || "Additional Charge"}`, 88);
         doc.text(wrappedReason[0], col2, currentY + 5);
         doc.text("1", col3, currentY + 5);
         doc.text(`₹${charge.amount}`, col4, currentY + 5);
@@ -266,7 +285,6 @@ export async function generateInvoicePDF({
     }
 
     // Optional Discount Row
-    const discount = Number(booking.discountApplied || 0);
     if (discount > 0) {
       doc.setFillColor(240, 253, 244); // Green-50
       doc.rect(margin, currentY, contentWidth, 7.5, "F");
@@ -286,7 +304,7 @@ export async function generateInvoicePDF({
     currentY += 4;
 
     // --- 5. Calculation Summary Section ---
-    const summaryBoxWidth = 85;
+    const summaryBoxWidth = 95;
     const summaryBoxX = pageWidth - margin - summaryBoxWidth;
 
     doc.setFillColor(248, 250, 252);
@@ -294,16 +312,16 @@ export async function generateInvoicePDF({
     doc.roundedRect(summaryBoxX, currentY, summaryBoxWidth, 34, 2, 2, "FD");
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
 
     doc.text("Gross Subtotal:", summaryBoxX + 4, currentY + 6);
-    doc.text(`₹${basePrice + (booking.additionalCharges?.reduce((acc, c) => acc + c.amount, 0) || 0)}`, pageWidth - margin - 4, currentY + 6, {
+    doc.text(`₹${grossSubtotal}`, pageWidth - margin - 4, currentY + 6, {
       align: "right",
     });
 
-    doc.text("GST / Applicable Taxes:", summaryBoxX + 4, currentY + 12);
-    doc.text("₹0 (Included)", pageWidth - margin - 4, currentY + 12, { align: "right" });
+    doc.text("Taxes & Platform Fee:", summaryBoxX + 4, currentY + 12);
+    doc.text("₹0 (Inclusive of applicable charges)", pageWidth - margin - 4, currentY + 12, { align: "right" });
 
     if (discount > 0) {
       doc.setTextColor(22, 101, 52);
@@ -316,10 +334,10 @@ export async function generateInvoicePDF({
     doc.line(summaryBoxX + 4, currentY + 22, pageWidth - margin - 4, currentY + 22);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.5);
+    doc.setFontSize(10);
     doc.setTextColor(0, 46, 110);
     doc.text("Net Total Amount:", summaryBoxX + 4, currentY + 29);
-    doc.text(`₹${booking.totalPrice || basePrice}`, pageWidth - margin - 4, currentY + 29, {
+    doc.text(`₹${netTotal}`, pageWidth - margin - 4, currentY + 29, {
       align: "right",
     });
 
@@ -364,7 +382,7 @@ export async function generateInvoicePDF({
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(0, 46, 110);
-    doc.text("FOR ZOMINDIA SERVICES PVT LTD", pageWidth - margin, pageHeight - 16, {
+    doc.text("FOR ZOMINDIA INTERNET TECHNOLOGY", pageWidth - margin, pageHeight - 16, {
       align: "right",
     });
     doc.setTextColor(5, 150, 105);
