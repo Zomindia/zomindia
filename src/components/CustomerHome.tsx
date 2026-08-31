@@ -768,6 +768,7 @@ export default function CustomerHome({
         if (!isMounted) return;
         const allowedStatuses = [
           "pending",
+          "pending_acceptance",
           "confirmed",
           "assigned",
           "on_the_way",

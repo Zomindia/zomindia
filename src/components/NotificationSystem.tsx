@@ -50,99 +50,41 @@ export default function NotificationSystem({ onNavigate }: Props) {
     }
   }, [user]);
 
-  // Local state reference to keep track of the last known status of each booking
-  const lastBookingStatusesRef = useRef<Record<string, string>>({});
+  // Helper to trigger exactly one OS notification without dual-dispatch
+  const triggerSingleOSNotification = (title: string, options: { body: string; icon?: string; tag?: string }) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-  useEffect(() => {
-    if (!user) return;
-    let isMounted = true;
-
-    const q = query(
-      collection(db, 'bookings'),
-      where('customerId', '==', user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!isMounted) return;
-      snap.docChanges().forEach((change) => {
-        const data = change.doc.data();
-        const bookingId = change.doc.id;
-        const currentStatus = data.status;
-        const serviceName = data.serviceName || 'Your service';
-
-        if (change.type === 'modified') {
-          const previousStatus = lastBookingStatusesRef.current[bookingId];
-          if (previousStatus && previousStatus !== currentStatus) {
-            // The status has changed! Trigger a system-level push notification
-            let title = 'Booking Status Update';
-            let message = `Your booking for ${serviceName} is now ${currentStatus.replace('_', ' ')}.`;
-
-            if (currentStatus === 'confirmed') {
-              title = 'Booking Confirmed!';
-              message = `Your booking for ${serviceName} has been confirmed.`;
-            } else if (currentStatus === 'assigned') {
-              title = 'Partner Assigned!';
-              message = `A service partner has been assigned to your ${serviceName} booking.`;
-            } else if (currentStatus === 'on_the_way') {
-              title = 'Partner is on the way!';
-              message = `Our expert partner is heading to your location for ${serviceName}.`;
-            } else if (currentStatus === 'arrived') {
-              title = 'Partner Arrived!';
-              message = `Partner has reached your address for ${serviceName}.`;
-            } else if (currentStatus === 'in_progress') {
-              title = 'Service Started!';
-              message = `Your ${serviceName} service is now in progress.`;
-            } else if (currentStatus === 'payment_pending') {
-              title = 'Service Completed!';
-              message = `Please complete the payment for your ${serviceName} service.`;
-            } else if (currentStatus === 'completed') {
-              title = 'Service Completed Successfully!';
-              message = `Thank you for choosing Zomindia! Your ${serviceName} is finished.`;
-            } else if (currentStatus === 'cancelled') {
-              title = 'Booking Cancelled';
-              message = `Your booking for ${serviceName} was cancelled.`;
-            }
-
-            // Trigger standard browser Notification (PWA standard)
-            if ('Notification' in window && Notification.permission === 'granted') {
-              try {
-                new Notification(title, {
-                  body: message,
-                  icon: '/logo-192.png',
-                  tag: `status-change-${bookingId}`
-                });
-              } catch (err) {
-                console.warn('Native foreground notification failed:', err);
-              }
-
-              // Background/Persistent Service Worker Notification support
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.ready.then((registration) => {
-                  registration.showNotification(title, {
-                    body: message,
-                    icon: '/logo-192.png',
-                    badge: '/logo-192.png',
-                    tag: `status-change-${bookingId}`
-                  });
-                }).catch(e => console.error('Service worker background notification failed:', e));
-              }
-            }
-          }
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.showNotification(title, {
+          body: options.body,
+          icon: options.icon || '/logo-192.png',
+          badge: '/logo-192.png',
+          tag: options.tag
+        });
+      }).catch(() => {
+        try {
+          new Notification(title, {
+            body: options.body,
+            icon: options.icon || '/logo-192.png',
+            tag: options.tag
+          });
+        } catch (e) {
+          console.warn('Native notification fallback warning:', e);
         }
-
-        // Store current status in ref
-        lastBookingStatusesRef.current[bookingId] = currentStatus;
       });
-    }, (err) => {
-      if (!isMounted) return;
-      console.warn('Silent fallback for bookings status listener:', err);
-    });
-
-    return () => {
-      isMounted = false;
-      if (typeof unsubscribe === "function") unsubscribe();
-    };
-  }, [user]);
+    } else {
+      try {
+        new Notification(title, {
+          body: options.body,
+          icon: options.icon || '/logo-192.png',
+          tag: options.tag
+        });
+      } catch (e) {
+        console.warn('Native notification warning:', e);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -179,17 +121,14 @@ export default function NotificationSystem({ onNavigate }: Props) {
           playSuccessChime();
         }
 
-        // Trigger native notification for entirely new ones
-        if (entirelyNew.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
+        // Trigger single OS notification for entirely new items
+        if (entirelyNew.length > 0) {
           entirelyNew.forEach((notif: any) => {
-            try {
-              new Notification(notif.title || 'New Notification', {
-                body: notif.message,
-                icon: '/logo-192.png'
-              });
-            } catch (e) {
-              console.error('Error showing native notification', e);
-            }
+            triggerSingleOSNotification(notif.title || 'New Notification', {
+              body: notif.message,
+              icon: '/logo-192.png',
+              tag: `notif-${notif.id}`
+            });
           });
         }
         

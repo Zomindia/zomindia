@@ -34,7 +34,7 @@ import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource 
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
-import { notifyBookingUpdate, sendEcosystemNotification } from '../../lib/notifications';
+import { notifyBookingUpdate } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import ChatWindow from '../ChatWindow';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -452,7 +452,7 @@ function AssignedTasksMiniMap({
 
                   {/* Big Sequential Action Button (or "COMPLETE JOB") */}
                   <div className="flex-1 min-w-0">
-                    {['assigned', 'confirmed'].includes((highlightedBooking.status || 'assigned').toLowerCase()) && (
+                    {['assigned', 'confirmed', 'pending_acceptance'].includes((highlightedBooking.status || 'assigned').toLowerCase()) && (
                       <button
                         type="button"
                         onClick={async () => {
@@ -1408,23 +1408,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
          if (selectedBooking?.id === id) {
            setSelectedBooking(prev => prev ? { ...prev, ...update } : null);
          }
-         // Trigger notifications and ecosystem broadcasts ONLY on milestone status transitions (not on checklist toggles)
+         // Trigger notifications ONLY on milestone status transitions (not on checklist toggles)
          if (update.status && update.status !== b.status) {
            notifyBookingUpdate({ ...b, ...update }, update.status as any, partner?.userId || profile?.uid || '');
-           const resolvedService = services[b.serviceId];
-           sendEcosystemNotification(
-             'all',
-             update.status,
-             {
-               bookingId: id,
-               customerId: b.customerUid,
-               partnerId: b.partnerId,
-               customerName: b.customerName || b.customerBookedName || "Customer",
-               partnerName: profile?.displayName || partner?.fullName || "Expert",
-               serviceName: resolvedService?.name || "Service",
-               dateTime: b.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
-             }
-           ).catch(err => console.error("Ecosystem notification error:", err));
          }
       }
     } catch (err) {
@@ -1483,20 +1469,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
             'in_progress',
             computedPartnerId
           );
-          const resolvedService = services[bookingForOTP.serviceId];
-          sendEcosystemNotification(
-            'all',
-            'in_progress',
-            {
-              bookingId: verifyingOTPId,
-              customerId: bookingForOTP.customerUid,
-              partnerId: bookingForOTP.partnerId,
-              customerName: bookingForOTP.customerName || bookingForOTP.customerBookedName || "Customer",
-              partnerName: profile?.displayName || partner?.fullName || "Partner",
-              serviceName: resolvedService?.name || "Service",
-              dateTime: bookingForOTP.scheduledAt?.toDate?.()?.toLocaleString() || "N/A"
-            }
-          ).catch(err => console.error("Ecosystem notification error:", err));
         }
 
         setVerifyingOTPId(null);
@@ -1963,7 +1935,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                 </div>
               )}
 
-              {(booking.status === 'confirmed' || booking.status === 'assigned') && (
+              {(booking.status === 'confirmed' || booking.status === 'assigned' || booking.status === 'pending_acceptance') && (
                 <button 
                   onClick={() => handleBookingUpdate(booking.id, { status: 'on_the_way' })}
                   className="w-full bg-[#0a2540] text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-[#0a2540]/20 flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-95 transition-all duration-200"

@@ -39,7 +39,7 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { formatTime12Hour, formatDateTime12Hour } from "../utils/formatTime";
-import { notifyBookingUpdate, sendEcosystemNotification } from "../lib/notifications";
+import { notifyBookingUpdate } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
 import { LoadingScreen, LoadingSpinner } from "./LoadingIndicator";
@@ -2521,21 +2521,7 @@ function BookingManager({
         "admin",
       );
 
-      const resolvedPartner = partners.find((p) => p.userId === (updateData.partnerId || booking.partnerId));
-      const resolvedService = services.find((s) => s.id === booking.serviceId);
-      sendEcosystemNotification(
-        "all",
-        updateData.status || statusForm.status,
-        {
-          bookingId: managingStatusBookingId,
-          customerId: booking.customerUid,
-          partnerId: updateData.partnerId || booking.partnerId,
-          customerName: booking.customerName || booking.customerBookedName || "Customer",
-          partnerName: resolvedPartner?.displayName || "Partner",
-          serviceName: resolvedService?.name || "Service",
-          dateTime: formatDateTime12Hour(booking.scheduledAt) || "N/A"
-        }
-      ).catch(e => console.error("Ecosystem notification failed:", e));
+
 
       setManagingStatusBookingId(null);
       setShowSuccessModal(
@@ -2575,21 +2561,7 @@ function BookingManager({
       const b = bookings.find((x) => x.id === id);
       if (b) {
         notifyBookingUpdate({ ...b, status }, status, "admin");
-        const bPartner = partners.find((p) => p.userId === b.partnerId);
-        const bService = services.find((s) => s.id === b.serviceId);
-        sendEcosystemNotification(
-          "all",
-          status,
-          {
-            bookingId: id,
-            customerId: b.customerUid,
-            partnerId: b.partnerId,
-            customerName: b.customerName || b.customerBookedName || "Customer",
-            partnerName: bPartner?.displayName || "Partner",
-            serviceName: bService?.name || "Service",
-            dateTime: formatDateTime12Hour(b.scheduledAt) || "N/A"
-          }
-        ).catch(e => console.error("Ecosystem notification failed:", e));
+
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `bookings/${id}`);
@@ -2678,21 +2650,7 @@ function BookingManager({
           "admin",
         );
 
-        const cancelPartner = partners.find((p) => p.userId === bookingDataToNotify.partnerId);
-        const cancelService = services.find((s) => s.id === bookingDataToNotify.serviceId);
-        sendEcosystemNotification(
-          "all",
-          "cancelled",
-          {
-            bookingId: cancellingBookingId,
-            customerId: bookingDataToNotify.customerUid,
-            partnerId: bookingDataToNotify.partnerId,
-            customerName: bookingDataToNotify.customerName || bookingDataToNotify.customerBookedName || "Customer",
-            partnerName: cancelPartner?.displayName || "Partner",
-            serviceName: cancelService?.name || "Service",
-            dateTime: formatDateTime12Hour(bookingDataToNotify.scheduledAt) || "N/A"
-          }
-        ).catch(e => console.error("Ecosystem notification failed:", e));
+
       }
 
       setCancellingBookingId(null);
@@ -2760,21 +2718,7 @@ function BookingManager({
           "pending_acceptance",
           "admin",
         );
-        const assignP = partners.find((p) => p.userId === partnerId);
-        const assignS = services.find((s) => s.id === b.serviceId);
-        sendEcosystemNotification(
-          "all",
-          "pending_acceptance",
-          {
-            bookingId,
-            customerId: b.customerUid,
-            partnerId,
-            customerName: b.customerName || b.customerBookedName || "Customer",
-            partnerName: assignP?.displayName || "Partner",
-            serviceName: assignS?.name || "Service",
-            dateTime: formatDateTime12Hour(b.scheduledAt) || "N/A"
-          }
-        ).catch(e => console.error("Ecosystem notification failed:", e));
+
       }
       setShowSuccessModal(
         `Partner assigned to booking #${bookingId.slice(0, 8).toUpperCase()}`,
@@ -11914,38 +11858,5 @@ function AnalyticsView({
                           ? log.clicked_timestamp.toDate().toLocaleString()
                           : log.clicked_timestamp
                             ? new Date(log.clicked_timestamp).toLocaleString()
-                            : "N/A";
-                        return (
-                          <tr
-                            key={log.id}
-                            className="text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
-                          >
-                            <td className="px-6 py-4 font-mono text-[10px] text-slate-500">
-                              {dateStr}
-                            </td>
-                            <td className="px-6 py-4 font-mono text-[10px] text-slate-400">
-                              {log.user_id}
-                            </td>
-                            <td className="px-6 py-4 font-semibold text-slate-700">
-                              {log.current_logged_in_name}
-                            </td>
-                            <td className="px-6 py-4 font-black text-indigo-600">
-                              {log.target_city}
-                            </td>
-                            <td className="px-6 py-4 text-slate-500 font-medium">
-                              {log.target_state}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+                         xœ´”ÏnÂ0Æï<…ÕÓ8dí$Æ$V&í¸ì8MUÒd]Dš ÇE­ï¾lüQ´0!rrü}²‰£ À¢Yü= c¡¢
+-Üu RÂ`®šéÊ¸â^Ëu¯17Üû/Õ4"U«=‡R!»ÀNŠ=&¬4Ù&ørK…Qìõ8X¹õš´³,wÆ¡zº¿ô’¥$Ût‹šaÑ°|:K¬tÖÁ/ñûC²¨?6ñ%‰úk¬dp¾ößN“¼åèÊŸV^avn×’zUjáŒl>]J˜WˆÊRâBÉLÛÌ†·†çó­¶R/Å%…¢,×ÔÜŒñğ9n_ƒ’º*ÿÅè)T¸2èØ­»¾¡õğtÛPN8Ùœª$.Œ:–ÒXêåßô‰äQªÅp µ6û0œd=ø  ÿÿ ß+®

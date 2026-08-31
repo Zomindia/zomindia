@@ -37,7 +37,7 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
-import { notifyBookingUpdate, sendEcosystemNotification } from '../lib/notifications';
+import { notifyBookingUpdate } from '../lib/notifications';
 import { Booking, PartnerProfile, UserProfile, Service, Category } from '../types';
 
 export interface UnassignedJobDispatcherProps {
@@ -338,21 +338,8 @@ export default function UnassignedJobDispatcher({
         }).catch(err => console.warn("[WhatsApp Dispatch Warning - Customer]:", err));
       }
 
-      // 3. Dispatch Web Push & Ecosystem Notifications
+      // 3. Dispatch Web Push & Notifications via Single Unified Pipeline
       notifyBookingUpdate({ ...selectedBooking, partnerId: partnerUserId, status: "assigned" }, "assigned", "admin");
-      sendEcosystemNotification(
-        "all",
-        "assigned",
-        {
-          bookingId: bId,
-          customerId: selectedBooking.customerUid,
-          partnerId: partnerUserId,
-          customerName,
-          partnerName,
-          serviceName,
-          dateTime: selectedBooking.scheduledAt?.toDate?.()?.toLocaleString() || "Today"
-        }
-      ).catch(e => console.error("Ecosystem notification failed:", e));
 
       // Success Feedback Toast
       setActionSuccess(`Job #${bId.slice(-6).toUpperCase()} assigned to ${partnerName}`);

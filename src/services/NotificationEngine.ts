@@ -527,7 +527,7 @@ export const NotificationEngine = {
 export const notifyBookingUpdate = async (booking: any, newStatus: string, actorId: string) => {
   const payload: BookingNotificationData = {
     bookingId: booking.id,
-    customerId: booking.customerId,
+    customerId: booking.customerUid || booking.customerId,
     customerName: booking.customerBookedName || booking.customerName || 'Customer',
     customerPhone: booking.customerBookedPhone || booking.customerMobile || '',
     serviceName: booking.serviceName || 'Service',
@@ -544,6 +544,35 @@ export const notifyBookingUpdate = async (booking: any, newStatus: string, actor
   };
 
   switch (newStatus) {
+    case 'pending_acceptance':
+    case 'assigned':
+      if (payload.customerId) {
+        await sendNotification(
+          payload.customerId, 
+          'Partner Assigned!', 
+          `A verified service partner has been assigned to your ${payload.serviceName} booking.`, 
+          'booking_confirmed', 
+          booking.id
+        );
+      }
+      if (payload.assignedPartnerId) {
+        await sendNotification(
+          payload.assignedPartnerId, 
+          'New Task Assigned!', 
+          `You have been assigned to booking #${booking.id.slice(0, 8)} for ${payload.serviceName}.`, 
+          'new_booking', 
+          booking.id
+        );
+      }
+      await sendNotification(
+        'sarthakwebtech@gmail.com', 
+        'Partner Assigned', 
+        `Booking #${booking.id.slice(0, 8)} assigned to ${payload.partnerName}.`, 
+        'booking_confirmed', 
+        booking.id
+      );
+      break;
+
     case 'confirmed':
       await sendNotification(
         payload.customerId, 
