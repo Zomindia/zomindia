@@ -136,40 +136,60 @@ export default function PartnerHome({ partner, bookings, services, users, profil
     const partnerId = partner?.id || partner?.userId || profile.uid;
     if (!partnerId) return;
 
+    let isMounted = true;
+    let unsubPrimary: (() => void) | null = null;
+    let unsubFallback: (() => void) | null = null;
+
     const q = query(
       collection(db, "reviews"),
       where("partnerId", "in", [partnerId, profile.uid, partner?.id || profile.uid].filter((v, i, a) => a.indexOf(v) === i && !!v))
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetched: Review[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as Review[];
-      // Sort newest first
-      fetched.sort((a, b) => {
-        const timeA = a.createdAt?.toDate?.()?.getTime() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-        const timeB = b.createdAt?.toDate?.()?.getTime() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-        return timeB - timeA;
-      });
-      setPartnerReviews(fetched);
-      setLoadingReviews(false);
-    }, (err) => {
-      console.warn("Reviews snapshot listener fallback:", err);
-      // Fallback query all reviews
-      const fallbackQ = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
-      const fallbackUnsub = onSnapshot(fallbackQ, (snap) => {
-        const pId = partner?.id || profile.uid;
-        const matched = snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as Review))
-          .filter(r => r.partnerId === pId || r.partnerId === profile.uid);
-        setPartnerReviews(matched);
+    unsubPrimary = onSnapshot(
+      q,
+      (snapshot) => {
+        if (!isMounted) return;
+        const fetched: Review[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Review[];
+        // Sort newest first
+        fetched.sort((a, b) => {
+          const timeA = a.createdAt?.toDate?.()?.getTime() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+          const timeB = b.createdAt?.toDate?.()?.getTime() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+          return timeB - timeA;
+        });
+        setPartnerReviews(fetched);
         setLoadingReviews(false);
-      }, () => setLoadingReviews(false));
-      return fallbackUnsub;
-    });
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Reviews snapshot listener fallback:", err);
+        // Fallback query all reviews
+        const fallbackQ = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
+        unsubFallback = onSnapshot(
+          fallbackQ,
+          (snap) => {
+            if (!isMounted) return;
+            const pId = partner?.id || profile.uid;
+            const matched = snap.docs
+              .map((d) => ({ id: d.id, ...d.data() } as Review))
+              .filter((r) => r.partnerId === pId || r.partnerId === profile.uid);
+            setPartnerReviews(matched);
+            setLoadingReviews(false);
+          },
+          () => {
+            if (isMounted) setLoadingReviews(false);
+          }
+        );
+      }
+    );
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubPrimary === "function") unsubPrimary();
+      if (typeof unsubFallback === "function") unsubFallback();
+    };
   }, [partner?.id, partner?.userId, profile.uid]);
 
   // Overall rating context

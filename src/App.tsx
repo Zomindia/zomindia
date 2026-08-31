@@ -352,8 +352,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    let isMounted = true;
     let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
+      if (!isMounted) return;
       setAllServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
       if (isInitialServices) {
         isInitialServices = false;
@@ -363,10 +365,14 @@ export default function App() {
           triggerSystemUpdate("System content update: Advanced service pricing or description modifications were made live.");
         }
       }
-    }, (err) => console.error("Error subscribing to services in App.tsx:", err));
+    }, (err) => {
+      if (!isMounted) return;
+      console.error("Error subscribing to services in App.tsx:", err);
+    });
 
     let isInitialCategories = true;
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
+      if (!isMounted) return;
       setAllCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
       if (isInitialCategories) {
         isInitialCategories = false;
@@ -376,11 +382,15 @@ export default function App() {
           triggerSystemUpdate("Ecosystem Category update: Category settings or catalog modifications made live.");
         }
       }
-    }, (err) => console.error("Error subscribing to categories in App.tsx:", err));
+    }, (err) => {
+      if (!isMounted) return;
+      console.error("Error subscribing to categories in App.tsx:", err);
+    });
 
     return () => {
-      unsubServices();
-      unsubCategories();
+      isMounted = false;
+      if (typeof unsubServices === "function") unsubServices();
+      if (typeof unsubCategories === "function") unsubCategories();
     };
   }, []);
 
@@ -560,12 +570,14 @@ export default function App() {
   }, [user?.uid, user?.emailVerified]);
 
   useEffect(() => {
+    let isMounted = true;
     seedDatabase();
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
+      if (!isMounted) return;
       setUser(u);
       unsubscribeProfile();
       unsubscribeBookings();
@@ -574,12 +586,14 @@ export default function App() {
       if (u) {
         // Real-time listener for partner applications
         unsubscribePartnerApp = onSnapshot(doc(db, 'partner_applications', u.uid), (snapApp) => {
+          if (!isMounted) return;
           if (snapApp.exists()) {
             setPartnerApplication({ id: snapApp.id, ...snapApp.data() } as PartnerApplication);
           } else {
             setPartnerApplication(null);
           }
         }, (err) => {
+          if (!isMounted) return;
           console.error("Error subscribing to partner application:", err);
         });
 
@@ -687,7 +701,7 @@ export default function App() {
           // Subscribe to the resolved master UID!
           const masterDocRef = doc(db, 'users', resolvedUid);
           unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
-            if (!snap.exists()) return;
+            if (!isMounted || !snap.exists()) return;
             let currentProfile = snap.data() as UserProfile;
 
             // Follow mergedInto pointer if any
@@ -697,6 +711,7 @@ export default function App() {
               // Re-subscribe to merged master
               const mergedDocRef = doc(db, 'users', currentProfile.mergedInto);
               unsubscribeProfile = onSnapshot(mergedDocRef, (mergedSnap) => {
+                if (!isMounted) return;
                 if (mergedSnap.exists()) {
                   const p = mergedSnap.data() as UserProfile;
                   setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
@@ -753,8 +768,10 @@ export default function App() {
               where('status', 'in', ['confirmed', 'assigned', 'ASSIGNED', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
             );
             unsubscribeBookings = onSnapshot(q, (snapB) => {
+              if (!isMounted) return;
               setHasActiveArrival(!snapB.empty);
             }, (err) => {
+              if (!isMounted) return;
               console.error("Error subscribing to active bookings:", err);
             });
           });
@@ -771,10 +788,11 @@ export default function App() {
     });
 
     return () => {
-      unsubscribeAuth();
-      unsubscribeBookings();
-      unsubscribeProfile();
-      unsubscribePartnerApp();
+      isMounted = false;
+      if (typeof unsubscribeAuth === "function") unsubscribeAuth();
+      if (typeof unsubscribeBookings === "function") unsubscribeBookings();
+      if (typeof unsubscribeProfile === "function") unsubscribeProfile();
+      if (typeof unsubscribePartnerApp === "function") unsubscribePartnerApp();
     };
   }, []);
 
@@ -785,6 +803,7 @@ export default function App() {
       return;
     }
 
+    let isMounted = true;
     const updatesColRef = collection(db, 'system_updates');
 
     const unsubscribeSystemUpdates = onSnapshot(
@@ -793,6 +812,7 @@ export default function App() {
         // Logic bypassed to permanently prevent blocking promotional update alerts
       },
       (error) => {
+        if (!isMounted) return;
         // Gracefully fall back without logging runtime permission warnings
         if ((error as any)?.code !== 'permission-denied') {
           console.debug("system_updates subscription notification:", (error as any)?.message);
@@ -800,7 +820,10 @@ export default function App() {
       }
     );
 
-    return () => unsubscribeSystemUpdates();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribeSystemUpdates === "function") unsubscribeSystemUpdates();
+    };
   }, [profile?.role, skippedUpdate]);
 
   // 90 second interval re-prompt if update dismissed but not yet updated (Permanently Deprecated)

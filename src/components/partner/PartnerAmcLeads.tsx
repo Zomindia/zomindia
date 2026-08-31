@@ -49,23 +49,46 @@ export default function PartnerAmcLeads({ profile, partner }: PartnerAmcLeadsPro
 
   useEffect(() => {
     if (!partner) return;
+    let isMounted = true;
 
     const unsubLeads = onSnapshot(
       query(collection(db, 'amcs'), where('partnerId', '==', profile.uid), orderBy('createdAt', 'desc')),
       (snap) => {
+        if (!isMounted) return;
         setMyLeads(snap.docs.map(d => ({ id: d.id, ...d.data() } as AMC)));
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Partner AMC leads snapshot error:", err);
       }
     );
 
-    const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
-      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
-    });
+    const unsubServices = onSnapshot(
+      collection(db, 'services'),
+      (snap) => {
+        if (!isMounted) return;
+        setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Services snapshot in PartnerAmcLeads error:", err);
+      }
+    );
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
-    });
+    const unsubUsers = onSnapshot(
+      collection(db, 'users'),
+      (snap) => {
+        if (!isMounted) return;
+        setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Users snapshot in PartnerAmcLeads error:", err);
+      }
+    );
 
     return () => {
+      isMounted = false;
       unsubLeads();
       unsubServices();
       unsubUsers();

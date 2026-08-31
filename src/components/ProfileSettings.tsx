@@ -356,9 +356,11 @@ export default function ProfileSettings({
       );
     }
 
+    let isMounted = true;
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
+        if (!isMounted) return;
         const list: any[] = [];
         snapshot.forEach((doc) => {
           const data = doc.data();
@@ -382,12 +384,16 @@ export default function ProfileSettings({
         setLoadingActive(false);
       },
       (error) => {
+        if (!isMounted) return;
         console.error("Error loading active bookings in real-time:", error);
         setLoadingActive(false);
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [profile?.uid, profile?.role]);
 
   // 6. Load static services and booking history concurrently
@@ -455,6 +461,10 @@ export default function ProfileSettings({
   // 7. WhatsApp alerts history listener
   useEffect(() => {
     if (activeSub === "alerts") {
+      let isMounted = true;
+      let unsubPrimary: (() => void) | null = null;
+      let unsubFallback: (() => void) | null = null;
+
       setLoadingAlerts(true);
       const q = query(
         collection(db, "whatsapp_alerts"),
@@ -463,9 +473,10 @@ export default function ProfileSettings({
         limit(15),
       );
 
-      const unsub = onSnapshot(
+      unsubPrimary = onSnapshot(
         q,
         (snap) => {
+          if (!isMounted) return;
           const list: any[] = [];
           snap.forEach((d) => {
             list.push({ id: d.id, ...d.data() });
@@ -474,14 +485,16 @@ export default function ProfileSettings({
           setLoadingAlerts(false);
         },
         () => {
+          if (!isMounted) return;
           const fallbackQ = query(
             collection(db, "whatsapp_alerts"),
             orderBy("timestamp", "desc"),
             limit(15),
           );
-          onSnapshot(
+          unsubFallback = onSnapshot(
             fallbackQ,
             (fallbackSnap) => {
+              if (!isMounted) return;
               const fallbackList: any[] = [];
               fallbackSnap.forEach((fd) => {
                 fallbackList.push({ id: fd.id, ...fd.data() });
@@ -490,6 +503,7 @@ export default function ProfileSettings({
               setLoadingAlerts(false);
             },
             (fallbackErr) => {
+              if (!isMounted) return;
               console.warn(
                 "Firestore alerts subscription failed:",
                 fallbackErr,
@@ -499,8 +513,11 @@ export default function ProfileSettings({
           );
         },
       );
+
       return () => {
-        if (typeof unsub === "function") unsub();
+        isMounted = false;
+        if (typeof unsubPrimary === "function") unsubPrimary();
+        if (typeof unsubFallback === "function") unsubFallback();
       };
     }
   }, [activeSub, profile?.phoneNumber]);

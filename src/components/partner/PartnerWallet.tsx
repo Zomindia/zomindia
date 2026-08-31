@@ -30,17 +30,32 @@ export default function PartnerWallet({ partner }: Props) {
   const [withdrawAmount, setWithdrawAmount] = useState('');
 
   useEffect(() => {
-    if (!partner) return;
+    if (!partner?.id) return;
+    let isMounted = true;
     
     const q = query(
       collection(db, 'partners', partner.id, 'earningsHistory'), 
       orderBy('createdAt', 'desc')
     );
 
-    return onSnapshot(q, (snap) => {
-      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() } as EarningsHistory)));
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        if (!isMounted) return;
+        setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() } as EarningsHistory)));
+        setLoading(false);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Earnings history snapshot error:", err);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [partner?.id]);
 
   const isKycVerified = partner?.kycStatus === 'verified' || partner?.kycStatus === 'approved';

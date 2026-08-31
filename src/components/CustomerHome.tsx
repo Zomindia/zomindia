@@ -757,49 +757,60 @@ export default function CustomerHome({
       setActiveBooking(null);
       return;
     }
+    let isMounted = true;
     const q = query(
       collection(db, "bookings"),
       where("customerUid", "==", profile.uid)
     );
-    return onSnapshot(q, (snap) => {
-      const allowedStatuses = [
-        "pending",
-        "confirmed",
-        "assigned",
-        "on_the_way",
-        "arrived",
-        "in_progress",
-        "payment_pending",
-        "pending_parts",
-        "completed",
-        "finalized",
-      ];
-      const bookings = snap.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() } as Booking))
-        .filter((b) => allowedStatuses.includes(b.status || ""));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        if (!isMounted) return;
+        const allowedStatuses = [
+          "pending",
+          "confirmed",
+          "assigned",
+          "on_the_way",
+          "arrived",
+          "in_progress",
+          "payment_pending",
+          "pending_parts",
+          "completed",
+          "finalized",
+        ];
+        const bookings = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() } as Booking))
+          .filter((b) => allowedStatuses.includes(b.status || ""));
 
-      // Sort client-side in-memory to prevent composite index issues
-      bookings.sort((a, b) => {
-        const timeA = a.createdAt?.seconds || 0;
-        const timeB = b.createdAt?.seconds || 0;
-        return timeB - timeA;
-      });
+        // Sort client-side in-memory to prevent composite index issues
+        bookings.sort((a, b) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
 
-      if (bookings.length > 0) {
-        const booking = bookings[0];
-        setActiveBooking(booking);
-        const isDismissed =
-          localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
-        setTickerDismissed(isDismissed);
-        setRecentCardDismissed(isDismissed);
-      } else {
-        setActiveBooking(null);
-        setTickerDismissed(false);
-        setRecentCardDismissed(false);
+        if (bookings.length > 0) {
+          const booking = bookings[0];
+          setActiveBooking(booking);
+          const isDismissed =
+            localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
+          setTickerDismissed(isDismissed);
+          setRecentCardDismissed(isDismissed);
+        } else {
+          setActiveBooking(null);
+          setTickerDismissed(false);
+          setRecentCardDismissed(false);
+        }
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.error("Error watching active bookings query:", err);
       }
-    }, (err) => {
-      console.error("Error watching active bookings query:", err);
-    });
+    );
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [profile?.uid]);
 
   useEffect(() => {
@@ -807,27 +818,37 @@ export default function CustomerHome({
       setZomatoActiveBooking(null);
       return;
     }
+    let isMounted = true;
     const q = query(
       collection(db, "bookings"),
       where("customerUid", "==", profile.uid)
     );
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-      // Sort in-memory to prevent composite indexing requirements
-      docs.sort((a, b) => {
-        const timeA = a.createdAt?.seconds || 0;
-        const timeB = b.createdAt?.seconds || 0;
-        return timeB - timeA;
-      });
-      const active = docs.find(b => {
-        const s = (b.status || "").toLowerCase();
-        return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
-      });
-      setZomatoActiveBooking(active || null);
-    }, (err) => {
-      console.error("Error watching active bookings for Zomato overlay card:", err);
-    });
-    return () => unsubscribe();
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        if (!isMounted) return;
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+        // Sort in-memory to prevent composite indexing requirements
+        docs.sort((a, b) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
+        const active = docs.find((b) => {
+          const s = (b.status || "").toLowerCase();
+          return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
+        });
+        setZomatoActiveBooking(active || null);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.error("Error watching active bookings for Zomato overlay card:", err);
+      }
+    );
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [profile?.uid]);
 
   const getZomatoStatusText = (status: string) => {
@@ -873,10 +894,12 @@ export default function CustomerHome({
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const q = query(collection(db, "categories"), orderBy("name", "asc"));
     const unsubscribeCategories = onSnapshot(
       q,
       (snap) => {
+        if (!isMounted) return;
         const cats = snap.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as Category,
         );
@@ -890,27 +913,37 @@ export default function CustomerHome({
         setLoading(false);
       },
       (err) => {
+        if (!isMounted) return;
         console.error("Error subscribing to categories:", err);
         setCategories(SAMPLE_CATEGORIES as Category[]);
         setLoading(false);
       },
     );
-    return () => unsubscribeCategories();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribeCategories === "function") unsubscribeCategories();
+    };
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const unsubscribeServices = onSnapshot(
       collection(db, "services"),
       (snap) => {
+        if (!isMounted) return;
         setAllServices(
           snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
         );
       },
       (err) => {
+        if (!isMounted) return;
         console.error("Error subscribing to services:", err);
       },
     );
-    return () => unsubscribeServices();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribeServices === "function") unsubscribeServices();
+    };
   }, []);
 
   const filteredSearchResults = useMemo(() => {

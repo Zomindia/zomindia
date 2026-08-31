@@ -728,6 +728,7 @@ export default function CustomerDashboard({
   const activeBookingIds = activeBookings.map((b) => b.id).join(",");
 
   useEffect(() => {
+    let isMounted = true;
     const activeWithOtpBookings = activeBookings.filter((b) =>
       ["pending", "assigned", "confirmed", "on_the_way", "arrived"].includes(
         b.status,
@@ -739,6 +740,7 @@ export default function CustomerDashboard({
       return onSnapshot(
         doc(db, `bookings/${booking.id}/secrets`, "otp"),
         (snap) => {
+          if (!isMounted) return;
           if (snap.exists()) {
             setBookingOtps((prev) => ({
               ...prev,
@@ -747,13 +749,19 @@ export default function CustomerDashboard({
           }
         },
         (err) => {
+          if (!isMounted) return;
           // Graceful fallback for security rule / offline restrictions
           console.warn(`[CustomerDashboard] OTP snapshot handler for ${booking.id}:`, err?.message);
         }
       );
     });
 
-    return () => unsubscribes.forEach((unsub) => unsub());
+    return () => {
+      isMounted = false;
+      unsubscribes.forEach((unsub) => {
+        if (typeof unsub === "function") unsub();
+      });
+    };
   }, [activeBookingIds, activeBookings]);
 
   const activeCoordinatedCallBooking = useMemo(() => {
@@ -969,6 +977,7 @@ export default function CustomerDashboard({
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const q = query(
       collection(db, "promotions"),
       where("active", "==", true),
@@ -977,6 +986,7 @@ export default function CustomerDashboard({
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        if (!isMounted) return;
         const allPromos = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Promotion,
         );
@@ -988,9 +998,15 @@ export default function CustomerDashboard({
         );
         setPromotions(customerPromos);
       },
-      (err) => console.error("Error fetching promotions:", err),
+      (err) => {
+        if (!isMounted) return;
+        console.error("Error fetching promotions:", err);
+      },
     );
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1095,6 +1111,7 @@ export default function CustomerDashboard({
     const uniqueIds = Array.from(new Set(partnerIds));
     if (uniqueIds.length === 0) return;
 
+    let isMounted = true;
     const unsubs: (() => void)[] = [];
 
     // 1. Listen by doc ID directly
@@ -1102,6 +1119,7 @@ export default function CustomerDashboard({
       const unsubDoc = onSnapshot(
         doc(db, "partners", pId),
         (snap) => {
+          if (!isMounted) return;
           if (snap.exists()) {
             const data = snap.data() as PartnerProfile;
             const profile = { id: snap.id, ...data };
@@ -1113,6 +1131,7 @@ export default function CustomerDashboard({
           }
         },
         (err) => {
+          if (!isMounted) return;
           console.warn("Snapshot listener error for partner:", pId, err);
         }
       );
@@ -1130,6 +1149,7 @@ export default function CustomerDashboard({
       const unsubQuery = onSnapshot(
         pq,
         (pSnap) => {
+          if (!isMounted) return;
           const fetched: Record<string, PartnerProfile> = {};
           pSnap.forEach((doc) => {
             const data = doc.data() as PartnerProfile;
@@ -1140,6 +1160,7 @@ export default function CustomerDashboard({
           setPartnerDetails((prev) => ({ ...prev, ...fetched }));
         },
         (err) => {
+          if (!isMounted) return;
           console.warn("Query snapshot error for partners:", err);
         }
       );
@@ -1147,7 +1168,10 @@ export default function CustomerDashboard({
     }
 
     return () => {
-      unsubs.forEach((unsub) => unsub());
+      isMounted = false;
+      unsubs.forEach((unsub) => {
+        if (typeof unsub === "function") unsub();
+      });
     };
   }, [bookings]);
 

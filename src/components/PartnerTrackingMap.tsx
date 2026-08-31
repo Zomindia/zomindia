@@ -438,10 +438,12 @@ export default function PartnerTrackingMap({
   // Firestore real-time coordinate synchronization
   useEffect(() => {
     if (!partnerId) return;
+    let isMounted = true;
 
     const unsubPartner = onSnapshot(
       doc(db, "partners", partnerId),
       (snap) => {
+        if (!isMounted) return;
         if (snap.exists()) {
           const data = snap.data() as PartnerProfile;
           if (data.lat && data.lng) {
@@ -454,6 +456,7 @@ export default function PartnerTrackingMap({
         }
       },
       (err) => {
+        if (!isMounted) return;
         console.warn("[Tracking] Partner snapshot warning:", err?.message);
       }
     );
@@ -461,11 +464,13 @@ export default function PartnerTrackingMap({
     const unsubUser = onSnapshot(
       doc(db, "users", partnerId),
       (snap) => {
+        if (!isMounted) return;
         if (snap.exists()) {
           setUserInfo(snap.data() as UserProfile);
         }
       },
       (err) => {
+        if (!isMounted) return;
         console.warn("[Tracking] User snapshot warning:", err?.message);
       }
     );
@@ -475,6 +480,7 @@ export default function PartnerTrackingMap({
       unsubBooking = onSnapshot(
         doc(db, "bookings", bookingId),
         (snap) => {
+          if (!isMounted) return;
           if (snap.exists()) {
             const data = snap.data();
             if (
@@ -498,15 +504,17 @@ export default function PartnerTrackingMap({
           }
         },
         (err) => {
+          if (!isMounted) return;
           console.warn("[Tracking] Booking snapshot warning:", err?.message);
         }
       );
     }
 
     return () => {
-      unsubPartner();
-      unsubUser();
-      if (unsubBooking) unsubBooking();
+      isMounted = false;
+      if (typeof unsubPartner === "function") unsubPartner();
+      if (typeof unsubUser === "function") unsubUser();
+      if (typeof unsubBooking === "function") unsubBooking();
     };
   }, [partnerId, bookingId]);
 

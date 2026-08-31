@@ -197,17 +197,26 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     // Fetch partner data
     const fetchPartner = () => {
       const q = query(collection(db, 'partners'), where('userId', '==', profile.uid));
-      return onSnapshot(q, (snap) => {
-        if (!snap.empty) {
-          setPartner({ id: snap.docs[0].id, ...snap.docs[0].data() } as PartnerProfile);
+      return onSnapshot(
+        q,
+        (snap) => {
+          if (!isMounted) return;
+          if (!snap.empty) {
+            setPartner({ id: snap.docs[0].id, ...snap.docs[0].data() } as PartnerProfile);
+          }
+          setLoading(false);
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("Partner fetch snapshot error:", err);
+          setLoading(false);
         }
-        setLoading(false);
-      }, (err) => {
-        setLoading(false);
-      });
+      );
     };
 
     // Real-time Firestore listener tracking the logged-in partner's /users/{auth.currentUser.uid} document
@@ -215,81 +224,87 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       const activeUid = auth.currentUser?.uid || profile.uid;
       if (!activeUid) return () => {};
 
-      return onSnapshot(doc(db, 'users', activeUid), (snap) => {
-        if (snap.exists()) {
-          const uData = snap.data();
-          const pData = uData?.partnerData || {};
-          const liveKyc = String(uData?.kycStatus || pData.kycStatus || 'pending').toLowerCase().trim();
-          const liveApproval = uData?.approvalStatus || pData.approvalStatus || 'pending';
-          const liveGracePeriodEnd = uData?.gracePeriodEnd || pData.gracePeriodEnd || null;
-          
-          setKycStatus(liveKyc);
-          setApprovalStatus(liveApproval);
+      return onSnapshot(
+        doc(db, 'users', activeUid),
+        (snap) => {
+          if (!isMounted) return;
+          if (snap.exists()) {
+            const uData = snap.data();
+            const pData = uData?.partnerData || {};
+            const liveKyc = String(uData?.kycStatus || pData.kycStatus || 'pending').toLowerCase().trim();
+            const liveApproval = uData?.approvalStatus || pData.approvalStatus || 'pending';
+            const liveGracePeriodEnd = uData?.gracePeriodEnd || pData.gracePeriodEnd || null;
+            
+            setKycStatus(liveKyc);
+            setApprovalStatus(liveApproval);
 
-          if (liveKyc === "approved" || liveKyc === "verified") {
-            console.log("[PartnerApp Realtime] KYC approval/verification detected live!");
-            setPartner(prev => {
-              const updated: PartnerProfile = {
-                id: activeUid,
-                userId: activeUid,
-                isVerified: true,
-                kycStatus: "approved",
-                approvalStatus: liveApproval,
-                gracePeriodEnd: liveGracePeriodEnd,
-                status: (pData.status || "active") as any,
-                availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
-                bio: pData.bio || prev?.bio || "",
-                categories: pData.categories || prev?.categories || [],
-                skills: pData.skills || prev?.skills || [],
-                city: pData.city || prev?.city || "Indore",
-                phone: pData.phone || prev?.phone || "",
-                email: pData.email || prev?.email || "",
-                fullName: pData.fullName || prev?.fullName || "",
-                rating: pData.rating !== undefined ? pData.rating : (prev?.rating || 4.9),
-                reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : (prev?.reviewCount || 0),
-                onboardingCompleted: true,
-                createdAt: pData.createdAt || prev?.createdAt,
-                updatedAt: pData.updatedAt || prev?.updatedAt,
-              };
-              return updated;
-            });
-          } else {
-            setPartner(prev => {
-              if (!prev) {
-                return {
+            if (liveKyc === "approved" || liveKyc === "verified") {
+              console.log("[PartnerApp Realtime] KYC approval/verification detected live!");
+              setPartner(prev => {
+                const updated: PartnerProfile = {
                   id: activeUid,
                   userId: activeUid,
-                  isVerified: false,
-                  kycStatus: liveKyc as any,
+                  isVerified: true,
+                  kycStatus: "approved",
                   approvalStatus: liveApproval,
                   gracePeriodEnd: liveGracePeriodEnd,
-                  status: 'pending',
-                  availabilityStatus: 'Offline',
-                  bio: pData.bio || '',
-                  categories: pData.categories || [],
-                  skills: pData.skills || [],
-                  city: pData.city || 'Indore',
-                  phone: pData.phone || '',
-                  email: pData.email || '',
-                  fullName: pData.fullName || profile.displayName || '',
-                  rating: 4.9,
-                  reviewCount: 0,
-                  createdAt: Timestamp.now(),
-                  updatedAt: Timestamp.now()
-                } as any;
-              }
-              return {
-                ...prev,
-                approvalStatus: liveApproval,
-                gracePeriodEnd: liveGracePeriodEnd,
-                ...pData
-              };
-            });
+                  status: (pData.status || "active") as any,
+                  availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
+                  bio: pData.bio || prev?.bio || "",
+                  categories: pData.categories || prev?.categories || [],
+                  skills: pData.skills || prev?.skills || [],
+                  city: pData.city || prev?.city || "Indore",
+                  phone: pData.phone || prev?.phone || "",
+                  email: pData.email || prev?.email || "",
+                  fullName: pData.fullName || prev?.fullName || "",
+                  rating: pData.rating !== undefined ? pData.rating : (prev?.rating || 4.9),
+                  reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : (prev?.reviewCount || 0),
+                  onboardingCompleted: true,
+                  createdAt: pData.createdAt || prev?.createdAt,
+                  updatedAt: pData.updatedAt || prev?.updatedAt,
+                };
+                return updated;
+              });
+            } else {
+              setPartner(prev => {
+                if (!prev) {
+                  return {
+                    id: activeUid,
+                    userId: activeUid,
+                    isVerified: false,
+                    kycStatus: liveKyc as any,
+                    approvalStatus: liveApproval,
+                    gracePeriodEnd: liveGracePeriodEnd,
+                    status: 'pending',
+                    availabilityStatus: 'Offline',
+                    bio: pData.bio || '',
+                    categories: pData.categories || [],
+                    skills: pData.skills || [],
+                    city: pData.city || 'Indore',
+                    phone: pData.phone || '',
+                    email: pData.email || '',
+                    fullName: pData.fullName || profile.displayName || '',
+                    rating: 4.9,
+                    reviewCount: 0,
+                    createdAt: Timestamp.now(),
+                    updatedAt: Timestamp.now()
+                  } as any;
+                }
+                return {
+                  ...prev,
+                  approvalStatus: liveApproval,
+                  gracePeriodEnd: liveGracePeriodEnd,
+                  ...pData
+                };
+              });
+            }
           }
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.error("Error listening to user document in PartnerApp:", err);
         }
-      }, (err) => {
-        console.error("Error listening to user document in PartnerApp:", err);
-      });
+      );
     };
 
     // Fetch bookings data
@@ -300,7 +315,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           orderBy('scheduledAt', 'desc')
         );
         const qPool = query(
-          collection(db, 'bookings'),
+          collection(db, 'bookings'), 
           where('status', '==', 'pending'),
           orderBy('scheduledAt', 'desc')
         );
@@ -309,53 +324,93 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         let poolBookings: Booking[] = [];
 
         const updateAllBookings = (my: Booking[], pool: Booking[]) => {
+          if (!isMounted) return;
           const combined = [...my, ...pool.filter(p => !my.find(m => m.id === p.id))];
           setBookings(combined);
         };
 
-        const unsubMy = onSnapshot(qMy, (snap) => {
-          // Sync all assigned tasks with active or assigned status
-          const activeOrAssignedStatuses = ['pending_acceptance', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'];
-          myBookings = snap.docs
-            .map(d => ({ id: d.id, ...d.data() } as Booking))
-            .filter(b => activeOrAssignedStatuses.includes(b.status || ''));
-          updateAllBookings(myBookings, poolBookings);
-        });
+        const unsubMy = onSnapshot(
+          qMy,
+          (snap) => {
+            if (!isMounted) return;
+            const activeOrAssignedStatuses = ['pending_acceptance', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'];
+            myBookings = snap.docs
+              .map(d => ({ id: d.id, ...d.data() } as Booking))
+              .filter(b => activeOrAssignedStatuses.includes(b.status || ''));
+            updateAllBookings(myBookings, poolBookings);
+          },
+          (err) => {
+            if (!isMounted) return;
+            console.warn("My bookings snapshot warning in PartnerApp:", err);
+          }
+        );
 
-        const unsubPool = onSnapshot(qPool, (snap) => {
-          poolBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.partnerId);
-          updateAllBookings(myBookings, poolBookings);
-        });
+        const unsubPool = onSnapshot(
+          qPool,
+          (snap) => {
+            if (!isMounted) return;
+            poolBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.partnerId);
+            updateAllBookings(myBookings, poolBookings);
+          },
+          (err) => {
+            if (!isMounted) return;
+            console.warn("Pool bookings snapshot warning in PartnerApp:", err);
+          }
+        );
 
         return () => {
-          unsubMy();
-          unsubPool();
+          if (typeof unsubMy === "function") unsubMy();
+          if (typeof unsubPool === "function") unsubPool();
         };
     };
 
     const fetchServices = () => {
-      return onSnapshot(collection(db, 'services'), (snap) => {
-        setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
-      });
+      return onSnapshot(
+        collection(db, 'services'),
+        (snap) => {
+          if (!isMounted) return;
+          setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("Services snapshot warning in PartnerApp:", err);
+        }
+      );
     };
 
     const fetchUsers = () => {
-      return onSnapshot(collection(db, 'users'), (snap) => {
-        setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
-      });
+      return onSnapshot(
+        collection(db, 'users'),
+        (snap) => {
+          if (!isMounted) return;
+          setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("Users snapshot warning in PartnerApp:", err);
+        }
+      );
     };
 
     const fetchApplication = () => {
-      return onSnapshot(collection(db, 'partner_applications'), (snap) => {
-        const apps = snap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerApplication));
-        const myApp = apps.find(a => 
-          a.phone === profile.phoneNumber || 
-          a.phone === profile.mobile || 
-          a.fullName?.toLowerCase() === profile.displayName?.toLowerCase() ||
-          a.fullName?.toLowerCase() === profile.fullName?.toLowerCase()
-        );
-        setApplication(myApp || null);
-      });
+      return onSnapshot(
+        collection(db, 'partner_applications'),
+        (snap) => {
+          if (!isMounted) return;
+          const apps = snap.docs.map(d => ({ id: d.id, ...d.data() } as PartnerApplication));
+          const myApp = apps.find(a => 
+            a.phone === profile.phoneNumber || 
+            a.phone === profile.mobile || 
+            a.fullName?.toLowerCase() === profile.displayName?.toLowerCase() ||
+            a.fullName?.toLowerCase() === profile.fullName?.toLowerCase()
+          );
+          setApplication(myApp || null);
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("Partner application snapshot warning in PartnerApp:", err);
+        }
+      );
     };
 
     const unsubPartner = fetchPartner();
@@ -366,12 +421,13 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     const unsubApplication = fetchApplication();
     
     return () => {
-      unsubPartner();
-      unsubUserRealtime();
-      unsubBookings();
-      unsubServices();
-      unsubUsers();
-      unsubApplication();
+      isMounted = false;
+      if (typeof unsubPartner === "function") unsubPartner();
+      if (typeof unsubUserRealtime === "function") unsubUserRealtime();
+      if (typeof unsubBookings === "function") unsubBookings();
+      if (typeof unsubServices === "function") unsubServices();
+      if (typeof unsubUsers === "function") unsubUsers();
+      if (typeof unsubApplication === "function") unsubApplication();
     };
   }, [profile.uid]);
 

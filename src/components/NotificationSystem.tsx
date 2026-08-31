@@ -55,6 +55,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
 
   useEffect(() => {
     if (!user) return;
+    let isMounted = true;
 
     const q = query(
       collection(db, 'bookings'),
@@ -62,6 +63,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
+      if (!isMounted) return;
       snap.docChanges().forEach((change) => {
         const data = change.doc.data();
         const bookingId = change.doc.id;
@@ -132,10 +134,14 @@ export default function NotificationSystem({ onNavigate }: Props) {
         lastBookingStatusesRef.current[bookingId] = currentStatus;
       });
     }, (err) => {
+      if (!isMounted) return;
       console.warn('Silent fallback for bookings status listener:', err);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -143,6 +149,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
       setNotifications([]);
       return;
     }
+    let isMounted = true;
 
     const q = query(
       collection(db, 'notifications'),
@@ -153,6 +160,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
+      if (!isMounted) return;
       const newNotifications = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -188,11 +196,15 @@ export default function NotificationSystem({ onNavigate }: Props) {
         return newNotifications;
       });
     }, (err) => {
+      if (!isMounted) return;
       if (err.code === 'permission-denied') return;
       handleFirestoreError(err, OperationType.LIST, 'notifications');
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [user]);
 
   const markAsRead = async (id: string) => {

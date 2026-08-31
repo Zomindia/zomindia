@@ -79,6 +79,7 @@ export default function ReferralsView({ profile, onBack }: { profile: UserProfil
   const signupReferUrl = `${window.location.origin}/#partner-signup?ref=${myReferralCode}`;
 
   useEffect(() => {
+    let isMounted = true;
     // Listen to users collection where referredBy is the current user's uid
     const q = query(
       collection(db, 'users'),
@@ -86,6 +87,7 @@ export default function ReferralsView({ profile, onBack }: { profile: UserProfil
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
+      if (!isMounted) return;
       const list = snap.docs.map(doc => ({
         uid: doc.id,
         ...doc.data()
@@ -93,26 +95,36 @@ export default function ReferralsView({ profile, onBack }: { profile: UserProfil
       setReferredUsers(list);
       setLoadingFriends(false);
     }, (err) => {
+      if (!isMounted) return;
       console.warn("Could not query referred friends directly in FireStore:", err);
       setLoadingFriends(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [profile.uid]);
 
   // Dynamic Firestore load to get existing general FAQs and match categories
   useEffect(() => {
+    let isMounted = true;
     const q = query(collection(db, 'faqs'), where('isPublished', '==', true));
     const unsubscribe = onSnapshot(q, (snap) => {
+      if (!isMounted) return;
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as FAQType));
       setDbFaqs(list);
       setLoadingFaqs(false);
     }, (err) => {
+      if (!isMounted) return;
       console.warn("Could not query general FAQs directly", err);
       setLoadingFaqs(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   const copyReferralCode = () => {

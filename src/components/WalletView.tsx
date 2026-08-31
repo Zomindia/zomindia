@@ -24,21 +24,33 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
   };
 
   useEffect(() => {
+    let isMounted = true;
     const q = query(
       collection(db, 'walletTransactions'), 
       where('userId', '==', profile.uid)
     );
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WalletTransaction));
-      txs.sort((a, b) => {
-        const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
-        const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
-        return timeB - timeA;
-      });
-      setTransactions(txs);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'walletTransactions'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        if (!isMounted) return;
+        const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WalletTransaction));
+        txs.sort((a, b) => {
+          const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
+          const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
+          return timeB - timeA;
+        });
+        setTransactions(txs);
+      },
+      (err) => {
+        if (!isMounted) return;
+        handleFirestoreError(err, OperationType.LIST, 'walletTransactions');
+      }
+    );
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [profile.uid]);
 
   const handleTopup = async () => {

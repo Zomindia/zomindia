@@ -178,36 +178,67 @@ export default function OffersView({
   }, []);
 
   useEffect(() => {
-    const unsubPromos = onSnapshot(query(collection(db, 'promotions'), where('active', '==', true)), (snap) => {
-      const dbPromos = snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
-      // Blend db promotions with our premium pre-defined Indore local promotions, filtering duplicate codes
-      const localList = LOCAL_PROMOTIONS[context] || [];
-      const merged = [...dbPromos];
-      
-      for (const local of localList) {
-        if (!merged.some(p => p.code.toLowerCase() === local.code.toLowerCase())) {
-          merged.push({
-            ...local,
-            createdAt: Timestamp.now()
-          } as any);
+    let isMounted = true;
+    let unsubRedemptions: (() => void) | null = null;
+
+    const unsubPromos = onSnapshot(
+      query(collection(db, 'promotions'), where('active', '==', true)),
+      (snap) => {
+        if (!isMounted) return;
+        const dbPromos = snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
+        // Blend db promotions with our premium pre-defined Indore local promotions, filtering duplicate codes
+        const localList = LOCAL_PROMOTIONS[context] || [];
+        const merged = [...dbPromos];
+        
+        for (const local of localList) {
+          if (!merged.some(p => p.code.toLowerCase() === local.code.toLowerCase())) {
+            merged.push({
+              ...local,
+              createdAt: Timestamp.now()
+            } as any);
+          }
         }
+        setPromotions(merged);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Promotions snapshot error in OffersView:", err);
       }
-      setPromotions(merged);
-    });
+    );
 
-    const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
-      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
-    });
+    const unsubCategories = onSnapshot(
+      collection(db, 'categories'),
+      (snap) => {
+        if (!isMounted) return;
+        setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("Categories snapshot error in OffersView:", err);
+      }
+    );
 
-    if (profile) {
-      const unsubRedemptions = onSnapshot(query(collection(db, 'redemptions'), where('userId', '==', profile.uid)), (snap) => {
-        setRedemptions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)));
-      });
-      return () => { unsubPromos(); unsubCategories(); unsubRedemptions(); };
+    if (profile?.uid) {
+      unsubRedemptions = onSnapshot(
+        query(collection(db, 'redemptions'), where('userId', '==', profile.uid)),
+        (snap) => {
+          if (!isMounted) return;
+          setRedemptions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Redemption)));
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("Redemptions snapshot error in OffersView:", err);
+        }
+      );
     }
 
-    return () => { unsubPromos(); unsubCategories(); };
-  }, [profile, context]);
+    return () => {
+      isMounted = false;
+      if (typeof unsubPromos === "function") unsubPromos();
+      if (typeof unsubCategories === "function") unsubCategories();
+      if (typeof unsubRedemptions === "function") unsubRedemptions();
+    };
+  }, [profile?.uid, context]);
 
   useEffect(() => {
     if (promotions.length > 0 && categories.length > 0) {

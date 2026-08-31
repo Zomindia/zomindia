@@ -39,9 +39,11 @@ export default function CustomerAmcView({ profile, onBack }: CustomerAmcViewProp
   const [bookingAmc, setBookingAmc] = useState<Service | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const unsubAmcs = onSnapshot(
       query(collection(db, 'amcs'), where('customerId', '==', profile.uid)),
       (snap) => {
+        if (!isMounted) return;
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as AMC));
         list.sort((a, b) => {
           const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
@@ -49,26 +51,31 @@ export default function CustomerAmcView({ profile, onBack }: CustomerAmcViewProp
           return timeB - timeA;
         });
         setMyAmcs(list);
+        setLoading(false);
       },
       (err) => {
+        if (!isMounted) return;
         handleFirestoreError(err, OperationType.LIST, 'amcs');
+        setLoading(false);
       }
     );
 
     const unsubServices = onSnapshot(
       collection(db, 'services'),
       (snap) => {
+        if (!isMounted) return;
         setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
       },
       (err) => {
+        if (!isMounted) return;
         handleFirestoreError(err, OperationType.LIST, 'services');
       }
     );
 
-    setLoading(false);
     return () => {
-      unsubAmcs();
-      unsubServices();
+      isMounted = false;
+      if (typeof unsubAmcs === "function") unsubAmcs();
+      if (typeof unsubServices === "function") unsubServices();
     };
   }, [profile.uid]);
 

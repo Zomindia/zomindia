@@ -79,11 +79,13 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
 
   // Fetch Referral Transactions and Settings
   useEffect(() => {
+    let isMounted = true;
     setLoadingTransactions(true);
     // Listen for wallet transactions that correspond to referrals
     const unsubTx = onSnapshot(
       query(collection(db, 'walletTransactions'), orderBy('createdAt', 'desc')), 
       (snap) => {
+        if (!isMounted) return;
         const txList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         // Filter transactions for referrals on client side
         const referralTxs = txList.filter((tx: any) => 
@@ -95,6 +97,7 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
         setLoadingTransactions(false);
       },
       (err) => {
+        if (!isMounted) return;
         console.error("Error loading referral transactions", err);
         setLoadingTransactions(false);
       }
@@ -104,18 +107,23 @@ export default function ReferralLifecycleManager({ users, bookings, currentUserP
     const fetchConfig = async () => {
       try {
         const configDoc = await getDoc(doc(db, 'settings', 'referral_config'));
+        if (!isMounted) return;
         if (configDoc.exists()) {
           const data = configDoc.data();
           if (data.referrerReward) setReferrerReward(data.referrerReward);
           if (data.refereeReward) setRefereeReward(data.refereeReward);
         }
       } catch (e) {
+        if (!isMounted) return;
         console.warn("Could not load referral config document, falling back to defaults.", e);
       }
     };
     fetchConfig();
 
-    return () => unsubTx();
+    return () => {
+      isMounted = false;
+      if (typeof unsubTx === "function") unsubTx();
+    };
   }, []);
 
   // Save Campaign Rules to Settings collection
