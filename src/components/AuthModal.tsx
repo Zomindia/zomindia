@@ -14,6 +14,7 @@ import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import { LogoIcon, LogoHorizontal } from './BrandLogo';
+import { useAutoOTP } from '../hooks/useAutoOTP';
 import { 
   X, 
   Smartphone, 
@@ -122,56 +123,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     return () => clearInterval(interval);
   }, [timer]);
 
-  // Secure Web-OTP API auto-detection hook for Sign-Up / Login
-  useEffect(() => {
-    if (view !== 'otp-entry') return;
-
-    if (typeof window !== "undefined" && "OTPCredential" in window) {
-      const ac = new AbortController();
-      navigator.credentials
-        .get({
-          otp: { transport: ["sms"] },
-          signal: ac.signal,
-        } as any)
-        .then((otpVal: any) => {
-          if (otpVal && otpVal.code) {
-            const codeDigits = otpVal.code.replace(/\D/g, "").slice(0, 6);
-            if (codeDigits.length === 6) {
-              console.log(
-                "[WebOTP] Auto-detected OTP in AuthModal:",
-                codeDigits
-              );
-              setOtpValues(codeDigits.split(''));
-
-              // Allow user a fraction of a second to visually confirm, then auto-submit the OTP
-              setTimeout(() => {
-                handleVerifyOTP(undefined, codeDigits);
-              }, 600);
-            }
-          }
-        })
-        .catch((err) => {
-          if (
-            err.name !== "AbortError" &&
-            err.name !== "SecurityError" &&
-            !err.message?.toLowerCase().includes("otp-credentials")
-          ) {
-            console.error(
-              "[WebOTP API] AuthModal error auto-detecting OTP:",
-              err
-            );
-          } else {
-            console.log(
-              "[WebOTP API] AuthModal auto-detection bypassed or aborted."
-            );
-          }
-        });
-
-      return () => {
-        ac.abort();
-      };
-    }
-  }, [view]);
+  // Native WebOTP Auto-detection API with AbortController, auto-fill, and auto-submit
+  useAutoOTP({
+    length: 6,
+    enabled: view === 'otp-entry' && isOpen,
+    onOTP: (code) => {
+      setOtpValues(code.split(''));
+      otpInputRefs.current[5]?.focus();
+    },
+    onAutoSubmit: (code) => {
+      handleVerifyOTP(undefined, code);
+    },
+    autoSubmitDelay: 500
+  });
 
   // Clean form state upon open or close
   const resetForm = () => {
@@ -196,47 +160,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       resetForm();
     }
   }, [isOpen]);
-
-  // Senior dev addition: WebOTP Auto-detection API for mobile browsers
-  useEffect(() => {
-    if (view !== 'otp-entry') return;
-
-    if (typeof window !== 'undefined' && 'OTPCredential' in window) {
-      const ac = new AbortController();
-      navigator.credentials.get({
-        otp: { transport: ['sms'] },
-        signal: ac.signal
-      } as any).then((otp: any) => {
-        if (otp && otp.code) {
-          const codeDigits = otp.code.replace(/\D/g, '').slice(0, 6);
-          if (codeDigits.length === 6) {
-            const newOtp = codeDigits.split('');
-            setOtpValues(newOtp);
-            otpInputRefs.current[5]?.focus();
-            
-            // Allow user a fraction of a second to visually confirm, then auto-submit the form
-            setTimeout(() => {
-              const submitBtn = document.querySelector('form button[type="submit"]') as HTMLButtonElement;
-              if (submitBtn && !submitBtn.disabled) {
-                console.log('[WebOTP] Auto-submitting verification form.');
-                submitBtn.click();
-              }
-            }, 600);
-          }
-        }
-      }).catch((err) => {
-        if (err.name !== 'AbortError' && err.name !== 'SecurityError' && !err.message?.toLowerCase().includes('otp-credentials')) {
-          console.error('[WebOTP API] Error auto-detecting OTP:', err);
-        } else {
-          console.log('[WebOTP API] Auto-detection bypassed (sandbox/iframe restrictions or aborted).');
-        }
-      });
-
-      return () => {
-        ac.abort();
-      };
-    }
-  }, [view]);
 
   // Handle Phone Number submission to request OTP
   const handleRequestOTP = async (e: React.FormEvent) => {

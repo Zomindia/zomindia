@@ -24,6 +24,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { BrandedButtonSpinner } from "./LoadingIndicator";
+import { useAutoOTP } from "../hooks/useAutoOTP";
 
 interface Props {
   profile: UserProfile;
@@ -108,18 +109,19 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
     }
   };
 
-  const handleVerifyOTP = async () => {
+  const handleVerifyOTP = async (customOtp?: string) => {
+    const codeToVerify = customOtp || otpCode;
     setLoading(true);
     setOtpError("");
     try {
       if (confirmationResult) {
-        const credential = await confirmationResult.confirm(otpCode);
+        const credential = await confirmationResult.confirm(codeToVerify);
         if (credential.user) {
           setOtpVerified(true);
           console.log("Real OTP verified successfully! User UID:", credential.user.uid);
         }
       } else {
-        if (otpCode === "123456") {
+        if (codeToVerify === "123456") {
           setOtpVerified(true);
           setOtpError("");
         } else {
@@ -128,7 +130,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
       }
     } catch (err: any) {
       console.warn("Real OTP verification failed, trying simulated fallback check:", err);
-      if (otpCode === "123456") {
+      if (codeToVerify === "123456") {
         setOtpVerified(true);
       } else {
         setOtpError(err.message || "Incorrect OTP. Please use '123456' for testing.");
@@ -137,6 +139,19 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
       setLoading(false);
     }
   };
+
+  // Native WebOTP Auto-detection for SignUpAsPartner
+  useAutoOTP({
+    length: 6,
+    enabled: otpSent && !otpVerified,
+    onOTP: (code) => {
+      setOtpCode(code);
+    },
+    onAutoSubmit: (code) => {
+      handleVerifyOTP(code);
+    },
+    autoSubmitDelay: 500
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -420,6 +435,8 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
                     <div className="flex gap-2">
                       <input
                         type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
                         maxLength={6}
                         placeholder="Enter 6-digit OTP"
                         value={otpCode}
@@ -428,7 +445,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
                       />
                       <button
                         type="button"
-                        onClick={handleVerifyOTP}
+                        onClick={() => handleVerifyOTP()}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-sm active:scale-95 cursor-pointer"
                       >
                         Verify OTP

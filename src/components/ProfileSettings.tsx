@@ -33,6 +33,7 @@ import { handleMapsError } from "../lib/maps-errors";
 import { motion, AnimatePresence } from "motion/react";
 import Avatar from "./Avatar";
 import HardwarePermissionDiagnoser from "./HardwarePermissionDiagnoser";
+import { useAutoOTP } from "../hooks/useAutoOTP";
 import {
   User,
   Bell,
@@ -235,50 +236,30 @@ export default function ProfileSettings({
   }, []);
 
   // 2. WebOTP Auto-detection for Profile settings phone update verification
-  useEffect(() => {
-    if (!showOtpInput) return;
+  useAutoOTP({
+    length: 6,
+    enabled: !!showOtpInput,
+    onOTP: (codeDigits) => {
+      setOtp(codeDigits);
+    },
+    onAutoSubmit: () => {
+      handleConfirmOtp();
+    },
+    autoSubmitDelay: 500
+  });
 
-    if (typeof window !== "undefined" && "OTPCredential" in window) {
-      const ac = new AbortController();
-      navigator.credentials
-        .get({
-          otp: { transport: ["sms"] },
-          signal: ac.signal,
-        } as any)
-        .then((otpVal: any) => {
-          if (otpVal && otpVal.code) {
-            const codeDigits = otpVal.code.replace(/\D/g, "").slice(0, 6);
-            if (codeDigits.length === 6) {
-              console.log(
-                "[WebOTP] Auto-detected OTP for phone settings:",
-                codeDigits,
-              );
-              setOtp(codeDigits);
-            }
-          }
-        })
-        .catch((err) => {
-          if (
-            err.name !== "AbortError" &&
-            err.name !== "SecurityError" &&
-            !err.message?.toLowerCase().includes("otp-credentials")
-          ) {
-            console.error(
-              "[WebOTP API] ProfileSettings error auto-detecting OTP:",
-              err,
-            );
-          } else {
-            console.log(
-              "[WebOTP API] ProfileSettings auto-detection bypassed (sandbox/iframe restrictions or aborted).",
-            );
-          }
-        });
-
-      return () => {
-        ac.abort();
-      };
-    }
-  }, [showOtpInput]);
+  // 2b. WebOTP Auto-detection for 4-digit Profile Modification Security OTP
+  useAutoOTP({
+    length: 4,
+    enabled: !!securityOtpModalOpen,
+    onOTP: (digits) => {
+      setSecurityOtpInputs(digits.split(""));
+    },
+    onAutoSubmit: () => {
+      handleVerifySecurityOtpAndSave();
+    },
+    autoSubmitDelay: 500
+  });
 
   const fetchUserData = async () => {
     if (!profile?.uid) return;

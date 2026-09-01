@@ -45,6 +45,7 @@ import { offlineSyncEngine } from '../../lib/offlineQueue';
 import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from '../../lib/telephony';
 import { triggerSecureCall } from '../../lib/twilio';
 import { formatTime12Hour } from '../../utils/formatTime';
+import { useAutoOTP } from '../../hooks/useAutoOTP';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -975,44 +976,26 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       const timer = setTimeout(() => {
         otpInputRef.current?.focus();
       }, 150);
-      
-      let ac: AbortController | null = null;
-      if (typeof window !== 'undefined' && 'OTPCredential' in window) {
-        ac = new AbortController();
-        navigator.credentials.get({
-          otp: { transport: ['sms'] },
-          signal: ac.signal
-        } as any).then((otp: any) => {
-          if (otp && otp.code) {
-            const digits = otp.code.replace(/\D/g, '').slice(0, 4);
-            if (digits.length === 4) {
-              console.log('[WebOTP] Auto-detected 4-digit booking verification code:', digits);
-              setOtpInput(digits);
-              
-              // Trigger click on verification button after brief visual feedback
-              setTimeout(() => {
-                const startBtn = document.querySelector('#otp-input-container button.bg-emerald-500') as HTMLButtonElement;
-                if (startBtn && !startBtn.disabled) {
-                  startBtn.click();
-                }
-              }, 600);
-            }
-          }
-        }).catch((err) => {
-          if (err.name !== 'AbortError' && err.name !== 'SecurityError' && !err.message?.toLowerCase().includes('otp-credentials')) {
-            console.error('[WebOTP API] Error auto-detecting booking verification OTP:', err);
-          } else {
-            console.log('[WebOTP API] Booking OTP auto-detection bypassed (sandbox/iframe restrictions or aborted).');
-          }
-        });
-      }
-
-      return () => {
-        clearTimeout(timer);
-        if (ac) ac.abort();
-      };
+      return () => clearTimeout(timer);
     }
   }, [verifyingOTPId]);
+
+  // Native WebOTP Auto-detection for 4-digit Service Arrival/Start OTP
+  useAutoOTP({
+    length: 4,
+    enabled: !!verifyingOTPId,
+    onOTP: (digits) => {
+      setOtpInput(digits);
+      otpInputRef.current?.focus();
+    },
+    onAutoSubmit: () => {
+      const startBtn = document.querySelector('#otp-input-container button.bg-emerald-500') as HTMLButtonElement;
+      if (startBtn && !startBtn.disabled) {
+        startBtn.click();
+      }
+    },
+    autoSubmitDelay: 500
+  });
 
   const handleRefreshStatus = async () => {
     setRefreshing(true);
