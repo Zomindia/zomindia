@@ -13,13 +13,10 @@ import {
   CheckCircle2,
   Check,
   QrCode,
-  Zap,
   Copy,
   AlertCircle,
   Clock,
-  Shield,
-  RefreshCw,
-  ArrowRight
+  RefreshCw
 } from 'lucide-react';
 
 interface PaymentModalProps {

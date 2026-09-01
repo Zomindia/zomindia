@@ -7,14 +7,13 @@ import {
   getDocs, 
   limit, 
   doc, 
-  getDoc, 
   updateDoc, 
   setDoc, 
   onSnapshot, 
   runTransaction 
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Service, UserProfile, Promotion, Redemption, PartnerProfile, BookingStatus, AMC } from '../types';
+import { Service, UserProfile, Promotion, Redemption, PartnerProfile, AMC } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
 import { generateGoogleCalendarUrl } from '../utils/calendar';
@@ -41,16 +40,9 @@ import {
   AlertCircle,
   MessageCircle,
   Tag,
-  Lock,
   Wallet,
   Banknote,
   ShieldCheck,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-  ArrowRight,
-  Home,
-  Building,
   Check
 } from 'lucide-react';
 import PartnerIdentityMarker from './PartnerIdentityMarker';

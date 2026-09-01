@@ -7,7 +7,6 @@ import {
   TicketPercent, 
   Gift, 
   Clock, 
-  CheckCircle2, 
   X, 
   Sparkles, 
   Wrench, 

@@ -4,14 +4,8 @@ import {
   Wallet, 
   TrendingUp, 
   ArrowDownLeft, 
-  ArrowUpRight, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle,
-  BarChart2,
-  Calendar,
-  Zap,
-  Star,
+  Zap, 
+  Star, 
   X
 } from 'lucide-react';
 import { PartnerProfile, EarningsHistory } from '../../types';

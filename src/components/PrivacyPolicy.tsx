@@ -10,11 +10,8 @@ import {
   Server, 
   Trash2, 
   Mail, 
-  FileText, 
-  UserCheck,
   CheckCircle2,
   AlertCircle,
-  Clock,
   PhoneCall
 } from 'lucide-react';
 import { COMPANY_NAME } from '../types';

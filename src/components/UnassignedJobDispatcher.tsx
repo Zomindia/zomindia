@@ -9,32 +9,20 @@ import {
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { 
-  Navigation, 
   UserCheck, 
-  Phone, 
   MapPin, 
   Calendar, 
-  Clock, 
   CheckCircle2, 
-  Send, 
   Search, 
   Filter, 
   ShieldCheck, 
   AlertCircle, 
   Sparkles, 
-  RotateCw, 
   User, 
   Star, 
-  Tag, 
-  Briefcase, 
-  DollarSign, 
-  Check, 
-  Lock, 
-  Bell,
   ChevronRight,
   ArrowRight,
   Zap,
-  CheckCircle,
   X
 } from 'lucide-react';
 import { notifyBookingUpdate } from '../lib/notifications';

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   query,
@@ -29,51 +28,39 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
-import { formatTime12Hour, formatBookingTime } from "../utils/formatTime";
+import { formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import ChatWindow from "./ChatWindow";
-import { LoadingScreen, ServiceCardSkeleton } from "./LoadingIndicator";
+import { ServiceCardSkeleton } from "./LoadingIndicator";
 import PaymentModal from "./PaymentModal";
 import BookingModal from "./BookingModal";
 import AiSupportChat from "./AiSupportChat";
-import { QRCodeSVG } from "qrcode.react";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
 import { WarrantySupportModal } from "./WarrantySupportModal";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
-import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from "../lib/telephony";
-import { triggerSecureCall } from "../lib/twilio";
+import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import {
-  Download,
   Clock,
   MapPin,
   Calendar,
   CheckCircle2,
-  XCircle,
   HelpCircle,
   Navigation,
   MessageSquare,
   User,
   Zap,
   Search,
-  ChevronRight,
   Star,
   QrCode,
-  Camera,
   Shield,
   ShieldCheck,
-  ShieldAlert,
-  ArrowRight,
   Compass,
   FileText,
   Phone,
   Sparkles,
-  Moon,
-  ChevronDown,
-  ChevronUp,
   CreditCard,
-  AlertCircle,
   X,
 } from "lucide-react";
 

@@ -28,15 +28,12 @@ import {
   UserCheck, 
   CheckCircle,
   Clock,
-  ArrowRight,
   Download,
-  BarChart2,
   TrendingUp,
   ThumbsUp,
   ThumbsDown,
   Mail,
-  Trophy,
-  ChevronRight
+  Trophy
 } from 'lucide-react';
 
 export default function ReferralsView({ profile, onBack }: { profile: UserProfile; onBack?: () => void }) {

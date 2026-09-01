@@ -2,23 +2,16 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart3, 
-  Calendar, 
-  User as UserIcon, 
   Briefcase,
   Wallet,
-  Settings,
   Bell,
   CheckCircle2,
   X,
-  Menu,
-  ChevronRight,
-  MapPin,
   Clock,
-  Navigation,
-  MessageSquare,
-  Star,
   Zap,
-  TicketPercent
+  TicketPercent,
+  ShieldAlert, 
+  Lock
 } from 'lucide-react';
 import { UserProfile, PartnerProfile, Booking, Service, PartnerApplication } from '../types';
 import { auth, db } from '../lib/firebase';
@@ -30,10 +23,9 @@ import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import UnifiedKYCForm from './partner/UnifiedKYCForm';
-import { ShieldAlert, Lock } from 'lucide-react';
 import { LoadingScreen } from './LoadingIndicator';
 import { LogoHorizontal, LogoIcon } from './BrandLogo';
-import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
 

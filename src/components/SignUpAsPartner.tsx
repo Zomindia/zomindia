@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { doc, updateDoc, Timestamp, getDoc, setDoc } from "firebase/firestore";
+import { doc, Timestamp, getDoc, setDoc } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
 import { 
   signInWithPhoneNumber, 
@@ -11,7 +11,7 @@ import {
   ConfirmationResult
 } from "firebase/auth";
 import { UserProfile } from "../types";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { 
   X, 
   Smartphone, 

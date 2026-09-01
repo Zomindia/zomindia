@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 
 /**
  * ZOMINDIA ENTERPRISE TELEPHONY & VOICE MASKING SYSTEM

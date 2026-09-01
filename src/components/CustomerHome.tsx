@@ -7,9 +7,7 @@ import {
   where,
   doc,
   getDoc,
-  limit,
   onSnapshot,
-  updateDoc,
   Timestamp,
   addDoc,
   or,
@@ -25,7 +23,6 @@ import {
   Booking,
 } from "../types";
 import PaymentModal from "./PaymentModal";
-import { QRCodeSVG } from "qrcode.react";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
 import { formatTime12Hour } from "../utils/formatTime";
@@ -38,7 +35,6 @@ import { BrandedButtonSpinner } from "./LoadingIndicator";
 import {
   SkeletonCategoryGrid,
   SkeletonServiceCardGrid,
-  SkeletonPromoCards,
 } from "./HomeSkeletons";
 import {
   Wrench,
@@ -57,18 +53,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  PhoneCall,
   MessageCircle,
   Zap,
   Copy,
   Check,
   Plus,
-  MapPin,
   Scissors,
   Tv,
   Brush,
   Hammer,
-  CreditCard,
 } from "lucide-react";
 
 import heroImage from "../assets/images/regenerated_image_1781639290171.jpg";

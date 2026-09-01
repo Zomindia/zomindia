@@ -7,13 +7,12 @@ import nodemailer from "nodemailer";
 import PDFDocument from "pdfkit";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
-import { initializeFirestore } from "firebase/firestore";
 import serverApiRouter from "./server-api.ts";
 
 dotenv.config();

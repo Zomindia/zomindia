@@ -3,45 +3,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, sendEmailVerification } from 'firebase/auth';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { onAuthStateChanged, User, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
-import { handleFirestoreError, OperationType } from './lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
 import { seedDatabase } from './lib/seed';
 import { buildDualPersonaUserDoc } from './lib/user-schema';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import {
-  Building2,
-  Search,
   Calendar,
   User as UserIcon,
   ShieldCheck,
   Menu,
   X,
-  LayoutDashboard,
   ChevronRight,
   Bell,
-  History,
-  TicketPercent,
   Settings,
-  Zap,
   MessageSquare,
   Mail,
   RefreshCw,
   Download,
-  Cpu,
   Sparkles,
-  AlertTriangle,
-  Copy,
   Check,
-  Pencil,
-  Phone,
-  PhoneCall,
-  PhoneOff,
-  ExternalLink
+  Phone
 } from 'lucide-react';
 
 // Modules
@@ -80,10 +66,7 @@ import ElitePartnerModal from './components/ElitePartnerModal';
 
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
-import { LogoHorizontal, LogoIcon } from './components/BrandLogo';
-
-const teamMember1Img = "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400";
-const teamMember2Img = "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400";
+import { LogoHorizontal } from './components/BrandLogo';
 
 const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, className?: string, src?: string }) => {
   const heightStyle = size && !className ? { height: size * 1.6 } : undefined;

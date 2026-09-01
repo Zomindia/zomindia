@@ -4,7 +4,7 @@ import { db } from '../lib/firebase';
 import { UserProfile, SupportTicket, FAQ as FAQType } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, MessageSquare, AlertCircle, Clock, CheckCircle2, HelpCircle, Search } from 'lucide-react';
+import { Plus, X, MessageSquare, CheckCircle2, HelpCircle, Search } from 'lucide-react';
 import FAQList from './FAQ';
 
 export default function SupportTicketsView({ profile }: { profile: UserProfile }) {

@@ -6,7 +6,6 @@ import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
-import { initializeFirestore } from "firebase/firestore";
 
 // Create a robust wrapper proxy for admin to dynamically route database/static value accesses
 // This avoids read-only getter TypeError and handles client-compatibility vs admin SDK differences safely

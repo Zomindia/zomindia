@@ -8,29 +8,17 @@ import {
   ChevronDown,
   AlertCircle,
   Clock,
-  MapPin,
-  Smartphone,
-  Navigation,
   Sparkles,
   Zap,
   Briefcase,
-  Upload,
-  FileText,
   Check,
-  CreditCard,
   Lock,
-  ShieldCheck,
-  Landmark,
-  DollarSign,
-  Award,
-  User,
-  MessageSquareQuote,
-  ThumbsUp
+  MessageSquareQuote
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
 import { formatTime12Hour } from '../../utils/formatTime';
-import { doc, updateDoc, setDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 interface Props {

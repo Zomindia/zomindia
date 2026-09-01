@@ -6,7 +6,6 @@ import {
   DollarSign, 
   Calendar, 
   ArrowUpRight, 
-  ArrowDownRight,
   Filter,
   Download,
   ChevronRight,

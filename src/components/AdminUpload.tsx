@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Upload, X, Check, Image as ImageIcon, FileText, Link as LinkIcon, AlertCircle, Camera as CameraIcon } from 'lucide-react';
+import { Upload, Check, Image as ImageIcon, FileText, Link as LinkIcon, AlertCircle, Camera as CameraIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { Capacitor } from '@capacitor/core';
 
 interface AdminUploadProps {
   onUpload: (url: string) => void;

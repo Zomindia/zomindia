@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  MessageSquare,
   X,
   Send,
   User,
@@ -13,9 +12,7 @@ import {
   CreditCard,
   ShieldCheck,
   Lock,
-  Smartphone,
   Check,
-  Sparkles,
   AlertCircle,
 } from "lucide-react";
 import { UserProfile, Booking } from "../types";
@@ -26,10 +23,8 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  addDoc,
   Timestamp,
   doc,
-  updateDoc,
   setDoc,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";

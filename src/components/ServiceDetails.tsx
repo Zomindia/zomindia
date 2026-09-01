@@ -19,35 +19,29 @@ import {
   UserProfile,
   Category,
 } from "../types";
-import { handleMapsError } from "../lib/maps-errors";
 import { LogoIcon } from "./BrandLogo";
 import { motion, AnimatePresence } from "motion/react";
-import { QRCodeSVG } from "qrcode.react";
 import {
   Star,
   Clock,
   ChevronLeft,
   CheckCircle2,
-  MessageCircle,
   HelpCircle,
-  Users,
   ShieldCheck,
   Calendar,
   AlertCircle,
   FileText,
-  MapPin,
   Phone,
   ChevronRight,
   ArrowRight,
   Share2,
   Sparkles,
   Sliders,
-  Hourglass,
 } from "lucide-react";
 import BookingModal from "./BookingModal";
 import PartnerIdentityMarker from "./PartnerIdentityMarker";
 import { LoadingScreen } from "./LoadingIndicator";
-import { Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
+import { Map, AdvancedMarker } from "@vis.gl/react-google-maps";
 import { GOOGLE_MAPS_MAP_ID } from "../lib/maps-config";
 import FAQList from "./FAQ";
 import { getEstimatedDurationDetails } from "../lib/durationEstimator";

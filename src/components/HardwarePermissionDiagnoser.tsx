@@ -7,15 +7,12 @@ import {
   Camera, 
   Mic, 
   Cpu, 
-  AlertCircle, 
-  CheckCircle2, 
   RefreshCw, 
   MapPin, 
   Lock, 
   Video, 
   VideoOff, 
-  StopCircle,
-  Play
+  StopCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 

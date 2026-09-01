@@ -9,12 +9,8 @@ import {
   Wallet, 
   CheckCircle2, 
   Check, 
-  ChevronRight, 
   QrCode, 
-  Sparkles, 
-  Shield, 
   Zap,
-  Building2,
   Info
 } from 'lucide-react';
 

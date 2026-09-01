@@ -4,14 +4,13 @@ import {
   onSnapshot, 
   query, 
   where, 
-  orderBy, 
   addDoc, 
   Timestamp 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { AMC, UserProfile, Service, AMCStatus } from '../types';
+import { AMC, UserProfile, Service } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { LoadingScreen } from './LoadingIndicator';
 import { 
   Zap, 

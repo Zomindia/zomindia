@@ -24,7 +24,6 @@ import {
 } from "firebase/auth";
 import { db, auth } from "../lib/firebase";
 import { offlineSyncEngine } from "../lib/offlineQueue";
-import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { UserProfile } from "../types";
 import { buildDualPersonaUserDoc } from "../lib/user-schema";
 import { formatTime12Hour } from "../utils/formatTime";
@@ -52,22 +51,16 @@ import {
   Navigation,
   AlertCircle,
   RefreshCw,
-  Key,
   X,
   Gift,
   Award,
   Wallet,
-  Coins,
   History,
   Copy,
-  Plus,
   Cpu,
-  Mic,
-  Camera,
   ArrowLeft,
   HelpCircle,
   Phone,
-  Download,
 } from "lucide-react";
 
 interface Props {

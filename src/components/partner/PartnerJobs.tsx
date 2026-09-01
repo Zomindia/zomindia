@@ -3,9 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   Briefcase, 
-  History, 
   MapPin, 
-  Clock, 
   CheckCircle2, 
   X,
   User,
@@ -14,17 +12,12 @@ import {
   DollarSign,
   Phone,
   Navigation,
-  FileText,
   Smartphone,
   ShieldCheck,
   Zap,
-  MoreVertical,
   Camera,
   Archive,
-  Star,
-  Calendar,
   RefreshCw,
-  QrCode,
   Trophy,
   Sparkles,
   Mic,
@@ -32,7 +25,7 @@ import {
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource } from '@capacitor/camera';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, addDoc, onSnapshot, deleteField, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp, deleteField, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { notifyBookingUpdate } from '../../lib/notifications';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
@@ -40,10 +33,8 @@ import ChatWindow from '../ChatWindow';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { GOOGLE_MAPS_MAP_ID } from '../../lib/maps-config';
 import { useLocationTracking } from '../../hooks/useLocationTracking';
-import { QRScanner } from './QRScanner';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
-import { triggerTelephonyBridge, CORPORATE_LANDLINE_GATEWAY, TELEPHONY_PROVIDER } from '../../lib/telephony';
-import { triggerSecureCall } from '../../lib/twilio';
+import { CORPORATE_LANDLINE_GATEWAY } from '../../lib/telephony';
 import { formatTime12Hour } from '../../utils/formatTime';
 import { useAutoOTP } from '../../hooks/useAutoOTP';
 

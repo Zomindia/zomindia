@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { Camera, AlertCircle, Sparkles, Check, X, ShieldAlert } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Camera, Check, X, ShieldAlert } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface QRScannerProps {
   bookingId?: string;

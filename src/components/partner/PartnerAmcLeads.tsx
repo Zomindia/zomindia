@@ -6,8 +6,7 @@ import {
   where, 
   orderBy, 
   addDoc, 
-  Timestamp,
-  getDocs
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { AMC, UserProfile, PartnerProfile, Service } from '../../types';
@@ -15,14 +14,9 @@ import { handleFirestoreError, OperationType } from '../../lib/firestore-errors'
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Zap, 
-  CheckCircle2, 
-  Clock, 
   Plus, 
-  Search, 
-  ChevronRight, 
   Users, 
   Phone, 
-  MessageSquare,
   TrendingUp,
   DollarSign,
   AlertCircle,

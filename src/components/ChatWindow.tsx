@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { ChatMessage, UserProfile, Booking } from '../types';
 import { formatTime12Hour } from '../utils/formatTime';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { LoadingSpinner } from './LoadingIndicator';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, X, User, MessageSquare } from 'lucide-react';
 import { sendNotification } from '../lib/notifications';

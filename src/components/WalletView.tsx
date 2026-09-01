@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, WalletTransaction } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { motion } from 'motion/react';
 import { Wallet, CreditCard, ArrowDownLeft, ArrowUpRight, Copy, Share2 } from 'lucide-react';
 
 export default function WalletView({ profile, setActiveTab }: { profile: UserProfile, setActiveTab?: (tab: any) => void }) {

@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ShieldCheck,
-  ShieldAlert,
-  HelpCircle,
   X,
   Send,
   Camera,
@@ -13,9 +11,6 @@ import {
   AlertTriangle,
   FileText,
   Sparkles,
-  ExternalLink,
-  Phone,
-  MessageSquare,
 } from "lucide-react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";

@@ -5,7 +5,6 @@ import {
   Calendar,
   MapPin,
   CheckCircle2,
-  AlertCircle,
   ShieldCheck,
   Zap,
   User,
@@ -24,7 +23,6 @@ import {
   Navigation,
   XCircle,
   X,
-  Maximize2,
   Lock,
 } from "lucide-react";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
@@ -291,7 +289,7 @@ function formatPaymentMethodName(method?: string): string {
   return method.charAt(0).toUpperCase() + method.slice(1);
 }
 
-export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
+export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   booking,
   service,
   partnerUser,
@@ -1326,4 +1324,4 @@ export const CustomerBookingCard: React.FC<CustomerBookingCardProps> = ({
       </AnimatePresence>
     </motion.div>
   );
-};
+});

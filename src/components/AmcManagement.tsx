@@ -1,15 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
   addDoc, 
-  updateDoc, 
-  doc, 
-  Timestamp, 
-  getDocs,
-  where
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { AMC, UserProfile, Service, AMCStatus } from '../types';
@@ -19,19 +12,14 @@ import {
   Calendar, 
   Plus, 
   Search, 
-  Filter, 
-  ChevronRight, 
   Clock, 
   CheckCircle2, 
-  AlertCircle, 
   User, 
   Briefcase,
   Phone,
   Mail,
   Zap,
-  MoreVertical,
   X,
-  CreditCard,
   History,
   MessageSquare
 } from 'lucide-react';

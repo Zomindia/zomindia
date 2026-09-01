@@ -1,6 +1,5 @@
 import { db, auth } from './firebase';
-import { collection, addDoc, getDocs, query, limit, doc, setDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from './firestore-errors';
+import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
 
 const CATEGORIES = [
   { name: 'Cleaning', icon: 'Sparkles', description: 'Deep cleaning, sofa & carpet' },

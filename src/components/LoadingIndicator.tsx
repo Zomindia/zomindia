@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, Shield, Compass, CheckCircle } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import logoIcon from '../assets/images/logo-icon.png';
 
 /**

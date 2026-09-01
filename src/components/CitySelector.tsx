@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, MapPin, AlertCircle, Check, ArrowRight } from 'lucide-react';
+import { X, Search, MapPin, AlertCircle, Check } from 'lucide-react';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import axios from 'axios';

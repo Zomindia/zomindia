@@ -1,19 +1,16 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { 
-  Briefcase, 
   Wallet, 
   MapPin, 
   ShieldCheck, 
   TrendingUp, 
   ArrowRight, 
   KeyRound, 
-  CheckCircle2, 
   MessageSquare, 
   Award,
   Zap,
-  Check,
-  ChevronDown
+  Check
 } from 'lucide-react';
 
 interface Props {

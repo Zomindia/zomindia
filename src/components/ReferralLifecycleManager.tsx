@@ -1,28 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Users, 
-  Gift, 
-  DollarSign, 
   CheckCircle2, 
   Clock, 
-  XCircle, 
-  Plus, 
   Search, 
   Filter, 
   Sparkles, 
-  TrendingUp, 
   UserPlus, 
   Settings, 
-  Trash2, 
   AlertCircle, 
   Trophy, 
   ArrowRightLeft,
   ChevronRight,
   Info,
-  Calendar,
-  Layers,
-  ArrowUpRight,
-  ShieldCheck,
   Undo,
   X
 } from 'lucide-react';
@@ -30,12 +19,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, 
   query, 
-  where, 
-  getDocs, 
   onSnapshot, 
   doc, 
   updateDoc, 
-  addDoc, 
   writeBatch, 
   Timestamp, 
   getDoc,
@@ -45,7 +31,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, Booking } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
 interface ReferralLifecycleManagerProps {
   users: UserProfile[];

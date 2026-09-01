@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { COMPANY_NAME } from '../types';
 import { Logo } from './BrandLogo';
 import { Service } from '../types';
-import { Phone, Mail, MapPin, ShieldCheck, Sparkles, Heart } from 'lucide-react';
+import { MapPin, ShieldCheck, Heart } from 'lucide-react';
 
 interface FooterProps {
   activeTab?: string;

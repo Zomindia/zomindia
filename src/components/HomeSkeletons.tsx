@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'motion/react';
 
 /**
  * Skeleton placeholder for the promotional hero carousel / banner

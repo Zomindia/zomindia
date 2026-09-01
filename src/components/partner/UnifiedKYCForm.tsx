@@ -2,7 +2,6 @@ import { useState } from "react";
 import { doc, updateDoc, Timestamp, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { User, ShieldCheck, CreditCard, Landmark, Users, CheckCircle2, AlertCircle } from "lucide-react";
-import { motion } from "motion/react";
 
 interface UnifiedKYCFormProps {
   partnerId: string;

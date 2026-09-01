@@ -2,30 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
-  User, 
   ShieldCheck, 
   Clock, 
-  MapPin, 
   ChevronRight, 
   Camera, 
   Check,
   X,
-  FileText,
   AlertCircle,
   Briefcase,
   Zap,
-  Globe,
-  Bell,
   Wallet,
   Bot,
   LogOut,
   ArrowLeft,
   HelpCircle,
-  Star,
-  MessageSquareQuote,
-  Award
+  Star
 } from 'lucide-react';
-import { PartnerProfile, UserProfile, Category, WorkingHours, Booking, Service, Review } from '../../types';
+import { PartnerProfile, UserProfile, Category, Booking, Service, Review } from '../../types';
 import { LogoIcon } from '../BrandLogo';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
