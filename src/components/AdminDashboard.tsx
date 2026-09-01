@@ -11858,9 +11858,43 @@ function AnalyticsView({
                       </tr>
                     </thead>
                     <tbody>
-      xœ´”ßOÂ0Çßı+.{ÚÆ0AL4&>_|4féÚs6tíÒ!üïvˆd«CŸn÷ã{Ÿ¶·ì¯—´|ÀŠiáz«ãX™2É-¬. cq£`„Ïda¾¢Ç•äS9É
-±ª¾ë‘yğ)* wí•ÛÂ8ñÆ£áL5m¤.ã$ 5j×
-T4ı5~À¦WkñI Bô”İG7Iif5Ä•1Ù`).'«VŠu0‘+æÜ«p.(]8(ŒhÓâÛpÊï<½êƒO¥ÑÖÙ‡w3G;*ÊŸxæSÈ2í$I£Sn”±.
-t¿’IìÒÕ‹tõ2À›Ñ”VFØ¿\öëÅë—ıÒÂÚ~·c>qFâ\”ƒc(›+œ9´ù_÷ø_R‡•,Œ»„×Çò™µ¨)÷vé©sí{œ¸PŒO¿h¥²4éğX\b¶DÊ›ílŒûã¸rVÄèßúçAú¸í']ÏĞ:ioëå
-#–mŠ>Ä
-…‡¡q&äü·»ÅyàÚaØ‹í|ü˜~'ë‹O   ÿÿ ~…
+                      {cityDemands.map((log) => {
+                        const dateStr = log.clicked_timestamp?.toDate
+                          ? log.clicked_timestamp.toDate().toLocaleString()
+                          : log.clicked_timestamp
+                            ? new Date(log.clicked_timestamp).toLocaleString()
+                            : "N/A";
+                        return (
+                          <tr
+                            key={log.id}
+                            className="text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+                          >
+                            <td className="px-6 py-4 font-mono text-[10px] text-slate-500">
+                              {dateStr}
+                            </td>
+                            <td className="px-6 py-4 font-mono text-[10px] text-slate-400">
+                              {log.user_id}
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-slate-700">
+                              {log.current_logged_in_name}
+                            </td>
+                            <td className="px-6 py-4 font-black text-indigo-600">
+                              {log.target_city}
+                            </td>
+                            <td className="px-6 py-4 text-slate-500 font-medium">
+                              {log.target_state}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
