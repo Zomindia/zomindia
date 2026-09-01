@@ -38,8 +38,7 @@ self.addEventListener('install', (event) => {
         );
       })
       .then(() => {
-        console.log('[PWA SW] Core assets cached successfully. Activating...');
-        return self.skipWaiting();
+        console.log('[PWA SW] Core assets cached successfully.');
       })
       .catch((error) => {
         console.error('[PWA SW] Pre-cache installation error handled:', error);
@@ -47,7 +46,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activation: Clean up any old, stale caches
+// Activation: Clean up any old, stale caches and claim clients smoothly
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -60,7 +59,7 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      console.log('[PWA SW] Active and claiming all page clients.');
+      console.log('[PWA SW] Service worker activated.');
       return self.clients.claim();
     })
   );

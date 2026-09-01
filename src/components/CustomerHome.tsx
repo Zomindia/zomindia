@@ -36,6 +36,11 @@ import BookingModal from "./BookingModal";
 import { ImageCarousel } from "./ServiceDetails";
 import { BrandedButtonSpinner } from "./LoadingIndicator";
 import {
+  SkeletonCategoryGrid,
+  SkeletonServiceCardGrid,
+  SkeletonPromoCards,
+} from "./HomeSkeletons";
+import {
   Wrench,
   Sparkles,
   Plug,
@@ -2329,215 +2334,219 @@ export default function CustomerHome({
             </div>
 
             {/* Service Categories Grid */}
-            <motion.div
-              layout
-              className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-5 sm:gap-y-10 gap-x-2 sm:gap-x-4 items-center justify-items-center relative z-10 min-h-[140px]"
-            >
-              <AnimatePresence mode="popLayout">
-                {categories
-                  .filter((cat) => {
-                    if (categoryTypeTab !== "All") {
-                      const type = getCategoryType(cat.name);
-                      if (type !== categoryTypeTab) return false;
-                    }
-                    if (categoriesSearchQuery.trim() !== "") {
-                      const queryStr = categoriesSearchQuery
-                        .toLowerCase()
-                        .trim();
-                      const catMatches = cat.name
-                        .toLowerCase()
-                        .includes(queryStr);
-                      if (catMatches) return true;
+            {loading && categories.length === 0 ? (
+              <SkeletonCategoryGrid count={14} />
+            ) : (
+              <motion.div
+                layout
+                className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-5 sm:gap-y-10 gap-x-2 sm:gap-x-4 items-center justify-items-center relative z-10 min-h-[140px]"
+              >
+                <AnimatePresence mode="popLayout">
+                  {categories
+                    .filter((cat) => {
+                      if (categoryTypeTab !== "All") {
+                        const type = getCategoryType(cat.name);
+                        if (type !== categoryTypeTab) return false;
+                      }
+                      if (categoriesSearchQuery.trim() !== "") {
+                        const queryStr = categoriesSearchQuery
+                          .toLowerCase()
+                          .trim();
+                        const catMatches = cat.name
+                          .toLowerCase()
+                          .includes(queryStr);
+                        if (catMatches) return true;
 
-                      const servicesInCat = allServices.filter(
-                        (s) => s.categoryId === cat.id,
-                      );
-                      return servicesInCat.some(
-                        (s) =>
-                          s.name.toLowerCase().includes(queryStr) ||
-                          (s.description &&
-                            s.description.toLowerCase().includes(queryStr)),
-                      );
-                    }
-                    return true;
-                  })
-                  .map((cat, i) => {
-                    const Icon = getCategoryIcon(cat.icon);
-                    const theme = getCategoryTheme(cat.name);
-                    const isFailedIcon = failedIcons[cat.id];
-                    const hasValidIconURL =
-                      cat.iconURL &&
-                      cat.iconURL.trim() !== "" &&
-                      cat.iconURL.includes("/") &&
-                      !isFailedIcon;
+                        const servicesInCat = allServices.filter(
+                          (s) => s.categoryId === cat.id,
+                        );
+                        return servicesInCat.some(
+                          (s) =>
+                            s.name.toLowerCase().includes(queryStr) ||
+                            (s.description &&
+                              s.description.toLowerCase().includes(queryStr)),
+                        );
+                      }
+                      return true;
+                    })
+                    .map((cat, i) => {
+                      const Icon = getCategoryIcon(cat.icon);
+                      const theme = getCategoryTheme(cat.name);
+                      const isFailedIcon = failedIcons[cat.id];
+                      const hasValidIconURL =
+                        cat.iconURL &&
+                        cat.iconURL.trim() !== "" &&
+                        cat.iconURL.includes("/") &&
+                        !isFailedIcon;
 
-                    return (
-                      <motion.button
-                        key={cat.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.9, y: 15 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8, y: -15 }}
-                        viewport={{ once: true }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 300,
-                          damping: 25,
-                          layout: { duration: 0.3 },
-                        }}
-                        whileHover={{ 
-                          scale: 1.08,
-                          y: -6,
-                          transition: { type: "spring", stiffness: 400, damping: 15 }
-                        }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={(e) => {
-                          setSelectedCategory(cat);
-                          e.currentTarget.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none relative"
-                      >
-                        {/* The Inner Card Container */}
-                        <div
-                          className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border ${theme.borderClass} ${theme.bgClass} group-hover:border-transparent ${theme.shadowClass} relative overflow-hidden`}
+                      return (
+                        <motion.button
+                          key={cat.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.9, y: 15 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.8, y: -15 }}
+                          viewport={{ once: true }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 300,
+                            damping: 25,
+                            layout: { duration: 0.3 },
+                          }}
+                          whileHover={{ 
+                            scale: 1.08,
+                            y: -6,
+                            transition: { type: "spring", stiffness: 400, damping: 15 }
+                          }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={(e) => {
+                            setSelectedCategory(cat);
+                            e.currentTarget.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none relative"
                         >
-                          {/* Interactive Colorful Glow Backing */}
-                          <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                          {/* The Inner Card Container */}
                           <div
-                            className="absolute -inset-10 bg-current filter blur-xl opacity-0 group-hover:opacity-[0.06] transition-opacity duration-500 rounded-full pointer-events-none"
-                            style={{ color: "inherit" }}
-                          />
-
-                          {theme.badgeText && (
+                            className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border ${theme.borderClass} ${theme.bgClass} group-hover:border-transparent ${theme.shadowClass} relative overflow-hidden`}
+                          >
+                            {/* Interactive Colorful Glow Backing */}
+                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                             <div
-                              className={`absolute top-1.5 sm:top-2 right-1.5 sm:right-2 px-1.5 py-0.5 rounded-full text-[6px] sm:text-[7px] font-black uppercase tracking-wider border z-20 ${theme.badgeColor || "bg-blue-50 text-blue-600 border-blue-100"}`}
-                            >
-                              {theme.badgeText}
-                            </div>
-                          )}
+                              className="absolute -inset-10 bg-current filter blur-xl opacity-0 group-hover:opacity-[0.06] transition-opacity duration-500 rounded-full pointer-events-none"
+                              style={{ color: "inherit" }}
+                            />
 
-                          {/* Sub-container representing circle backdrop */}
-                          <div className="w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10 p-1.5 sm:p-2 sm:overflow-hidden">
-                            {hasValidIconURL ? (
-                              <motion.img
-                                whileHover={{ scale: 1.12, rotate: 4 }}
-                                src={cat.iconURL}
-                                alt={cat.name}
-                                width={512}
-                                height={512}
-                                className="w-full h-full object-contain transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                                onError={() => {
-                                  setFailedIcons((prev) => ({
-                                    ...prev,
-                                    [cat.id]: true,
-                                  }));
-                                }}
-                              />
-                            ) : (
-                              <motion.div
-                                whileHover={{ scale: 1.15 }}
-                                transition={{
-                                  type: "spring",
-                                  stiffness: 420,
-                                  damping: 9,
-                                }}
-                                className={`${theme.iconColor} group-hover:${theme.activeIconColor}`}
+                            {theme.badgeText && (
+                              <div
+                                className={`absolute top-1.5 sm:top-2 right-1.5 sm:right-2 px-1.5 py-0.5 rounded-full text-[6px] sm:text-[7px] font-black uppercase tracking-wider border z-20 ${theme.badgeColor || "bg-blue-50 text-blue-600 border-blue-100"}`}
                               >
-                                <Icon
-                                  size={30}
-                                  className="sm:size-[34px] md:size-[40px] stroke-[1.5] transition-colors duration-300"
-                                />
-                              </motion.div>
+                                {theme.badgeText}
+                              </div>
                             )}
+
+                            {/* Sub-container representing circle backdrop */}
+                            <div className="w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10 p-1.5 sm:p-2 sm:overflow-hidden">
+                              {hasValidIconURL ? (
+                                <motion.img
+                                  whileHover={{ scale: 1.12, rotate: 4 }}
+                                  src={cat.iconURL}
+                                  alt={cat.name}
+                                  width={512}
+                                  height={512}
+                                  className="w-full h-full object-contain transition-transform duration-300"
+                                  referrerPolicy="no-referrer"
+                                  onError={() => {
+                                    setFailedIcons((prev) => ({
+                                      ...prev,
+                                      [cat.id]: true,
+                                    }));
+                                  }}
+                                />
+                              ) : (
+                                <motion.div
+                                  whileHover={{ scale: 1.15 }}
+                                  transition={{
+                                    type: "spring",
+                                    stiffness: 420,
+                                    damping: 9,
+                                  }}
+                                  className={`${theme.iconColor} group-hover:${theme.activeIconColor}`}
+                                >
+                                  <Icon
+                                    size={30}
+                                    className="sm:size-[34px] md:size-[40px] stroke-[1.5] transition-colors duration-300"
+                                  />
+                                </motion.div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        {/* Text block label */}
-                        <span
-                          className={`text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 ${theme.textHoverColor} tracking-tight transition-colors duration-300 mt-1 text-center leading-tight max-w-[80px] sm:max-w-[95px] md:max-w-[110px] line-clamp-2 select-none`}
-                        >
-                          {cat.name}
-                        </span>
-                      </motion.button>
+                          {/* Text block label */}
+                          <span
+                            className={`text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 ${theme.textHoverColor} tracking-tight transition-colors duration-300 mt-1 text-center leading-tight max-w-[80px] sm:max-w-[95px] md:max-w-[110px] line-clamp-2 select-none`}
+                          >
+                            {cat.name}
+                          </span>
+                        </motion.button>
+                      );
+                    })}
+                </AnimatePresence>
+
+                {/* Empty state overlay inside grid */}
+                {categories.filter((cat) => {
+                  if (categoryTypeTab !== "All") {
+                    const type = getCategoryType(cat.name);
+                    if (type !== categoryTypeTab) return false;
+                  }
+                  if (categoriesSearchQuery.trim() !== "") {
+                    const queryStr = categoriesSearchQuery.toLowerCase().trim();
+                    const catMatches = cat.name.toLowerCase().includes(queryStr);
+                    if (catMatches) return true;
+
+                    const servicesInCat = allServices.filter(
+                      (s) => s.categoryId === cat.id,
                     );
-                  })}
-              </AnimatePresence>
+                    return servicesInCat.some(
+                      (s) =>
+                        s.name.toLowerCase().includes(queryStr) ||
+                        (s.description &&
+                          s.description.toLowerCase().includes(queryStr)),
+                    );
+                  }
+                  return true;
+                }).length === 0 && (
+                  <div className="col-span-full py-12 text-center w-full bg-slate-50/50 rounded-3xl border border-dashed border-slate-200/60 p-6 flex flex-col items-center justify-center">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      No Services Found
+                    </span>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Try adjusting your category filter or search keywords.
+                    </p>
+                  </div>
+                )}
 
-              {/* Empty state overlay inside grid */}
-              {categories.filter((cat) => {
-                if (categoryTypeTab !== "All") {
-                  const type = getCategoryType(cat.name);
-                  if (type !== categoryTypeTab) return false;
-                }
-                if (categoriesSearchQuery.trim() !== "") {
-                  const queryStr = categoriesSearchQuery.toLowerCase().trim();
-                  const catMatches = cat.name.toLowerCase().includes(queryStr);
-                  if (catMatches) return true;
-
-                  const servicesInCat = allServices.filter(
-                    (s) => s.categoryId === cat.id,
-                  );
-                  return servicesInCat.some(
-                    (s) =>
-                      s.name.toLowerCase().includes(queryStr) ||
-                      (s.description &&
-                        s.description.toLowerCase().includes(queryStr)),
-                  );
-                }
-                return true;
-              }).length === 0 && (
-                <div className="col-span-full py-12 text-center w-full bg-slate-50/50 rounded-3xl border border-dashed border-slate-200/60 p-6 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    No Services Found
-                  </span>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Try adjusting your category filter or search keywords.
-                  </p>
-                </div>
-              )}
-
-              {categoriesSearchQuery.trim() === "" && (
-                <motion.button
-                  layout
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ 
-                    scale: 1.08,
-                    y: -6,
-                    transition: { type: "spring", stiffness: 400, damping: 15 }
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none"
-                  onClick={() => {
-                    const detailsSec =
-                      document.getElementById("categories-grid");
-                    if (detailsSec) {
-                      window.scrollTo({
-                        top:
-                          detailsSec.offsetTop + detailsSec.offsetHeight + 100,
-                        behavior: "smooth",
-                      });
-                    }
-                  }}
-                >
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border border-slate-100/80 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)] relative overflow-hidden">
-                    <div className="w-12 h-12 sm:w-15 sm:h-15 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10">
-                      <div className="flex gap-1 items-center justify-center">
-                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
-                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
-                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                {categoriesSearchQuery.trim() === "" && (
+                  <motion.button
+                    layout
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{ 
+                      scale: 1.08,
+                      y: -6,
+                      transition: { type: "spring", stiffness: 400, damping: 15 }
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none"
+                    onClick={() => {
+                      const detailsSec =
+                        document.getElementById("categories-grid");
+                      if (detailsSec) {
+                        window.scrollTo({
+                          top:
+                            detailsSec.offsetTop + detailsSec.offsetHeight + 100,
+                          behavior: "smooth",
+                        });
+                      }
+                    }}
+                  >
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border border-slate-100/80 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)] relative overflow-hidden">
+                      <div className="w-12 h-12 sm:w-15 sm:h-15 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10">
+                        <div className="flex gap-1 items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 group-hover:text-blue-700 tracking-tight transition-colors duration-300 mt-1 text-center leading-tight select-none">
-                    More
-                  </span>
-                </motion.button>
-              )}
-            </motion.div>
+                    <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 group-hover:text-blue-700 tracking-tight transition-colors duration-300 mt-1 text-center leading-tight select-none">
+                      More
+                    </span>
+                  </motion.button>
+                )}
+              </motion.div>
+            )}
           </div>
         </motion.section>
 
@@ -2980,114 +2989,118 @@ export default function CustomerHome({
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 px-1">
-            {allServices
-              .filter((s) => s.rating && s.rating >= 4.5)
-              .slice(0, 4)
-              .map((service, idx) => (
-                <motion.div
-                  key={service.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  whileHover={{ y: -6, scale: 1.03 }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 240,
-                    damping: 18,
-                    delay: idx * 0.04,
-                  }}
-                  onClick={() => onServiceSelect(service.id)}
-                  className="bg-white/70 backdrop-blur-md rounded-[20px] sm:rounded-[28px] border border-slate-100 p-3 sm:p-5 hover:border-blue-100 transition-all duration-300 cursor-pointer group shadow-sm hover:shadow-[0_20px_40px_-10px_rgba(37,99,235,0.06)] flex flex-col justify-between text-left relative overflow-hidden h-full"
-                >
-                  {/* Hover Accent Light */}
-                  <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-blue-500 to-indigo-600 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
+            {allServices.length === 0 ? (
+              <SkeletonServiceCardGrid count={4} />
+            ) : (
+              allServices
+                .filter((s) => s.rating && s.rating >= 4.5)
+                .slice(0, 4)
+                .map((service, idx) => (
+                  <motion.div
+                    key={service.id}
+                    initial={{ opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    whileHover={{ y: -6, scale: 1.03 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 240,
+                      damping: 18,
+                      delay: idx * 0.04,
+                    }}
+                    onClick={() => onServiceSelect(service.id)}
+                    className="bg-white/70 backdrop-blur-md rounded-[20px] sm:rounded-[28px] border border-slate-100 p-3 sm:p-5 hover:border-blue-100 transition-all duration-300 cursor-pointer group shadow-sm hover:shadow-[0_20px_40px_-10px_rgba(37,99,235,0.06)] flex flex-col justify-between text-left relative overflow-hidden h-full"
+                  >
+                    {/* Hover Accent Light */}
+                    <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-blue-500 to-indigo-600 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
 
-                  <div className="flex flex-col w-full min-w-0">
-                    {/* Image Box */}
-                    <div className="w-full aspect-[4/3] sm:aspect-square rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-4 bg-slate-50 border border-slate-100 relative shadow-sm">
-                      <img
-                        src={
-                          service.imageURL ||
-                          "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=400"
-                        }
-                        alt={service.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
+                    <div className="flex flex-col w-full min-w-0">
+                      {/* Image Box */}
+                      <div className="w-full aspect-[4/3] sm:aspect-square rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-4 bg-slate-50 border border-slate-100 relative shadow-sm">
+                        <img
+                          src={
+                            service.imageURL ||
+                            "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=400"
+                          }
+                          alt={service.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
 
-                      {/* Floating Badges */}
-                      <div className="absolute top-2 left-2 bg-blue-100/95 text-blue-800 backdrop-blur-md px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-xl text-[7px] sm:text-[8px] font-black uppercase tracking-wider shadow-sm border border-blue-200/50 flex items-center gap-1">
-                        <motion.div
-                          animate={{
-                            scale: [1, 1.2, 1],
-                            rotate: [0, 10, -10, 0],
-                          }}
-                          transition={{
-                            repeat: Infinity,
-                            duration: 3,
-                            ease: "easeInOut",
-                          }}
-                        >
-                          <Sparkles
+                        {/* Floating Badges */}
+                        <div className="absolute top-2 left-2 bg-blue-100/95 text-blue-800 backdrop-blur-md px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-xl text-[7px] sm:text-[8px] font-black uppercase tracking-wider shadow-sm border border-blue-200/50 flex items-center gap-1">
+                          <motion.div
+                            animate={{
+                              scale: [1, 1.2, 1],
+                              rotate: [0, 10, -10, 0],
+                            }}
+                            transition={{
+                              repeat: Infinity,
+                              duration: 3,
+                              ease: "easeInOut",
+                            }}
+                          >
+                            <Sparkles
+                              size={8}
+                              className="text-yellow-400 fill-yellow-400"
+                            />
+                          </motion.div>
+                          <span className="truncate">Popular</span>
+                        </div>
+                      </div>
+
+                      {/* Meta section */}
+                      <div className="flex items-center gap-1.5 mb-1 sm:mb-2 w-full min-w-0">
+                        <div className="px-1.5 py-0.5 bg-amber-500/10 text-amber-700 rounded-lg flex items-center gap-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-wider border border-amber-500/15">
+                          <Star
                             size={8}
-                            className="text-yellow-400 fill-yellow-400"
-                          />
-                        </motion.div>
-                        <span className="truncate">Popular</span>
+                            fill="currentColor"
+                            className="stroke-[2.5]"
+                          />{" "}
+                          {service.rating}
+                        </div>
+                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-black uppercase tracking-widest truncate">
+                          {
+                            allCategories.find((c) => c.id === service.categoryId)
+                              ?.name
+                          }
+                        </span>
                       </div>
-                    </div>
 
-                    {/* Meta section */}
-                    <div className="flex items-center gap-1.5 mb-1 sm:mb-2 w-full min-w-0">
-                      <div className="px-1.5 py-0.5 bg-amber-500/10 text-amber-700 rounded-lg flex items-center gap-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-wider border border-amber-500/15">
-                        <Star
-                          size={8}
-                          fill="currentColor"
-                          className="stroke-[2.5]"
-                        />{" "}
-                        {service.rating}
-                      </div>
-                      <span className="text-[8px] sm:text-[9px] text-slate-400 font-black uppercase tracking-widest truncate">
-                        {
-                          allCategories.find((c) => c.id === service.categoryId)
-                            ?.name
-                        }
-                      </span>
-                    </div>
+                      <h4 className="font-extrabold text-slate-900 mb-0.5 sm:mb-1 tracking-tight text-xs sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
+                        {service.name}
+                      </h4>
 
-                    <h4 className="font-extrabold text-slate-900 mb-0.5 sm:mb-1 tracking-tight text-xs sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
-                      {service.name}
-                    </h4>
-
-                    <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 leading-tight sm:leading-relaxed font-semibold mt-0.5 mb-2 sm:mb-3">
-                      {service.description}
-                    </p>
-                  </div>
-
-                  {/* Actions & Price */}
-                  <div className="mt-2.5 pt-2.5 sm:mt-4 sm:pt-4 border-t border-slate-100 flex items-center justify-between gap-2 w-full min-w-0">
-                    <div className="min-w-0">
-                      <p className="text-[7.5px] sm:text-[8.5px] text-slate-450 font-black uppercase tracking-wider mb-0.5 leading-none">
-                        Price
-                      </p>
-                      <p className="font-black text-xs sm:text-base text-slate-900 tracking-tight truncate">
-                        ₹{service.basePrice}
+                      <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 leading-tight sm:leading-relaxed font-semibold mt-0.5 mb-2 sm:mb-3">
+                        {service.description}
                       </p>
                     </div>
-                    <div className="h-7.5 sm:h-9 hover:bg-blue-600 hover:text-white bg-slate-50 border border-slate-100 hover:border-transparent text-slate-600 transition-all select-none rounded-lg sm:rounded-xl flex items-center justify-center px-2.5 sm:px-3 gap-1 shadow-sm shrink-0">
-                      <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest">
-                        Book
-                      </span>
-                      <ArrowRight
-                        size={10}
-                        className="sm:size-3 transition-transform group-hover:translate-x-0.5"
-                      />
+
+                    {/* Actions & Price */}
+                    <div className="mt-2.5 pt-2.5 sm:mt-4 sm:pt-4 border-t border-slate-100 flex items-center justify-between gap-2 w-full min-w-0">
+                      <div className="min-w-0">
+                        <p className="text-[7.5px] sm:text-[8.5px] text-slate-450 font-black uppercase tracking-wider mb-0.5 leading-none">
+                          Price
+                        </p>
+                        <p className="font-black text-xs sm:text-base text-slate-900 tracking-tight truncate">
+                          ₹{service.basePrice}
+                        </p>
+                      </div>
+                      <div className="h-7.5 sm:h-9 hover:bg-blue-600 hover:text-white bg-slate-50 border border-slate-100 hover:border-transparent text-slate-600 transition-all select-none rounded-lg sm:rounded-xl flex items-center justify-center px-2.5 sm:px-3 gap-1 shadow-sm shrink-0">
+                        <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest">
+                          Book
+                        </span>
+                        <ArrowRight
+                          size={10}
+                          className="sm:size-3 transition-transform group-hover:translate-x-0.5"
+                        />
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))
+            )}
           </div>
         </section>
 

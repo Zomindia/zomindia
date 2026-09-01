@@ -71,57 +71,42 @@ initSecurityShield();
 console.log("[Zomindia Telecom] Whitelisting metadata registered for WebRTC and Masked calling gateway.");
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    try {
-      // Force cleanup of legacy workers with non-matching script URLs
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of registrations) {
-        if (reg.active && !reg.active.scriptURL.endsWith('/sw.js')) {
-          console.log('[PWA] Purging legacy service worker:', reg.active.scriptURL);
-          await reg.unregister();
-        }
-      }
-    } catch (e) {
-      console.warn('[PWA] Legacy worker check bypassed:', e);
-    }
+  window.addEventListener('load', () => {
+    // Record if there was already an active controller when the page loaded
+    const hadPreviousController = Boolean(navigator.serviceWorker.controller);
 
     navigator.serviceWorker.register('/sw.js')
       .then((reg) => {
-        console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
+        console.log('[PWA] Service Worker registered with scope:', reg.scope);
 
-        // Force explicit update check on boot
-        reg.update().catch(() => {});
-
-        // Aggressively check for updates and skip waiting instantly
-        if (reg.waiting) {
-          console.log('[PWA] Service Worker waiting detected, posting SKIP_WAITING...');
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-
+        // Check for updates gracefully
         reg.addEventListener('updatefound', () => {
           const installingWorker = reg.installing;
           if (installingWorker) {
             installingWorker.addEventListener('statechange', () => {
+              // If new worker is installed and we already had an active controller,
+              // notify the user/app or dispatch custom update event without forced immediate reload
               if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('[PWA] New service worker installed, posting SKIP_WAITING...');
-                installingWorker.postMessage({ type: 'SKIP_WAITING' });
+                console.log('[PWA] A new version is available.');
+                window.dispatchEvent(new CustomEvent('pwa-update-available'));
               }
             });
           }
         });
       })
       .catch((err) => {
-        console.error('[PWA] Service Worker registration failed:', err);
+        console.warn('[PWA] Service Worker registration notice:', err);
       });
-  });
 
-  // Ensure that any controller change reloads the page to activate the new version
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
-    }
+    // Guard controllerchange: Only reload if a PREVIOUS controller was already active before this session.
+    // This strictly prevents the initial install / first page load from reloading the page.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadPreviousController && !refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   });
 }
 
