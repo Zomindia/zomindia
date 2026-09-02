@@ -36,21 +36,27 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
             return;
           }
 
-          const { latitude, longitude } = position.coords;
-          console.log(`Transmitted coordinates: lat=${latitude}, lng=${longitude}`);
+          const { latitude, longitude, heading } = position.coords;
+          const latNum = Number(latitude);
+          const lngNum = Number(longitude);
+          const headingVal = typeof heading === 'number' && !isNaN(heading) ? Number(heading) : null;
+          console.log(`Transmitted coordinates: lat=${latNum}, lng=${lngNum}, heading=${headingVal}`);
           try {
             await updateDoc(doc(db, 'partners', partnerProfileId), {
-              lat: latitude,
-              lng: longitude,
+              lat: latNum,
+              lng: lngNum,
+              heading: headingVal,
               updatedAt: Timestamp.now()
             });
 
-            // Securely write coordinates to the active booking document
+            // Securely write coordinates to the active booking document (PRESERVES customer destination lat/lng)
             for (const activeB of activeOnTheWay) {
               await updateDoc(doc(db, 'bookings', activeB.id), {
-                partnerLocation: { lat: latitude, lng: longitude },
-                lat: latitude,
-                lng: longitude,
+                partnerLocation: {
+                  lat: latNum,
+                  lng: lngNum,
+                },
+                heading: headingVal,
                 updatedAt: Timestamp.now()
               });
               console.log(`[Geo Sync] Synced location to active on-the-way booking ${activeB.id}`);

@@ -182,6 +182,7 @@ export interface PartnerProfile {
   workingHours?: WorkingHours[];
   lat?: number;
   lng?: number;
+  heading?: number | null;
   createdAt?: any;
   updatedAt?: any;
   locationDisconnected?: boolean;
@@ -313,7 +314,7 @@ export interface Booking {
   progressPercentage?: number;
   checklist?: string[];
   startOTP?: string;
-  partnerLocation?: { lat: number; lng: number };
+  partnerLocation?: { lat: number; lng: number; heading?: number | null };
   createdAt: any;
   updatedAt: any;
   rating?: number;

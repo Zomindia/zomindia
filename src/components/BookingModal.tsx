@@ -141,10 +141,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     !savedState?.address && !profile?.address && !profile?.customerData?.address
   );
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(
-    savedState?.location || { lat: 22.7196, lng: 75.8577 }
+    savedState?.location && typeof savedState.location.lat !== 'undefined' && typeof savedState.location.lng !== 'undefined'
+      ? { lat: Number(savedState.location.lat), lng: Number(savedState.location.lng) }
+      : { lat: 22.7196, lng: 75.8577 }
   );
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(
-    savedState?.location || { lat: 22.7196, lng: 75.8577 }
+    savedState?.location && typeof savedState.location.lat !== 'undefined' && typeof savedState.location.lng !== 'undefined'
+      ? { lat: Number(savedState.location.lat), lng: Number(savedState.location.lng) }
+      : { lat: 22.7196, lng: 75.8577 }
   );
   const [mapZoom, setMapZoom] = useState(15);
   const [isFetchingGps, setIsFetchingGps] = useState(false);
@@ -608,8 +612,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setShowSearchSuggestions(false);
     setIsChangingAddress(false);
 
-    if (typeof suggestion.lat === 'number' && typeof suggestion.lng === 'number' && !isNaN(suggestion.lat) && !isNaN(suggestion.lng)) {
-      const newPos = { lat: suggestion.lat, lng: suggestion.lng };
+    if (suggestion.lat !== undefined && suggestion.lng !== undefined && !isNaN(Number(suggestion.lat)) && !isNaN(Number(suggestion.lng))) {
+      const newPos = { lat: Number(suggestion.lat), lng: Number(suggestion.lng) };
       setLocation(newPos);
       setMapCenter(newPos);
       return;
@@ -1027,8 +1031,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         scheduledAt: Timestamp.fromDate(scheduledAt),
         scheduledSlot: scheduledSlotStr,
         address: fullAddress,
-        lat: location?.lat || null,
-        lng: location?.lng || null,
+        lat: (location?.lat !== undefined && location?.lat !== null && !isNaN(Number(location.lat))) ? Number(location.lat) : null,
+        lng: (location?.lng !== undefined && location?.lng !== null && !isNaN(Number(location.lng))) ? Number(location.lng) : null,
         totalPrice: remainingDue,
         originalBillValue: totalBill,
         paidAmount: isOnlineConfirmed ? onlinePaymentData.amount : (useWalletBalance && remainingDue === 0 ? totalBill : 0),
@@ -1327,8 +1331,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
                           async (pos) => {
-                            const lat = pos.coords.latitude;
-                            const lng = pos.coords.longitude;
+                            const lat = Number(pos.coords.latitude);
+                            const lng = Number(pos.coords.longitude);
                             setLocation({ lat, lng });
                             setMapCenter({ lat, lng });
                             await reverseGeocodeLocation(lat, lng);
@@ -1371,7 +1375,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
                       onClick={(e) => {
                         if (e.detail?.latLng) {
-                          const coords = { lat: e.detail.latLng.lat, lng: e.detail.latLng.lng };
+                          const coords = { lat: Number(e.detail.latLng.lat), lng: Number(e.detail.latLng.lng) };
                           setLocation(coords);
                           setMapCenter(coords);
                           reverseGeocodeLocation(coords.lat, coords.lng);
@@ -1384,7 +1388,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           draggable={true}
                           onDragEnd={(e) => {
                             if (e.latLng) {
-                              const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                              const coords = { lat: Number(e.latLng.lat()), lng: Number(e.latLng.lng()) };
                               setLocation(coords);
                               setMapCenter(coords);
                               reverseGeocodeLocation(coords.lat, coords.lng);

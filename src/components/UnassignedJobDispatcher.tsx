@@ -53,30 +53,41 @@ function formatTimeAgo(timestamp: any): string {
   return `Booked ${diffDays}d ago`;
 }
 
-/** Helper to extract clean locality chip from address */
-function extractLocality(address?: string): string {
-  if (!address) return "Indore Central";
-  const knownLocalities = [
-    "Vijay Nagar", "Palasia", "Old Palasia", "New Palasia", "Bhawarkua",
-    "MR-9", "MR-10", "Rajwada", "Sudama Nagar", "Annapurna", "Geeta Bhawan",
-    "Chhavani", "Rau", "LIG Colony", "Bengali Square", "Bypass", "Mahalaxmi Nagar",
-    "Khajrana", "Tilak Nagar", "Manoramaganj", "Sapna Sangeeta", "Silicon City",
-    "Nipania", "Kanadia", "Bicholi Mardana", "Pardesipura", "Sukhlia", "Sarafa"
-  ];
-  const upperAddr = address.toUpperCase();
-  for (const loc of knownLocalities) {
-    if (upperAddr.includes(loc.toUpperCase())) {
-      return loc;
+/** Calculate precise Haversine distance in kilometers between two coordinates */
+function calculateHaversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Clean locality extraction from address without hardcoded lists */
+function getDisplayLocality(address?: string, lat?: number | null, lng?: number | null): string {
+  if (address && address.trim().length > 0) {
+    const parts = address.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      if (parts.length > 1 && /^[0-9#]/.test(parts[0])) {
+        return parts[1];
+      }
+      return parts[0].slice(0, 26);
     }
   }
-  const parts = address.split(',').map(s => s.trim()).filter(Boolean);
-  if (parts.length > 0) {
-    if (parts.length > 1 && /^[0-9#]/.test(parts[0])) {
-      return parts[1];
-    }
-    return parts[0].slice(0, 22);
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    return `${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E`;
   }
-  return "Indore";
+  return "Indore Municipal Area";
 }
 
 export default function UnassignedJobDispatcher({
@@ -180,12 +191,30 @@ export default function UnassignedJobDispatcher({
     }
   }, [filteredBookings, selectedBookingId]);
 
-  // Filter and sort nearby/available Indore Partners
+  // Filter and sort nearby/available Indore Partners by Haversine proximity
   const filteredPartners = useMemo(() => {
     const currentService = selectedBooking ? services.find(s => s.id === selectedBooking.serviceId) : null;
     const targetCatId = currentService?.categoryId;
 
-    return partners.filter((p) => {
+    const bLat = typeof selectedBooking?.lat === 'number' ? selectedBooking.lat : 22.7196;
+    const bLng = typeof selectedBooking?.lng === 'number' ? selectedBooking.lng : 75.8577;
+
+    const listWithDistance = partners.map((p) => {
+      const pLat = typeof p.lat === 'number' ? p.lat : null;
+      const pLng = typeof p.lng === 'number' ? p.lng : null;
+      let distanceKm = 9999;
+      const hasCoords = pLat !== null && pLng !== null;
+      if (hasCoords) {
+        distanceKm = calculateHaversineDistance(bLat, bLng, pLat, pLng);
+      }
+      return {
+        ...p,
+        distanceKm,
+        hasCoords,
+      };
+    });
+
+    return listWithDistance.filter((p) => {
       const userDoc = users.find(u => u.uid === p.userId || u.uid === p.id) as any;
       
       const isApprovedPartner = 
@@ -226,7 +255,12 @@ export default function UnassignedJobDispatcher({
       const bAvail = b.availabilityStatus === 'Available' ? 1 : 0;
       if (aAvail !== bAvail) return bAvail - aAvail;
 
-      // 3. Higher rating
+      // 3. Proximity distance (closest technician to customer doorstep first)
+      if (Math.abs(a.distanceKm - b.distanceKm) > 0.1) {
+        return a.distanceKm - b.distanceKm;
+      }
+
+      // 4. Higher rating
       return (b.rating || 4.9) - (a.rating || 4.9);
     });
   }, [partners, users, selectedBooking, services, partnerStatusFilter, partnerSearch]);
@@ -492,7 +526,7 @@ export default function UnassignedJobDispatcher({
                   const service = services.find(s => s.id === booking.serviceId);
                   const custName = (booking as any).customerName || (booking as any).customerData?.fullName || "Valued Customer";
                   const custPhone = (booking as any).customerPhone || (booking as any).customerData?.mobile || (booking as any).customerData?.phoneNumber || "N/A";
-                  const locality = extractLocality(booking.address);
+                  const locality = getDisplayLocality(booking.address, booking.lat, booking.lng);
                   const timeElapsed = formatTimeAgo(booking.createdAt || (booking as any).createdAtTimestamp);
                   const assignedPartner = partners.find(p => p.userId === booking.partnerId || p.id === booking.partnerId);
 
@@ -751,7 +785,13 @@ export default function UnassignedJobDispatcher({
                               {partner.rating || 4.9}★
                             </span>
                             <span>•</span>
-                            <span>{partner.city || "Indore"}</span>
+                            {partner.hasCoords && partner.distanceKm < 999 ? (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 flex items-center gap-0.5">
+                                📍 {partner.distanceKm.toFixed(1)} km away
+                              </span>
+                            ) : (
+                              <span>{partner.city || "Indore"}</span>
+                            )}
                             <span>•</span>
                             <span>{partner.reviewCount || 15} jobs</span>
                           </div>

@@ -21,6 +21,7 @@ export interface PartnerTrackingMapProps {
   partnerId?: string;
   partnerLat?: number;
   partnerLng?: number;
+  partnerHeading?: number | null;
   customerLat?: number;
   customerLng?: number;
   bookingLocation?: { lat: number; lng: number };
@@ -36,7 +37,7 @@ export interface PartnerTrackingMapProps {
 }
 
 interface MapCanvasProps {
-  partnerLocation: { lat: number; lng: number } | null;
+  partnerLocation: { lat: number; lng: number; heading?: number | null } | null;
   destCoords: { lat: number; lng: number } | null;
   onRouteUpdate?: (eta: string, distance: string) => void;
   isMini?: boolean;
@@ -163,8 +164,10 @@ function MapCanvas({
   isMini = false,
 }: MapCanvasProps) {
   const map = useMap();
+  const routesLib = useMapsLibrary("routes");
   const hasInitialFittedRef = useRef(false);
   const onRouteUpdateRef = useRef(onRouteUpdate);
+  const [routePath, setRoutePath] = useState<Array<{ lat: number; lng: number }>>([]);
 
   useEffect(() => {
     onRouteUpdateRef.current = onRouteUpdate;
@@ -175,43 +178,87 @@ function MapCanvas({
   const dLat = destCoords?.lat;
   const dLng = destCoords?.lng;
 
-  // 1. Compute stable static array of route points immediately (25 interpolated points)
-  const routePath = useMemo(() => {
+  // Real Road Directions using Google Maps DirectionsService (travelMode: TWO_WHEELER or DRIVING)
+  useEffect(() => {
     if (
       typeof pLat !== "number" ||
       typeof pLng !== "number" ||
       typeof dLat !== "number" ||
       typeof dLng !== "number"
     ) {
-      return [];
+      setRoutePath([]);
+      return;
     }
-    const start = { lat: pLat, lng: pLng };
-    const end = { lat: dLat, lng: dLng };
-    const curved = generateCurvedPath(start, end, 25);
-    return curved.length >= 2 ? curved : [start, end];
-  }, [pLat, pLng, dLat, dLng]);
 
-  // Update ETA once when points are calculated
-  useEffect(() => {
-    if (
-      typeof pLat === "number" &&
-      typeof pLng === "number" &&
-      typeof dLat === "number" &&
-      typeof dLng === "number"
-    ) {
-      const straightKm = calculateHaversineDistance(
-        { lat: pLat, lng: pLng },
-        { lat: dLat, lng: dLng }
-      );
+    const origin = { lat: pLat, lng: pLng };
+    const destination = { lat: dLat, lng: dLng };
+
+    // Fallback if DirectionsService is unavailable, rate-limited, or fails
+    const applyFallback = () => {
+      const curved = generateCurvedPath(origin, destination, 25);
+      setRoutePath(curved.length >= 2 ? curved : [origin, destination]);
+      const straightKm = calculateHaversineDistance(origin, destination);
       const roadDistanceKm = Math.max(0.4, straightKm * 1.35);
       const durationMin = Math.max(2, Math.ceil((roadDistanceKm / 24) * 60));
       if (onRouteUpdateRef.current) {
         onRouteUpdateRef.current(`~${durationMin} mins`, `${roadDistanceKm.toFixed(1)} km`);
       }
-    }
-  }, [pLat, pLng, dLat, dLng]);
+    };
 
-  // 2. Apply static Map Options once
+    if (!routesLib || typeof google === "undefined" || !google.maps) {
+      applyFallback();
+      return;
+    }
+
+    let isCancelled = false;
+    const directionsService = new routesLib.DirectionsService();
+
+    // Prefer TWO_WHEELER for hyper-local bike dispatch in India, fallback to DRIVING
+    const preferredMode =
+      (google.maps.TravelMode as any).TWO_WHEELER || google.maps.TravelMode.DRIVING;
+
+    const requestRoute = (mode: google.maps.TravelMode) => {
+      directionsService.route(
+        {
+          origin,
+          destination,
+          travelMode: mode,
+        },
+        (result, status) => {
+          if (isCancelled) return;
+
+          if (status === google.maps.DirectionsStatus.OK && result?.routes?.[0]) {
+            const overviewPath = result.routes[0].overview_path.map((pt) => ({
+              lat: pt.lat(),
+              lng: pt.lng(),
+            }));
+            setRoutePath(overviewPath);
+
+            const leg = result.routes[0].legs[0];
+            if (leg && onRouteUpdateRef.current) {
+              const liveDuration = leg.duration?.text || "~5 mins";
+              const liveDistance = leg.distance?.text || "1.5 km";
+              onRouteUpdateRef.current(liveDuration, liveDistance);
+            }
+          } else if (mode !== google.maps.TravelMode.DRIVING) {
+            // Graceful fallback from TWO_WHEELER to DRIVING
+            requestRoute(google.maps.TravelMode.DRIVING);
+          } else {
+            console.warn("[DirectionsService] Falling back to geometric path:", status);
+            applyFallback();
+          }
+        }
+      );
+    };
+
+    requestRoute(preferredMode);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [routesLib, pLat, pLng, dLat, dLng]);
+
+  // Apply static Map Options once
   useEffect(() => {
     if (!map || typeof google === "undefined") return;
     map.setOptions({
@@ -227,7 +274,7 @@ function MapCanvas({
     });
   }, [map, isMini]);
 
-  // 3. Stabilize Map Camera & FitBounds strictly once on initial mount
+  // Stabilize Map Camera & FitBounds strictly once on initial mount or when coordinates are ready
   useEffect(() => {
     if (!map || typeof google === "undefined" || hasInitialFittedRef.current) return;
 
@@ -251,9 +298,12 @@ function MapCanvas({
     }
   }, [map, partnerLocation, destCoords, routePath]);
 
+  const hasHeading = typeof partnerLocation?.heading === "number" && !isNaN(partnerLocation.heading);
+  const headingAngle = hasHeading ? partnerLocation!.heading! : 0;
+
   return (
     <>
-      {/* 🛣️ Royal Blue Navigation Route Line */}
+      {/* 🛣️ Real Road Directions Navigation Line */}
       <RoutePolyline path={routePath} />
 
       {/* Static Destination Marker: Red rounded badge with home pin */}
@@ -272,16 +322,36 @@ function MapCanvas({
         </AdvancedMarker>
       )}
 
-      {/* Static Delivery Bike Marker: Clean white circular container */}
+      {/* Dynamic Delivery Vehicle Marker with authentic Heading & Rotation */}
       {partnerLocation && (
         <AdvancedMarker position={partnerLocation}>
           <div className="relative flex flex-col items-center select-none cursor-pointer">
-            <div className="w-9 h-9 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-lg">
-              🛵
+            <div
+              className="relative w-11 h-11 rounded-full bg-white shadow-xl border-2 border-blue-600 flex items-center justify-center text-xl transition-transform duration-500 ease-out"
+              style={{
+                transform: hasHeading ? `rotate(${headingAngle}deg)` : undefined,
+              }}
+              title={
+                hasHeading
+                  ? `Bearing: ${Math.round(headingAngle)}°`
+                  : "Partner Live Location"
+              }
+            >
+              {/* Directional arrow needle indicator at top edge */}
+              {hasHeading && (
+                <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
+              )}
+              {/* Vehicle icon */}
+              <span className="text-lg leading-none select-none">🛵</span>
             </div>
             {!isMini && (
-              <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                Partner
+              <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md whitespace-nowrap flex items-center gap-1">
+                <span>Partner</span>
+                {hasHeading && (
+                  <span className="text-blue-300 font-mono text-[8px]">
+                    {Math.round(headingAngle)}°
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -295,6 +365,7 @@ export default function PartnerTrackingMap({
   partnerId,
   partnerLat,
   partnerLng,
+  partnerHeading,
   customerLat,
   customerLng,
   bookingLocation,
@@ -307,9 +378,9 @@ export default function PartnerTrackingMap({
   variant = "full",
   onExpand,
 }: PartnerTrackingMapProps) {
-  const [partnerLocation, setPartnerLocation] = useState<{ lat: number; lng: number }>(() => {
+  const [partnerLocation, setPartnerLocation] = useState<{ lat: number; lng: number; heading?: number | null }>(() => {
     if (typeof partnerLat === "number" && typeof partnerLng === "number") {
-      return { lat: partnerLat, lng: partnerLng };
+      return { lat: partnerLat, lng: partnerLng, heading: partnerHeading ?? null };
     }
     return DEFAULT_INDORE_PARTNER;
   });
@@ -341,11 +412,12 @@ export default function PartnerTrackingMap({
   useEffect(() => {
     if (typeof partnerLat === "number" && typeof partnerLng === "number") {
       setPartnerLocation((prev) => {
-        if (prev && prev.lat === partnerLat && prev.lng === partnerLng) return prev;
-        return { lat: partnerLat, lng: partnerLng };
+        const h = typeof partnerHeading === "number" ? partnerHeading : prev?.heading ?? null;
+        if (prev && prev.lat === partnerLat && prev.lng === partnerLng && prev.heading === h) return prev;
+        return { lat: partnerLat, lng: partnerLng, heading: h };
       });
     }
-  }, [partnerLat, partnerLng]);
+  }, [partnerLat, partnerLng, partnerHeading]);
 
   useEffect(() => {
     if (typeof customerLat === "number" && typeof customerLng === "number") {
@@ -448,8 +520,9 @@ export default function PartnerTrackingMap({
           const data = snap.data() as PartnerProfile;
           if (data.lat && data.lng) {
             setPartnerLocation((prev) => {
-              if (prev && prev.lat === data.lat && prev.lng === data.lng) return prev;
-              return { lat: data.lat, lng: data.lng };
+              const h = typeof data.heading === "number" && !isNaN(data.heading) ? data.heading : prev?.heading ?? null;
+              if (prev && prev.lat === data.lat && prev.lng === data.lng && prev.heading === h) return prev;
+              return { lat: data.lat, lng: data.lng, heading: h };
             });
           }
           setPartnerInfo(data);
@@ -489,15 +562,20 @@ export default function PartnerTrackingMap({
               typeof data.partnerLocation.lng === "number"
             ) {
               setPartnerLocation((prev) => {
+                const h = typeof data.partnerLocation.heading === "number" && !isNaN(data.partnerLocation.heading)
+                  ? data.partnerLocation.heading
+                  : prev?.heading ?? null;
                 if (
                   prev &&
                   prev.lat === data.partnerLocation.lat &&
-                  prev.lng === data.partnerLocation.lng
+                  prev.lng === data.partnerLocation.lng &&
+                  prev.heading === h
                 )
                   return prev;
                 return {
                   lat: data.partnerLocation.lat,
                   lng: data.partnerLocation.lng,
+                  heading: h,
                 };
               });
             }
