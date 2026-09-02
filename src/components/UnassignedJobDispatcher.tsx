@@ -53,8 +53,8 @@ function formatTimeAgo(timestamp: any): string {
   return `Booked ${diffDays}d ago`;
 }
 
-/** Calculate precise Haversine distance in kilometers between two coordinates */
-function calculateHaversineDistance(
+/** Calculate straight-line coordinate distance (haversineDistance) between two points */
+export function haversineDistance(
   lat1: number,
   lon1: number,
   lat2: number,
@@ -200,12 +200,16 @@ export default function UnassignedJobDispatcher({
     const bLng = typeof selectedBooking?.lng === 'number' ? selectedBooking.lng : 75.8577;
 
     const listWithDistance = partners.map((p) => {
-      const pLat = typeof p.lat === 'number' ? p.lat : null;
-      const pLng = typeof p.lng === 'number' ? p.lng : null;
+      const pLat = typeof p.lat === 'number' && !isNaN(p.lat) 
+        ? p.lat 
+        : (typeof (p as any).partnerLocation?.lat === 'number' && !isNaN((p as any).partnerLocation.lat) ? (p as any).partnerLocation.lat : null);
+      const pLng = typeof p.lng === 'number' && !isNaN(p.lng) 
+        ? p.lng 
+        : (typeof (p as any).partnerLocation?.lng === 'number' && !isNaN((p as any).partnerLocation.lng) ? (p as any).partnerLocation.lng : null);
       let distanceKm = 9999;
       const hasCoords = pLat !== null && pLng !== null;
       if (hasCoords) {
-        distanceKm = calculateHaversineDistance(bLat, bLng, pLat, pLng);
+        distanceKm = haversineDistance(bLat, bLng, pLat, pLng);
       }
       return {
         ...p,

@@ -89,41 +89,24 @@ function calculateHaversineDistance(
   return R * c;
 }
 
-// Generate a realistic curved path connecting the two coordinates
-function generateCurvedPath(
+// Calculate authentic geographic bearing in degrees between two coordinates
+function computeBearing(
   start: { lat: number; lng: number },
-  end: { lat: number; lng: number },
-  numPoints: number = 25
-): Array<{ lat: number; lng: number }> {
-  const points: Array<{ lat: number; lng: number }> = [];
-  const midLat = (start.lat + end.lat) / 2;
-  const midLng = (start.lng + end.lng) / 2;
+  end: { lat: number; lng: number }
+): number {
+  const startLat = (start.lat * Math.PI) / 180;
+  const startLng = (start.lng * Math.PI) / 180;
+  const endLat = (end.lat * Math.PI) / 180;
+  const endLng = (end.lng * Math.PI) / 180;
+  const dLng = endLng - startLng;
 
-  const dLat = end.lat - start.lat;
-  const dLng = end.lng - start.lng;
-  const perpLat = -dLng * 0.15;
-  const perpLng = dLat * 0.15;
+  const y = Math.sin(dLng) * Math.cos(endLat);
+  const x =
+    Math.cos(startLat) * Math.sin(endLat) -
+    Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
 
-  const controlPoint = {
-    lat: midLat + perpLat,
-    lng: midLng + perpLng,
-  };
-
-  for (let i = 0; i <= numPoints; i++) {
-    const t = i / numPoints;
-    const invT = 1 - t;
-    const lat =
-      invT * invT * start.lat +
-      2 * invT * t * controlPoint.lat +
-      t * t * end.lat;
-    const lng =
-      invT * invT * start.lng +
-      2 * invT * t * controlPoint.lng +
-      t * t * end.lng;
-    points.push({ lat, lng });
-  }
-
-  return points;
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
 }
 
 // Dedicated React Google Maps Polyline Component
@@ -193,15 +176,12 @@ function MapCanvas({
     const origin = { lat: pLat, lng: pLng };
     const destination = { lat: dLat, lng: dLng };
 
-    // Fallback if DirectionsService is unavailable, rate-limited, or fails
+    // Fallback if DirectionsService is unavailable or encounters an error
     const applyFallback = () => {
-      const curved = generateCurvedPath(origin, destination, 25);
-      setRoutePath(curved.length >= 2 ? curved : [origin, destination]);
+      setRoutePath([origin, destination]);
       const straightKm = calculateHaversineDistance(origin, destination);
-      const roadDistanceKm = Math.max(0.4, straightKm * 1.35);
-      const durationMin = Math.max(2, Math.ceil((roadDistanceKm / 24) * 60));
       if (onRouteUpdateRef.current) {
-        onRouteUpdateRef.current(`~${durationMin} mins`, `${roadDistanceKm.toFixed(1)} km`);
+        onRouteUpdateRef.current("~5 mins", `${straightKm.toFixed(1)} km`);
       }
     };
 
@@ -298,8 +278,31 @@ function MapCanvas({
     }
   }, [map, partnerLocation, destCoords, routePath]);
 
-  const hasHeading = typeof partnerLocation?.heading === "number" && !isNaN(partnerLocation.heading);
-  const headingAngle = hasHeading ? partnerLocation!.heading! : 0;
+  // Determine effective bearing: active hardware GPS heading if available, otherwise route segment bearing
+  const effectiveBearing = useMemo(() => {
+    if (
+      typeof partnerLocation?.heading === "number" &&
+      !isNaN(partnerLocation.heading) &&
+      partnerLocation.heading !== null
+    ) {
+      return (partnerLocation.heading % 360 + 360) % 360;
+    }
+    // Route segment bearing along the road navigation route
+    if (partnerLocation && routePath.length >= 2) {
+      const nextPoint = routePath.find((pt) => {
+        const d = calculateHaversineDistance(partnerLocation, pt);
+        return d > 0.005; // > 5 meters ahead
+      }) || routePath[1];
+      if (nextPoint) {
+        return computeBearing(partnerLocation, nextPoint);
+      }
+    }
+    // Straight-line bearing to destination if route is not yet computed
+    if (partnerLocation && destCoords) {
+      return computeBearing(partnerLocation, destCoords);
+    }
+    return 0;
+  }, [partnerLocation, routePath, destCoords]);
 
   return (
     <>
@@ -322,36 +325,28 @@ function MapCanvas({
         </AdvancedMarker>
       )}
 
-      {/* Dynamic Delivery Vehicle Marker with authentic Heading & Rotation */}
+      {/* Dynamic Delivery Vehicle Marker with authentic Heading & Segment Bearing Rotation */}
       {partnerLocation && (
         <AdvancedMarker position={partnerLocation}>
           <div className="relative flex flex-col items-center select-none cursor-pointer">
             <div
               className="relative w-11 h-11 rounded-full bg-white shadow-xl border-2 border-blue-600 flex items-center justify-center text-xl transition-transform duration-500 ease-out"
               style={{
-                transform: hasHeading ? `rotate(${headingAngle}deg)` : undefined,
+                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
               }}
-              title={
-                hasHeading
-                  ? `Bearing: ${Math.round(headingAngle)}°`
-                  : "Partner Live Location"
-              }
+              title={`Bearing: ${Math.round(effectiveBearing)}°`}
             >
-              {/* Directional arrow needle indicator at top edge */}
-              {hasHeading && (
-                <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
-              )}
+              {/* Directional arrow needle indicator at top edge oriented forward */}
+              <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
               {/* Vehicle icon */}
               <span className="text-lg leading-none select-none">🛵</span>
             </div>
             {!isMini && (
               <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md whitespace-nowrap flex items-center gap-1">
                 <span>Partner</span>
-                {hasHeading && (
-                  <span className="text-blue-300 font-mono text-[8px]">
-                    {Math.round(headingAngle)}°
-                  </span>
-                )}
+                <span className="text-blue-300 font-mono text-[8px]">
+                  {Math.round(effectiveBearing)}°
+                </span>
               </div>
             )}
           </div>
