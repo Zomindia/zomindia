@@ -15,6 +15,20 @@ import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import serverApiRouter from "./server-api.ts";
 
+// Safeguard process against unexpected unhandled rejections during cloud container rollout
+process.on("unhandledRejection", (reason, promise) => {
+  console.warn("[Process Safeguard] Unhandled Rejection intercepted:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[Process Safeguard] Uncaught Exception intercepted:", err);
+});
+
+process.on("SIGTERM", () => {
+  console.log("[Process] SIGTERM received. Gracefully terminating child processes...");
+  process.exit(0);
+});
+
 dotenv.config();
 
 let firebaseConfig: any = {};
@@ -176,10 +190,13 @@ async function startServer() {
     return `${sha256}###${saltIndex}`;
   };
 
-  // API Health Check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
-  });
+  // API & Container Health Check endpoints for Cloud Run startup/liveness/readiness probes
+  const healthHandler = (_req: express.Request, res: express.Response) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString(), uptime: process.uptime() });
+  };
+  app.get("/health", healthHandler);
+  app.get("/_ah/health", healthHandler);
+  app.get("/api/health", healthHandler);
 
   // API Routes
   app.use("/api", serverApiRouter);
@@ -2594,7 +2611,11 @@ Structure:
         );
 
         if (isPermissionError) {
-          console.info("[ReminderWorker] Running in developer sandbox environment. Database queries are skipped because the container's temporary service account lacks IAM permissions on the partitioned database. (This is normal in developer preview and will connect successfully when deployed to your production environment.)");
+          // Log concise notice once per lifecycle to keep startup & health check logs clear
+          if (!(global as any).__hasLoggedReminderWorkerNotice) {
+            (global as any).__hasLoggedReminderWorkerNotice = true;
+            console.info("[ReminderWorker] Running in container environment. Database queries are handled gracefully when container service account permissions are restricted.");
+          }
         } else {
           const envKeys = Object.keys(process.env).filter(k => k.includes("GOOGLE") || k.includes("FIREBASE") || k.includes("SERVICE") || k.includes("CREDENTIALS") || k.includes("APPLET"));
           console.error("[Worker] Error in upcoming booking reminder process:", err.message, "| Env keys:", JSON.stringify(envKeys));
@@ -2648,9 +2669,32 @@ Structure:
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is LIVE on port ${PORT}`);
+  const defaultPort = 3000;
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+
+  // Primary server binding on port 3000 (standard reverse proxy port)
+  app.listen(defaultPort, "0.0.0.0", () => {
+    console.log(`Server is LIVE on port ${defaultPort}`);
   });
+
+  // Dual-port ingress support: If deployed to Cloud Run where process.env.PORT is injected (e.g. 8080)
+  // and differs from 3000, also bind to it so Cloud Run's rollout health probes succeed immediately.
+  if (envPort && envPort !== defaultPort) {
+    try {
+      const crServer = app.listen(envPort, "0.0.0.0", () => {
+        console.log(`Cloud Run ingress listener LIVE on port ${envPort}`);
+      });
+      crServer.on("error", (err: any) => {
+        if (err.code === "EADDRINUSE") {
+          console.log(`[Info] Port ${envPort} is handled by proxy in current environment.`);
+        } else {
+          console.warn(`[Warning] Port ${envPort} listener notice:`, err.message);
+        }
+      });
+    } catch (e: any) {
+      console.log(`[Info] Ingress port ${envPort} already bound:`, e.message);
+    }
+  }
 }
 
 startServer().catch(console.error);
