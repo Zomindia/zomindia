@@ -176,6 +176,7 @@ export async function dispatchAutomatedWhatsAppAlert(
       };
 
   const alertLog: WhatsAppAlert = {
+    id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     recipientPhone,
     recipientName: name,
     templateName,
@@ -204,16 +205,7 @@ export async function dispatchAutomatedWhatsAppAlert(
       console.warn('[NotificationEngine] Backend WhatsApp API dispatch warning:', err);
     });
 
-    const docRef = await addDoc(collection(db, 'whatsapp_alerts'), alertLog);
-    alertLog.id = docRef.id;
-
-    setTimeout(async () => {
-      try {
-        console.log(`[WhatsApp Webhook Gateway] Receipt received for ${recipientPhone}: Delivered & Read`);
-      } catch (err) {
-        console.error('Webhook async error', err);
-      }
-    }, 3000);
+    console.log(`[NotificationEngine Trace] WhatsApp alert dispatched for ${recipientPhone} (${name}) | Type: ${type}`);
 
     return alertLog;
   } catch (err) {
@@ -258,24 +250,8 @@ export async function sendEcosystemNotification(
     await sendNotification(userId, title, message, 'booking_confirmed', data.bookingId);
   }
 
-  try {
-    const alertLog = {
-      userId: data.customerId || 'unknown',
-      bookingId: data.bookingId,
-      recipientPhone: data.customerId || '',
-      customerName: data.customerName,
-      partnerName: data.partnerName,
-      serviceName: data.serviceName,
-      scheduledTime: data.dateTime,
-      message,
-      gateway: 'Twilio' as const,
-      status: 'Delivered',
-      createdAt: Timestamp.now()
-    };
-    await addDoc(collection(db, 'whatsapp_alerts'), alertLog);
-  } catch (err) {
-    console.error('[NotificationEngine] Error logging ecosystem WhatsApp alert:', err);
-  }
+  // Clean console trace without writing junk logs to Firestore whatsapp_alerts
+  console.log(`[NotificationEngine Ecosystem Trace] Alert broadcast for ${data.customerName} (${data.bookingId}): ${message}`);
 }
 
 /**

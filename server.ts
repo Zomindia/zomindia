@@ -252,7 +252,7 @@ async function startServer() {
   // Core Unified WhatsApp Dispatcher Engine
   const sendWhatsAppNotificationEngine = async (opts: {
     phone: string;
-    type: "BOOKING_CONFIRMED" | "EXPERT_ASSIGNED" | "SERVICE_COMPLETED" | "OTP_DISPATCH" | string;
+    type: "BOOKING_CONFIRMED" | "EXPERT_ASSIGNED" | "SERVICE_COMPLETED" | string;
     name?: string;
     params?: Record<string, any>;
     customMessage?: string;
@@ -302,16 +302,6 @@ async function startServer() {
             `💳 *Final Settlement:* ₹${params.totalPrice || params.price || "0"}\n\n` +
             `📄 *Download Digital GST Invoice & Receipt:*\n` +
             `${params.invoiceUrl || `https://zomindia.com/api/download-invoice?bookingId=${params.bookingId || "new"}`}`;
-          break;
-
-        case "OTP_DISPATCH":
-        case "SERVICE_OTP":
-        case "AUTH_OTP":
-        case "WHATSAPP_OTP":
-          messageText = `🔑 *ZOMINDIA VERIFICATION CODE*\n` +
-            `Your WhatsApp OTP code is: *${params.otp || "795100"}*\n\n` +
-            `Use this code to verify your account or securely start your service. Valid for 10 minutes. Do not share with anyone.\n\n` +
-            `_Official WhatsApp Support: +91 9630234563_`;
           break;
 
         default:
@@ -389,25 +379,8 @@ async function startServer() {
       console.log(`[WhatsApp Engine] Zero-break simulation dispatched for ${formattedPhone} | Type: ${type}`);
     }
 
-    if (db) {
-      try {
-        await db.collection("whatsapp_alerts").add({
-          recipientPhone: formattedPhone,
-          recipientName: name,
-          type,
-          status: dispatchSuccess ? "delivered" : "simulated",
-          gateway: gatewayUsed,
-          messageText,
-          timestamp: admin.firestore.Timestamp.now()
-        });
-      } catch (dbErr: any) {
-        if (dbErr.code === 7 || (typeof dbErr.message === 'string' && (dbErr.message.includes("PERMISSION_DENIED") || dbErr.message.includes("Missing or insufficient permissions")))) {
-          // Gracefully suppress sandbox IAM permission error
-        } else {
-          console.warn("[WhatsApp Log Warning]: Could not store alert trace in DB", dbErr);
-        }
-      }
-    }
+    // Clean server-side audit trace (no persistent junk in Firestore)
+    console.log(`[WhatsApp Alert Audit Trace] Recipient: ${formattedPhone} (${name}) | Type: ${type} | Gateway: ${gatewayUsed} | Status: ${dispatchSuccess ? "delivered" : "simulated"}`);
 
     return {
       success: true,
@@ -419,86 +392,6 @@ async function startServer() {
       gupshupResult
     };
   };
-
-  // Legacy compatibility endpoint: /api/send-gupshup-notification routed to Unified Engine
-  app.post("/api/send-gupshup-notification", async (req, res) => {
-    try {
-      const { userId, title, message, phoneNumber } = req.body;
-      let targetPhone = phoneNumber;
-
-      if (!targetPhone && userId && db) {
-        const userSnap = await db.collection("users").doc(userId).get();
-        if (userSnap.exists) {
-          targetPhone = userSnap.data()?.phoneNumber;
-        }
-      }
-
-      if (!targetPhone) {
-        return res.status(400).json({ success: false, error: "Recipient phone number required" });
-      }
-
-      const result = await sendWhatsAppNotificationEngine({
-        phone: targetPhone,
-        type: "CUSTOM",
-        customMessage: `*${title || "Zomindia Update"}*\n\n${message || ""}`
-      });
-
-      return res.json(result);
-    } catch (err: any) {
-      console.error("[Gupshup Legacy Proxy Error]:", err);
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/send-twilio-sms", async (req, res) => {
-    try {
-      const { phoneNumber, message } = req.body;
-      if (!phoneNumber || !message) {
-        return res.status(400).json({ error: "phoneNumber and message are required" });
-      }
-
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const authToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
-
-      if (!accountSid || !authToken || !twilioNumber || accountSid.trim() === "" || accountSid === "YOUR_ACCOUNT_SID") {
-        console.log("[Twilio SMS] Credentials not fully configured. Running SMS dispatch simulation.");
-        return res.json({
-          success: true,
-          isSimulated: true,
-          message: "Twilio SMS simulated dispatch successful.",
-          recipient: phoneNumber
-        });
-      }
-
-      let formattedPhone = phoneNumber.replace(/\D/g, "");
-      if (formattedPhone.length === 10) {
-        formattedPhone = "+91" + formattedPhone;
-      } else if (!formattedPhone.startsWith("+")) {
-        formattedPhone = "+" + formattedPhone;
-      }
-
-      const twilio = (await import("twilio")).default;
-      const client = twilio(accountSid, authToken);
-
-      const smsRes = await client.messages.create({
-        body: message,
-        from: twilioNumber,
-        to: formattedPhone
-      });
-
-      console.log(`[Twilio SMS] Message sent to ${formattedPhone}, SID: ${smsRes.sid}`);
-      return res.json({
-        success: true,
-        isSimulated: false,
-        sid: smsRes.sid,
-        recipient: formattedPhone
-      });
-    } catch (err: any) {
-      console.error("[Twilio SMS Error]:", err);
-      return res.status(500).json({ error: err.message || "Failed to dispatch SMS via Twilio." });
-    }
-  });
 
   // POST /api/send-whatsapp-notification
   // Universal WhatsApp Business API dispatch endpoint
@@ -522,46 +415,6 @@ async function startServer() {
     } catch (err: any) {
       console.error("[WhatsApp Notification Error]:", err);
       return res.status(500).json({ error: err.message || "WhatsApp dispatch error" });
-    }
-  });
-
-  // POST /api/send-whatsapp-otp
-  // Auth & Transactional WhatsApp OTP dispatch helper
-  app.post("/api/send-whatsapp-otp", async (req, res) => {
-    try {
-      const { phoneNumber, otp, senderNumber = "9630234563" } = req.body;
-      if (!phoneNumber) {
-        return res.status(400).json({ error: "phoneNumber is required" });
-      }
-
-      const generatedOtp = otp || Math.floor(100000 + Math.random() * 900000).toString();
-
-      let result: any = { success: true, isSimulated: true };
-      try {
-        result = await sendWhatsAppNotificationEngine({
-          phone: phoneNumber,
-          type: "OTP_DISPATCH",
-          params: { otp: generatedOtp, senderNumber }
-        });
-      } catch (engineErr: any) {
-        console.warn("[WhatsApp OTP Engine Notice - Non-blocking]:", engineErr?.message || engineErr);
-      }
-
-      return res.json({
-        success: true,
-        otp: generatedOtp,
-        senderNumber,
-        details: result
-      });
-    } catch (err: any) {
-      console.warn("[WhatsApp OTP Fallback Handler]:", err?.message || err);
-      return res.json({
-        success: true,
-        otp: req.body?.otp || Math.floor(100000 + Math.random() * 900000).toString(),
-        senderNumber: req.body?.senderNumber || "9630234563",
-        isSimulated: true,
-        message: "Fallback verification OTP generated."
-      });
     }
   });
 
