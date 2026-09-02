@@ -112,6 +112,7 @@ const API_KEY =
   (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
   '';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+const GOOGLE_MAPS_LIBRARIES: ('places' | 'marker' | 'geometry')[] = ['places', 'marker', 'geometry'];
 
 function isVersionHigher(newVer: string, oldVer: string): boolean {
   const parts1 = newVer.split('.').map(num => parseInt(num, 10) || 0);
@@ -1507,7 +1508,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
   if (isFullScreenView) {
     return (
-      <APIProvider apiKey={API_KEY} version="weekly">
+      <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
         <div className="min-h-screen">
           <NotificationSystem onNavigate={setActiveTab} />
           <Suspense fallback={<LoadingScreen message="Loading dashboard..." />}>
@@ -1520,7 +1521,7 @@ If you have any billing questions, or if your refund is delayed, please email us
   }
 
   return (
-    <APIProvider apiKey={API_KEY} version="weekly">
+    <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
       <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
       <NotificationSystem onNavigate={setActiveTab} />
       {/* Navigation */}

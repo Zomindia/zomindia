@@ -56,21 +56,29 @@ interface Props {
 }
 
 const INDORE_FALLBACK_LOCATIONS = [
-  { placeId: 'indore_1', name: 'Vijay Nagar', area: 'Vijay Nagar, Indore, Madhya Pradesh', description: 'Vijay Nagar, Indore, Madhya Pradesh' },
-  { placeId: 'indore_2', name: 'Palasia', area: 'Palasia, Indore, Madhya Pradesh', description: 'Palasia, Indore, Madhya Pradesh' },
-  { placeId: 'indore_3', name: 'Bhawarkua', area: 'Bhawarkua, Indore, Madhya Pradesh', description: 'Bhawarkua, Indore, Madhya Pradesh' },
-  { placeId: 'indore_4', name: 'Sapna Sangeeta', area: 'Sapna Sangeeta Road, Indore, Madhya Pradesh', description: 'Sapna Sangeeta Road, Indore, Madhya Pradesh' },
-  { placeId: 'indore_5', name: 'Super Corridor', area: 'Super Corridor, Indore, Madhya Pradesh', description: 'Super Corridor, Indore, Madhya Pradesh' },
-  { placeId: 'indore_6', name: 'Saket Nagar', area: 'Saket Nagar, Indore, Madhya Pradesh', description: 'Saket Nagar, Indore, Madhya Pradesh' },
-  { placeId: 'indore_7', name: 'Mahalaxmi Nagar', area: 'Mahalaxmi Nagar, Indore, Madhya Pradesh', description: 'Mahalaxmi Nagar, Indore, Madhya Pradesh' },
-  { placeId: 'indore_8', name: 'AB Road', area: 'A.B. Road, Indore, Madhya Pradesh', description: 'A.B. Road, Indore, Madhya Pradesh' },
-  { placeId: 'indore_9', name: 'Rau', area: 'Rau, Indore, Madhya Pradesh', description: 'Rau, Indore, Madhya Pradesh' },
-  { placeId: 'indore_10', name: 'Annapurna', area: 'Annapurna Road, Indore, Madhya Pradesh', description: 'Annapurna Road, Indore, Madhya Pradesh' },
-  { placeId: 'indore_11', name: 'Khajrana', area: 'Khajrana, Indore, Madhya Pradesh', description: 'Khajrana, Indore, Madhya Pradesh' },
-  { placeId: 'indore_12', name: 'LIG Colony', area: 'LIG Colony, Indore, Madhya Pradesh', description: 'LIG Colony, Indore, Madhya Pradesh' },
-  { placeId: 'indore_13', name: 'Chappan Dukan', area: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh', description: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh' },
-  { placeId: 'indore_14', name: 'Rajendra Nagar', area: 'Rajendra Nagar, Indore, Madhya Pradesh', description: 'Rajendra Nagar, Indore, Madhya Pradesh' },
-  { placeId: 'indore_15', name: 'Khandwa Road', area: 'Khandwa Road, Indore, Madhya Pradesh', description: 'Khandwa Road, Indore, Madhya Pradesh' },
+  { placeId: 'indore_1', name: 'Vijay Nagar', area: 'Vijay Nagar, Indore, Madhya Pradesh', description: 'Vijay Nagar, Indore, Madhya Pradesh', lat: 22.7533, lng: 75.8937 },
+  { placeId: 'indore_2', name: 'Palasia / New Palasia', area: 'New Palasia, Indore, Madhya Pradesh', description: 'New Palasia, Indore, Madhya Pradesh', lat: 22.7244, lng: 75.8839 },
+  { placeId: 'indore_3', name: 'Bhawarkua', area: 'Bhawarkua Square, Indore, Madhya Pradesh', description: 'Bhawarkua, Indore, Madhya Pradesh', lat: 22.6926, lng: 75.8676 },
+  { placeId: 'indore_4', name: 'Sapna Sangeeta', area: 'Sapna Sangeeta Road, Indore, Madhya Pradesh', description: 'Sapna Sangeeta Road, Indore, Madhya Pradesh', lat: 22.7056, lng: 75.8648 },
+  { placeId: 'indore_5', name: 'Super Corridor', area: 'Super Corridor, Indore, Madhya Pradesh', description: 'Super Corridor, Indore, Madhya Pradesh', lat: 22.7663, lng: 75.8194 },
+  { placeId: 'indore_6', name: 'Saket Nagar', area: 'Saket Nagar, Indore, Madhya Pradesh', description: 'Saket Nagar, Indore, Madhya Pradesh', lat: 22.7215, lng: 75.8988 },
+  { placeId: 'indore_7', name: 'Mahalaxmi Nagar', area: 'Mahalaxmi Nagar, Indore, Madhya Pradesh', description: 'Mahalaxmi Nagar, Indore, Madhya Pradesh', lat: 22.7627, lng: 75.9038 },
+  { placeId: 'indore_8', name: 'AB Road', area: 'A.B. Road, Indore, Madhya Pradesh', description: 'A.B. Road, Indore, Madhya Pradesh', lat: 22.7383, lng: 75.8872 },
+  { placeId: 'indore_9', name: 'Rau', area: 'Rau, Indore, Madhya Pradesh', description: 'Rau, Indore, Madhya Pradesh', lat: 22.6288, lng: 75.8058 },
+  { placeId: 'indore_10', name: 'Annapurna', area: 'Annapurna Road, Indore, Madhya Pradesh', description: 'Annapurna Road, Indore, Madhya Pradesh', lat: 22.6983, lng: 75.8398 },
+  { placeId: 'indore_11', name: 'Khajrana', area: 'Khajrana, Indore, Madhya Pradesh', description: 'Khajrana, Indore, Madhya Pradesh', lat: 22.7297, lng: 75.9084 },
+  { placeId: 'indore_12', name: 'LIG Colony', area: 'LIG Colony, Indore, Madhya Pradesh', description: 'LIG Colony, Indore, Madhya Pradesh', lat: 22.7391, lng: 75.8856 },
+  { placeId: 'indore_13', name: 'Chappan Dukan', area: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh', description: 'Chappan Dukan, New Palasia, Indore, Madhya Pradesh', lat: 22.7247, lng: 75.8805 },
+  { placeId: 'indore_14', name: 'Rajendra Nagar', area: 'Rajendra Nagar, Indore, Madhya Pradesh', description: 'Rajendra Nagar, Indore, Madhya Pradesh', lat: 22.6738, lng: 75.8315 },
+  { placeId: 'indore_15', name: 'Khandwa Road', area: 'Khandwa Road, Indore, Madhya Pradesh', description: 'Khandwa Road, Indore, Madhya Pradesh', lat: 22.6782, lng: 75.8724 },
+  { placeId: 'indore_16', name: 'Bengali Square', area: 'Bengali Square, Indore, Madhya Pradesh', description: 'Bengali Square, Indore, Madhya Pradesh', lat: 22.7161, lng: 75.9103 },
+  { placeId: 'indore_17', name: 'Geeta Bhawan', area: 'Geeta Bhawan, AB Road, Indore, Madhya Pradesh', description: 'Geeta Bhawan, Indore, Madhya Pradesh', lat: 22.7188, lng: 75.8812 },
+  { placeId: 'indore_18', name: 'Sudama Nagar', area: 'Sudama Nagar, Indore, Madhya Pradesh', description: 'Sudama Nagar, Indore, Madhya Pradesh', lat: 22.6934, lng: 75.8317 },
+  { placeId: 'indore_19', name: 'Tilak Nagar', area: 'Tilak Nagar, Indore, Madhya Pradesh', description: 'Tilak Nagar, Indore, Madhya Pradesh', lat: 22.7139, lng: 75.8983 },
+  { placeId: 'indore_20', name: 'Rajwada', area: 'Rajwada, Old Indore, Madhya Pradesh', description: 'Rajwada, Indore, Madhya Pradesh', lat: 22.7186, lng: 75.8553 },
+  { placeId: 'indore_21', name: 'Nipania', area: 'Nipania, Indore, Madhya Pradesh', description: 'Nipania, Indore, Madhya Pradesh', lat: 22.7725, lng: 75.9189 },
+  { placeId: 'indore_22', name: 'Silicon City', area: 'Silicon City, Rau, Indore, Madhya Pradesh', description: 'Silicon City, Indore, Madhya Pradesh', lat: 22.6371, lng: 75.8211 },
+  { placeId: 'indore_23', name: 'Bypass Road', area: 'Indore Bypass Road, Madhya Pradesh', description: 'Indore Bypass Road, Madhya Pradesh', lat: 22.7485, lng: 75.9281 }
 ];
 
 export default function BookingModal({ service, profile, onClose, onSuccess }: Props) {
@@ -125,6 +133,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [time, setTime] = useState<string>(savedState?.time || '');
   const [address, setAddress] = useState<string>(
     savedState?.address || profile?.address || profile?.customerData?.address || ''
+  );
+  const [houseNumber, setHouseNumber] = useState<string>(
+    savedState?.houseNumber || ''
   );
   const [isChangingAddress, setIsChangingAddress] = useState<boolean>(
     !savedState?.address && !profile?.address && !profile?.customerData?.address
@@ -521,7 +532,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   };
 
-  // Dynamic Google Places Autocomplete search lookup with local fallback
+  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Dynamic Google Places / Geocoder autocomplete search lookup with local fallback
   useEffect(() => {
     if (address.trim().length < 2 || selectedFromDropdown) {
       if (!selectedFromDropdown) setLiveSuggestions([]);
@@ -546,31 +569,35 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       };
 
       setIsSearchingLive(true);
+
+      // 1. Attempt google.maps.Geocoder first
       try {
-        const queryText = address.toLowerCase().includes("indore") ? address : `${address}, Indore`;
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=in&q=${encodeURIComponent(queryText)}&limit=5`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            const formatted = data.map((item: any, idx: number) => ({
-              placeId: `nom_${item.place_id || idx}`,
-              name: item.name || item.display_name.split(',')[0],
-              area: item.display_name,
-              description: item.display_name,
-              lat: parseFloat(item.lat),
-              lng: parseFloat(item.lon)
+        if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+          const geocoder = new (window as any).google.maps.Geocoder();
+          const queryText = q.includes("indore") ? address : `${address}, Indore, India`;
+          const response = await geocoder.geocode({ address: queryText });
+          if (response && response.results && response.results.length > 0) {
+            const formatted = response.results.slice(0, 5).map((item: any, idx: number) => ({
+              placeId: item.place_id || `g_${idx}`,
+              name: item.address_components?.[0]?.long_name || item.formatted_address.split(',')[0],
+              area: item.formatted_address,
+              description: item.formatted_address,
+              lat: item.geometry.location.lat(),
+              lng: item.geometry.location.lng()
             }));
             setLiveSuggestions(formatted);
             setIsSearchingLive(false);
             return;
           }
         }
-      } catch (err) {
-        console.warn("Nominatim address search notice:", err);
+      } catch (gErr) {
+        console.warn("[Google Geocoder Autocomplete Notice - Non-blocking]:", gErr);
       }
+
+      // 2. Seamless local Indore fallback without rate limits or UI freezing
       setIsSearchingLive(false);
       setLiveSuggestions(getLocalSuggestions());
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(delayDebounceFn);
   }, [address, selectedFromDropdown]);
@@ -593,28 +620,66 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setMapCenter(indoreCenter);
   };
 
-  const reverseGeocodeNominatim = async (lat: number, lng: number) => {
+  const reverseGeocodeLocation = async (lat: number, lng: number) => {
     setIsGeocoding(true);
+
+    // 1. Attempt google.maps.Geocoder first
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
-      const data = await res.json();
-      if (data && data.display_name) {
-        setAddress(data.display_name);
-        setIsGeocoding(false);
-        return true;
+      if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+        const geocoder = new (window as any).google.maps.Geocoder();
+        const response = await geocoder.geocode({ location: { lat, lng } });
+        if (response && response.results && response.results.length > 0) {
+          const formatted = response.results[0].formatted_address;
+          if (formatted) {
+            setAddress(formatted);
+            setIsGeocoding(false);
+            return true;
+          }
+        }
       }
-    } catch (e) {
-      console.warn("Nominatim reverse geocode fallback error:", e);
+    } catch (gErr) {
+      console.warn("[Google Geocoder Reverse Notice - Non-blocking]:", gErr);
     }
+
+    // 2. Seamless local Indore landmark fallback (instant, zero network latency, no 429 errors)
+    let nearest = INDORE_FALLBACK_LOCATIONS[0];
+    let minDistance = 999999;
+    for (const loc of INDORE_FALLBACK_LOCATIONS) {
+      if (loc.lat && loc.lng) {
+        const d = haversineDistance(lat, lng, loc.lat, loc.lng);
+        if (d < minDistance) {
+          minDistance = d;
+          nearest = loc;
+        }
+      }
+    }
+
+    if (nearest) {
+      setAddress(`${nearest.name}, Indore, Madhya Pradesh`);
+      setIsGeocoding(false);
+      return true;
+    }
+
+    setAddress(`Indore, Madhya Pradesh (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
     setIsGeocoding(false);
     return false;
   };
 
   // Address Specificity Guard Check
-  const isGenericAddress = (addr: string): boolean => {
-    if (!addr) return true;
-    const clean = addr.trim().toLowerCase();
-    if (clean.length < 10) return true;
+  const isGenericAddress = (
+    addr: string, 
+    houseNo?: string, 
+    coords?: { lat: number; lng: number } | null
+  ): boolean => {
+    // If coordinates (lat, lng) exist AND the user has entered their House/Flat number, treat the address as 100% valid!
+    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && houseNo && houseNo.trim().length >= 1) {
+      return false;
+    }
+
+    const combined = [houseNo?.trim(), addr?.trim()].filter(Boolean).join(', ');
+    if (!combined || combined.trim().length < 3) return true;
+
+    const clean = combined.trim().toLowerCase();
     const genericList = [
       'indore',
       'indore, madhya pradesh',
@@ -626,21 +691,16 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       'india'
     ];
     if (genericList.includes(clean)) return true;
-    const parts = clean.split(',').map(p => p.trim()).filter(Boolean);
-    if (parts.length < 2) return true;
-    return false;
-  };
 
-  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    // If coordinates exist and there is either a house number or an address string
+    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && ((houseNo && houseNo.trim().length > 0) || addr.trim().length >= 3)) {
+      return false;
+    }
+
+    const parts = clean.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2 && clean.length < 8) return true;
+
+    return false;
   };
 
   // Primary CTA Click Trigger
@@ -653,9 +713,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       return;
     }
 
-    if (isGenericAddress(address)) {
+    if (isGenericAddress(address, houseNumber, location)) {
       setIsChangingAddress(true);
-      setError("Please enter your complete doorstep address (Flat/House No., Street/Colony in Indore).");
+      setError("Please enter your Flat / House No. and confirm your area in Indore.");
       return;
     }
 
@@ -724,8 +784,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       return;
     }
 
-    if (isGenericAddress(address)) {
-      setError("Please specify your complete doorstep, house/flat number, or colony in Indore.");
+    if (isGenericAddress(address, houseNumber, location)) {
+      setError("Please enter your Flat / House No. and select your area in Indore.");
       setLoading(false);
       isSubmittingRef.current = false;
       return;
@@ -844,7 +904,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
     try {
       const scheduledAt = new Date(`${date}T${time}`);
-      const fullAddress = address;
+      const fullAddress = [houseNumber.trim(), address.trim()].filter(Boolean).join(', ');
       const finalPrice = calculateFinalPrice();
       const serviceOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -1171,7 +1231,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     </span>
                   </div>
                   <p className="text-xs font-bold text-slate-900 mt-0.5 line-clamp-2 leading-relaxed">
-                    {address || "No address selected yet. Tap change to set location."}
+                    {[houseNumber.trim(), address.trim()].filter(Boolean).join(', ') || "No address selected yet. Tap change to set location."}
                   </p>
                 </div>
               </div>
@@ -1194,48 +1254,67 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   exit={{ opacity: 0, height: 0 }}
                   className="mt-3.5 pt-3.5 border-t border-slate-200 space-y-3"
                 >
-                  {/* Search Input with Autocomplete */}
-                  <div className="relative">
+                  {/* Dedicated Flat / House No. / Landmark Input */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Flat / House No. / Landmark <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
-                      value={address}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAddress(val);
-                        setSelectedFromDropdown(false);
-                        setShowSearchSuggestions(val.trim().length >= 2);
-                      }}
-                      placeholder="Search colony, street, or flat in Indore..."
-                      className="w-full bg-white border border-slate-300 rounded-xl pl-3.5 pr-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      value={houseNumber}
+                      onChange={(e) => setHouseNumber(e.target.value)}
+                      placeholder="e.g. Flat 302, Silver Heights, Near Apollo Hospital"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-sm"
                     />
+                  </div>
 
-                    {showSearchSuggestions && !selectedFromDropdown && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100 no-scrollbar">
-                        {isSearchingLive ? (
-                          <div className="p-3 flex items-center gap-2">
-                            <span className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-                            <p className="text-xs text-slate-500 font-medium">Searching Indore areas...</p>
-                          </div>
-                        ) : liveSuggestions.length > 0 ? (
-                          liveSuggestions.map((loc, idx) => (
-                            <button
-                              type="button"
-                              key={idx}
-                              onClick={() => handleSelectSuggestion(loc)}
-                              className="w-full py-2 px-3 text-left hover:bg-slate-50 flex items-center gap-2.5 focus:outline-none cursor-pointer"
-                            >
-                              <MapPin size={13} className="text-blue-600 shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-bold text-slate-900 truncate">{loc.name}</p>
-                                <p className="text-[10px] text-slate-400 truncate">{loc.area}</p>
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="p-3 text-xs text-slate-400 italic">Type to search locality...</div>
-                        )}
-                      </div>
-                    )}
+                  {/* Area / Locality Search with Autocomplete */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Colony / Area in Indore
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={address}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAddress(val);
+                          setSelectedFromDropdown(false);
+                          setShowSearchSuggestions(val.trim().length >= 2);
+                        }}
+                        placeholder="Search colony, street, or area in Indore..."
+                        className="w-full bg-white border border-slate-300 rounded-xl pl-3.5 pr-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-sm"
+                      />
+
+                      {showSearchSuggestions && !selectedFromDropdown && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100 no-scrollbar">
+                          {isSearchingLive ? (
+                            <div className="p-3 flex items-center gap-2">
+                              <span className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                              <p className="text-xs text-slate-500 font-medium">Searching Indore areas...</p>
+                            </div>
+                          ) : liveSuggestions.length > 0 ? (
+                            liveSuggestions.map((loc, idx) => (
+                              <button
+                                type="button"
+                                key={idx}
+                                onClick={() => handleSelectSuggestion(loc)}
+                                className="w-full py-2 px-3 text-left hover:bg-slate-50 flex items-center gap-2.5 focus:outline-none cursor-pointer"
+                              >
+                                <MapPin size={13} className="text-blue-600 shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{loc.name}</p>
+                                  <p className="text-[10px] text-slate-400 truncate">{loc.area}</p>
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-xs text-slate-400 italic">Type to search locality...</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* GPS Location Button */}
@@ -1252,7 +1331,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                             const lng = pos.coords.longitude;
                             setLocation({ lat, lng });
                             setMapCenter({ lat, lng });
-                            await reverseGeocodeNominatim(lat, lng);
+                            await reverseGeocodeLocation(lat, lng);
                             setIsFetchingGps(false);
                           },
                           () => {
@@ -1295,7 +1374,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           const coords = { lat: e.detail.latLng.lat, lng: e.detail.latLng.lng };
                           setLocation(coords);
                           setMapCenter(coords);
-                          reverseGeocodeNominatim(coords.lat, coords.lng);
+                          reverseGeocodeLocation(coords.lat, coords.lng);
                         }
                       }}
                     >
@@ -1308,7 +1387,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                               const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
                               setLocation(coords);
                               setMapCenter(coords);
-                              reverseGeocodeNominatim(coords.lat, coords.lng);
+                              reverseGeocodeLocation(coords.lat, coords.lng);
                             }
                           }}
                         >
@@ -1317,7 +1396,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                       )}
                     </Map>
                   </div>
-                  <p className="text-[10px] text-slate-400">💡 Tap on map or drag pin to pinpoint your doorstep.</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span>💡 Tap map or drag pin to pinpoint doorstep</span>
+                    {isGeocoding && <span className="text-blue-600 font-semibold animate-pulse">Resolving location...</span>}
+                  </div>
+
+                  {/* Confirm Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsChangingAddress(false)}
+                    className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                  >
+                    Confirm & Use This Address
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
