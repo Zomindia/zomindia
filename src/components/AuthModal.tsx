@@ -21,8 +21,7 @@ import {
   ArrowRight, 
   CheckCircle2, 
   AlertCircle,
-  ChevronLeft,
-  MessageCircle
+  ChevronLeft
 } from 'lucide-react';
 
 interface Props {
@@ -47,8 +46,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   // OTP states
   const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(''));
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [authMethod, setAuthMethod] = useState<'SMS' | 'WHATSAPP'>('SMS');
-  const [lastWhatsAppOtp, setLastWhatsAppOtp] = useState<string | null>(null);
   
   // Registration data
   const [displayName, setDisplayName] = useState('');
@@ -151,8 +148,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setShouldMergeConflictOnSuccess(false);
     setConflictUid(null);
     setShowConflictOptions(false);
-    setAuthMethod('SMS');
-    setLastWhatsAppOtp(null);
   };
 
   useEffect(() => {
@@ -172,8 +167,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
     setLoading(true);
     setError(null);
-    setAuthMethod('SMS');
-    (window as any).__lastAuthMethod = 'sms';
 
     try {
       const formattedPhone = `+91${cleanPhone}`;
@@ -236,10 +229,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   // Re-request OTP 
   const handleResendOTP = async () => {
     if (timer > 0) return;
-    if (authMethod === 'WHATSAPP') {
-      await handleWhatsAppOTP();
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -261,51 +250,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         friendlyMessage = err.message;
       }
       setError(friendlyMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Dispatch WhatsApp OTP
-  const handleWhatsAppOTP = async () => {
-    const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) {
-      setError('Please enter a valid 10-digit mobile number');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      // 1. Generate 6-digit sync code
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setAuthMethod('WHATSAPP');
-      setLastWhatsAppOtp(generatedOtp);
-      (window as any).__lastWhatsAppOtp = generatedOtp;
-      (window as any).__lastAuthMethod = 'whatsapp';
-
-      // 2. Always transition UI to the OTP screen immediately
-      setView('otp-entry');
-      setTimer(30);
-
-      // 3. Dispatch to WhatsApp Business backend API with official sender
-      fetch('/api/send-whatsapp-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phoneNumber: `+91${cleanPhone}`, 
-          otp: generatedOtp,
-          senderNumber: '9630234563'
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        console.log('[WhatsApp OTP Dispatched]:', data);
-      })
-      .catch(err => {
-        console.warn('[WhatsApp OTP Non-blocking Notice]:', err);
-      });
-    } catch (err: any) {
-      console.warn("WhatsApp OTP dispatch notice:", err);
     } finally {
       setLoading(false);
     }
@@ -366,162 +310,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setError(null);
 
     try {
-      let userObj: any = null;
+      if (!confirmationResult) {
+        throw new Error('No active verification session detected. Please request a new code.');
+      }
 
-      if (authMethod === 'WHATSAPP') {
-        const expectedOtp = (window as any).__lastWhatsAppOtp || lastWhatsAppOtp;
-        if (!expectedOtp || code !== expectedOtp) {
-          setError('Invalid WhatsApp OTP. Please check the code.');
-          setLoading(false);
-          return;
-        }
-
-        // WhatsApp OTP verified successfully!
-        const cleanPhone = phoneNumber.replace(/\D/g, '');
-        const formattedPhone = `+91${cleanPhone}`;
-
-        // Ensure active Firebase Auth session if not already logged in
-        if (!auth.currentUser) {
-          try {
-            await signInAnonymously(auth);
-          } catch (anonErr) {
-            console.warn("Anonymous auth fallback:", anonErr);
-          }
-        }
-
-        const activeAuthUid = auth.currentUser?.uid;
-
-        // Query Firestore users collection for matching phone number
-        const usersQ1 = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
-        const usersQ2 = query(collection(db, 'users'), where('mobile', '==', formattedPhone));
-        const [uSnap1, uSnap2] = await Promise.all([getDocs(usersQ1), getDocs(usersQ2)]);
-        const matchedDoc = !uSnap1.empty ? uSnap1.docs[0] : (!uSnap2.empty ? uSnap2.docs[0] : null);
-
-        if (isOnboardingVerification) {
-          const activeUid = activeAuthUid || (matchedDoc ? matchedDoc.id : `wa_${cleanPhone}`);
-          const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-
-          // Safe transactional pre-write merge/link
-          await runTransaction(db, async (transaction) => {
-            const activeUserRef = doc(db, 'users', activeUid);
-            const activeUserSnap = await transaction.get(activeUserRef);
-
-            let walletVal = walletJoiningBonus;
-            let existingData: any = {};
-
-            if (activeUserSnap.exists()) {
-              existingData = activeUserSnap.data();
-              if (existingData.walletBalance !== undefined) {
-                walletVal = existingData.walletBalance;
-              }
-            }
-
-            const masterUid = conflictUid || (matchedDoc ? matchedDoc.id : activeUid);
-            const masterRef = doc(db, 'users', masterUid);
-
-            if (shouldMergeConflictOnSuccess && conflictUid) {
-              const conflictSnap = await transaction.get(masterRef);
-              if (conflictSnap.exists()) {
-                const conflictData = conflictSnap.data();
-                if (conflictData.walletBalance !== undefined) {
-                  walletVal += conflictData.walletBalance;
-                }
-                existingData = {
-                  ...conflictData,
-                  ...existingData,
-                };
-              }
-            }
-
-            const profilePayload = buildDualPersonaUserDoc({
-              ...existingData,
-              uid: masterUid,
-              displayName: displayName.trim() || existingData.displayName || 'Customer',
-              fullName: displayName.trim() || existingData.fullName || 'Customer',
-              email: email.trim() || existingData.email || '',
-              phoneNumber: formattedPhone,
-              mobile: formattedPhone,
-              onboardingComplete: true,
-              walletBalance: walletVal,
-              updatedAt: Timestamp.now()
-            });
-
-            if (isSarthakEmail) {
-              profilePayload.role = 'admin';
-              profilePayload.adminSubRole = 'head';
-            } else if (!profilePayload.role) {
-              profilePayload.role = 'customer';
-            }
-
-            transaction.set(masterRef, profilePayload, { merge: true });
-
-            if (activeUid !== masterUid) {
-              transaction.set(activeUserRef, {
-                uid: activeUid,
-                mergedInto: masterUid,
-                onboardingComplete: false,
-                updatedAt: Timestamp.now()
-              }, { merge: true });
-            }
-          });
-
-          if (shouldMergeConflictOnSuccess && conflictUid) {
-            try {
-              const bookingsQ1 = query(collection(db, 'bookings'), where('userId', '==', activeUid));
-              const bookingsQ2 = query(collection(db, 'bookings'), where('customerId', '==', activeUid));
-              const [bSnap1, bSnap2] = await Promise.all([getDocs(bookingsQ1), getDocs(bookingsQ2)]);
-
-              const batch = writeBatch(db);
-              bSnap1.docs.forEach((d) => {
-                batch.update(doc(db, 'bookings', d.id), { userId: conflictUid });
-              });
-              bSnap2.docs.forEach((d) => {
-                batch.update(doc(db, 'bookings', d.id), { customerId: conflictUid });
-              });
-              await batch.commit();
-            } catch (migrateErr) {
-              console.error("Non-blocking bookings migration error:", migrateErr);
-            }
-          }
-
-          setView('success-transition');
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-            resetForm();
-          }, 1500);
-          return;
-        }
-
-        // Direct WhatsApp Phone Login
-        if (matchedDoc) {
-          setVerifiedUid(matchedDoc.id);
-
-          if (activeAuthUid && activeAuthUid !== matchedDoc.id) {
-            try {
-              await setDoc(doc(db, 'users', activeAuthUid), {
-                mergedInto: matchedDoc.id,
-                updatedAt: Timestamp.now()
-              }, { merge: true });
-            } catch (e) {}
-          }
-
-          setView('success-transition');
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-            resetForm();
-          }, 1500);
-        } else {
-          // New User via WhatsApp OTP
-          const targetUid = activeAuthUid || `wa_${cleanPhone}`;
-          setVerifiedUid(targetUid);
-          setView('profile-setup');
-        }
-      } else if (confirmationResult) {
-        const credential = await confirmationResult.confirm(code);
-        userObj = credential.user;
-        setVerifiedUid(userObj.uid);
+      const credential = await confirmationResult.confirm(code);
+      const userObj = credential.user;
+      setVerifiedUid(userObj.uid);
 
         if (isOnboardingVerification) {
           const activeUid = auth.currentUser?.uid || userObj.uid;
@@ -634,9 +429,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             setView('profile-setup');
           }
         }
-      } else {
-        throw new Error('No active verification session detected. Please request a new code.');
-      }
     } catch (err: any) {
       console.error("OTP verification error:", err);
       let friendlyMessage = 'Invalid verification code. Please check and try again.';
@@ -1159,38 +951,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="submit"
-                      disabled={loading || phoneNumber.length < 10}
-                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 text-xs shadow-[0_12px_24px_-4px_rgba(5,12,166,0.15)]"
-                    >
-                      {loading && authMethod === 'SMS' ? (
-                        <BrandedButtonSpinner className="w-4 h-4" />
-                      ) : (
-                        <>
-                          <span>SMS OTP</span>
-                          <ArrowRight size={14} />
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleWhatsAppOTP}
-                      disabled={loading || phoneNumber.length < 10}
-                      className="w-full bg-[#25D366] text-white p-3.5 rounded-2xl font-bold hover:bg-[#20bd5a] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 text-xs shadow-[0_12px_24px_-4px_rgba(37,211,102,0.15)]"
-                    >
-                      {loading && authMethod === 'WHATSAPP' ? (
-                        <BrandedButtonSpinner className="w-4 h-4" />
-                      ) : (
-                        <>
-                          <MessageCircle size={15} />
-                          <span>WhatsApp OTP</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading || phoneNumber.length < 10}
+                    className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 text-sm shadow-[0_12px_24px_-4px_rgba(5,12,166,0.15)] cursor-pointer"
+                  >
+                    {loading ? (
+                      <BrandedButtonSpinner className="w-4 h-4" />
+                    ) : (
+                      <>
+                        <span>Send OTP</span>
+                        <ArrowRight size={16} />
+                      </>
+                    )}
+                  </button>
                 </form>
 
                 <p className="text-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
@@ -1404,14 +1178,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                   </button>
                   <h2 className="text-lg font-bold text-neutral-900 mt-2 flex items-center gap-2">
                     <span>Enter Verification Code</span>
-                    {authMethod === 'WHATSAPP' && (
-                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <MessageCircle size={10} /> WhatsApp
-                      </span>
-                    )}
                   </h2>
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    We've sent a 6-digit OTP via {authMethod === 'WHATSAPP' ? 'WhatsApp' : 'SMS'} to <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
+                    We've sent a 6-digit OTP via SMS to <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
                   </p>
                 </div>
 
@@ -1434,30 +1203,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                       />
                     ))}
                   </div>
-
-                  {/* WhatsApp instant auto-fill helper */}
-                  {authMethod === 'WHATSAPP' && (lastWhatsAppOtp || (window as any).__lastWhatsAppOtp) && (
-                    <div className="flex items-center justify-between p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs">
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <MessageCircle size={14} className="text-emerald-600 shrink-0" />
-                        <span>OTP: <strong>{lastWhatsAppOtp || (window as any).__lastWhatsAppOtp}</strong></span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const code = lastWhatsAppOtp || (window as any).__lastWhatsAppOtp;
-                          if (code && code.length === 6) {
-                            const digits = code.split('');
-                            setOtpValues(digits);
-                            handleVerifyOTP(undefined, code);
-                          }
-                        }}
-                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline px-1.5 py-0.5 bg-white rounded-md shadow-xs"
-                      >
-                        Auto-Fill & Verify
-                      </button>
-                    </div>
-                  )}
 
                   {error && (
                     <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-semibold">
