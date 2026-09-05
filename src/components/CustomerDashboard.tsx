@@ -1299,44 +1299,24 @@ export default function CustomerDashboard({
       return;
     }
     try {
-      await updateDoc(doc(db, "bookings", booking.id), {
-        status: "completed",
-        paymentStatus: "paid",
-        paymentMethod: "cash",
-        updatedAt: Timestamp.now(),
+      const res = await fetch('/api/partner/settle-cash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          partnerId: booking.partnerId
+        })
       });
 
-      // Credit the partner's earnings & rewards
-      if (booking.partnerId) {
-        const partnerQuery = query(
-          collection(db, "partners"),
-          where("userId", "==", booking.partnerId),
-        );
-        const pSnap = await getDocs(partnerQuery);
-        if (!pSnap.empty) {
-          const pDoc = pSnap.docs[0];
-          const pData = pDoc.data() as PartnerProfile;
-          const rewardPts = 10;
-          await updateDoc(doc(db, "partners", pDoc.id), {
-            totalEarnings: (pData.totalEarnings || 0) + booking.totalPrice,
-            rewardCredits: (pData.rewardCredits || 0) + rewardPts,
-            updatedAt: Timestamp.now(),
-          });
-
-          await addDoc(collection(db, "partners", pDoc.id, "earningsHistory"), {
-            type: "booking_earning",
-            amount: booking.totalPrice,
-            credits: rewardPts,
-            bookingId: booking.id,
-            reason: `Completed service (Cash settled): ${services[booking.serviceId]?.name || 'Service'}`,
-            createdAt: Timestamp.now(),
-          });
-        }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to confirm cash payment on server");
       }
 
       alert("Cash payment of ₹" + booking.totalPrice + " confirmed successfully!");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+    } catch (err: any) {
+      console.error("Cash payment confirmation error:", err);
+      alert("Error confirming cash payment: " + (err.message || "Please try again"));
     }
   };
 

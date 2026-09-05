@@ -807,21 +807,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           merchantTransactionId: activeQrTxnId,
-          bookingId,
-          autoConfirm: true
+          bookingId
         })
       });
       const data = await res.json();
       if (data.success || data.code === 'PAYMENT_SUCCESS') {
         setQrSuccessMessage("PAID VIA PHONEPE QR - Verification Successful!");
-        try {
-          await updateDoc(doc(db, 'bookings', bookingId), {
-            paymentStatus: 'paid',
-            paymentMethod: 'phonepe_qr',
-            status: 'completed',
-            updatedAt: Timestamp.now()
-          });
-        } catch (err) {}
         setTimeout(() => {
           setShowPartnerQRId(null);
           setActiveQrTxnId(null);
@@ -1157,68 +1148,19 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const handleConfirmCashCollectedByPartner = async (booking: Booking) => {
     setLoading(true);
     try {
-      const rewardPts = 10;
-      const creditAmount = booking.totalPrice;
-
-      await runTransaction(db, async (transaction) => {
-        const bookingRef = doc(db, 'bookings', booking.id);
-        const bookingSnap = await transaction.get(bookingRef);
-        if (!bookingSnap.exists()) {
-          throw new Error("Booking does not exist!");
-        }
-
-        const bookingData = bookingSnap.data() as Booking;
-        if (bookingData.settledAt) {
-          throw new Error("This job has already been settled.");
-        }
-
-        // Apply booking update
-        transaction.update(bookingRef, {
-          status: 'completed',
-          paymentStatus: 'paid',
-          paymentMethod: 'cash',
-          settledAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-
-        // Update partner earnings because payment is now successfully received in cash!
-        if (partner) {
-          const partnerRef = doc(db, 'partners', partner.id);
-          const partnerSnap = await transaction.get(partnerRef);
-          if (partnerSnap.exists()) {
-            const partnerData = partnerSnap.data();
-            transaction.update(partnerRef, {
-              totalEarnings: (partnerData.totalEarnings || 0) + creditAmount,
-              rewardCredits: (partnerData.rewardCredits || 0) + rewardPts,
-              updatedAt: serverTimestamp()
-            });
-          }
-
-          // Also update the partner's User profile walletBalance
-          if (partner.userId) {
-            const partnerUserRef = doc(db, 'users', partner.userId);
-            const partnerUserSnap = await transaction.get(partnerUserRef);
-            if (partnerUserSnap.exists()) {
-              const currentWalletBalance = partnerUserSnap.data()?.walletBalance || 0;
-              transaction.update(partnerUserRef, {
-                walletBalance: currentWalletBalance + creditAmount,
-                updatedAt: serverTimestamp()
-              });
-            }
-          }
-
-          // Generate earnings history record
-          const earningsHistoryRef = doc(collection(db, 'partners', partner.id, 'earningsHistory'));
-          transaction.set(earningsHistoryRef, {
-            type: 'booking_earning',
-            amount: creditAmount,
-            credits: rewardPts,
-            bookingId: booking.id,
-            reason: `Completed service (Cash Collected): ${services[booking.serviceId]?.name || 'Job'}`,
-            createdAt: serverTimestamp()
-          });
-        }
+      const res = await fetch('/api/partner/settle-cash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          partnerId: partner?.id
+        })
       });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to settle cash payment");
+      }
 
       // Check for user referral processing
       fetch('/api/process-referral-reward', {
@@ -1239,7 +1181,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       if (err.message === "This job has already been settled.") {
         alert("This job has already been settled.");
       } else {
-        handleFirestoreError(err, OperationType.UPDATE, `bookings/${booking.id}`);
+        alert("Payment settlement failed: " + (err.message || "Please check network and retry."));
       }
     } finally {
       setLoading(false);
@@ -2113,19 +2055,30 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                 onClick={async () => {
                                   if (confirm("Confirm payment received directly from customer?")) {
                                     try {
-                                      await updateDoc(doc(db, 'bookings', booking.id), {
-                                        paymentStatus: 'paid',
-                                        paymentMethod: 'phonepe_qr',
-                                        status: 'completed',
-                                        updatedAt: Timestamp.now()
+                                      const res = await fetch('/api/phonepe/verify-and-confirm', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          bookingId: booking.id,
+                                          customerUid: booking.customerId || booking.customerUid || (booking as any).userId || '',
+                                          merchantTransactionId: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
+                                          amount: booking.totalPrice,
+                                          paymentMethod: 'phonepe_qr',
+                                          status: 'completed'
+                                        })
                                       });
-                                      setQrSuccessMessage("PAID VIA PHONEPE QR - Confirmed!");
+                                      const data = await res.json();
+                                      if (!res.ok || !data.success) {
+                                        throw new Error(data.error || 'Server settlement failed');
+                                      }
+                                      setQrSuccessMessage("PAID VIA PHONEPE QR - Confirmed & Settled!");
                                       setTimeout(() => {
                                         setShowPartnerQRId(null);
                                         setQrSuccessMessage(null);
                                       }, 2000);
-                                    } catch (e) {
-                                      console.error(e);
+                                    } catch (e: any) {
+                                      console.error("Partner settlement confirmation error:", e);
+                                      alert(e.message || "Failed to confirm payment on server");
                                     }
                                   }
                                 }}

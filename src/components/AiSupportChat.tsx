@@ -814,28 +814,6 @@ export default function AiSupportChat({
         throw new Error(errJson.error || "PhonePe gateway confirmation failed");
       }
 
-      // Update Firestore document to confirmed & paid
-      try {
-        const bookingRef = doc(db, "bookings", bookingId);
-        await setDoc(
-          bookingRef,
-          {
-            status: "pending",
-            paymentStatus: "paid",
-            paymentMethod: "online",
-            paymentIntentId: merchantTransactionId,
-            transactionId: merchantTransactionId,
-            onlinePaymentProvider: "phonepe",
-            onlinePaymentMethod: "upi",
-            paidAmount: amount,
-            updatedAt: Timestamp.now()
-          },
-          { merge: true }
-        );
-      } catch (dbErr) {
-        console.warn("Firestore confirm update notice:", dbErr);
-      }
-
       // Parallel sync to /api/bookings
       try {
         await fetch('/api/bookings', {

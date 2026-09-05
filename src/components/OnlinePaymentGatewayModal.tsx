@@ -311,16 +311,8 @@ export default function OnlinePaymentGatewayModal({
       setCardError('');
     }
 
-    setProcessingPhase('connecting');
-    setStatusMessage('Connecting to Bank Gateway...');
-
-    setTimeout(() => {
-      setProcessingPhase('authorizing');
-      const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setSimulatedOtp(randomOtp);
-      setShowOtpScreen(true);
-      setStatusMessage('Simulating Bank 2FA Authorization...');
-    }, 1000);
+    // Launch authentic PhonePe gateway for safe, verified Card/Netbanking processing
+    handleInitiatePhonePePg();
   };
 
   const finalizeSuccessfulPayment = async (
@@ -328,7 +320,13 @@ export default function OnlinePaymentGatewayModal({
     providerName: string,
     utrReference?: string
   ) => {
-    const txnId = utrReference || `TXN_IND_${Date.now().toString().slice(-8)}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const txnId = utrReference?.trim() || phonePePollingTxnId || '';
+    if (!txnId) {
+      setProcessingPhase('idle');
+      setStatusMessage('');
+      setUtrError('Payment verification failed: No authentic transaction ID or gateway response received.');
+      return;
+    }
     setGeneratedTxnId(txnId);
     setShowOtpScreen(false);
     setProcessingPhase('verified');
@@ -358,7 +356,12 @@ export default function OnlinePaymentGatewayModal({
       paymentSubMode === 'card'
         ? `${getCardBrand(cardNumber) || 'Credit/Debit Card'}`
         : `${selectedBank.toUpperCase()} Net Banking`;
-    finalizeSuccessfulPayment(paymentSubMode === 'card' ? 'card' : 'netbanking', provider);
+    if (!phonePePollingTxnId) {
+      setProcessingPhase('idle');
+      setUtrError('Direct card processing requires active gateway initiation. Please use PhonePe Checkout or verified UPI.');
+      return;
+    }
+    finalizeSuccessfulPayment(paymentSubMode === 'card' ? 'card' : 'netbanking', provider, phonePePollingTxnId);
   };
 
   const minutes = Math.floor(qrTimer / 60);

@@ -190,6 +190,31 @@ async function startServer() {
     return `${sha256}###${saltIndex}`;
   };
 
+  const verifyPhonePeSignature = (
+    base64Payload: string,
+    xVerifyHeader: string | undefined,
+    saltKey: string,
+    saltIndex: string
+  ): boolean => {
+    if (!xVerifyHeader || !base64Payload) return false;
+    
+    // Standard PhonePe S2S webhook hash: SHA256(base64Payload + saltKey) + "###" + saltIndex
+    const hash1 = crypto.createHash("sha256").update(base64Payload + saltKey).digest("hex") + `###${saltIndex}`;
+    
+    // Hash with callback endpoint: SHA256(base64Payload + "/api/phonepe/callback" + saltKey) + "###" + saltIndex
+    const hash2 = crypto.createHash("sha256").update(base64Payload + "/api/phonepe/callback" + saltKey).digest("hex") + `###${saltIndex}`;
+    
+    // Alternate payload endpoint hash: /pg/v1/pay
+    const hash3 = calculatePhonePeChecksum(base64Payload, "/pg/v1/pay", saltKey, saltIndex);
+
+    const received = xVerifyHeader.trim().toLowerCase();
+    return (
+      received === hash1.toLowerCase() ||
+      received === hash2.toLowerCase() ||
+      received === hash3.toLowerCase()
+    );
+  };
+
   // API & Container Health Check endpoints for Cloud Run startup/liveness/readiness probes
   const healthHandler = (_req: express.Request, res: express.Response) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString(), uptime: process.uptime() });
@@ -460,6 +485,10 @@ async function startServer() {
       }
 
       const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
+      if (!merchantId || !saltKey) {
+        return res.status(400).json({ error: "PhonePe merchant credentials are not configured" });
+      }
+
       const merchantTransactionId = "TXN_PPE_" + (bookingId ? bookingId.slice(0, 8) : "ZOM") + "_" + Date.now();
       
       let cleanMobile = "9999999999";
@@ -496,7 +525,7 @@ async function startServer() {
 
       console.log(`[PhonePe PG] Initiating payment for Booking #${bookingId || "DRAFT"}, Txn: ${merchantTransactionId}, Amount: ₹${amount}`);
 
-      // Attempt live/sandbox PhonePe Gateway API handshake
+      // Attempt PhonePe Gateway API handshake
       try {
         const phonePeResponse = await axios.post(
           `${hostUrl}/pg/v1/pay`,
@@ -534,30 +563,21 @@ async function startServer() {
             data: phonePeResponse.data
           });
         }
+
+        const errMsg = phonePeResponse.data?.message || "PhonePe gateway rejected the payment initiation request";
+        return res.status(502).json({
+          error: errMsg,
+          code: phonePeResponse.data?.code || "GATEWAY_INITIATION_FAILED"
+        });
       } catch (apiErr: any) {
-        console.warn("[PhonePe PG Notice] Live Gateway API call notice:", apiErr.response?.data || apiErr.message);
+        console.error("[PhonePe PG Error] Gateway API handshake failed:", apiErr.response?.data || apiErr.message);
+        const errData = apiErr.response?.data;
+        const statusCode = apiErr.response?.status || 502;
+        return res.status(statusCode).json({
+          error: errData?.message || apiErr.message || "Failed to communicate with PhonePe Payment Gateway",
+          code: errData?.code || "GATEWAY_COMMUNICATION_ERROR"
+        });
       }
-
-      // Safe test simulation checkout fallback for sandbox preview
-      const fallbackUrl = `${host}/api/phonepe/callback?txnId=${merchantTransactionId}&bookingId=${bookingId || ""}&simulation=true&amount=${amount}`;
-      
-      if (bookingId && db) {
-        try {
-          await db.collection("bookings").doc(bookingId).set({
-            paymentIntentId: merchantTransactionId,
-            phonePeInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        } catch (e) {}
-      }
-
-      return res.json({
-        success: true,
-        merchantTransactionId,
-        checkoutUrl: fallbackUrl,
-        redirectUrl: fallbackUrl,
-        isSimulation: true
-      });
     } catch (err: any) {
       console.error("[PhonePe Initiate Error]:", err);
       return res.status(500).json({ error: err.message || "Failed to initiate PhonePe payment" });
@@ -567,7 +587,7 @@ async function startServer() {
   // 2. PhonePe Status Check API (/api/phonepe/status-check & /api/phonepe/status)
   app.post(["/api/phonepe/status-check", "/api/phonepe/status"], async (req, res) => {
     try {
-      const { merchantTransactionId, bookingId, autoConfirm } = req.body;
+      const { merchantTransactionId, bookingId } = req.body;
       if (!merchantTransactionId) {
         return res.status(400).json({ error: "merchantTransactionId is required" });
       }
@@ -598,10 +618,6 @@ async function startServer() {
         }
       } catch (apiErr: any) {
         console.warn("[PhonePe Status Check API Notice]:", apiErr.response?.data || apiErr.message);
-        if (autoConfirm) {
-          isSuccess = true;
-          statusData = { success: true, code: "PAYMENT_SUCCESS", message: "Verified via Gateway Simulation" };
-        }
       }
 
       // ONLY write paymentStatus: 'paid' to Firestore if PAYMENT_SUCCESS is verified
@@ -673,23 +689,32 @@ async function startServer() {
     try {
       const txnId = (req.query.txnId || req.body.merchantTransactionId || req.body.transactionId) as string;
       const bookingId = (req.query.bookingId || req.body.bookingId) as string;
-      const isSimulation = req.query.simulation === "true";
+      const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
+      const xVerifyHeader = (req.headers["x-verify"] || req.headers["X-VERIFY"]) as string | undefined;
+
       let isSuccess = false;
       let paymentData: any = null;
 
       if (req.body.response) {
+        // Require a valid X-VERIFY cryptographic match on req.body.response
+        const isValidSignature = verifyPhonePeSignature(req.body.response, xVerifyHeader, saltKey, saltIndex);
+        if (!isValidSignature) {
+          console.error("[PhonePe Security Alert] Rejecting callback: Invalid or missing X-VERIFY signature!");
+          return res.status(403).json({ error: "Invalid webhook signature" });
+        }
+
         try {
           const decoded = JSON.parse(Buffer.from(req.body.response, "base64").toString("utf-8"));
           paymentData = decoded;
-          if (decoded.code === "PAYMENT_SUCCESS" || decoded.success) {
+          if (decoded.code === "PAYMENT_SUCCESS" || (decoded.success && decoded.data?.responseCode === "SUCCESS")) {
             isSuccess = true;
           }
-        } catch (e) {}
-      } else if (isSimulation || req.body.code === "PAYMENT_SUCCESS") {
-        isSuccess = true;
+        } catch (e: any) {
+          console.error("[PhonePe Callback Error] Base64 decode failed:", e.message);
+          return res.status(400).json({ error: "Malformed response payload" });
+        }
       } else if (txnId) {
-        // Direct verification with PhonePe Status API
-        const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
+        // Direct verification with PhonePe Status API with verified checksum
         const endpoint = `/pg/v1/status/${merchantId}/${txnId}`;
         const stringToHash = endpoint + saltKey;
         const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
@@ -708,7 +733,9 @@ async function startServer() {
             isSuccess = true;
             paymentData = statusRes.data;
           }
-        } catch (e) {}
+        } catch (e: any) {
+          console.warn("[PhonePe Callback status check notice]:", e.message);
+        }
       }
 
       if (isSuccess && bookingId && db) {
@@ -780,7 +807,18 @@ async function startServer() {
   // 4. Single Consolidated PhonePe Verify and Confirm Direct API
   app.post("/api/phonepe/verify-and-confirm", async (req, res) => {
     try {
-      const { bookingId, customerUid, bookingPayload, merchantTransactionId, amount } = req.body;
+      const { 
+        bookingId, 
+        customerUid, 
+        bookingPayload, 
+        merchantTransactionId, 
+        amount, 
+        paymentMethod, 
+        walletDeductAmount, 
+        onlinePaymentProvider, 
+        onlinePaymentMethod,
+        status: requestedStatus 
+      } = req.body;
       if (!bookingId) {
         return res.status(400).json({ error: "Booking ID is required" });
       }
@@ -795,16 +833,35 @@ async function startServer() {
 
       let finalAmount = typeof amount === "number" ? amount : 0;
       let finalUserId = customerUid || "system";
+      const resolvedMethod = paymentMethod || "online";
+      let resolvedStatus = requestedStatus || "confirmed";
 
       if (bookingPayload) {
+        resolvedStatus = requestedStatus || bookingPayload.status || "confirmed";
         const payloadData: any = {
           ...bookingPayload,
-          status: "confirmed",
+          status: resolvedStatus,
           paymentStatus: "paid",
           paymentIntentId: txnId,
-          paymentMethod: "online",
+          paymentMethod: resolvedMethod,
+          paidAt: new Date().toISOString(),
+          paidAmount: finalAmount || Number(bookingPayload.totalPrice) || 0,
+          transactionId: txnId,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
+
+        if (walletDeductAmount !== undefined) {
+          payloadData.walletDeductAmount = Number(walletDeductAmount) || 0;
+        }
+        if (onlinePaymentProvider) {
+          payloadData.onlinePaymentProvider = onlinePaymentProvider;
+        }
+        if (onlinePaymentMethod) {
+          payloadData.onlinePaymentMethod = onlinePaymentMethod;
+        }
+        if (resolvedStatus === "completed") {
+          payloadData.settledAt = admin.firestore.FieldValue.serverTimestamp();
+        }
 
         if (!existingDoc.exists) {
           payloadData.createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -827,13 +884,39 @@ async function startServer() {
         finalAmount = Number(bookingPayload.totalPrice) || finalAmount;
         finalUserId = bookingPayload.customerUid || bookingPayload.userId || finalUserId;
       } else {
+        const existingData = existingDoc.exists ? existingDoc.data() : null;
+        if (!requestedStatus) {
+          resolvedStatus = existingData?.status === "payment_pending" 
+            ? "completed" 
+            : (existingData?.status === "pending" ? "confirmed" : existingData?.status || "confirmed");
+        }
+
+        finalAmount = finalAmount || Number(existingData?.totalPrice) || 0;
+        finalUserId = existingData?.customerId || existingData?.customerUid || existingData?.userId || finalUserId;
+
         const updateData: any = {
-          status: "confirmed",
+          status: resolvedStatus,
           paymentStatus: "paid",
-          paymentMethod: "online",
+          paymentMethod: resolvedMethod,
           paymentIntentId: txnId,
+          paidAt: new Date().toISOString(),
+          paidAmount: finalAmount,
+          transactionId: txnId,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
+
+        if (walletDeductAmount !== undefined) {
+          updateData.walletDeductAmount = Number(walletDeductAmount) || 0;
+        }
+        if (onlinePaymentProvider) {
+          updateData.onlinePaymentProvider = onlinePaymentProvider;
+        }
+        if (onlinePaymentMethod) {
+          updateData.onlinePaymentMethod = onlinePaymentMethod;
+        }
+        if (resolvedStatus === "completed") {
+          updateData.settledAt = admin.firestore.FieldValue.serverTimestamp();
+        }
 
         if (!existingDoc.exists) {
           updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -841,10 +924,32 @@ async function startServer() {
 
         await bookingRef.set(updateData, { merge: true });
 
-        if (existingDoc.exists) {
-          const docData = existingDoc.data();
-          finalAmount = Number(docData?.totalPrice) || finalAmount;
-          finalUserId = docData?.customerId || docData?.customerUid || docData?.userId || finalUserId;
+        // Credit partner earnings if resolvedStatus is completed and partner assigned
+        if (resolvedStatus === "completed" && existingData?.partnerId) {
+          try {
+            const partnerRef = db.collection("partners").doc(existingData.partnerId);
+            const partnerSnap = await partnerRef.get();
+            if (partnerSnap.exists) {
+              const currentEarnings = Number(partnerSnap.data()?.totalEarnings || 0);
+              const currentCredits = Number(partnerSnap.data()?.rewardCredits || 0);
+              const rewardPts = 10;
+              await partnerRef.update({
+                totalEarnings: currentEarnings + finalAmount,
+                rewardCredits: currentCredits + rewardPts,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              await partnerRef.collection("earningsHistory").add({
+                type: "booking_earning",
+                amount: finalAmount,
+                credits: rewardPts,
+                bookingId,
+                reason: `Completed service (${resolvedMethod}): Verified Settlement`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
+          } catch (pErr: any) {
+            console.warn("[Partner Settlement Credit Warning]:", pErr.message);
+          }
         }
       }
 
@@ -874,6 +979,96 @@ async function startServer() {
     } catch (err: any) {
       console.error("[PhonePe Confirm Error]:", err);
       return res.status(500).json({ error: err.message || "Failed to confirm PhonePe payment" });
+    }
+  });
+
+  // Partner Cash Settlement API (Standardized Backend Settlement Endpoint)
+  app.post("/api/partner/settle-cash", async (req, res) => {
+    try {
+      const { bookingId, partnerId } = req.body;
+      if (!bookingId) {
+        return res.status(400).json({ error: "bookingId is required" });
+      }
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      await db.runTransaction(async (t: any) => {
+        const bookingRef = db.collection("bookings").doc(bookingId);
+        const bookingSnap = await t.get(bookingRef);
+        if (!bookingSnap.exists) {
+          throw new Error("Booking does not exist");
+        }
+        const bookingData = bookingSnap.data();
+        if (bookingData.settledAt || (bookingData.status === "completed" && bookingData.paymentStatus === "paid")) {
+          throw new Error("This job has already been settled.");
+        }
+
+        const totalPrice = Number(bookingData.totalPrice || 0);
+        const rewardPts = 10;
+        const targetPartnerId = partnerId || bookingData.partnerId;
+
+        t.update(bookingRef, {
+          status: "completed",
+          paymentStatus: "paid",
+          paymentMethod: "cash",
+          paidAmount: totalPrice,
+          paidAt: new Date().toISOString(),
+          settledAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        if (targetPartnerId) {
+          let partnerRef = db.collection("partners").doc(targetPartnerId);
+          let partnerSnap = await t.get(partnerRef);
+          if (!partnerSnap.exists) {
+            const partnerQuery = await db.collection("partners").where("userId", "==", targetPartnerId).limit(1).get();
+            if (!partnerQuery.empty) {
+              partnerRef = partnerQuery.docs[0].ref;
+              partnerSnap = partnerQuery.docs[0];
+            }
+          }
+          if (partnerSnap.exists) {
+            const pData = partnerSnap.data();
+            const currentEarnings = Number(pData.totalEarnings || 0);
+            const currentCredits = Number(pData.rewardCredits || 0);
+
+            t.update(partnerRef, {
+              totalEarnings: currentEarnings + totalPrice,
+              rewardCredits: currentCredits + rewardPts,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            if (pData.userId) {
+              const userRef = db.collection("users").doc(pData.userId);
+              const userSnap = await t.get(userRef);
+              if (userSnap.exists) {
+                const currentBal = Number(userSnap.data().walletBalance || 0);
+                t.update(userRef, {
+                  walletBalance: currentBal + totalPrice,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+              }
+            }
+
+            const earnRef = partnerRef.collection("earningsHistory").doc();
+            t.set(earnRef, {
+              type: "booking_earning",
+              amount: totalPrice,
+              credits: rewardPts,
+              bookingId,
+              reason: `Completed service (Cash Collected): Verified Settlement`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
+      });
+
+      console.log(`[Partner Cash Settlement] Successfully settled Booking #${bookingId}`);
+      return res.json({ success: true, bookingId });
+    } catch (err: any) {
+      console.error("[Partner Settle Cash Error]:", err);
+      return res.status(400).json({ error: err.message || "Failed to settle cash payment" });
     }
   });
 
@@ -2407,15 +2602,15 @@ Structure:
     }
   });
 
-  // --- Wallet Payment ---
+  // --- Wallet Payment (Full or Partial Settlement) ---
   app.post('/api/pay-via-wallet', async (req, res) => {
     try {
-      const { bookingId, userId } = req.body;
+      const { bookingId, userId, debitAmount, amount, isFullSettlement } = req.body;
       if (!bookingId || !userId) {
         return res.status(400).json({ error: 'Missing bookingId or userId' });
       }
 
-      await db.runTransaction(async (t) => {
+      const txResult = await db.runTransaction(async (t) => {
         const userRef = db.collection('users').doc(userId);
         const bookingRef = db.collection('bookings').doc(bookingId);
 
@@ -2433,74 +2628,100 @@ Structure:
           throw new Error('This job has already been settled.');
         }
 
-        const walletBalance = userDoc.data()?.walletBalance || 0;
-        const totalPrice = bookingDoc.data()?.totalPrice || 0;
+        const walletBalance = Number(userDoc.data()?.walletBalance || 0);
+        const totalPrice = Number(bookingData?.totalPrice || 0);
 
-        if (walletBalance < totalPrice) {
+        if (walletBalance <= 0) {
           throw new Error('Insufficient wallet balance');
         }
 
-        t.update(userRef, {
-          walletBalance: walletBalance - totalPrice,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        const rawRequested = debitAmount !== undefined ? Number(debitAmount) : (amount !== undefined ? Number(amount) : totalPrice);
+        const requestedDebit = isNaN(rawRequested) || rawRequested <= 0 ? totalPrice : rawRequested;
+        const actualDebit = Math.min(requestedDebit, walletBalance, totalPrice);
 
-        t.update(bookingRef, {
-          paymentStatus: 'paid',
-          paymentMethod: 'wallet',
-          status: 'completed',
-          settledAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Atomically update partner's total earnings and reward credits if assigned
-        const partnerId = bookingDoc.data()?.partnerId;
-        if (partnerId) {
-          const partnerRef = db.collection('partners').doc(partnerId);
-          const partnerDoc = await t.get(partnerRef);
-          if (partnerDoc.exists) {
-            const currentEarnings = partnerDoc.data()?.totalEarnings || 0;
-            const currentCredits = partnerDoc.data()?.rewardCredits || 0;
-            const rewardPts = 10;
-            t.update(partnerRef, {
-              totalEarnings: currentEarnings + totalPrice,
-              rewardCredits: currentCredits + rewardPts,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            // Add earnings history record
-            const earnRef = db.collection('partners').doc(partnerId).collection('earningsHistory').doc();
-            t.set(earnRef, {
-              type: 'booking_earning',
-              amount: totalPrice,
-              credits: rewardPts,
-              bookingId: bookingId,
-              reason: `Completed service (Wallet payment)`,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          }
+        if (actualDebit <= 0) {
+          throw new Error('Invalid debit amount or zero balance');
         }
-        
-        // Also write to transaction history
+
+        const newWalletBalance = Math.max(0, walletBalance - actualDebit);
+        t.update(userRef, {
+          walletBalance: newWalletBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        const existingWalletDeduction = Number(bookingData.walletDeductAmount || 0);
+        const newTotalWalletDeduct = existingWalletDeduction + actualDebit;
+        const isFullyPaid = isFullSettlement === true || newTotalWalletDeduct >= totalPrice || actualDebit >= totalPrice;
+
+        const bookingUpdate: any = {
+          walletDeductAmount: newTotalWalletDeduct,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (isFullyPaid) {
+          bookingUpdate.paymentStatus = 'paid';
+          bookingUpdate.paymentMethod = newTotalWalletDeduct >= totalPrice ? 'wallet' : (bookingData.paymentMethod || 'wallet_online');
+          bookingUpdate.status = 'completed';
+          bookingUpdate.paidAmount = totalPrice;
+          bookingUpdate.paidAt = new Date().toISOString();
+          bookingUpdate.settledAt = admin.firestore.FieldValue.serverTimestamp();
+
+          // Credit partner earnings only upon full settlement
+          const partnerId = bookingData?.partnerId;
+          if (partnerId) {
+            const partnerRef = db.collection('partners').doc(partnerId);
+            const partnerDoc = await t.get(partnerRef);
+            if (partnerDoc.exists) {
+              const currentEarnings = Number(partnerDoc.data()?.totalEarnings || 0);
+              const currentCredits = Number(partnerDoc.data()?.rewardCredits || 0);
+              const rewardPts = 10;
+              t.update(partnerRef, {
+                totalEarnings: currentEarnings + totalPrice,
+                rewardCredits: currentCredits + rewardPts,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+
+              const earnRef = db.collection('partners').doc(partnerId).collection('earningsHistory').doc();
+              t.set(earnRef, {
+                type: 'booking_earning',
+                amount: totalPrice,
+                credits: rewardPts,
+                bookingId: bookingId,
+                reason: `Completed service (Wallet settlement)`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
+          }
+        } else {
+          bookingUpdate.paymentMethod = 'wallet_partial';
+        }
+
+        t.update(bookingRef, bookingUpdate);
+
+        // Record to wallet transaction history
         const txRef = db.collection('walletTransactions').doc();
         t.set(txRef, {
-           userId: userId,
-           amount: totalPrice,
-           type: 'debit',
-           reason: `Paid for booking ${bookingId}`,
-           status: 'completed',
-           createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          userId: userId,
+          amount: actualDebit,
+          type: 'debit',
+          reason: `Wallet debit for booking ${bookingId.slice(0, 8).toUpperCase()}${isFullyPaid ? ' (Settled)' : ' (Partial)'}`,
+          status: 'completed',
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        return { actualDebit, newWalletBalance, isFullyPaid };
       });
 
-      // Trigger final bill email asynchronously
-      try {
-        await axios.post(`http://localhost:${PORT}/api/send-final-bill`, { bookingId });
-      } catch (e) {
-        console.error("Failed to trigger bill email after wallet payment:", e);
+      // Trigger final bill email asynchronously if fully settled
+      if (txResult.isFullyPaid) {
+        try {
+          await axios.post(`http://localhost:${PORT}/api/send-final-bill`, { bookingId });
+        } catch (e) {
+          console.error("Failed to trigger bill email after wallet payment:", e);
+        }
       }
 
-      res.json({ success: true });
+      res.json({ success: true, ...txResult });
     } catch (err: any) {
       console.error('Wallet payment error:', err);
       if (err.message === 'This job has already been settled.') {

@@ -109,7 +109,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     }
   };
 
-  // Verify UTR & Confirm to Firestore ONLY when valid reference is submitted
+  // Verify UTR & Confirm to Firestore ONLY via Verified Backend API
   const handleVerifyAndConfirmPayment = async () => {
     const cleanUtr = utrInput.trim().replace(/\s+/g, '');
     if (!cleanUtr || cleanUtr.length < 6) {
@@ -122,32 +122,48 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     setError(null);
 
     try {
-      const paidAtIso = new Date().toISOString();
-
-      // Update Firestore booking document with explicit UTR confirmation
-      const bRef = doc(db, 'bookings', booking.id);
-      await updateDoc(bRef, {
-        paymentStatus: 'paid',
-        paymentMethod: walletDeduction > 0 ? 'wallet_online' : 'upi',
-        paidAt: paidAtIso,
-        paidAmount: totalBill,
-        transactionId: cleanUtr,
-        onlinePaymentProvider: selectedProvider || 'Direct UPI',
-        onlinePaymentMethod: activeTab === 'qr_code' ? 'Dynamic QR Matrix' : '1-Tap UPI Intent',
-        walletDeductAmount: walletDeduction > 0 ? walletDeduction : (booking.walletDeductAmount || 0),
-        status: booking.status === 'payment_pending' ? 'completed' : (booking.status === 'pending' ? 'confirmed' : booking.status),
-        updatedAt: Timestamp.now()
-      });
-
-      // Background notifications
+      // 1. Process partial wallet debit via secure server API if applied
       if (walletDeduction > 0) {
-        fetch('/api/pay-via-wallet', {
+        const walletRes = await fetch('/api/pay-via-wallet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id, userId: profile.uid, amount: walletDeduction }),
-        }).catch((err) => console.warn('Wallet partial debit notice:', err));
+          body: JSON.stringify({ 
+            bookingId: booking.id, 
+            userId: profile.uid, 
+            debitAmount: walletDeduction,
+            isFullSettlement: false
+          }),
+        });
+        const walletData = await walletRes.json();
+        if (!walletRes.ok || !walletData.success) {
+          throw new Error(walletData.error || 'Failed to process partial wallet deduction');
+        }
       }
 
+      // 2. Server-verified payment settlement (replaces client-side updateDoc)
+      const targetStatus = booking.status === 'payment_pending' ? 'completed' : (booking.status === 'pending' ? 'confirmed' : booking.status);
+      const verifyRes = await fetch('/api/phonepe/verify-and-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          customerUid: profile.uid,
+          merchantTransactionId: cleanUtr,
+          amount: totalBill,
+          paymentMethod: walletDeduction > 0 ? 'wallet_online' : 'upi',
+          walletDeductAmount: walletDeduction > 0 ? walletDeduction : (booking.walletDeductAmount || 0),
+          onlinePaymentProvider: selectedProvider || 'Direct UPI',
+          onlinePaymentMethod: activeTab === 'qr_code' ? 'Dynamic QR Matrix' : '1-Tap UPI Intent',
+          status: targetStatus
+        })
+      });
+
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.success) {
+        throw new Error(verifyData.error || 'Payment verification failed on server');
+      }
+
+      // Background final bill generation
       fetch('/api/send-final-bill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,7 +199,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     }
   };
 
-  // Full Wallet Payment
+  // Full Wallet Payment via Server Settlement API
   const handleWalletPayment = async () => {
     if (!profile.walletBalance || profile.walletBalance < totalBill) {
       setError('Insufficient wallet balance.');
@@ -197,25 +213,18 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       const response = await fetch('/api/pay-via-wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id, userId: profile.uid }),
+        body: JSON.stringify({ 
+          bookingId: booking.id, 
+          userId: profile.uid,
+          debitAmount: totalBill,
+          isFullSettlement: true
+        }),
       });
 
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to process wallet payment');
       }
-
-      const bRef = doc(db, 'bookings', booking.id);
-      await updateDoc(bRef, {
-        paymentStatus: 'paid',
-        paymentMethod: 'wallet',
-        paidAt: new Date().toISOString(),
-        paidAmount: totalBill,
-        walletDeductAmount: totalBill,
-        transactionId: `WAL_${Date.now().toString().slice(-8)}`,
-        status: booking.status === 'payment_pending' ? 'completed' : (booking.status === 'pending' ? 'confirmed' : booking.status),
-        updatedAt: Timestamp.now()
-      });
 
       setShowSuccess(true);
       setTimeout(() => {
