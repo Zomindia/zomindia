@@ -1576,6 +1576,35 @@ async function startServer() {
         const catName = (cleanMessage.includes("split ac") || cleanMessage.includes("स्प्लिट ac")) ? "Split AC Service" : 
                         (cleanMessage.includes("window ac") || cleanMessage.includes("विंडो ac")) ? "Window AC Service" : 
                         (cleanMessage.includes("washing machine") || cleanMessage.includes("वाशिंग मशीन")) ? "Washing Machine Service" : "RO Filter Service";
+
+        // Double-Booking Guard: Check if user already has an active order in this category
+        if (context && Array.isArray(context.bookings)) {
+          const activeBooking = context.bookings.find((b: any) => {
+            const status = (b.status || "").toLowerCase();
+            const isActive = ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(status);
+            if (!isActive) return false;
+            const bService = ((b.serviceName || b.serviceId || b.serviceType || "") + "").toLowerCase();
+            if (catName.includes("AC") && (bService.includes("ac") || bService.includes("cooling"))) return true;
+            if (catName.includes("Washing") && (bService.includes("washing") || bService.includes("washer"))) return true;
+            if (catName.includes("RO") && (bService.includes("ro") || bService.includes("water") || bService.includes("purifier") || bService.includes("filter"))) return true;
+            return false;
+          });
+
+          if (activeBooking) {
+            const bIdShort = (activeBooking.id || "").slice(-6).toUpperCase();
+            return res.json({
+              serviceType: catName,
+              issueDetails: `Active order in progress: #${bIdShort}`,
+              confidence: 100,
+              nextQuestion: isHindiRequest
+                ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${activeBooking.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
+                : `You already have an active booking (#${bIdShort}) for this service with status '${activeBooking.status}'. You can track it directly below:`,
+              isReadyToBook: false,
+              existingBookingId: activeBooking.id
+            });
+          }
+        }
+
         if (isGuest) {
           return res.json({
             serviceType: catName,
@@ -1607,11 +1636,16 @@ async function startServer() {
         chatTranscript = `User: ${message}`;
       }
 
+      // Strip redundant chatHistory from context to prevent token duplication and latency
+      const sanitizedContext = { ...(context || {}) };
+      delete sanitizedContext.chatHistory;
+
       const ai = getAi();
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: `Context: ${JSON.stringify(context || {})}\n\nCONVERSATION HISTORY:\n${chatTranscript}\n\nLatest User Message: ${message}`,
+        model: "gemini-2.5-flash",
+        contents: `Context: ${JSON.stringify(sanitizedContext)}\n\nCONVERSATION HISTORY:\n${chatTranscript}\n\nLatest User Message: ${message}`,
         config: {
+          temperature: 0.2,
           systemInstruction: `You are Zomini, the intelligent conversational lifecycle assistant for Zomindia. Your sole responsibility is to interact with users, diagnose their home service issues, and collect precise structured intent. 
 
 You operate strictly within a multi-turn diagnostic boundary. You do NOT have direct access to assign technicians or look up live database entries; your outputs will be parsed by the application backend to sync with the Firebase Realtime Database.
@@ -1624,6 +1658,10 @@ You must categorize and assist with home service issues, including:
 4. "Electrician" (e.g., short circuits, faulty switches, light installations, sockets)
 5. "Carpenter" (e.g., furniture repair, door fixing, wooden installations)
 
+ACTIVE ORDER DOUBLE-BOOKING GUARD (CRITICAL MANDATE):
+- Check context.bookings. If the customer already has an active order (status is 'pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', or 'confirmed_pay_after_service') in the same service category (AC, RO, Washing Machine, Electrician, Carpenter), you MUST set isReadyToBook to false.
+- Inform the customer in nextQuestion that their booking (#ID) is already in progress and they can track their assigned technician rather than creating a duplicate booking.
+
 REPETITIVE GREETING PREVENTION (CRITICAL):
 - You MUST NEVER repeat your full initial greeting or introduction ("Namaste ... I am Zomini ...") if the conversation history already contains previous user messages.
 - Directly address the user's issue or question without repeating generic welcome greetings.
@@ -1632,7 +1670,7 @@ SPECIFIC INTENT HANDLING MAPPINGS:
 - DIRECT BOOKING OPTION SELECTION MAPPING (CRITICAL MANDATE):
   If the user explicitly selects or sends a message choosing a specific booking package or option (e.g. contains "स्प्लिट AC", "विंडो AC", "RO फ़िल्टर", "कम्पलीट RO", "वाशिंग मशीन", "बुक करें", "book", "⚡", "स्प्लिट AC सर्विस बुक करें", "विंडो AC सर्विस बुक करें", "RO फ़िल्टर सर्विस बुक करें", "वाशिंग मशीन सर्विस बुक करें"):
   1. You MUST NOT ask "यहाँ हमारी उपलब्ध AC सर्विस पैकेज हैं" or return diagnostic questions or package option buttons again!
-  2. You MUST set isReadyToBook to true (unless context.user.role is 'Guest', in which case set isReadyToBook to false).
+  2. You MUST set isReadyToBook to true (unless context.user.role is 'Guest' or an active booking in the same category already exists, in which case set isReadyToBook to false).
   3. You MUST set serviceType appropriately ("AC Repair", "RO Service", "Washing Machine Repair", "Electrician", "Carpenter").
   4. You MUST set issueDetails to the exact requested package name and price (e.g., "स्प्लिट AC सर्विस (₹770)", "विंडो AC सर्विस (₹599)", "RO फ़िल्टर सर्विस (₹399)", "कम्पलीट RO सर्विसिंग (₹649)", "वाशिंग मशीन सर्विस (₹499)").
   5. You MUST write nextQuestion strictly in Hindi/Hinglish as:
@@ -1678,9 +1716,9 @@ UNACCOUNTED / UNLISTED HOME SERVICES (Strict Handler)
     "क्षमा करें, अभी हम इस सर्विस के लिए उपलब्ध नहीं हैं, लेकिन जल्द ही इंदौर में यह सर्विस शुरू करेंगे और आपको तुरंत इन्फॉर्म कर देंगे! 🚀"
   - You MUST supply quickActions as:
     [
-      { "label": "View AC Services", "action": "View AC Services" },
-      { "label": "View Appliances Repair", "action": "View Appliances Repair" },
-      { "label": "Talk to Human Agent", "action": "Talk to Human Agent" }
+      { "label": "View AC Services", action: "View AC Services" },
+      { "label": "View Appliances Repair", action: "View Appliances Repair" },
+      { "label": "Talk to Human Agent", action: "Talk to Human Agent" }
     ]
 
 JAILBREAK & OUT-OF-SCOPE PROTECTION
@@ -1784,6 +1822,32 @@ Structure:
         parsedJson.isReadyToBook = false;
         const category = parsedJson.serviceType && parsedJson.serviceType !== "Unknown" ? parsedJson.serviceType : "home service";
         parsedJson.nextQuestion = `I am completely ready to book your ${category}. Please click the Login button above first so we can securely link this to your mobile number and assign your Elite Partner instantly!`;
+      }
+
+      // Active Booking Guard backend enforcement on AI response
+      if (parsedJson && parsedJson.isReadyToBook === true && context && Array.isArray(context.bookings)) {
+        const cat = ((parsedJson.serviceType || "") + " " + (parsedJson.issueDetails || "")).toLowerCase();
+        const activeBooking = context.bookings.find((b: any) => {
+          const status = (b.status || "").toLowerCase();
+          const isActive = ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(status);
+          if (!isActive) return false;
+          const bService = ((b.serviceName || b.serviceId || b.serviceType || "") + "").toLowerCase();
+          if ((cat.includes("ac") || cat.includes("cool")) && (bService.includes("ac") || bService.includes("cooling"))) return true;
+          if (cat.includes("washing") && (bService.includes("washing") || bService.includes("washer"))) return true;
+          if (cat.includes("ro") && (bService.includes("ro") || bService.includes("water") || bService.includes("purifier") || bService.includes("filter"))) return true;
+          if (cat.includes("electric") && bService.includes("electric")) return true;
+          if (cat.includes("carpent") && bService.includes("carpent")) return true;
+          return false;
+        });
+
+        if (activeBooking) {
+          const bIdShort = (activeBooking.id || "").slice(-6).toUpperCase();
+          parsedJson.isReadyToBook = false;
+          parsedJson.existingBookingId = activeBooking.id;
+          parsedJson.nextQuestion = isHindiRequest
+            ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${activeBooking.status}' है। आप नीचे दिए गए कार्ड से इसे सीधे ट्रैक कर सकते हैं:`
+            : `You already have an active booking (#${bIdShort}) for this service with status '${activeBooking.status}'. You can track it directly below:`;
+        }
       }
 
       res.json(parsedJson);

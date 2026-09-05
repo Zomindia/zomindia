@@ -2066,7 +2066,13 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          try {
+            sessionStorage.removeItem("zomini_pending_booking_action");
+          } catch (e) {}
+          window.dispatchEvent(new CustomEvent("auth-modal-closed"));
+        }}
         onSuccess={() => {
           if (auth.currentUser) {
             setUser({ ...auth.currentUser } as any);

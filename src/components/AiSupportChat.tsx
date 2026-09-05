@@ -466,11 +466,31 @@ export default function AiSupportChat({
 
   const handleNavigateToBooking = (bookingId?: string) => {
     setIsOpen(false);
+    try {
+      sessionStorage.removeItem("zomini_pending_booking_action");
+    } catch (e) {}
     window.dispatchEvent(
       new CustomEvent("change-active-tab", {
         detail: { tab: "bookings", bookingId: bookingId || null }
       })
     );
+  };
+
+  const findActiveBookingForCategory = (categoryOrName: string) => {
+    if (!localBookings || !Array.isArray(localBookings) || localBookings.length === 0) return null;
+    const cat = (categoryOrName || "").toLowerCase();
+    return localBookings.find((b) => {
+      const status = (b.status || "").toLowerCase();
+      const isActive = ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(status);
+      if (!isActive) return false;
+      const bService = ((b.serviceName || (b as any).serviceType || b.serviceId || "") + "").toLowerCase();
+      if ((cat.includes("ac") || cat.includes("cool")) && (bService.includes("ac") || bService.includes("cooling"))) return true;
+      if (cat.includes("washing") && (bService.includes("washing") || bService.includes("washer"))) return true;
+      if (cat.includes("ro") && (bService.includes("ro") || bService.includes("water") || bService.includes("purifier") || bService.includes("filter"))) return true;
+      if (cat.includes("electric") && bService.includes("electric")) return true;
+      if (cat.includes("carpent") && bService.includes("carpent")) return true;
+      return false;
+    }) || null;
   };
 
   const handlePayAfterService = async (bookingId: string) => {
@@ -487,7 +507,30 @@ export default function AiSupportChat({
         }
       }
 
-      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || "Indore (Zomindia Service Area)";
+      // Active Double-Booking Check before confirming
+      const targetCategory = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
+      const existingActive = findActiveBookingForCategory(targetCategory);
+      if (existingActive && existingActive.id !== bookingId) {
+        const isHindi = selectedLang === "hi-IN";
+        const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: isHindi
+              ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
+              : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
+            bookingData: existingActive,
+            quickActions: [
+              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+            ]
+          }
+        ]);
+        return;
+      }
+
+      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || (userProfile as any)?.address || "Indore (Zomindia Service Area)";
       const chosenSlotObj = selectedSlots[bookingId];
       const todayFullyBooked = isDateFullyBooked("today");
       const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
@@ -498,20 +541,27 @@ export default function AiSupportChat({
       const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
       const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
       const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
-
       const resolvedEmail = userProfile?.email || auth.currentUser?.email || "";
 
       const bookingRef = doc(db, "bookings", bookingId);
       const fee = bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195;
+      const serviceTitle = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
+
+      // Unified Firestore Payload strictly identical to BookingModal.tsx
       const confirmedPayload = {
+        id: bookingId,
         customerUid: activeUid,
         userId: activeUid,
         customerId: activeUid,
         serviceId: bookingPayload?.serviceId || "service_home_service",
-        partnerId: bookingPayload?.partnerId || null,
-        serviceType: bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service",
-        issueDetails: bookingPayload?.issueDetails || bookingPayload?.serviceType || "Home Service",
+        serviceName: serviceTitle,
+        serviceType: serviceTitle,
+        issueDetails: bookingPayload?.issueDetails || serviceTitle,
         visitationFee: fee,
+        partnerId: bookingPayload?.partnerId || null,
+        status: "pending",
+        paymentMethod: "cash",
+        paymentStatus: "pay_after_service",
         totalPrice: fee,
         originalBillValue: fee,
         paidAmount: 0,
@@ -523,11 +573,8 @@ export default function AiSupportChat({
         scheduledSlot,
         scheduledAt: Timestamp.now(),
         address: selectedAddress,
-        lat: (bookingPayload?.lat !== undefined && bookingPayload?.lat !== null && !isNaN(Number(bookingPayload.lat))) ? Number(bookingPayload.lat) : null,
-        lng: (bookingPayload?.lng !== undefined && bookingPayload?.lng !== null && !isNaN(Number(bookingPayload.lng))) ? Number(bookingPayload.lng) : null,
-        status: "pending",
-        paymentMethod: "cash",
-        paymentStatus: "pay_after_service",
+        lat: (bookingPayload?.lat !== undefined && bookingPayload?.lat !== null && !isNaN(Number(bookingPayload.lat))) ? Number(bookingPayload.lat) : ((userProfile as any)?.lat || null),
+        lng: (bookingPayload?.lng !== undefined && bookingPayload?.lng !== null && !isNaN(Number(bookingPayload.lng))) ? Number(bookingPayload.lng) : ((userProfile as any)?.lng || null),
         serviceOtp: bookingPayload?.serviceOtp || String(Math.floor(1000 + Math.random() * 9000)),
         otpVerified: false,
         customerBookedName: resolvedName,
@@ -545,6 +592,23 @@ export default function AiSupportChat({
       };
 
       await setDoc(bookingRef, confirmedPayload, { merge: true });
+
+      // Parallel sync to /api/bookings
+      try {
+        await fetch('/api/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Customer-Uid': activeUid
+          },
+          body: JSON.stringify({
+            ...confirmedPayload,
+            bookingId
+          })
+        });
+      } catch (apiErr) {
+        console.warn("API trigger note:", apiErr);
+      }
 
       setMessages((prev) =>
         prev.map((m: any) => {
@@ -608,7 +672,30 @@ export default function AiSupportChat({
         }
       }
 
-      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || "Indore (Zomindia Service Area)";
+      // Active Double-Booking Check before online checkout
+      const targetCategory = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
+      const existingActive = findActiveBookingForCategory(targetCategory);
+      if (existingActive && existingActive.id !== bookingId) {
+        const isHindi = selectedLang === "hi-IN";
+        const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: isHindi
+              ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
+              : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
+            bookingData: existingActive,
+            quickActions: [
+              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+            ]
+          }
+        ]);
+        return;
+      }
+
+      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || (userProfile as any)?.address || "Indore (Zomindia Service Area)";
       const chosenSlotObj = selectedSlots[bookingId];
       const todayFullyBooked = isDateFullyBooked("today");
       const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
@@ -619,6 +706,8 @@ export default function AiSupportChat({
       const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
       const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
       const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
+      const resolvedEmail = userProfile?.email || auth.currentUser?.email || "";
+      const serviceTitle = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
 
       const updatedPayload = {
         ...(bookingPayload || {}),
@@ -626,17 +715,30 @@ export default function AiSupportChat({
         customerUid: activeUid,
         userId: activeUid,
         customerId: activeUid,
-        serviceType: bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service",
-        issueDetails: bookingPayload?.issueDetails || bookingPayload?.serviceType || "Home Service",
+        serviceId: bookingPayload?.serviceId || "service_home_service",
+        serviceName: serviceTitle,
+        serviceType: serviceTitle,
+        issueDetails: bookingPayload?.issueDetails || serviceTitle,
         visitationFee: bookingPayload?.visitationFee || 195,
         totalPrice: bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195,
         scheduledSlot,
+        scheduledAt: Timestamp.now(),
         address: selectedAddress,
+        lat: (bookingPayload?.lat !== undefined && bookingPayload?.lat !== null && !isNaN(Number(bookingPayload.lat))) ? Number(bookingPayload.lat) : ((userProfile as any)?.lat || null),
+        lng: (bookingPayload?.lng !== undefined && bookingPayload?.lng !== null && !isNaN(Number(bookingPayload.lng))) ? Number(bookingPayload.lng) : ((userProfile as any)?.lng || null),
         status: "pending_checkout",
         paymentStatus: "unpaid",
         paymentMethod: "online",
+        customerBookedName: resolvedName,
+        customerBookedPhone: resolvedMobile,
+        customerBookedEmail: resolvedEmail,
         customerName: resolvedName,
         customerMobile: resolvedMobile,
+        customerData: {
+          fullName: resolvedName,
+          mobile: resolvedMobile,
+          email: resolvedEmail
+        },
         updatedAt: Timestamp.now()
       };
 
@@ -718,16 +820,41 @@ export default function AiSupportChat({
         await setDoc(
           bookingRef,
           {
-            status: "confirmed",
+            status: "pending",
             paymentStatus: "paid",
             paymentMethod: "online",
             paymentIntentId: merchantTransactionId,
+            transactionId: merchantTransactionId,
+            onlinePaymentProvider: "phonepe",
+            onlinePaymentMethod: "upi",
+            paidAmount: amount,
             updatedAt: Timestamp.now()
           },
           { merge: true }
         );
       } catch (dbErr) {
         console.warn("Firestore confirm update notice:", dbErr);
+      }
+
+      // Parallel sync to /api/bookings
+      try {
+        await fetch('/api/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Customer-Uid': activeUid
+          },
+          body: JSON.stringify({
+            bookingId,
+            status: "pending",
+            paymentStatus: "paid",
+            paymentMethod: "online",
+            paidAmount: amount,
+            transactionId: merchantTransactionId
+          })
+        });
+      } catch (apiErr) {
+        console.warn("API trigger note:", apiErr);
       }
 
       // Update message state in chat
@@ -1030,31 +1157,16 @@ export default function AiSupportChat({
     });
   }, [userProfile, localBookings]);
 
-  // Keep starting message context locked and updated dynamically
+  // Listen for auth modal close to clear any pending booking action
   useEffect(() => {
-    let startingMessage = "Welcome to Zomindia! Please log in to chat with Zomini and track your active home services.";
-    if (userProfile) {
-      const userName = userProfile.fullName || userProfile.displayName || "User";
-      const activeBooking = localBookings.find(b => b.status !== 'completed' && b.status !== 'cancelled');
-      if (activeBooking) {
-        const serviceLabel = (activeBooking as any)?.serviceName || "active home";
-        startingMessage = `Namaste ${userName}, your ${serviceLabel.toLowerCase()} service expert is on the way.`;
-      } else {
-        startingMessage = `Namaste ${userName}! I am Zomini, your Zomindia AI Assistant. How can I help you with your home services today?`;
-      }
-    }
-
-    setMessages((prev) => {
-      if (prev.length === 0) {
-        return [{ role: "ai", text: startingMessage }];
-      }
-      // ONLY update the initial greeting message if conversation has NOT started (i.e. prev has only 1 message)
-      if (prev.length === 1 && prev[0].role === "ai") {
-        return [{ role: "ai", text: startingMessage }];
-      }
-      return prev;
-    });
-  }, [userProfile, localBookings, isPartner]);
+    const handleAuthModalClosed = () => {
+      try {
+        sessionStorage.removeItem("zomini_pending_booking_action");
+      } catch (e) {}
+    };
+    window.addEventListener("auth-modal-closed", handleAuthModalClosed);
+    return () => window.removeEventListener("auth-modal-closed", handleAuthModalClosed);
+  }, []);
 
   const handleInlineLogin = (pendingPackageText?: string) => {
     if (pendingPackageText) {
@@ -1069,6 +1181,10 @@ export default function AiSupportChat({
   };
 
   const triggerDirectBookingFlow = (actionText: string, currentUser: UserProfile) => {
+    try {
+      sessionStorage.removeItem("zomini_pending_booking_action");
+    } catch (e) {}
+
     let packageName = "स्प्लिट AC सर्विस (₹770)";
     let detectedType = "AC Repair";
 
@@ -1091,6 +1207,28 @@ export default function AiSupportChat({
       detectedType = "Washing Machine Repair";
     } else {
       packageName = actionText.replace(/⚡/g, "").trim() || "होम सर्विस पैकेज (₹195)";
+    }
+
+    // Active Booking Guard: prevent duplicate booking if an active order exists for this category
+    const existingActive = findActiveBookingForCategory(detectedType || packageName);
+    if (existingActive) {
+      const isHindi = selectedLang === "hi-IN";
+      const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: isHindi
+            ? `आपके पास पहले से ही ${packageName} के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
+            : `You already have an active booking (#${bIdShort}) for ${packageName} with status '${existingActive.status}'. You can track it directly below:`,
+          bookingData: existingActive,
+          quickActions: [
+            { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+            { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+          ]
+        }
+      ]);
+      return;
     }
 
     let matchedService = allServices.find(s => 
@@ -1128,15 +1266,20 @@ export default function AiSupportChat({
       [draftBookingId]: { date: defaultDate, slot: defaultSlot }
     }));
 
+    const priceMatch = packageName.match(/₹(\d+)/);
+    const resolvedFee = priceMatch ? Number(priceMatch[1]) : (matchedService.basePrice || 195);
+
     const bookingPayload = {
       customerUid: activeUid,
       userId: activeUid,
       customerId: activeUid,
       serviceId: resolvedServiceId,
+      serviceName: packageName,
       serviceType: packageName,
       issueDetails: packageName,
-      visitationFee: 195,
-      totalPrice: 195,
+      visitationFee: resolvedFee,
+      totalPrice: resolvedFee,
+      originalBillValue: resolvedFee,
       status: "pending_checkout",
       paymentStatus: "unpaid",
       paymentMethod: "cash",
@@ -1145,6 +1288,8 @@ export default function AiSupportChat({
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
       address: (currentUser as any)?.address || "Indore (Zomindia Service Area)",
+      lat: (currentUser as any)?.lat || null,
+      lng: (currentUser as any)?.lng || null,
       customerBookedEmail: resolvedEmail,
       customerBookedPhone: resolvedMobile,
       customerBookedName: resolvedFullName,
@@ -1274,6 +1419,7 @@ export default function AiSupportChat({
       const res = await fetch("/api/support-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           message: queryToSend,
           context: {
@@ -1291,6 +1437,7 @@ export default function AiSupportChat({
               id: b.id,
               status: b.status,
               serviceId: b.serviceId,
+              serviceName: b.serviceName,
               scheduledAt:
                 b.scheduledAt?.toDate?.()?.toLocaleString() || b.scheduledAt,
               totalPrice: b.totalPrice,
@@ -1303,11 +1450,55 @@ export default function AiSupportChat({
 
       const data = await res.json();
       if (res.ok) {
+        // Double Booking Guard from Backend: If backend reported an existing active booking
+        if (data.existingBookingId) {
+          const matchedActive = localBookings.find(b => b.id === data.existingBookingId);
+          if (matchedActive) {
+            const bIdShort = (matchedActive.id || "").slice(-6).toUpperCase();
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "ai",
+                text: data.nextQuestion || data.reply || `You already have an active booking (#${bIdShort}) in progress. Here is your tracking card:`,
+                bookingData: matchedActive,
+                quickActions: [
+                  { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+                  { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+                ]
+              }
+            ]);
+            return;
+          }
+        }
+
         const isGuest = !userProfile;
         if (data.isReadyToBook === true && !isGuest) {
           try {
             // Strictly validate serviceType against catalog services with resilient fallback
             const detectedType = data.serviceType || "AC Repair";
+
+            // Double Booking Guard on Frontend as well
+            const existingActive = findActiveBookingForCategory(detectedType || data.issueDetails || "");
+            if (existingActive) {
+              const isHindi = selectedLang === "hi-IN";
+              const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "ai",
+                  text: isHindi
+                    ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
+                    : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
+                  bookingData: existingActive,
+                  quickActions: [
+                    { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+                    { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+                  ]
+                }
+              ]);
+              return;
+            }
+
             let matchedService = allServices.find(s => 
               s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
               detectedType.toLowerCase().includes(s.name?.toLowerCase() || "") ||
@@ -1333,16 +1524,19 @@ export default function AiSupportChat({
 
             // Create a randomized 4-digit service OTP
             const serviceOtp = String(Math.floor(1000 + Math.random() * 9000));
+            const serviceTitle = matchedService.name || data.issueDetails || "Home Service";
 
             const bookingPayload = {
               customerUid: activeUid,
               userId: activeUid,
               customerId: activeUid,
               serviceId: resolvedServiceId,
-              serviceType: data.issueDetails || matchedService.name,
-              issueDetails: data.issueDetails || "Zomini Diagnosed Issue",
+              serviceName: serviceTitle,
+              serviceType: serviceTitle,
+              issueDetails: data.issueDetails || serviceTitle,
               visitationFee: 195,
               totalPrice: 195,
+              originalBillValue: 195,
               status: "pending_checkout",
               paymentStatus: "unpaid",
               paymentMethod: "cash",
@@ -1350,6 +1544,8 @@ export default function AiSupportChat({
               createdAt: Timestamp.now(),
               updatedAt: Timestamp.now(),
               address: (userProfile as any)?.address || "Indore (Zomindia Service Area)",
+              lat: (userProfile as any)?.lat || null,
+              lng: (userProfile as any)?.lng || null,
               customerBookedEmail: resolvedEmail,
               customerBookedPhone: resolvedMobile,
               customerBookedName: resolvedFullName,
@@ -1405,12 +1601,17 @@ export default function AiSupportChat({
           },
         ]);
       }
-    } catch (err) {
+    } catch (err: any) {
+      const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
       setMessages((prev) => [
         ...prev,
         {
           role: "ai",
-          text: "Something went wrong. Let me assist you via WhatsApp support instead.",
+          text: isTimeout
+            ? (selectedLang === "hi-IN"
+                ? "सर्वर से जवाब मिलने में समय लग रहा है (टाइमआउट)। कृपया पुनः प्रयास करें या हमारी हेल्पलाइन पर संपर्क करें।"
+                : "The request timed out. Please try again or connect directly with our support helpline.")
+            : "Something went wrong. Let me assist you via WhatsApp support instead.",
         },
       ]);
     } finally {
@@ -1522,7 +1723,12 @@ export default function AiSupportChat({
                 </div>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  try {
+                    sessionStorage.removeItem("zomini_pending_booking_action");
+                  } catch (e) {}
+                }}
                 className="text-indigo-300 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer active:scale-90"
               >
                 <X size={18} />
