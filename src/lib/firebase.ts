@@ -8,6 +8,7 @@ import {
   setLogLevel,
   persistentLocalCache,
   persistentMultipleTabManager,
+  memoryLocalCache,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { offlineSyncEngine } from './offlineQueue';
@@ -15,24 +16,40 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Set log level to prevent benign connection warning spam in sandboxed iframe environments
-setLogLevel('error');
+// Set log level to silent to prevent benign connection warning spam in sandboxed iframe environments
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore if unsupported
+}
 
-// Initialize Firestore with auto-detect long polling and multi-tab persistent cache
+// Initialize Firestore with experimentalForceLongPolling to avoid failed WebSocket handshakes in iframe environments
 let firestoreDb;
 try {
   firestoreDb = initializeFirestore(
     app,
     {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
     },
     firebaseConfig.firestoreDatabaseId
   );
-} catch {
-  firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+} catch (e1) {
+  try {
+    // If persistentLocalCache fails (e.g. IndexedDB restricted in cross-origin iframe), try memory cache with force long polling
+    firestoreDb = initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        localCache: memoryLocalCache(),
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
 }
 
 export const db = firestoreDb;
@@ -45,7 +62,6 @@ offlineSyncEngine.setDb(db);
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connection test: SUCCESS");
   } catch (error) {
     if (error instanceof Error) {
       if (
@@ -54,9 +70,9 @@ async function testConnection() {
         error.message.includes('Could not reach') ||
         error.message.includes('Failed to get document because the client is offline')
       ) {
-        console.warn("Firestore: Operating with offline cache until connection is established.");
+        // Expected behavior when offline or waiting for initial handshake in sandbox
       } else {
-        console.error("Firestore connection notice:", error.message);
+        console.warn("Firestore connection notice:", error.message);
       }
     }
   }
