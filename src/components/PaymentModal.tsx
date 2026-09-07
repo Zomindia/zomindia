@@ -267,8 +267,15 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
   const formattedQrTimer = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+    <motion.div
+      key="customer-payment-modal-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs"
+    >
       <motion.div
+        key="customer-payment-modal-card"
         initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 12 }}
@@ -662,6 +669,6 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           )}
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

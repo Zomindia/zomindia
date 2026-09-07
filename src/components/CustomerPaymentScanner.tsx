@@ -209,8 +209,15 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
+    <motion.div
+      key="customer-payment-scanner-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md"
+    >
       <motion.div
+        key="customer-payment-scanner-card"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
@@ -339,6 +346,6 @@ export const CustomerPaymentScanner: React.FC<CustomerPaymentScannerProps> = ({
           </button>
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 };

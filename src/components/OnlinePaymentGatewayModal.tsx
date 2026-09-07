@@ -368,20 +368,25 @@ export default function OnlinePaymentGatewayModal({
   const seconds = qrTimer % 60;
   const formattedQrTimer = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      id="online-payment-gateway-modal"
-      className="fixed inset-0 z-[250] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 12 }}
-        transition={{ duration: 0.18 }}
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col my-auto max-h-[92vh] font-sans"
-      >
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="online-payment-gateway-modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          id="online-payment-gateway-modal"
+          className="fixed inset-0 z-[250] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
+        >
+          <motion.div
+            key="online-payment-gateway-modal-card"
+            initial={{ opacity: 0, scale: 0.97, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 12 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col my-auto max-h-[92vh] font-sans"
+          >
         {/* TOP MINIMALIST WHITE & ROYAL BLUE HEADER */}
         <div className="bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -989,7 +994,9 @@ export default function OnlinePaymentGatewayModal({
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

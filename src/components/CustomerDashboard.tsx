@@ -237,6 +237,7 @@ function PartnerLiveStatus({
       <AnimatePresence>
         {isOpen && (
           <motion.div
+            key={`partner-tracking-wrapper-${bookingId || partnerId || 'default'}`}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -285,6 +286,7 @@ function SafetyInfoTooltip({ partnerId, isVerified = true, kycStatus = 'verified
       <AnimatePresence>
         {isOpen && (
           <motion.div
+            key="safety-tooltip-dropdown"
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -1848,7 +1850,13 @@ export default function CustomerDashboard({
       {/* INCOMING SECURE CALL MODAL */}
       <AnimatePresence>
         {activeCoordinatedCallBooking && (
-          <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
+          <motion.div
+            key={`incoming-call-modal-${activeCoordinatedCallBooking.id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md"
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1895,14 +1903,20 @@ export default function CustomerDashboard({
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {/* Success Confirmation Modal */}
       <AnimatePresence>
         {showSuccessModal && (
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md">
+          <motion.div
+            key="success-confirmation-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md"
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1925,7 +1939,7 @@ export default function CustomerDashboard({
                 Acknowledge
               </button>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
       {/* Unified Premium Active Booking Ticker Console */}
@@ -3427,6 +3441,7 @@ export default function CustomerDashboard({
       <AnimatePresence>
         {selectedService && (
           <BookingModal
+            key={`booking-modal-${selectedService.id}`}
             service={selectedService}
             profile={profile}
             onClose={() => setSelectedService(null)}
@@ -3442,6 +3457,7 @@ export default function CustomerDashboard({
       <AnimatePresence>
         {activeBookingChat && (
           <ChatWindow
+            key={`active-booking-chat-${activeBookingChat.id}`}
             booking={activeBookingChat}
             otherUser={partners[activeBookingChat.partnerId!] || null}
             onClose={() => setActiveBookingChat(null)}
@@ -3453,7 +3469,13 @@ export default function CustomerDashboard({
 
       <AnimatePresence>
         {finalizingBooking && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <motion.div
+            key={`finalizing-booking-overlay-${finalizingBooking.id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          >
             {/* Immersive backdrop with vibrant glowing indicators - click to close disabled for paid bookings to enforce review */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -3857,13 +3879,14 @@ export default function CustomerDashboard({
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {bookingToPay && (
           <PaymentModal
+            key={`customer-payment-modal-${bookingToPay.id}`}
             booking={bookingToPay}
             profile={profile}
             onClose={() => setBookingToPay(null)}
@@ -3896,6 +3919,7 @@ export default function CustomerDashboard({
       <AnimatePresence>
         {isPaymentScannerOpen && (
           <CustomerPaymentScanner
+            key="customer-payment-scanner-modal"
             bookings={bookings}
             onClose={() => setIsPaymentScannerOpen(false)}
             onScanSuccess={handlePaymentScanSuccess}

@@ -436,6 +436,193 @@ export default function AiSupportChat({
     }
   }, [input, messages, selectedLang]);
 
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const q = query(collection(db, "services"));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        setAllServices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Could not load services for AI Chat mapping:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      }
+    };
+    scrollToBottom();
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => clearTimeout(timer);
+  }, [messages, isOpen, isLoading]);
+
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && typeof customEvent.detail.open === "boolean") {
+        setIsOpen(customEvent.detail.open);
+      } else {
+        setIsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("toggle-ai-chat", handleToggle);
+    return () => window.removeEventListener("toggle-ai-chat", handleToggle);
+  }, []);
+
+  // Sync or fetch bookings dynamically
+  useEffect(() => {
+    if (bookings) {
+      setLocalBookings(bookings);
+      return;
+    }
+    if (!userProfile) {
+      setLocalBookings([]);
+      return;
+    }
+
+    try {
+      const roleField =
+        userProfile.role === "partner" ? "partnerId" : "customerId";
+      const q = query(
+        collection(db, "bookings"),
+        where(roleField, "==", userProfile.uid),
+        orderBy("createdAt", "desc"),
+        limit(5),
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map(
+            (doc) => ({ id: doc.id, ...doc.data() }) as Booking,
+          );
+          setLocalBookings(list);
+        },
+        (err) => {
+          console.warn(
+            "Silent fallback: bookings list permission in AI Chat:",
+            err,
+          );
+        },
+      );
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Could not load bookings inside AI Chat:", e);
+    }
+  }, [userProfile?.uid, bookings]);
+
+  // Page Refresh Recovery: Restore active checkouts/confirmations dynamically
+  useEffect(() => {
+    if (!userProfile || localBookings.length === 0) return;
+
+    const recoverable = localBookings.filter(
+      (b) =>
+        b.status === "pending_checkout" ||
+        b.status === "confirmed" ||
+        b.status === "confirmed_pay_after_service"
+    );
+
+    if (recoverable.length === 0) return;
+
+    setMessages((prev) => {
+      let updated = [...prev];
+      let changed = false;
+
+      recoverable.forEach((booking) => {
+        const hasMsg = updated.some(
+          (m) => (m as any).bookingData?.id === booking.id
+        );
+        if (!hasMsg) {
+          changed = true;
+          const bAny = booking as any;
+          if (booking.status === "pending_checkout") {
+            // Restore draft details so offline/online actions work immediately
+            setDraftBookings((prevDrafts) => {
+              if (prevDrafts[booking.id]) return prevDrafts;
+              return { ...prevDrafts, [booking.id]: booking };
+            });
+
+            updated.push({
+              role: "ai",
+              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${bAny.serviceType || "Home Service"}:`,
+              bookingData: {
+                id: booking.id,
+                serviceType: bAny.serviceType || "Home Service",
+                visitationFee: bAny.visitationFee || 195,
+                status: "pending_checkout"
+              }
+            });
+          } else {
+            updated.push({
+              role: "ai",
+              text:
+                booking.status === "confirmed_pay_after_service"
+                  ? `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} has been successfully confirmed (Pay After Service).`
+                  : `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} is paid and fully confirmed.`,
+              bookingData: {
+                id: booking.id,
+                serviceType: bAny.serviceType || "Home Service",
+                visitationFee: bAny.visitationFee || 195,
+                status: booking.status
+              }
+            });
+          }
+        }
+      });
+
+      return changed ? updated : prev;
+    });
+  }, [userProfile, localBookings]);
+
+  // Listen for auth modal close to clear any pending booking action
+  useEffect(() => {
+    const handleAuthModalClosed = () => {
+      try {
+        sessionStorage.removeItem("zomini_pending_booking_action");
+      } catch (e) {}
+    };
+    window.addEventListener("auth-modal-closed", handleAuthModalClosed);
+    return () => window.removeEventListener("auth-modal-closed", handleAuthModalClosed);
+  }, []);
+
+  // Auto-resume pending booking after login/OTP verification
+  useEffect(() => {
+    if (!userProfile) return;
+
+    let pendingAction = "";
+    try {
+      pendingAction = sessionStorage.getItem("zomini_pending_booking_action") || "";
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (pendingAction) {
+      try {
+        sessionStorage.removeItem("zomini_pending_booking_action");
+      } catch (e) {
+        console.warn(e);
+      }
+
+      setIsOpen(true);
+      triggerDirectBookingFlow(pendingAction, userProfile);
+    }
+  }, [userProfile?.uid, allServices]);
+
   const updateBookingSlot = (bookingId: string, date: string, slot: string) => {
     setSelectedSlots((prev) => ({ ...prev, [bookingId]: { date, slot } }));
     setDraftBookings((prev) => {
@@ -982,170 +1169,6 @@ export default function AiSupportChat({
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    try {
-      const q = query(collection(db, "services"));
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setAllServices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Could not load services for AI Chat mapping:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "end",
-        });
-      }
-    };
-    scrollToBottom();
-    const timer = setTimeout(scrollToBottom, 60);
-    return () => clearTimeout(timer);
-  }, [messages, isOpen, isLoading]);
-
-  useEffect(() => {
-    const handleToggle = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail && typeof customEvent.detail.open === "boolean") {
-        setIsOpen(customEvent.detail.open);
-      } else {
-        setIsOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener("toggle-ai-chat", handleToggle);
-    return () => window.removeEventListener("toggle-ai-chat", handleToggle);
-  }, []);
-
-  // Sync or fetch bookings dynamically
-  useEffect(() => {
-    if (bookings) {
-      setLocalBookings(bookings);
-      return;
-    }
-    if (!userProfile) {
-      setLocalBookings([]);
-      return;
-    }
-
-    try {
-      const roleField =
-        userProfile.role === "partner" ? "partnerId" : "customerId";
-      const q = query(
-        collection(db, "bookings"),
-        where(roleField, "==", userProfile.uid),
-        orderBy("createdAt", "desc"),
-        limit(5),
-      );
-
-      const unsubscribe = onSnapshot(
-        q,
-        (snap) => {
-          const list = snap.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as Booking,
-          );
-          setLocalBookings(list);
-        },
-        (err) => {
-          console.warn(
-            "Silent fallback: bookings list permission in AI Chat:",
-            err,
-          );
-        },
-      );
-
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Could not load bookings inside AI Chat:", e);
-    }
-  }, [userProfile?.uid, bookings]);
-
-  // Page Refresh Recovery: Restore active checkouts/confirmations dynamically
-  useEffect(() => {
-    if (!userProfile || localBookings.length === 0) return;
-
-    const recoverable = localBookings.filter(
-      (b) =>
-        b.status === "pending_checkout" ||
-        b.status === "confirmed" ||
-        b.status === "confirmed_pay_after_service"
-    );
-
-    if (recoverable.length === 0) return;
-
-    setMessages((prev) => {
-      let updated = [...prev];
-      let changed = false;
-
-      recoverable.forEach((booking) => {
-        const hasMsg = updated.some(
-          (m) => (m as any).bookingData?.id === booking.id
-        );
-        if (!hasMsg) {
-          changed = true;
-          const bAny = booking as any;
-          if (booking.status === "pending_checkout") {
-            // Restore draft details so offline/online actions work immediately
-            setDraftBookings((prevDrafts) => {
-              if (prevDrafts[booking.id]) return prevDrafts;
-              return { ...prevDrafts, [booking.id]: booking };
-            });
-
-            updated.push({
-              role: "ai",
-              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${bAny.serviceType || "Home Service"}:`,
-              bookingData: {
-                id: booking.id,
-                serviceType: bAny.serviceType || "Home Service",
-                visitationFee: bAny.visitationFee || 195,
-                status: "pending_checkout"
-              }
-            });
-          } else {
-            updated.push({
-              role: "ai",
-              text:
-                booking.status === "confirmed_pay_after_service"
-                  ? `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} has been successfully confirmed (Pay After Service).`
-                  : `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} is paid and fully confirmed.`,
-              bookingData: {
-                id: booking.id,
-                serviceType: bAny.serviceType || "Home Service",
-                visitationFee: bAny.visitationFee || 195,
-                status: booking.status
-              }
-            });
-          }
-        }
-      });
-
-      return changed ? updated : prev;
-    });
-  }, [userProfile, localBookings]);
-
-  // Listen for auth modal close to clear any pending booking action
-  useEffect(() => {
-    const handleAuthModalClosed = () => {
-      try {
-        sessionStorage.removeItem("zomini_pending_booking_action");
-      } catch (e) {}
-    };
-    window.addEventListener("auth-modal-closed", handleAuthModalClosed);
-    return () => window.removeEventListener("auth-modal-closed", handleAuthModalClosed);
-  }, []);
-
   const handleInlineLogin = (pendingPackageText?: string) => {
     if (pendingPackageText) {
       try {
@@ -1299,29 +1322,6 @@ export default function AiSupportChat({
       }
     ]);
   };
-
-  // Auto-resume pending booking after login/OTP verification
-  useEffect(() => {
-    if (!userProfile) return;
-
-    let pendingAction = "";
-    try {
-      pendingAction = sessionStorage.getItem("zomini_pending_booking_action") || "";
-    } catch (e) {
-      console.warn(e);
-    }
-
-    if (pendingAction) {
-      try {
-        sessionStorage.removeItem("zomini_pending_booking_action");
-      } catch (e) {
-        console.warn(e);
-      }
-
-      setIsOpen(true);
-      triggerDirectBookingFlow(pendingAction, userProfile);
-    }
-  }, [userProfile?.uid, allServices]);
 
   // Direct sending helper for suggest clicks to bypass multiple fields
   const sendQueryDirectly = async (displayText: string, queryActionOverride?: string) => {

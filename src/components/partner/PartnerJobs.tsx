@@ -333,6 +333,7 @@ function AssignedTasksMiniMap({
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
+            key="partner-tasks-map-wrapper"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -515,6 +516,7 @@ function AssignedTasksMiniMap({
                   <AnimatePresence initial={false}>
                     {isDetailsExpanded && (
                       <motion.div
+                        key="partner-task-details"
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
@@ -1560,7 +1562,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     const isHistory = ['completed', 'finalized', 'cancelled'].includes(bookingStatus);
 
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <motion.div
+        key={`booking-details-overlay-${bookingId}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+      >
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -1982,6 +1990,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   <AnimatePresence>
                     {showPartnerQRId === booking.id && (
                       <motion.div
+                        key={`partner-phonepe-qr-${booking.id}`}
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
@@ -2100,7 +2109,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
 
       </motion.div>
-    </div>
+    </motion.div>
     );
   };
 
@@ -2487,7 +2496,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         {verifyingOTPId && (() => {
           const bookingForOTP = bookings.find(b => b.id === verifyingOTPId);
           return (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-blue-700/60 backdrop-blur-md">
+            <motion.div
+              key={`verifying-otp-overlay-${verifyingOTPId}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-blue-700/60 backdrop-blur-md"
+            >
                <motion.div 
                  initial={{ scale: 0.9, opacity: 0 }}
                  animate={{ scale: 1, opacity: 1 }}
@@ -2567,14 +2582,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                      </div>
                   </div>
                </motion.div>
-            </div>
+            </motion.div>
           );
         })()}
       </AnimatePresence>
 
       <AnimatePresence>
         {confirmFinishId && (
-          <div className="fixed inset-0 z-[130] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm overflow-y-auto">
+          <motion.div
+            key={`confirm-finish-overlay-${confirmFinishId}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[130] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm overflow-y-auto"
+          >
              <motion.div 
                initial={{ scale: 0.9, opacity: 0 }}
                animate={{ scale: 1, opacity: 1 }}
@@ -2700,7 +2721,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                    </button>
                 </div>
              </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -2708,19 +2729,26 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
       <AnimatePresence>
         {activeChat && (
-          <div className="fixed inset-0 z-[120]">
+          <motion.div
+            key={`partner-active-chat-${activeChat.id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120]"
+          >
             <ChatWindow 
                booking={activeChat} 
                otherUser={customers[activeChat.customerUid]} 
                onClose={() => setActiveChat(null)} 
             />
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {completedSuccessBooking && (
           <JobCompletionSuccess 
+            key={`completed-success-booking-${completedSuccessBooking.id}`}
             booking={completedSuccessBooking}
             partner={partner}
             serviceName={services[completedSuccessBooking.serviceId]?.name || 'Premium Service'}
