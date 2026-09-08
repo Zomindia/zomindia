@@ -301,15 +301,23 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
 
     // Fetch bookings data
     const fetchBookings = () => {
+        // Standardize ID Matching: Cover profile.uid, partner.id, partner.userId, and profile.partnerId fallback
+        const candidatePartnerIds = Array.from(new Set([
+          profile.uid,
+          partner?.id,
+          partner?.userId,
+          (profile as any).partnerId
+        ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
+
         const qMy = query(
           collection(db, 'bookings'), 
-          where('partnerId', '==', profile.uid),
-          orderBy('scheduledAt', 'desc')
+          where('partnerId', 'in', candidatePartnerIds.length > 0 ? candidatePartnerIds : [profile.uid])
         );
+
+        // Update Pool Query: Expand unassigned pool jobs to include unassigned confirmed bookings
         const qPool = query(
           collection(db, 'bookings'), 
-          where('status', '==', 'pending'),
-          orderBy('scheduledAt', 'desc')
+          where('status', 'in', ['pending', 'confirmed'])
         );
 
         let myBookings: Booking[] = [];
@@ -318,6 +326,12 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         const updateAllBookings = (my: Booking[], pool: Booking[]) => {
           if (!isMounted) return;
           const combined = [...my, ...pool.filter(p => !my.find(m => m.id === p.id))];
+          // In-memory sort by scheduledAt / createdAt (newest first) to avoid composite index requirements
+          combined.sort((a, b) => {
+            const timeA = (a.scheduledAt as any)?.seconds || (a.createdAt as any)?.seconds || 0;
+            const timeB = (b.scheduledAt as any)?.seconds || (b.createdAt as any)?.seconds || 0;
+            return timeB - timeA;
+          });
           setBookings(combined);
         };
 
@@ -340,7 +354,10 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           qPool,
           (snap) => {
             if (!isMounted) return;
-            poolBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.partnerId);
+            // Filter only unassigned bookings (when partnerId == null or empty)
+            poolBookings = snap.docs
+              .map(d => ({ id: d.id, ...d.data() } as Booking))
+              .filter(b => !b.partnerId || b.partnerId === "");
             updateAllBookings(myBookings, poolBookings);
           },
           (err) => {
@@ -420,7 +437,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       if (typeof unsubUsers === "function") unsubUsers();
       if (typeof unsubApplication === "function") unsubApplication();
     };
-  }, [profile.uid]);
+  }, [profile.uid, partner?.id]);
 
   // Lock active screen to home if partner application is pending review
   useEffect(() => {

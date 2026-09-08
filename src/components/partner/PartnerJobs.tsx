@@ -1216,6 +1216,10 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const ongoingJobs = bookings
     .filter(b => {
       const s = b.status?.toLowerCase();
+      // Unassigned bookings belong in the invitations / pool tab until accepted
+      if (!b.partnerId && (s === 'pending' || s === 'confirmed' || s === 'pending_acceptance')) {
+        return false;
+      }
       return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
     })
     .sort((a, b) => {
@@ -1227,7 +1231,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     });
   const pendingInvitations = bookings.filter(b => {
     const s = b.status?.toLowerCase();
-    return s === 'pending_acceptance' || (s === 'pending' && !b.partnerId);
+    return s === 'pending_acceptance' || ((s === 'pending' || s === 'confirmed') && !b.partnerId);
   }); 
   const historyJobs = bookings
     .filter(b => {

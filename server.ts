@@ -886,9 +886,21 @@ async function startServer() {
       } else {
         const existingData = existingDoc.exists ? existingDoc.data() : null;
         if (!requestedStatus) {
-          resolvedStatus = existingData?.status === "payment_pending" 
-            ? "completed" 
-            : (existingData?.status === "pending" ? "confirmed" : existingData?.status || "confirmed");
+          if (existingData?.status === "payment_pending") {
+            resolvedStatus = "completed";
+          } else if (
+            existingData?.status === "in_progress" || 
+            existingData?.status === "completed" || 
+            existingData?.status === "assigned" || 
+            existingData?.status === "on_the_way" || 
+            existingData?.status === "arrived"
+          ) {
+            resolvedStatus = existingData.status;
+          } else if (existingData?.status === "pending") {
+            resolvedStatus = "confirmed";
+          } else {
+            resolvedStatus = existingData?.status || "confirmed";
+          }
         }
 
         finalAmount = finalAmount || Number(existingData?.totalPrice) || 0;
@@ -973,7 +985,7 @@ async function startServer() {
         success: true,
         bookingId,
         paymentStatus: "paid",
-        status: "confirmed",
+        status: resolvedStatus,
         transactionId: txnId
       });
     } catch (err: any) {

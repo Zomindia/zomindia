@@ -774,8 +774,6 @@ export default function CustomerHome({
           "in_progress",
           "payment_pending",
           "pending_parts",
-          "completed",
-          "finalized",
         ];
         const bookings = snap.docs
           .map((doc) => ({ id: doc.id, ...doc.data() } as Booking))
@@ -1840,7 +1838,7 @@ export default function CustomerHome({
                     </div>
                     <div className="min-w-0">
                       <span className="block text-[8px] font-black text-slate-450 uppercase tracking-widest leading-none mb-0.5">
-                        {["completed", "finalized", "closed"].includes(activeBooking.status) ? "Completed Service" : "Active Service"}
+                        Active Service
                       </span>
                       <h4 className="text-xs font-black text-slate-950 leading-tight truncate uppercase italic tracking-tight">
                         {bookingService?.name || "Home Maintenance"}
@@ -1921,18 +1919,7 @@ export default function CustomerHome({
                       </span>
                     </div>
 
-                    {!["completed", "finalized", "closed"].includes(activeBooking.status) ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveTab("bookings", activeBooking.id);
-                        }}
-                        className="bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 flex items-center gap-1.5 border-0 cursor-pointer"
-                      >
-                        Track Job <ArrowRight size={11} strokeWidth={2.5} />
-                      </button>
-                    ) : activeBooking.paymentStatus !== "paid" ? (
+                    {activeBooking.status === "payment_pending" ? (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1944,89 +1931,18 @@ export default function CustomerHome({
                         Pay Invoice <ArrowRight size={11} strokeWidth={2.5} />
                       </button>
                     ) : (
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-150">
-                        Paid & Completed
-                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveTab("bookings", activeBooking.id);
+                        }}
+                        className="bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 flex items-center gap-1.5 border-0 cursor-pointer"
+                      >
+                        Track Job <ArrowRight size={11} strokeWidth={2.5} />
+                      </button>
                     )}
                   </div>
-
-                  {/* Rating & Review option at bottom of completed card */}
-                  {["completed", "finalized", "closed"].includes(activeBooking.status) && (
-                    <div className="mt-2.5 pt-3 border-t border-slate-100 flex flex-col gap-2 relative z-30" onClick={(e) => e.stopPropagation()}>
-                      {ratedBookings[activeBooking.id] ? (
-                        <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-2.5 rounded-2xl text-center space-y-0.5 shadow-sm">
-                          <p className="text-[9.5px] font-black uppercase tracking-widest text-emerald-700">Thank you!</p>
-                          <p className="text-[9px] font-bold text-slate-650">Your review has been successfully submitted.</p>
-                        </div>
-                      ) : activeBooking.paymentStatus !== "paid" ? (
-                        <div className="bg-amber-50/50 border border-amber-100 p-2.5 rounded-xl text-center space-y-1">
-                          <p className="text-[9.5px] font-black text-amber-800 uppercase tracking-wide">Payment Needed</p>
-                          <p className="text-[9px] font-semibold text-slate-500">
-                            Please complete payment first to share experience rating & feedback.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-[9.5px] font-black uppercase tracking-wider text-slate-400 leading-none pl-0.5">
-                            Rate & Review Service
-                          </p>
-                          
-                          {/* Mini star selector */}
-                          <div className="flex items-center gap-1.5 pl-0.5">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onClick={() => setHomeRating(star)}
-                                className="transition-transform active:scale-130 hover:scale-110 cursor-pointer"
-                              >
-                                <Star
-                                  size={18}
-                                  fill={star <= homeRating ? "currentColor" : "none"}
-                                  className={star <= homeRating ? "text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)]" : "text-slate-200 hover:text-amber-300"}
-                                />
-                              </button>
-                            ))}
-                            {homeRating > 0 && (
-                              <span className="text-[9px] font-black text-amber-600 uppercase font-mono bg-amber-50 px-2 py-0.5 rounded-md">
-                                {homeRating} Star{homeRating > 1 ? "s" : ""}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Quick comment feedback */}
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={homeComment}
-                              onChange={(e) => setHomeComment(e.target.value)}
-                              placeholder="Add feedback? (excellence behavior, prompt)..."
-                              className="w-full bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 text-[10px] focus:ring-2 focus:ring-blue-600/50 outline-none placeholder:text-slate-400 font-medium text-slate-800"
-                            />
-                          </div>
-
-                          {/* Action Submission Button */}
-                          <button
-                            type="button"
-                            onClick={submitCardReview}
-                            disabled={homeRating === 0 || isSubmittingHomeReview}
-                            className={`w-full py-2.5 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                              homeRating === 0 || isSubmittingHomeReview
-                                ? "bg-slate-100 text-slate-405 border border-slate-200/50 cursor-not-allowed"
-                                : "bg-blue-600 hover:bg-blue-705 text-white shadow-md active:scale-97 cursor-pointer"
-                            }`}
-                          >
-                            {isSubmittingHomeReview ? (
-                              <BrandedButtonSpinner className="w-3.5 h-3.5" />
-                            ) : (
-                              <Sparkles size={11} className="animate-pulse" />
-                            )}
-                            {isSubmittingHomeReview ? "Submitting..." : "Submit Experience Feedback"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </motion.div>
               </div>
             </div>

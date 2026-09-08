@@ -992,41 +992,24 @@ export default function AiSupportChat({
         })
       });
 
+      const verifyData = await verifyRes.json().catch(() => ({}));
       if (!verifyRes.ok) {
-        const errJson = await verifyRes.json().catch(() => ({}));
-        throw new Error(errJson.error || "PhonePe gateway confirmation failed");
-      }
-
-      // Parallel sync to /api/bookings
-      try {
-        await fetch('/api/bookings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Customer-Uid': activeUid
-          },
-          body: JSON.stringify({
-            bookingId,
-            status: "pending",
-            paymentStatus: "paid",
-            paymentMethod: "online",
-            paidAmount: amount,
-            transactionId: merchantTransactionId
-          })
-        });
-      } catch (apiErr) {
-        console.warn("API trigger note:", apiErr);
+        throw new Error(verifyData.error || "PhonePe gateway confirmation failed");
       }
 
       // Update message state in chat
       setMessages((prev) =>
         prev.map((m: any) => {
           if (m.bookingData && m.bookingData.id === bookingId) {
+            const dynamicStatus =
+              ["completed", "finalized", "in_progress", "assigned", "on_the_way", "arrived"].includes(m.bookingData.status)
+                ? m.bookingData.status
+                : (verifyData.status || m.bookingData.status || "confirmed");
             return {
               ...m,
               bookingData: {
                 ...m.bookingData,
-                status: "confirmed",
+                status: dynamicStatus,
                 paymentStatus: "paid",
                 paymentMethod: "online"
               }
@@ -1037,7 +1020,9 @@ export default function AiSupportChat({
       );
 
       // Zomini posts confirmation message in chat
-      const confirmMsg = `🎉 Payment Received! Your booking #${bookingId.slice(-6).toUpperCase()} is now CONFIRMED.`;
+      const resolvedBookingStatus = verifyData.status || "confirmed";
+      const statusNotice = resolvedBookingStatus === "completed" ? "PAID & COMPLETED" : "CONFIRMED";
+      const confirmMsg = `🎉 Payment Received! Your booking #${bookingId.slice(-6).toUpperCase()} is now ${statusNotice}.`;
       setMessages((prev) => [
         ...prev,
         {
@@ -1047,7 +1032,7 @@ export default function AiSupportChat({
             id: bookingId,
             serviceType: activePhonePePayment.serviceType,
             visitationFee: amount,
-            status: "confirmed",
+            status: resolvedBookingStatus,
             paymentStatus: "paid"
           }
         }

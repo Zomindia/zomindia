@@ -244,12 +244,16 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     setError(null);
     try {
       const bRef = doc(db, 'bookings', booking.id);
-      await updateDoc(bRef, {
+      const isProgressedOrCompleted = ['completed', 'finalized', 'in_progress', 'assigned', 'on_the_way', 'arrived', 'cancelled'].includes(booking.status);
+      const updatePayload: Record<string, any> = {
         paymentMethod: 'cash',
         paymentStatus: 'pay_after_service',
-        status: booking.status === 'payment_pending' ? 'payment_pending' : 'confirmed',
         updatedAt: Timestamp.now()
-      });
+      };
+      if (!isProgressedOrCompleted && booking.status !== 'payment_pending') {
+        updatePayload.status = 'confirmed';
+      }
+      await updateDoc(bRef, updatePayload);
       setShowSuccess(true);
       setTimeout(() => {
         onSuccess();
