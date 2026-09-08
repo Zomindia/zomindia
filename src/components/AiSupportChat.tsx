@@ -557,29 +557,25 @@ export default function AiSupportChat({
               return { ...prevDrafts, [booking.id]: booking };
             });
 
+            const serviceTitle = booking.serviceName || bAny.serviceType || "Home Service";
             updated.push({
               role: "ai",
-              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${bAny.serviceType || "Home Service"}:`,
-              bookingData: {
-                id: booking.id,
-                serviceType: bAny.serviceType || "Home Service",
-                visitationFee: bAny.visitationFee || 195,
-                status: "pending_checkout"
-              }
+              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${serviceTitle}:`,
+              bookingData: booking
             });
           } else {
+            const isPayAfter =
+              booking.paymentStatus === "pay_after_service" ||
+              booking.paymentMethod === "cash" ||
+              booking.paymentMethod === "pay_after_service" ||
+              booking.status === "confirmed_pay_after_service";
+            const serviceTitle = booking.serviceName || bAny.serviceType || "Home Service";
             updated.push({
               role: "ai",
-              text:
-                booking.status === "confirmed_pay_after_service"
-                  ? `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} has been successfully confirmed (Pay After Service).`
-                  : `Welcome back! Your booking for ${bAny.serviceType || "Home Service"} is paid and fully confirmed.`,
-              bookingData: {
-                id: booking.id,
-                serviceType: bAny.serviceType || "Home Service",
-                visitationFee: bAny.visitationFee || 195,
-                status: booking.status
-              }
+              text: isPayAfter
+                ? `Welcome back! Your booking for ${serviceTitle} has been successfully confirmed (Pay After Service).`
+                : `Welcome back! Your booking for ${serviceTitle} is paid and fully confirmed.`,
+              bookingData: booking
             });
           }
         }
@@ -1340,15 +1336,85 @@ export default function AiSupportChat({
     setMessages((prev) => [...prev, { role: "user", text: displayText }]);
 
     const queryToSend = queryActionOverride || displayText;
+    const cleanQ = (queryToSend + " " + displayText).toLowerCase();
+
+    // 1. Direct Booking Tracking & Status Resolution:
+    // If the query references an existing booking (e.g. #QVS8MZ or QVS8MZ)
+    const matchedByCode = localBookings.find((b) => {
+      const fullId = (b.id || "").toLowerCase();
+      const shortId = (b.id || "").slice(-6).toLowerCase();
+      return (shortId && cleanQ.includes(shortId)) || (fullId && cleanQ.includes(fullId));
+    });
+
+    if (matchedByCode) {
+      const bIdShort = (matchedByCode.id || "").slice(-6).toUpperCase();
+      const isHindi = selectedLang === "hi-IN";
+      const sTitle = matchedByCode.serviceName || (matchedByCode as any).serviceType || "Home Service";
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: isHindi
+            ? `बुकिंग #${bIdShort} (${sTitle}) का वर्तमान स्टेटस '${matchedByCode.status}' है। पूरा पेमेंट विवरण और लाइव ट्रैकिंग नीचे दी गई है:`
+            : `Here is the verified status and complete payment breakdown for booking #${bIdShort} (${sTitle}):`,
+          bookingData: matchedByCode,
+          quickActions: [
+            { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+            { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+          ]
+        }
+      ]);
+      return;
+    }
+
+    const isTrackingIntent =
+      cleanQ.includes("track") ||
+      cleanQ.includes("status") ||
+      cleanQ.includes("ट्रैक") ||
+      cleanQ.includes("स्टेटस") ||
+      cleanQ.includes("where is") ||
+      cleanQ.includes("कहाँ है") ||
+      cleanQ.includes("technician");
+
+    if (isTrackingIntent && localBookings.length > 0) {
+      const activeBooking = localBookings.find((b) =>
+        ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(b.status)
+      ) || localBookings[0];
+
+      if (activeBooking) {
+        const bIdShort = (activeBooking.id || "").slice(-6).toUpperCase();
+        const isHindi = selectedLang === "hi-IN";
+        const sTitle = activeBooking.serviceName || (activeBooking as any).serviceType || "Home Service";
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: isHindi
+              ? `आपकी एक्टिव बुकिंग #${bIdShort} (${sTitle}) का स्टेटस '${activeBooking.status}' है:`
+              : `Your active booking #${bIdShort} (${sTitle}) is currently in status '${activeBooking.status}':`,
+            bookingData: activeBooking,
+            quickActions: [
+              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
+              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+            ]
+          }
+        ]);
+        return;
+      }
+    }
+
     const isBookingAction =
-      queryToSend.includes("बुक") ||
-      queryToSend.includes("Book") ||
-      queryToSend.includes("book") ||
-      queryToSend.includes("⚡") ||
-      displayText.includes("बुक") ||
-      displayText.includes("Book") ||
-      displayText.includes("book") ||
-      displayText.includes("⚡");
+      !isTrackingIntent &&
+      (
+        queryToSend.toLowerCase().startsWith("book ") ||
+        queryToSend.toLowerCase().includes(" book ") ||
+        queryToSend.includes("बुक") ||
+        queryToSend.includes("⚡") ||
+        displayText.toLowerCase().startsWith("book ") ||
+        displayText.toLowerCase().includes(" book ") ||
+        displayText.includes("बुक") ||
+        displayText.includes("⚡")
+      );
 
     if (isBookingAction) {
       if (!userProfile) {
@@ -1415,10 +1481,16 @@ export default function AiSupportChat({
               id: b.id,
               status: b.status,
               serviceId: b.serviceId,
-              serviceName: b.serviceName,
+              serviceName: b.serviceName || (b as any).serviceType,
               scheduledAt:
                 b.scheduledAt?.toDate?.()?.toLocaleString() || b.scheduledAt,
               totalPrice: b.totalPrice,
+              visitationFee: b.visitationFee || b.originalBillValue || b.totalPrice,
+              originalBillValue: b.originalBillValue || b.visitationFee || b.totalPrice,
+              couponDiscount: b.couponDiscount || b.discountApplied || 0,
+              walletDeductAmount: b.walletDeductAmount || 0,
+              paymentStatus: b.paymentStatus,
+              paymentMethod: b.paymentMethod,
               address: b.address,
             })),
             chatHistory: [...messages, { role: "user", text: displayText }],
@@ -1837,17 +1909,41 @@ export default function AiSupportChat({
                               </div>
                               <span className="font-extrabold text-indigo-900 text-[11px] uppercase tracking-wider">डायरेक्ट बुक करें (Direct Booking)</span>
                             </div>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full">
-                              ₹{(msg as any).bookingData.visitationFee || 195} Inspection
+                            <span className="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-full border border-indigo-250">
+                              ₹{(msg as any).bookingData.totalPrice ?? ((msg as any).bookingData.visitationFee || 195)} Payable
                             </span>
                           </div>
 
-                          <div className="bg-white p-2 rounded-lg border border-indigo-100 space-y-2">
+                          <div className="bg-white p-2.5 rounded-xl border border-indigo-100 space-y-2">
                             <div>
                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">चुनी गई सर्विस पैकेज</p>
-                              <p className="text-[11.5px] font-black text-slate-900">
-                                {(msg as any).bookingData.issueDetails || (msg as any).bookingData.serviceType}
+                              <p className="text-[12px] font-black text-slate-900">
+                                {(msg as any).bookingData.serviceName || (msg as any).bookingData.issueDetails || (msg as any).bookingData.serviceType || "Home Service"}
                               </p>
+                            </div>
+
+                            {/* Transparent Price Summary */}
+                            <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-200/80 space-y-1 text-xs">
+                              <div className="flex justify-between items-center text-[11px] text-slate-600">
+                                <span>Base / Inspection Fee</span>
+                                <span className="font-bold text-slate-800">₹{(msg as any).bookingData.visitationFee || (msg as any).bookingData.originalBillValue || (msg as any).bookingData.totalPrice || 195}</span>
+                              </div>
+                              {Boolean(((msg as any).bookingData.couponDiscount || (msg as any).bookingData.discountApplied || 0) > 0) && (
+                                <div className="flex justify-between items-center text-[11px] text-emerald-700 font-bold">
+                                  <span>Discount / Coupon</span>
+                                  <span>-₹{(msg as any).bookingData.couponDiscount || (msg as any).bookingData.discountApplied}</span>
+                                </div>
+                              )}
+                              {Boolean(((msg as any).bookingData.walletDeductAmount || 0) > 0) && (
+                                <div className="flex justify-between items-center text-[11px] text-purple-700 font-bold">
+                                  <span>Wallet Deduction</span>
+                                  <span>-₹{(msg as any).bookingData.walletDeductAmount}</span>
+                                </div>
+                              )}
+                              <div className="pt-1 border-t border-slate-200 flex justify-between items-center font-black text-slate-900">
+                                <span className="text-[10.5px] uppercase tracking-wider">Final Payable</span>
+                                <span className="text-xs text-[#002e6e] font-black">₹{(msg as any).bookingData.totalPrice ?? ((msg as any).bookingData.visitationFee || 195)}</span>
+                              </div>
                             </div>
 
                             {/* Slot Selection */}
@@ -1988,63 +2084,122 @@ export default function AiSupportChat({
                             );
                           })()}
                         </div>
-                      ) : (
-                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 shadow-sm space-y-2.5 relative overflow-hidden text-left">
-                          {/* Success background glow */}
-                          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 bg-emerald-200/40 rounded-full blur-xl"></div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-extrabold text-[10px]">
-                                ✓
+                      ) : (() => {
+                        const rawB = (msg as any).bookingData || {};
+                        const liveB = rawB.id ? localBookings.find((b) => b.id === rawB.id) : null;
+                        const b: Booking = (liveB ? { ...rawB, ...liveB } : rawB) as Booking;
+
+                        const isAmc = Boolean(b.isAmcBooking || b.isAmcCovered || b.tier === "amc");
+                        const hasValidOnlineTxn = Boolean(
+                          b.transactionId &&
+                          b.paymentStatus === "paid" &&
+                          b.paymentMethod !== "cash" &&
+                          b.paymentMethod !== "pay_after_service"
+                        );
+                        const isPaid =
+                          isAmc ||
+                          (b.paymentMethod === "wallet" && (b.walletDeductAmount ?? 0) > 0) ||
+                          (b.paymentStatus === "paid" && b.paymentMethod !== "cash" && b.paymentMethod !== "pay_after_service") ||
+                          hasValidOnlineTxn;
+
+                        const baseFee = b.visitationFee || b.originalBillValue || (b.totalPrice || 0);
+                        const discount = b.couponDiscount || b.discountApplied || 0;
+                        const walletDeduct = b.walletDeductAmount || 0;
+                        const finalPayable = b.totalPrice ?? (baseFee - discount - walletDeduct);
+
+                        const serviceTitle = b.serviceName || (b as any).serviceType || "Home Service";
+                        const shortId = (b.id || "").slice(-6).toUpperCase();
+
+                        return (
+                          <div className="bg-emerald-50/90 border border-emerald-300/90 rounded-2xl p-3.5 shadow-sm space-y-3 relative overflow-hidden text-left">
+                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-14 h-14 bg-emerald-200/40 rounded-full blur-xl pointer-events-none"></div>
+
+                            <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
+                                  ✓
+                                </div>
+                                <span className="font-black text-emerald-950 text-xs">
+                                  {b.status === "completed"
+                                    ? "Service Completed"
+                                    : isPaid
+                                    ? "Booking Paid & Confirmed"
+                                    : "Booking Confirmed (Pay After Service)"}
+                                </span>
                               </div>
-                              <span className="font-extrabold text-emerald-800 text-xs">
-                                {(msg as any).bookingData.status === "confirmed_pay_after_service" 
-                                  ? "Cash Booking Confirmed" 
-                                  : "Booking Paid & Confirmed"
-                                }
+                              <span className="text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-200/70 text-emerald-900 border border-emerald-400/60">
+                                {b.status ? b.status.replace(/_/g, " ") : "CONFIRMED"}
                               </span>
                             </div>
 
-                            {/* Interactive PAY NOW button for unpaid or Cash bookings */}
-                            {((msg as any).bookingData.status === "confirmed_pay_after_service" || (msg as any).bookingData.paymentStatus === "unpaid") && (
+                            <div className="bg-white/85 rounded-xl p-2.5 border border-emerald-200/70 space-y-1 relative z-10">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Service</span>
+                                <span className="font-extrabold text-slate-900 text-right truncate max-w-[180px]">{serviceTitle}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Booking ID</span>
+                                <span className="font-mono font-extrabold text-[#002e6e] text-xs">#{shortId}</span>
+                              </div>
+                            </div>
+
+                            {/* Complete Transparent Payment Breakup */}
+                            <div className="bg-white/95 rounded-xl p-2.5 border border-emerald-200/80 space-y-1.5 text-xs relative z-10">
+                              <div className="flex justify-between items-center text-[11px] text-slate-600">
+                                <span>Base / Inspection Fee</span>
+                                <span className="font-bold text-slate-800">₹{baseFee}</span>
+                              </div>
+                              {discount > 0 && (
+                                <div className="flex justify-between items-center text-[11px] text-emerald-700 font-bold">
+                                  <span>Discount / Coupon {b.promoCode ? `(${b.promoCode})` : ""}</span>
+                                  <span>-₹{discount}</span>
+                                </div>
+                              )}
+                              {walletDeduct > 0 && (
+                                <div className="flex justify-between items-center text-[11px] text-purple-700 font-bold">
+                                  <span>Wallet Deduction</span>
+                                  <span>-₹{walletDeduct}</span>
+                                </div>
+                              )}
+                              <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center font-black">
+                                <span className="text-slate-800 text-[11px] uppercase tracking-wider">Final Payable</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm text-[#002e6e] font-black">₹{finalPayable}</span>
+                                  {isPaid ? (
+                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      Paid Online
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300">
+                                      Pay Cash/UPI After Service
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2 flex-wrap relative z-10">
                               <button
-                                onClick={() => handlePayOnline((msg as any).bookingData.id)}
-                                disabled={isSubmitting}
-                                className="bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[10px] px-2.5 py-1 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 animate-pulse"
+                                onClick={() => handleNavigateToBooking(b.id)}
+                                className="text-[11px] font-black text-emerald-800 hover:text-emerald-950 flex items-center gap-1 hover:underline cursor-pointer bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-1 rounded-lg transition-colors"
                               >
-                                <CreditCard size={12} className="text-purple-200" />
-                                <span>💳 PAY NOW</span>
+                                <span>Track Status ➔</span>
                               </button>
-                            )}
-                          </div>
 
-                          <div className="space-y-0.5">
-                            <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Service Type</p>
-                            <p className="text-[11.5px] font-black text-slate-800">{(msg as any).bookingData.serviceType}</p>
+                              {!isPaid && b.status !== "completed" && b.status !== "cancelled" && (
+                                <button
+                                  onClick={() => handlePayOnline(b.id)}
+                                  disabled={isSubmitting}
+                                  className="bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[10.5px] px-3 py-1 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  <CreditCard size={12} className="text-purple-200" />
+                                  <span>💳 Pay Online Instead</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
-
-                          <div className="space-y-0.5">
-                            <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Inspection Fee</p>
-                            <p className="text-[11.5px] font-black text-slate-800">
-                              ₹{(msg as any).bookingData.visitationFee || 195} 
-                              <span className="ml-1.5 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                                {(msg as any).bookingData.status === "confirmed_pay_after_service" || (msg as any).bookingData.paymentStatus === "unpaid" ? "Pay After Service (COD)" : "Paid via PhonePe"}
-                              </span>
-                            </p>
-                          </div>
-
-                          <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
-                            <button
-                              onClick={() => handleNavigateToBooking((msg as any).bookingData?.id)}
-                              className="text-[10.5px] font-extrabold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5 hover:underline cursor-pointer"
-                            >
-                              <span>Track Status ➔</span>
-                            </button>
-                            <span className="text-[9px] text-emerald-600/70 font-mono">ID: #{((msg as any).bookingData.id || "").slice(-6).toUpperCase()}</span>
-                          </div>
-                        </div>
-                      )
+                        );
+                      })()
                     ) : (
                       <div>
                         <div>{maskPhoneNumbers(msg.text)}</div>

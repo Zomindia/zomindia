@@ -1761,6 +1761,31 @@ async function startServer() {
         });
       }
 
+      // Explicit booking ID or tracking inquiry matching
+      if (context && Array.isArray(context.bookings)) {
+        const matchedBooking = context.bookings.find((b: any) => {
+          const fullId = (b.id || "").toLowerCase();
+          const shortId = (b.id || "").slice(-6).toLowerCase();
+          return (shortId && cleanMessage.includes(shortId)) || (fullId && cleanMessage.includes(fullId));
+        });
+
+        if (matchedBooking) {
+          const bIdShort = (matchedBooking.id || "").slice(-6).toUpperCase();
+          const sTitle = matchedBooking.serviceName || matchedBooking.serviceId || "Service";
+          const payText = matchedBooking.paymentStatus === 'paid' ? 'Paid Online' : 'Pay After Service';
+          return res.json({
+            serviceType: sTitle,
+            issueDetails: `Status check for #${bIdShort}`,
+            confidence: 100,
+            nextQuestion: isHindiRequest
+              ? `आपकी बुकिंग #${bIdShort} (${sTitle}) का वर्तमान स्टेटस '${matchedBooking.status}' है। कुल देय राशि ₹${matchedBooking.totalPrice || 0} (${payText}) है:`
+              : `Your booking #${bIdShort} (${sTitle}) is currently in status '${matchedBooking.status}'. Total payable is ₹${matchedBooking.totalPrice || 0} (${payText}):`,
+            isReadyToBook: false,
+            existingBookingId: matchedBooking.id
+          });
+        }
+      }
+
       // Priority direct intent interception for quick action button triggers
       if (
         cleanMessage.includes("book split ac") || cleanMessage.includes("book window ac") || 

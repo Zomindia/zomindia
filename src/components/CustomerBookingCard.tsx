@@ -654,6 +654,51 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
         </div>
       )}
 
+      {/* Transparent Payment Breakup */}
+      {(() => {
+        const baseFee = (booking as any).visitationFee || (booking as any).originalBillValue || service?.basePrice || booking.totalPrice || 0;
+        const discount = (booking as any).couponDiscount || booking.discountApplied || 0;
+        const walletDeduct = booking.walletDeductAmount || 0;
+        const finalPayable = booking.totalPrice ?? (baseFee - discount - walletDeduct);
+
+        return (
+          <div className="mt-3 bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 space-y-1.5 text-xs relative z-10">
+            <div className="flex items-center justify-between text-slate-600 text-[11.5px]">
+              <span className="font-semibold">Base / Inspection Fee</span>
+              <span className="font-bold text-slate-800">₹{baseFee}</span>
+            </div>
+            {discount > 0 && (
+              <div className="flex items-center justify-between text-emerald-700 font-semibold text-[11.5px]">
+                <span>Discount / Coupon {booking.promoCode ? `(${booking.promoCode})` : ""}</span>
+                <span className="font-bold">-₹{discount}</span>
+              </div>
+            )}
+            {walletDeduct > 0 && (
+              <div className="flex items-center justify-between text-purple-700 font-semibold text-[11.5px]">
+                <span>Wallet Deduction</span>
+                <span className="font-bold">-₹{walletDeduct}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/80 font-black">
+              <span className="text-slate-800 uppercase tracking-wider text-[10.5px]">Final Payable</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-[#002e6e] font-black">₹{finalPayable}</span>
+                {isPaid ? (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                    <CheckCircle2 size={11} className="text-emerald-600" />
+                    Paid Online
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 inline-flex items-center gap-1">
+                    Pay Cash/UPI After Service
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 3. Single Dynamic Payment & Action Bar (Eliminates Dual-Payment Button Conflict) */}
       <div className="flex items-center justify-between pt-3.5 mt-3.5 border-t border-slate-200/80 relative z-10 gap-3 flex-wrap">
         {/* Left: Total & Context-Aware Payment Indicator */}

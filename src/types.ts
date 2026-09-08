@@ -334,6 +334,10 @@ export interface Booking {
   discountApplied?: number;
   promoCode?: string | null;
   walletDeductAmount?: number;
+  visitationFee?: number;
+  originalBillValue?: number;
+  couponDiscount?: number;
+  serviceType?: string;
   isAmcBooking?: boolean;
   amcId?: string | null;
   activeCall?: ActiveCallInfo | null;

@@ -2614,6 +2614,32 @@ export default function CustomerDashboard({
                               )}
                             </div>
                           </div>
+
+                          {/* Complete Transparent Payment Breakup */}
+                          <div className="w-full mt-2.5 pt-2 border-t border-slate-100 bg-slate-50/80 rounded-xl p-2.5 text-xs text-slate-600 space-y-1">
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="font-semibold text-slate-500">Base / Inspection Fee</span>
+                              <span className="font-bold text-slate-800">
+                                ₹{booking.visitationFee || booking.originalBillValue || services[booking.serviceId]?.basePrice || booking.totalPrice}
+                              </span>
+                            </div>
+                            {Boolean((booking.couponDiscount || booking.discountApplied || 0) > 0) && (
+                              <div className="flex justify-between items-center text-[11px] text-emerald-700 font-semibold">
+                                <span>Discount / Coupon {booking.promoCode ? `(${booking.promoCode})` : ""}</span>
+                                <span>-₹{booking.couponDiscount || booking.discountApplied}</span>
+                              </div>
+                            )}
+                            {Boolean((booking.walletDeductAmount || 0) > 0) && (
+                              <div className="flex justify-between items-center text-[11px] text-purple-700 font-semibold">
+                                <span>Wallet Deduction</span>
+                                <span>-₹{booking.walletDeductAmount}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center text-xs font-black text-slate-900 pt-1 border-t border-slate-200/60">
+                              <span>Final Payable</span>
+                              <span className="text-sm font-black text-[#002e6e]">₹{booking.totalPrice}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -2749,28 +2775,36 @@ export default function CustomerDashboard({
                             <div className="space-y-2.5 text-xs">
                               <div className="flex justify-between items-center text-slate-600">
                                 <span className="font-semibold text-slate-600">
-                                  {services[booking.serviceId]?.name ||
-                                    "Base Fare"}
+                                  Base / Inspection Fee ({services[booking.serviceId]?.name || booking.serviceName || "Service"})
                                 </span>
                                 <span className="font-extrabold text-slate-900">
                                   ₹
-                                  {services[booking.serviceId]?.basePrice ||
+                                  {booking.visitationFee ||
+                                    booking.originalBillValue ||
+                                    services[booking.serviceId]?.basePrice ||
                                     booking.totalPrice}
                                 </span>
                               </div>
 
-                              {booking.discountApplied &&
-                              booking.discountApplied > 0 ? (
+                              {Boolean((booking.couponDiscount || booking.discountApplied || 0) > 0) && (
                                 <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 font-extrabold">
                                   <span>
-                                    Discount Applied (
-                                    {booking.promoCode || "PROMO"})
+                                    Discount Applied ({booking.promoCode || "PROMO"})
                                   </span>
                                   <span className="font-black">
-                                    -₹{booking.discountApplied}
+                                    -₹{booking.couponDiscount || booking.discountApplied}
                                   </span>
                                 </div>
-                              ) : null}
+                              )}
+
+                              {Boolean((booking.walletDeductAmount || 0) > 0) && (
+                                <div className="flex justify-between items-center text-purple-700 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200 font-extrabold">
+                                  <span>Wallet Deduction</span>
+                                  <span className="font-black">
+                                    -₹{booking.walletDeductAmount}
+                                  </span>
+                                </div>
+                              )}
 
                               {/* Additional Charges added by Partner */}
                               {booking.additionalCharges &&
