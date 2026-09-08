@@ -108,7 +108,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerUid) : null;
 
   // Compile real metrics from bookings for the sparklines
-  const myBookings = bookings.filter(b => b.partnerId === profile.uid);
+  const myBookings = bookings.filter(b => b.partnerId === profile.uid || b.partnerId === partner?.id || b.partnerId === partner?.userId);
   const totalCompleted = myBookings.filter(b => ['completed', 'finalized', 'closed'].includes(b.status)).length;
   const totalCanceled = myBookings.filter(b => b.status === 'cancelled').length;
   const myTotal = myBookings.length;

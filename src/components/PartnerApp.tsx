@@ -325,10 +325,9 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           qMy,
           (snap) => {
             if (!isMounted) return;
-            const activeOrAssignedStatuses = ['pending_acceptance', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'];
-            myBookings = snap.docs
-              .map(d => ({ id: d.id, ...d.data() } as Booking))
-              .filter(b => activeOrAssignedStatuses.includes(b.status || ''));
+            // Retain all assigned bookings (active, pending, completed, finalized, and cancelled)
+            // so both active workspace tabs and history/completed tabs receive real-time data
+            myBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
             updateAllBookings(myBookings, poolBookings);
           },
           (err) => {

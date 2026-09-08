@@ -311,6 +311,7 @@ export interface Booking {
   serviceOtp?: string;
   otpVerified?: boolean;
   settledAt?: any;
+  completedAt?: any;
   progressPercentage?: number;
   checklist?: string[];
   startOTP?: string;

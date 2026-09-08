@@ -1155,7 +1155,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookingId: booking.id,
-          partnerId: partner?.id
+          partnerId: partner?.userId || profile?.uid || partner?.id || booking.partnerId
         })
       });
 
@@ -1229,10 +1229,17 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     const s = b.status?.toLowerCase();
     return s === 'pending_acceptance' || (s === 'pending' && !b.partnerId);
   }); 
-  const historyJobs = bookings.filter(b => 
-    ['completed', 'finalized', 'cancelled'].includes(b.status?.toLowerCase()) && 
-    !['assigned', 'in_progress', 'on_the_way', 'arrived', 'confirmed'].includes(b.status?.toLowerCase())
-  );
+  const historyJobs = bookings
+    .filter(b => {
+      const s = b.status?.toLowerCase() || '';
+      return ['completed', 'finalized', 'cancelled'].includes(s) && 
+        !['assigned', 'in_progress', 'on_the_way', 'arrived', 'confirmed'].includes(s);
+    })
+    .sort((a, b) => {
+      const timeA = (a.completedAt as any)?.seconds || (a.settledAt as any)?.seconds || (a.scheduledAt as any)?.seconds || 0;
+      const timeB = (b.completedAt as any)?.seconds || (b.settledAt as any)?.seconds || (b.scheduledAt as any)?.seconds || 0;
+      return timeB - timeA;
+    });
 
   // Sync Customers & Services (Optimization: could be handled in parent and passed down)
   useEffect(() => {

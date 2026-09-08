@@ -1006,7 +1006,7 @@ async function startServer() {
 
         const totalPrice = Number(bookingData.totalPrice || 0);
         const rewardPts = 10;
-        const targetPartnerId = partnerId || bookingData.partnerId;
+        const targetPartnerId = bookingData.partnerId || partnerId;
 
         t.update(bookingRef, {
           status: "completed",
@@ -1014,6 +1014,7 @@ async function startServer() {
           paymentMethod: "cash",
           paidAmount: totalPrice,
           paidAt: new Date().toISOString(),
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
           settledAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
