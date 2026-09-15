@@ -1642,7 +1642,7 @@ export default function CustomerHome({
       )}
 
       {/* Hero Section */}
-      <section className={`relative transition-all duration-500 ease-in-out ${activeBooking && !recentCardDismissed ? 'min-h-[400px] md:min-h-[500px] py-10 md:py-12' : 'min-h-[320px] md:min-h-[380px] py-8 md:py-10'} flex items-center justify-center bg-blue-700 ${searchQuery ? 'z-[45] overflow-visible' : 'z-10 overflow-hidden'}`}>
+      <section className={`relative transition-all duration-500 ease-in-out ${activeBooking && !recentCardDismissed ? 'min-h-[400px] md:min-h-[500px] py-10 md:py-12' : 'min-h-[320px] md:min-h-[380px] py-8 md:py-10'} flex items-center justify-center bg-blue-700 ${searchQuery.trim().length > 0 ? 'z-[50] overflow-visible' : 'z-10 overflow-hidden'}`}>
         <div className="absolute inset-0 z-0">
           <img
             src={heroImage}
@@ -1688,8 +1688,18 @@ export default function CustomerHome({
                       placeholder={currentPlaceholder}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full px-6 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base placeholder:text-slate-400 placeholder:font-medium"
+                      className="w-full px-5 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base placeholder:text-slate-400 placeholder:font-medium"
                     />
+                    {searchQuery.trim().length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="p-2.5 mr-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer"
+                        aria-label="Clear search"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-xl transition-all shadow-lg active:scale-95 shrink-0 flex items-center justify-center w-12 h-12 cursor-pointer"
@@ -1698,48 +1708,89 @@ export default function CustomerHome({
                       <Search size={20} />
                     </button>
                   </div>
-                  {/* Search Results Dropdown */}
+                  {/* Search Results Dropdown - High Elevation & App-like Styling */}
                   <AnimatePresence>
-                    {searchQuery && (
+                    {searchQuery.trim().length > 0 && (
                       <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        className="absolute left-0 right-0 top-full mt-4 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 text-left"
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.18 }}
+                        className="absolute left-0 right-0 top-full mt-3 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left"
                       >
                         {filteredSearchResults.length > 0 ? (
-                          <div className="max-h-[300px] overflow-y-auto py-2">
-                            {filteredSearchResults.map((service) => (
-                              <button
-                                key={service.id}
-                                onClick={() => {
-                                  onServiceSelect(service.id);
-                                  setSearchQuery("");
-                                }}
-                                className="w-full px-6 py-4 hover:bg-slate-50 flex items-center gap-4 transition-colors text-left"
-                              >
-                                <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden shrink-0">
-                                  <img
-                                    src={service.imageURL}
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                    loading="lazy"
-                                  />
+                          <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
+                            {filteredSearchResults.map((service) => {
+                              const category = allCategories.find((c) => c.id === service.categoryId);
+                              return (
+                                <div
+                                  key={service.id}
+                                  onClick={() => {
+                                    onServiceSelect(service.id);
+                                    setSearchQuery("");
+                                  }}
+                                  className="group flex items-center justify-between gap-3 p-3 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
+                                      <img
+                                        src={service.imageURL || '/logo-192.png'}
+                                        alt={service.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => {
+                                          (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-700 leading-tight">
+                                        {service.name}
+                                      </h4>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        {category && (
+                                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                                            {category.name}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
+                                          ★ 4.8
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 pl-2">
+                                    <div className="text-right">
+                                      <span className="block text-[9px] font-medium text-slate-400 leading-none">Starting</span>
+                                      <span className="text-sm font-extrabold text-[#002e6e]">₹{service.basePrice}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="bg-[#002e6e] group-hover:bg-[#00baf2] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                                    >
+                                      Book
+                                    </button>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-bold text-slate-900">
-                                    {service.name}
-                                  </p>
-                                  <p className="text-xs text-slate-400">
-                                    Starting from ₹{service.basePrice}
-                                  </p>
-                                </div>
-                              </button>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
-                          <div className="p-8 text-center text-slate-400 font-medium text-sm">
-                            No results found for "{searchQuery}"
+                          <div className="p-6 text-center">
+                            <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
+                            <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                              {['AC Service', 'RO Purifier', 'Washing Machine', 'Fridge'].map((chip) => (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  onClick={() => setSearchQuery(chip)}
+                                  className="text-xs font-medium bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 px-2.5 py-1 rounded-full transition-colors"
+                                >
+                                  {chip}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </motion.div>
@@ -1978,58 +2029,109 @@ export default function CustomerHome({
                     placeholder={currentPlaceholder}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-6 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base sm:text-lg placeholder:text-slate-400 placeholder:font-medium"
+                    className="w-full px-5 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base sm:text-lg placeholder:text-slate-400 placeholder:font-medium"
                   />
+                  {searchQuery.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="p-2.5 mr-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer"
+                      aria-label="Clear search"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-xl transition-all shadow-lg shadow-blue-700/20 active:scale-95 shrink-0 flex items-center justify-center w-12 h-12"
+                    className="bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-xl transition-all shadow-lg shadow-blue-700/20 active:scale-95 shrink-0 flex items-center justify-center w-12 h-12 cursor-pointer"
                     aria-label="Search"
                   >
                     <Search size={20} />
                   </button>
                 </div>
-                {/* Search Results Dropdown */}
+                {/* Search Results Dropdown - High Elevation & App-like Styling */}
                 <AnimatePresence>
-                  {searchQuery && (
+                  {searchQuery.trim().length > 0 && (
                     <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute left-0 right-0 top-full mt-4 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 text-left"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute left-0 right-0 top-full mt-3 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left"
                     >
                       {filteredSearchResults.length > 0 ? (
-                        <div className="max-h-[300px] overflow-y-auto py-2">
-                          {filteredSearchResults.map((service) => (
-                            <button
-                              key={service.id}
-                              onClick={() => {
-                                onServiceSelect(service.id);
-                                setSearchQuery("");
-                              }}
-                              className="w-full px-6 py-4 hover:bg-slate-50 flex items-center gap-4 transition-colors"
-                            >
-                              <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden">
-                                <img
-                                  src={service.imageURL}
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                  loading="lazy"
-                                />
+                        <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
+                          {filteredSearchResults.map((service) => {
+                            const category = allCategories.find((c) => c.id === service.categoryId);
+                            return (
+                              <div
+                                key={service.id}
+                                onClick={() => {
+                                  onServiceSelect(service.id);
+                                  setSearchQuery("");
+                                }}
+                                className="group flex items-center justify-between gap-3 p-3 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
+                                    <img
+                                      src={service.imageURL || '/logo-192.png'}
+                                      alt={service.name}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-700 leading-tight">
+                                      {service.name}
+                                    </h4>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      {category && (
+                                        <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                                          {category.name}
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
+                                        ★ 4.8
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0 pl-2">
+                                  <div className="text-right">
+                                    <span className="block text-[9px] font-medium text-slate-400 leading-none">Starting</span>
+                                    <span className="text-sm font-extrabold text-[#002e6e]">₹{service.basePrice}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="bg-[#002e6e] group-hover:bg-[#00baf2] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                                  >
+                                    Book
+                                  </button>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-900">
-                                  {service.name}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  Starting from ₹{service.basePrice}
-                                </p>
-                              </div>
-                            </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
-                        <div className="p-8 text-center text-slate-400 font-medium text-sm">
-                          No results found for "{searchQuery}"
+                        <div className="p-6 text-center">
+                          <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
+                          <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                            {['AC Service', 'RO Purifier', 'Washing Machine', 'Fridge'].map((chip) => (
+                              <button
+                                key={chip}
+                                type="button"
+                                onClick={() => setSearchQuery(chip)}
+                                className="text-xs font-medium bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 px-2.5 py-1 rounded-full transition-colors"
+                              >
+                                {chip}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </motion.div>

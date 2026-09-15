@@ -114,6 +114,8 @@ export interface Service {
   totalReviews?: number;
   totalRatingPoints?: number;
   predefinedTasks?: string[];
+  checklist?: string[];
+  features?: string[];
   createdAt?: any;
   updatedAt?: any;
 }
