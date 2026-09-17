@@ -33,7 +33,7 @@
     "dotenv": "^17.4.2",
     "esbuild": "^0.25.0",
     "express": "^5.2.1",
-    "firebase": "^12.13.0",
+    "firebase": "12.4.0",
     "firebase-admin": "^13.9.0",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",

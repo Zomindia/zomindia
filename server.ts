@@ -174,10 +174,10 @@ async function startServer() {
 
   // PhonePe Config & Checksum Helper
   const getPhonePeConfig = () => {
-    const merchantId = process.env.PHONEPE_MERCHANT_ID || "PGTESTPAYUAT86";
-    const saltKey = process.env.PHONEPE_SALT_KEY || "96434309-7796-489d-8924-ab56988a6076";
+    const merchantId = process.env.PHONEPE_MERCHANT_ID || "";
+    const saltKey = process.env.PHONEPE_SALT_KEY || "";
     const saltIndex = process.env.PHONEPE_SALT_INDEX || "1";
-    const env = process.env.PHONEPE_ENV || "UAT";
+    const env = (process.env.PHONEPE_ENV || "PRODUCTION").toUpperCase();
     const hostUrl = process.env.PHONEPE_HOST_URL || (env === "PRODUCTION" 
       ? "https://api.phonepe.com/apis/hermes"
       : "https://api-preprod.phonepe.com/apis/pg-sandbox");

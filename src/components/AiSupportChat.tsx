@@ -495,32 +495,110 @@ export default function AiSupportChat({
     }
 
     try {
-      const roleField =
-        userProfile.role === "partner" ? "partnerId" : "customerId";
-      const q = query(
-        collection(db, "bookings"),
-        where(roleField, "==", userProfile.uid),
-        orderBy("createdAt", "desc"),
-        limit(5),
-      );
+      const isPartner = userProfile.role === "partner";
+      const unsubscribes: (() => void)[] = [];
+      const bookingsMap = new Map<string, Booking>();
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snap) => {
-          const list = snap.docs.map(
-            (doc) => ({ id: doc.id, ...doc.data() }) as Booking,
-          );
-          setLocalBookings(list);
-        },
-        (err) => {
-          console.warn(
-            "Silent fallback: bookings list permission in AI Chat:",
-            err,
-          );
-        },
-      );
+      const normalizeBooking = (id: string, data: any): Booking => {
+        const activeCustomerId = data.customerUid || data.customerId || data.userId || "";
+        return {
+          id,
+          ...data,
+          customerUid: activeCustomerId,
+          customerId: activeCustomerId,
+          userId: activeCustomerId,
+        } as Booking;
+      };
 
-      return () => unsubscribe();
+      const syncAndSetBookings = () => {
+        const sorted = Array.from(bookingsMap.values()).sort((a, b) => {
+          const tA = (a.createdAt as any)?.seconds
+            ? (a.createdAt as any).seconds * 1000
+            : (a.createdAt as any)?.toMillis
+            ? (a.createdAt as any).toMillis()
+            : new Date(a.createdAt || 0).getTime() || 0;
+          const tB = (b.createdAt as any)?.seconds
+            ? (b.createdAt as any).seconds * 1000
+            : (b.createdAt as any)?.toMillis
+            ? (b.createdAt as any).toMillis()
+            : new Date(b.createdAt || 0).getTime() || 0;
+          return tB - tA;
+        });
+        setLocalBookings(sorted);
+      };
+
+      if (isPartner) {
+        const qPartner = query(
+          collection(db, "bookings"),
+          where("partnerId", "==", userProfile.uid),
+          orderBy("createdAt", "desc"),
+          limit(15),
+        );
+        const unsub = onSnapshot(
+          qPartner,
+          (snap) => {
+            bookingsMap.clear();
+            snap.docs.forEach((doc) => {
+              bookingsMap.set(doc.id, normalizeBooking(doc.id, doc.data()));
+            });
+            syncAndSetBookings();
+          },
+          (err) => {
+            console.warn("Silent fallback: partner bookings list in AI Chat:", err);
+          },
+        );
+        unsubscribes.push(unsub);
+      } else {
+        // Primary: customerUid (canonical Urban Company / Zomato identity standard)
+        const qCustomerUid = query(
+          collection(db, "bookings"),
+          where("customerUid", "==", userProfile.uid),
+          orderBy("createdAt", "desc"),
+          limit(15),
+        );
+        const unsubPrimary = onSnapshot(
+          qCustomerUid,
+          (snap) => {
+            snap.docs.forEach((doc) => {
+              bookingsMap.set(doc.id, normalizeBooking(doc.id, doc.data()));
+            });
+            syncAndSetBookings();
+          },
+          (err) => {
+            console.warn("Silent fallback: customerUid bookings in AI Chat:", err);
+          },
+        );
+        unsubscribes.push(unsubPrimary);
+
+        // Resilient Fallback: legacy documents created with customerId
+        const qCustomerId = query(
+          collection(db, "bookings"),
+          where("customerId", "==", userProfile.uid),
+          orderBy("createdAt", "desc"),
+          limit(15),
+        );
+        const unsubLegacy = onSnapshot(
+          qCustomerId,
+          (snap) => {
+            snap.docs.forEach((doc) => {
+              const existing = bookingsMap.get(doc.id);
+              bookingsMap.set(doc.id, {
+                ...(existing || {}),
+                ...normalizeBooking(doc.id, doc.data()),
+              });
+            });
+            syncAndSetBookings();
+          },
+          (err) => {
+            console.warn("Silent fallback: legacy customerId in AI Chat:", err);
+          },
+        );
+        unsubscribes.push(unsubLegacy);
+      }
+
+      return () => {
+        unsubscribes.forEach((unsub) => unsub());
+      };
     } catch (e) {
       console.warn("Could not load bookings inside AI Chat:", e);
     }
@@ -2072,7 +2150,14 @@ export default function AiSupportChat({
                       ) : (() => {
                         const rawB = (msg as any).bookingData || {};
                         const liveB = rawB.id ? localBookings.find((b) => b.id === rawB.id) : null;
-                        const b: Booking = (liveB ? { ...rawB, ...liveB } : rawB) as Booking;
+                        const resolvedB = (liveB ? { ...rawB, ...liveB } : rawB) as Booking;
+                        const activeCustomerId = resolvedB.customerUid || resolvedB.customerId || (resolvedB as any).userId || "";
+                        const b: Booking = {
+                          ...resolvedB,
+                          customerUid: activeCustomerId,
+                          customerId: activeCustomerId,
+                          userId: activeCustomerId,
+                        };
 
                         const isAmc = Boolean(b.isAmcBooking || b.isAmcCovered || b.tier === "amc");
                         const hasValidOnlineTxn = Boolean(

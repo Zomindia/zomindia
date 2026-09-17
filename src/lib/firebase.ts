@@ -48,7 +48,11 @@ try {
       firebaseConfig.firestoreDatabaseId
     );
   } catch {
-    firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    try {
+      firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    } catch {
+      firestoreDb = getFirestore(app);
+    }
   }
 }
 

@@ -508,20 +508,21 @@ service cloud.firestore {
         isAdmin()
       );
       allow update: if isSignedIn() && isValidId(bookingId) && (
-        // Customer update branch
+        // Customer update branch:
+        // Customer can only cancel, reschedule, review, or answer/end calls.
+        // Direct tampering with paymentStatus, paidAmount, transactionId, totalPrice, or walletDeductAmount is strictly forbidden!
         ((existing().get('customerUid', '') == request.auth.uid || 
           existing().get('customerId', '') == request.auth.uid || 
           existing().get('userId', '') == request.auth.uid) && (
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'status', 'paymentStatus', 'paymentMethod', 'transactionId', 'onlinePaymentProvider', 
-            'onlinePaymentMethod', 'paidAmount', 'paidAt', 'razorpayPaymentId', 'razorpayOrderId', 
-            'razorpaySignature', 'paymentIntentId', 'scheduledAt', 'partnerId', 'activeCall', 
-            'secondaryContact', 'updatedAt', 'cancellationReason', 'walletDeductAmount', 
-            'originalBillValue', 'discountApplied', 'promoCode', 'address', 'customerData', 
+            'status', 'scheduledAt', 'partnerId', 'activeCall', 
+            'secondaryContact', 'updatedAt', 'cancellationReason', 'address', 'customerData', 
             'customerMobile', 'customerName', 'customerBookedName', 'customerBookedPhone', 
             'customerBookedEmail', 'progressPercentage', 'checklist',
-            'rating', 'review', 'comment', 'feedbackScores', 'ratingDetails', 'reviewedAt', 'photoURL'
-          ])
+            'rating', 'review', 'comment', 'reviewText', 'feedbackScores', 'ratingDetails', 'reviewedAt', 'isReviewed', 'photoURL'
+          ]) &&
+          // Prevent unauthorized status escalation: customer can only stay same status, cancel, reschedule (pending), or finalize (after completion)
+          (incoming().get('status', '') == existing().get('status', '') || incoming().get('status', '') in ['cancelled', 'pending', 'finalized'])
         )) ||
         // Partner assignment/claim branch
         (
@@ -531,16 +532,22 @@ service cloud.firestore {
           incoming().status == 'assigned' &&
           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'partnerId', 'updatedAt'])
         ) ||
-        // Partner update branch
+        // Partner update branch:
+        // Partner can update job progress, location, completion proofs, and extra charges.
+        // Direct tampering with paymentStatus is forbidden (cash settlement must run via /api/partner/settle-cash)
         (existing().get('partnerId', '') == request.auth.uid && (
           incoming().diff(existing()).affectedKeys().hasOnly([
             'status', 'otpVerified', 'cancellationReason', 'completedTasks', 'completionPhotos',
             'pendingReason', 'pendingResolveDate', 'pendingResolveDuration', 
             'previousStatus', 'partnerId', 'additionalCharges', 'totalPrice', 
-            'paymentStatus', 'paymentMethod', 'secondaryContact', 'completionNote', 'lat', 'lng', 
+            'secondaryContact', 'completionNote', 'lat', 'lng', 
             'address', 'updatedAt', 'activeCall', 'partnerLocation', 'heading', 'completedAt',
             'progressPercentage', 'checklist', 'serviceOtp', 'startOTP',
             'lastCompletedTask', 'currentTask', 'taskActivity'
+          ]) &&
+          // Partner status guard
+          (incoming().get('status', '') == existing().get('status', '') || incoming().get('status', '') in [
+            'assigned', 'on_the_way', 'arrived', 'in_progress', 'completed', 'pending_reschedule', 'Pending - Customer Unresponsive'
           ])
         )) ||
         isAdmin()

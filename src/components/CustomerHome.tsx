@@ -753,98 +753,114 @@ export default function CustomerHome({
   useEffect(() => {
     if (!profile?.uid) {
       setActiveBooking(null);
-      return;
-    }
-    let isMounted = true;
-    const q = query(
-      collection(db, "bookings"),
-      where("customerUid", "==", profile.uid)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        if (!isMounted) return;
-        const allowedStatuses = [
-          "pending",
-          "pending_acceptance",
-          "confirmed",
-          "assigned",
-          "on_the_way",
-          "arrived",
-          "in_progress",
-          "payment_pending",
-          "pending_parts",
-        ];
-        const bookings = snap.docs
-          .map((doc) => ({ id: doc.id, ...doc.data() } as Booking))
-          .filter((b) => allowedStatuses.includes(b.status || ""));
-
-        // Sort client-side in-memory to prevent composite index issues
-        bookings.sort((a, b) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-
-        if (bookings.length > 0) {
-          const booking = bookings[0];
-          setActiveBooking(booking);
-          const isDismissed =
-            localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
-          setTickerDismissed(isDismissed);
-          setRecentCardDismissed(isDismissed);
-        } else {
-          setActiveBooking(null);
-          setTickerDismissed(false);
-          setRecentCardDismissed(false);
-        }
-      },
-      (err) => {
-        if (!isMounted) return;
-        console.error("Error watching active bookings query:", err);
-      }
-    );
-    return () => {
-      isMounted = false;
-      if (typeof unsubscribe === "function") unsubscribe();
-    };
-  }, [profile?.uid]);
-
-  useEffect(() => {
-    if (!profile?.uid) {
       setZomatoActiveBooking(null);
       return;
     }
     let isMounted = true;
-    const q = query(
+    const unsubscribes: (() => void)[] = [];
+    const bookingsMap = new Map<string, Booking>();
+
+    const normalizeBooking = (id: string, data: any): Booking => {
+      const activeCustomerId = data.customerUid || data.customerId || data.userId || "";
+      return {
+        id,
+        ...data,
+        customerUid: activeCustomerId,
+        customerId: activeCustomerId,
+        userId: activeCustomerId,
+      } as Booking;
+    };
+
+    const processBookings = () => {
+      if (!isMounted) return;
+      const allowedStatuses = [
+        "pending",
+        "pending_acceptance",
+        "confirmed",
+        "assigned",
+        "on_the_way",
+        "arrived",
+        "in_progress",
+        "payment_pending",
+        "pending_parts",
+      ];
+      const allDocs = Array.from(bookingsMap.values());
+      allDocs.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+
+      // 1. Active banner booking
+      const activeBannerList = allDocs.filter((b) => allowedStatuses.includes(b.status || ""));
+      if (activeBannerList.length > 0) {
+        const booking = activeBannerList[0];
+        setActiveBooking(booking);
+        const isDismissed =
+          localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
+        setTickerDismissed(isDismissed);
+        setRecentCardDismissed(isDismissed);
+      } else {
+        setActiveBooking(null);
+        setTickerDismissed(false);
+        setRecentCardDismissed(false);
+      }
+
+      // 2. Zomato active overlay card
+      const activeOverlay = allDocs.find((b) => {
+        const s = (b.status || "").toLowerCase();
+        return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
+      });
+      setZomatoActiveBooking(activeOverlay || null);
+    };
+
+    // Primary query: customerUid (canonical standard)
+    const q1 = query(
       collection(db, "bookings"),
       where("customerUid", "==", profile.uid)
     );
-    const unsubscribe = onSnapshot(
-      q,
+    const unsub1 = onSnapshot(
+      q1,
       (snap) => {
-        if (!isMounted) return;
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
-        // Sort in-memory to prevent composite indexing requirements
-        docs.sort((a, b) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
+        snap.docs.forEach((doc) => {
+          bookingsMap.set(doc.id, normalizeBooking(doc.id, doc.data()));
         });
-        const active = docs.find((b) => {
-          const s = (b.status || "").toLowerCase();
-          return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
-        });
-        setZomatoActiveBooking(active || null);
+        processBookings();
       },
       (err) => {
         if (!isMounted) return;
-        console.error("Error watching active bookings for Zomato overlay card:", err);
+        console.warn("CustomerHome customerUid bookings query notice:", err);
       }
     );
+    unsubscribes.push(unsub1);
+
+    // Resilient Fallback query: legacy customerId
+    const q2 = query(
+      collection(db, "bookings"),
+      where("customerId", "==", profile.uid)
+    );
+    const unsub2 = onSnapshot(
+      q2,
+      (snap) => {
+        snap.docs.forEach((doc) => {
+          const existing = bookingsMap.get(doc.id);
+          bookingsMap.set(doc.id, {
+            ...(existing || {}),
+            ...normalizeBooking(doc.id, doc.data()),
+          });
+        });
+        processBookings();
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn("CustomerHome legacy customerId bookings notice:", err);
+      }
+    );
+    unsubscribes.push(unsub2);
+
     return () => {
       isMounted = false;
-      if (typeof unsubscribe === "function") unsubscribe();
+      unsubscribes.forEach((u) => u());
     };
   }, [profile?.uid]);
 
@@ -991,14 +1007,30 @@ export default function CustomerHome({
 
       const fetchPartners = async () => {
         try {
-          const q = query(
-            collection(db, "partners"),
-            where("categories", "array-contains", selectedCategory.id),
-            where("status", "==", "active"),
-          );
-          const snap = await getDocs(q);
+          let snapDocs: any[] = [];
+          try {
+            const q = query(
+              collection(db, "partners"),
+              where("categories", "array-contains", selectedCategory.id),
+              where("status", "==", "active"),
+            );
+            const snap = await getDocs(q);
+            snapDocs = snap.docs;
+          } catch (compositeErr) {
+            console.warn("Falling back to single-field partners query:", compositeErr);
+            const fallbackQ = query(
+              collection(db, "partners"),
+              where("status", "==", "active")
+            );
+            const fallbackSnap = await getDocs(fallbackQ);
+            snapDocs = fallbackSnap.docs.filter((d) => {
+              const data = d.data();
+              return Array.isArray(data.categories) && data.categories.includes(selectedCategory.id);
+            });
+          }
+
           const partnerList = await Promise.all(
-            snap.docs.map(async (d) => {
+            snapDocs.map(async (d) => {
               const data = d.data() as PartnerProfile;
               const userDoc = await getDoc(doc(db, "users", data.userId));
               const userData = userDoc.data() as UserProfile;
