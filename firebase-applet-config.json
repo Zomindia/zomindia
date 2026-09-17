@@ -6,5 +6,7 @@
   "firestoreDatabaseId": "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc",
   "storageBucket": "zomindia-807ce.firebasestorage.app",
   "messagingSenderId": "165132689371",
-  "measurementId": "G-N5WKWMXGVR"
+  "measurementId": "G-N5WKWMXGVR",
+  "oAuthClientId": "165132689371-0fpi28oek4lbo8l83s5fu1cst0ne7t3s.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

@@ -139,10 +139,12 @@ export async function dispatchAutomatedWhatsAppAlert(
       templateName = 'zom_cust_partner_assigned';
       messageText = `Good news ${name}! Service Partner ${params.partnerName || 'Pro'} is assigned to you. Contact: ${params.partnerPhone || 'N/A'}. They will arrive shortly on ${params.time || 'scheduled slot'}.`;
       break;
-    case 'service_otp':
+    case 'service_otp': {
       templateName = 'zom_auth_service_start';
-      messageText = `Secure Verification: Share OTP ${params.otp || '0000'} with ${params.partnerName || 'the assigned technician'} once they arrive on site to securely start your home service.`;
+      const appHash = params.appHash || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ANDROID_APP_HASH) || 'FA+9qCX9VSu';
+      messageText = `<#> Your Zomindia verification code is: ${params.otp || '0000'}. Valid for 5 mins. ${appHash}`;
       break;
+    }
     case 'service_complete':
       templateName = 'zom_cust_completion_bill';
       messageText = `Thank you ${name}! Your service is successfully completed. Final Settlement of ₹${params.totalPrice || '0'} has been processed. Download invoice: https://zomindia.com/api/download-invoice?bookingId=${params.bookingId || ''}`;

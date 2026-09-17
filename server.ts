@@ -335,6 +335,15 @@ async function startServer() {
             `📍 *Live Tracking Link:* ${params.trackingUrl || `https://zomindia.com/track/${params.bookingId || "new"}`}`;
           break;
 
+        case "SERVICE_OTP":
+        case "OTP":
+        case "AUTH_OTP": {
+          const otp = params.otp || "7951";
+          const appHash = params.appHash || process.env.ANDROID_APP_HASH || "FA+9qCX9VSu";
+          messageText = `<#> Your Zomindia verification code is: ${otp}. Valid for 5 mins. ${appHash}`;
+          break;
+        }
+
         case "SERVICE_COMPLETED":
         case "SERVICE_COMPLETE":
         case "JOB_COMPLETED":
@@ -457,6 +466,47 @@ async function startServer() {
     } catch (err: any) {
       console.error("[WhatsApp Notification Error]:", err);
       return res.status(500).json({ error: err.message || "WhatsApp dispatch error" });
+    }
+  });
+
+  // POST /api/send-sms-otp
+  // Dispatches an SMS OTP adhering to Android SMS Retriever API format
+  app.post("/api/send-sms-otp", async (req, res) => {
+    try {
+      const { phone, phoneNumber, otp, appHash: customHash, validityMinutes = 5 } = req.body;
+      const targetPhone = phone || phoneNumber;
+      if (!targetPhone || !otp) {
+        return res.status(400).json({ error: "Phone number and OTP are required" });
+      }
+
+      const resolvedHash = customHash || process.env.ANDROID_APP_HASH || "FA+9qCX9VSu";
+      const message = `<#> Your Zomindia verification code is: ${otp}. Valid for ${validityMinutes} mins. ${resolvedHash}`;
+
+      if (process.env.SMS_API_KEY && process.env.SMS_PROVIDER_URL) {
+        try {
+          await axios.post(process.env.SMS_PROVIDER_URL, {
+            apiKey: process.env.SMS_API_KEY,
+            sender: process.env.SMS_SENDER_ID || "ZOMIND",
+            number: targetPhone,
+            message,
+          });
+          console.log(`[SMS OTP Gateway] Dispatched to ${targetPhone}: ${message}`);
+        } catch (smsErr: any) {
+          console.warn("[SMS Gateway Warning]:", smsErr.message);
+        }
+      } else {
+        console.log(`[SMS OTP SIMULATION] To: ${targetPhone} | Message: ${message}`);
+      }
+
+      return res.json({
+        success: true,
+        recipient: targetPhone,
+        message,
+        appHash: resolvedHash,
+      });
+    } catch (err: any) {
+      console.error("[SMS OTP Route Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to dispatch SMS OTP" });
     }
   });
 
