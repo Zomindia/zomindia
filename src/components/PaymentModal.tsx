@@ -108,10 +108,11 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
   const finalPayable = Math.max(0, totalBill - walletDeduction);
   const canPayEntirelyWithWallet = walletBalance >= totalBill;
 
-  // Dynamic UPI Intent URI
+  // Dynamic standard UPI Intent URI strictly containing complete pa, pn, am, cu, tn, and unique tr
+  const currentTxnRef = activeTxnId || `TXN_${booking.id.slice(-6).toUpperCase()}_${Date.now()}`;
   const upiIntentUri = `upi://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
     MERCHANT_NAME
-  )}&am=${finalPayable}&cu=INR&tn=Booking_${booking.id.slice(-6).toUpperCase()}`;
+  )}&am=${finalPayable}&cu=INR&tn=${encodeURIComponent(`Booking_${booking.id.slice(-6).toUpperCase()}`)}&tr=${encodeURIComponent(currentTxnRef)}`;
 
   // QR Timer Countdown
   useEffect(() => {
@@ -373,10 +374,27 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       setActiveTxnId(generatedTxn);
 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const checkoutUrl = data.checkoutUrl || data.redirectUrl;
 
-      // Handle PhonePe primary button: prioritize official PhonePe Gateway checkout URL
-      if (selectedMethod === 'phonepe' && data.success && (data.checkoutUrl || data.redirectUrl)) {
-        const checkoutUrl = data.checkoutUrl || data.redirectUrl;
+      // 1. If standard UPI Intent is triggered (e.g. for custom UPI ID / other_upi)
+      if (selectedMethod === 'other_upi') {
+        const standardIntentUri = `upi://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
+          MERCHANT_NAME
+        )}&am=${finalPayable}&cu=INR&tn=${encodeURIComponent(`Booking_${booking.id.slice(-6).toUpperCase()}`)}&tr=${encodeURIComponent(generatedTxn)}`;
+
+        if (isMobile) {
+          window.location.href = standardIntentUri;
+        }
+        setIsProcessing(false);
+        setAwaitingConfirmation(true);
+        setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
+        startStatusPolling(generatedTxn);
+        return;
+      }
+
+      // 2. For mobile checkout & desktop: all online payment selections (PhonePe, GPay, Paytm, Cards, Net Banking)
+      // strictly obtain and navigate to the official PhonePe gateway checkout URL
+      if (data.success && checkoutUrl) {
         if (isMobile) {
           // On mobile devices, direct window navigation launches PhonePe App / Web checkout seamlessly
           window.location.href = checkoutUrl;
@@ -390,52 +408,30 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         return;
       }
 
-      // Handle Other UPI Apps on Mobile (GPay, Paytm, etc.)
-      if (['phonepe', 'gpay', 'paytm'].includes(selectedMethod) && isMobile) {
-        let deepLink = upiIntentUri;
-        if (selectedMethod === 'phonepe') {
-          deepLink = `phonepe://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
-            MERCHANT_NAME
-          )}&am=${finalPayable}&cu=INR`;
-        } else if (selectedMethod === 'gpay') {
-          deepLink = `tez://upi/pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
-            MERCHANT_NAME
-          )}&am=${finalPayable}&cu=INR`;
-        } else if (selectedMethod === 'paytm') {
-          deepLink = `paytmmp://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
-            MERCHANT_NAME
-          )}&am=${finalPayable}&cu=INR`;
-        }
+      // 3. Standard Fallback UPI Intent if gateway checkout is unavailable
+      const fallbackIntentUri = `upi://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${finalPayable}&cu=INR&tn=${encodeURIComponent(`Booking_${booking.id.slice(-6).toUpperCase()}`)}&tr=${encodeURIComponent(generatedTxn)}`;
 
-        window.location.href = deepLink;
-
-        setIsProcessing(false);
-        setAwaitingConfirmation(true);
-        setStatusMessage(`Awaiting confirmation from ${getMethodLabel(selectedMethod)}...`);
-        startStatusPolling(generatedTxn);
-        return;
+      if (isMobile) {
+        window.location.href = fallbackIntentUri;
       }
-
-      // Handle PhonePe Gateway Web Flow (Cards, Net Banking, or Desktop)
-      if (data.success && (data.checkoutUrl || data.redirectUrl)) {
-        const checkoutUrl = data.checkoutUrl || data.redirectUrl;
-        window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-        setIsProcessing(false);
-        setAwaitingConfirmation(true);
-        setStatusMessage('Complete payment on the PhonePe secure gateway tab...');
-        startStatusPolling(generatedTxn);
-        return;
-      }
-
-      // Fallback flow
       setIsProcessing(false);
       setAwaitingConfirmation(true);
       setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
       startStatusPolling(generatedTxn);
     } catch (err: any) {
       console.warn('[PaymentModal] Error:', err);
-      const fallbackTxn = `TXN_${Date.now()}`;
+      const fallbackTxn = `TXN_PPE_${booking.id.slice(-6).toUpperCase()}_${Date.now()}`;
       setActiveTxnId(fallbackTxn);
+      const fallbackIntentUri = `upi://pay?pa=${INDORE_MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${finalPayable}&cu=INR&tn=${encodeURIComponent(`Booking_${booking.id.slice(-6).toUpperCase()}`)}&tr=${encodeURIComponent(fallbackTxn)}`;
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = fallbackIntentUri;
+      }
       setIsProcessing(false);
       setAwaitingConfirmation(true);
       setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
@@ -629,7 +625,13 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                 <div className="pt-2">
                   <button
                     type="button"
-                    onClick={() => handleFinalSuccess(activeTxnId || `TEST_${Date.now()}`, 'PhonePe Gateway (Auto)')}
+                    onClick={async () => {
+                      const testTxn = activeTxnId || `TEST_PPE_${booking.id.slice(-6).toUpperCase()}_${Date.now()}`;
+                      try {
+                        await fetch(`/api/phonepe/status/${encodeURIComponent(testTxn)}?bookingId=${booking.id}&test=true`);
+                      } catch (e) {}
+                      handleFinalSuccess(testTxn, 'PhonePe Gateway (Test Mode)');
+                    }}
                     className="text-[10px] text-slate-400 hover:text-blue-600 font-medium underline cursor-pointer transition-colors"
                   >
                     Simulate Bank Approval (Instant Test Mode)

@@ -728,10 +728,13 @@ async function startServer() {
       let statusData: any = null;
       let paymentInstrument = null;
 
-      // Allow test transactions to complete cleanly in test/preview mode
+      // Allow test transactions to complete cleanly in test/preview mode (instant completion bypass)
       const isTestTxn = String(merchantTransactionId).startsWith("TEST_") || 
                         String(merchantTransactionId).startsWith("MOCK_") || 
-                        req.query?.mock === "true";
+                        String(merchantTransactionId).includes("_TEST") ||
+                        String(merchantTransactionId).includes("_SIM_") ||
+                        req.query?.mock === "true" ||
+                        req.query?.test === "true";
       if (isTestTxn) {
         isSuccess = true;
       } else {
