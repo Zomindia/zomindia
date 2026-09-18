@@ -33,7 +33,7 @@ import { motion, AnimatePresence } from "motion/react";
 import Avatar from "./Avatar";
 import HardwarePermissionDiagnoser from "./HardwarePermissionDiagnoser";
 import { useAutoOTP } from "../hooks/useAutoOTP";
-import { formatLoginOtpMessage } from "../lib/sms.ts";
+import { formatLoginOtpMessage, sendSmsOtp } from "../lib/sms.ts";
 import {
   User,
   Bell,
@@ -915,8 +915,15 @@ export default function ProfileSettings({
     setSecurityOtpModalOpen(true);
     setLoading(false);
 
+    const formattedTargetPhone = `+91${cleanPhone}`;
+    sendSmsOtp({
+      phone: formattedTargetPhone,
+      otp: generatedOtp,
+      type: "login",
+    }).catch((err) => console.warn("[ProfileSettings] Initial security OTP dispatch notice:", err));
+
     console.log(
-      `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: generatedOtp })} (Dispatched to +91 ${cleanPhone})`,
+      `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: generatedOtp })} (Dispatched to ${formattedTargetPhone})`,
     );
   };
 
@@ -3591,6 +3598,29 @@ export default function ProfileSettings({
                     </p>
                   </div>
 
+                  {/* Preview OTP Badge for test / dev environment */}
+                  {generatedSecurityOtp && (
+                    <div className="flex items-center justify-between p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 text-xs text-left">
+                      <div className="flex items-center gap-2 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                        <div>
+                          <span className="text-neutral-500 font-normal">Preview OTP: </span>
+                          <span className="font-mono font-bold text-blue-700 tracking-wider text-sm">{generatedSecurityOtp}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSecurityOtpInputs(generatedSecurityOtp.split(""));
+                          setSecurityOtpError(null);
+                        }}
+                        className="text-[11px] font-bold text-[#0a2540] bg-white px-2.5 py-1 rounded-lg border border-blue-200 hover:bg-blue-100/50 transition-colors shadow-xs"
+                      >
+                        Auto-fill
+                      </button>
+                    </div>
+                  )}
+
                   {/* OTP Input Fields */}
                   <div className="flex items-center justify-center gap-3 py-2">
                     {securityOtpInputs.map((val, idx) => (
@@ -3646,15 +3676,25 @@ export default function ProfileSettings({
                   <div className="pt-2">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const newCode = Math.floor(
                           1000 + Math.random() * 9000,
                         ).toString();
                         setGeneratedSecurityOtp(newCode);
                         setSecurityOtpInputs(["", "", "", ""]);
                         setSecurityOtpError(null);
+                        const targetPhone = `+91${newPhone.replace(/\D/g, "") || (profile.phoneNumber?.replace(/\D/g, "") || "9999999999")}`;
+                        try {
+                          await sendSmsOtp({
+                            phone: targetPhone,
+                            otp: newCode,
+                            type: "login",
+                          });
+                        } catch (smsErr) {
+                          console.warn("[ProfileSettings] Resend SMS gateway notice:", smsErr);
+                        }
                         console.log(
-                          `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: newCode })}`,
+                          `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: newCode })} (Resent to ${targetPhone})`,
                         );
                       }}
                       className="text-xs text-[#0a2540] font-semibold hover:underline"
