@@ -1,5 +1,12 @@
 import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import {
+  formatServiceStartOtpMessage,
+  formatLoginOtpMessage,
+  formatBookingReceivedMessage,
+  formatPartnerAssignedMessage,
+  formatServiceCompleteMessage,
+} from '../lib/sms.ts';
 
 export type NotificationType = 
   | 'booking_confirmed' 
@@ -43,6 +50,8 @@ export interface BookingNotificationData {
   amount?: number;
   pendingReason?: string;
   actorId?: string;
+  eta?: string;
+  invoiceUrl?: string;
 }
 
 /**
@@ -133,21 +142,40 @@ export async function dispatchAutomatedWhatsAppAlert(
   switch (type) {
     case 'booking_received':
       templateName = 'zom_cust_booking_confirmed';
-      messageText = `Namaste ${name}, your booking with Zomindia Internet Technology is confirmed! We are matching a verified professional, standard service starts at ₹${params.price || '499'}. Tracking link: https://zomindia.com/track/${params.bookingId || 'new'}`;
+      messageText = formatBookingReceivedMessage({
+        name,
+        price: params.price || '499',
+        date: params.date,
+        time: params.time,
+        bookingId: params.bookingId || 'new',
+      });
       break;
     case 'partner_assigned':
       templateName = 'zom_cust_partner_assigned';
-      messageText = `Good news ${name}! Service Partner ${params.partnerName || 'Pro'} is assigned to you. Contact: ${params.partnerPhone || 'N/A'}. They will arrive shortly on ${params.time || 'scheduled slot'}.`;
+      messageText = formatPartnerAssignedMessage({
+        name,
+        partnerName: params.partnerName || 'Certified Expert',
+        partnerPhone: params.partnerPhone || 'N/A',
+        date: params.date,
+        time: params.time,
+        eta: params.eta,
+      });
       break;
-    case 'service_otp': {
+    case 'service_otp':
       templateName = 'zom_auth_service_start';
-      const appHash = params.appHash || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ANDROID_APP_HASH) || 'FA+9qCX9VSu';
-      messageText = `<#> Your Zomindia verification code is: ${params.otp || '0000'}. Valid for 5 mins. ${appHash}`;
+      messageText = formatServiceStartOtpMessage({
+        otp: params.otp || '0000',
+        partnerName: params.partnerName || 'the assigned technician',
+      });
       break;
-    }
     case 'service_complete':
       templateName = 'zom_cust_completion_bill';
-      messageText = `Thank you ${name}! Your service is successfully completed. Final Settlement of ₹${params.totalPrice || '0'} has been processed. Download invoice: https://zomindia.com/api/download-invoice?bookingId=${params.bookingId || ''}`;
+      messageText = formatServiceCompleteMessage({
+        name,
+        totalPrice: params.totalPrice || '0',
+        bookingId: params.bookingId || '',
+        invoiceUrl: params.invoiceUrl,
+      });
       break;
     case 'payment_reminder':
       templateName = 'zom_payout_reminder';
@@ -295,7 +323,9 @@ export const NotificationEngine = {
         {
           partnerName: data.partnerName || 'Certified Expert',
           partnerPhone: data.partnerPhone || 'N/A',
-          time: `${data.date} ${data.time}`,
+          date: data.date || '',
+          time: data.time || '',
+          eta: data.eta || (data.time ? `${data.time}` : '15-20 mins'),
           bookingId: data.bookingId
         }
       );
@@ -333,6 +363,8 @@ export const NotificationEngine = {
       'booking_received',
       {
         price: data.basePrice?.toString() || '499',
+        date: data.date || '',
+        time: data.time || '',
         bookingId: data.bookingId
       }
     );
@@ -357,7 +389,7 @@ export const NotificationEngine = {
       'service_otp',
       {
         otp: data.otp,
-        partnerName: data.partnerName || 'Technician'
+        partnerName: data.partnerName || 'the assigned technician'
       }
     );
   },
@@ -401,7 +433,8 @@ export const NotificationEngine = {
       'service_complete',
       {
         totalPrice: data.totalPrice?.toString() || '0',
-        bookingId: data.bookingId
+        bookingId: data.bookingId,
+        invoiceUrl: data.invoiceUrl || `https://zomindia.com/api/download-invoice?bookingId=${data.bookingId}`
       }
     );
   },

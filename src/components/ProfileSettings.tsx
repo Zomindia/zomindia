@@ -33,6 +33,7 @@ import { motion, AnimatePresence } from "motion/react";
 import Avatar from "./Avatar";
 import HardwarePermissionDiagnoser from "./HardwarePermissionDiagnoser";
 import { useAutoOTP } from "../hooks/useAutoOTP";
+import { formatLoginOtpMessage } from "../lib/sms.ts";
 import {
   User,
   Bell,
@@ -914,9 +915,8 @@ export default function ProfileSettings({
     setSecurityOtpModalOpen(true);
     setLoading(false);
 
-    const appHash = (typeof import.meta !== "undefined" && import.meta.env?.VITE_ANDROID_APP_HASH) || "FA+9qCX9VSu";
     console.log(
-      `[ZOMINDIA SMS] <#> Your Zomindia verification code is: ${generatedOtp}. Valid for 5 mins. ${appHash} (Dispatched to +91 ${cleanPhone})`,
+      `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: generatedOtp })} (Dispatched to +91 ${cleanPhone})`,
     );
   };
 
@@ -3653,9 +3653,8 @@ export default function ProfileSettings({
                         setGeneratedSecurityOtp(newCode);
                         setSecurityOtpInputs(["", "", "", ""]);
                         setSecurityOtpError(null);
-                        const appHash = (typeof import.meta !== "undefined" && import.meta.env?.VITE_ANDROID_APP_HASH) || "FA+9qCX9VSu";
                         console.log(
-                          `[ZOMINDIA SMS] <#> Your Zomindia verification code is: ${newCode}. Valid for 5 mins. ${appHash}`,
+                          `[ZOMINDIA SMS] ${formatLoginOtpMessage({ otp: newCode })}`,
                         );
                       }}
                       className="text-xs text-[#0a2540] font-semibold hover:underline"

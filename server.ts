@@ -14,6 +14,11 @@ import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import serverApiRouter from "./server-api.ts";
+import {
+  formatLoginOtpMessage,
+  formatServiceStartOtpMessage,
+  getAppHash,
+} from "./src/lib/sms.ts";
 
 // Safeguard process against unexpected unhandled rejections during cloud container rollout
 process.on("unhandledRejection", (reason, promise) => {
@@ -335,12 +340,19 @@ async function startServer() {
             `📍 *Live Tracking Link:* ${params.trackingUrl || `https://zomindia.com/track/${params.bookingId || "new"}`}`;
           break;
 
-        case "SERVICE_OTP":
-        case "OTP":
-        case "AUTH_OTP": {
+        case "SERVICE_OTP": {
           const otp = params.otp || "7951";
-          const appHash = params.appHash || process.env.ANDROID_APP_HASH || "FA+9qCX9VSu";
-          messageText = `<#> Your Zomindia verification code is: ${otp}. Valid for 5 mins. ${appHash}`;
+          const partnerName = params.partnerName || "the assigned technician";
+          messageText = formatServiceStartOtpMessage({ otp, partnerName });
+          break;
+        }
+
+        case "OTP":
+        case "AUTH_OTP":
+        case "LOGIN_OTP": {
+          const otp = params.otp || "7951";
+          const appHash = params.appHash;
+          messageText = formatLoginOtpMessage({ otp, appHash });
           break;
         }
 
@@ -470,17 +482,28 @@ async function startServer() {
   });
 
   // POST /api/send-sms-otp
-  // Dispatches an SMS OTP adhering to Android SMS Retriever API format
+  // Dispatches an SMS OTP adhering to Android SMS Retriever API format or Doorstep Start format
   app.post("/api/send-sms-otp", async (req, res) => {
     try {
-      const { phone, phoneNumber, otp, appHash: customHash, validityMinutes = 5 } = req.body;
+      const {
+        phone,
+        phoneNumber,
+        otp,
+        appHash: customHash,
+        validityMinutes = 5,
+        type = "login",
+        partnerName,
+      } = req.body;
       const targetPhone = phone || phoneNumber;
       if (!targetPhone || !otp) {
         return res.status(400).json({ error: "Phone number and OTP are required" });
       }
 
-      const resolvedHash = customHash || process.env.ANDROID_APP_HASH || "FA+9qCX9VSu";
-      const message = `<#> Your Zomindia verification code is: ${otp}. Valid for ${validityMinutes} mins. ${resolvedHash}`;
+      const message =
+        type === "service_start"
+          ? formatServiceStartOtpMessage({ otp, partnerName })
+          : formatLoginOtpMessage({ otp, appHash: customHash, validityMinutes });
+      const resolvedHash = getAppHash(customHash);
 
       if (process.env.SMS_API_KEY && process.env.SMS_PROVIDER_URL) {
         try {
