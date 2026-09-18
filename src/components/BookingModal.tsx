@@ -1565,7 +1565,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </div>
               </div>
 
-              {/* Option 2: Instant UPI / Cards */}
+              {/* Option 2: Pay Online (UPI, Cards & NetBanking) */}
               <div
                 onClick={() => {
                   setPaymentOption('online');
@@ -1574,33 +1574,38 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 }}
                 className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
                   paymentOption === 'online' && !useAmc
-                    ? "border-blue-600 bg-blue-50/40 shadow-sm ring-1 ring-blue-500/20"
+                    ? "border-blue-600 bg-blue-50/40 shadow-xs ring-1 ring-blue-500/20"
                     : "border-slate-200 hover:border-slate-300 bg-white"
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    paymentOption === 'online' && !useAmc ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
+                    paymentOption === 'online' && !useAmc ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xs" : "bg-slate-100 text-slate-600"
                   }`}>
                     <Zap size={18} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900">Instant UPI / Cards</span>
-                      <span className="bg-blue-100 text-blue-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
-                        FAST & SECURE
+                      <span className="text-xs font-black text-slate-900">Pay Online (UPI, Cards, NetBanking)</span>
+                      <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                        RECOMMENDED
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">
-                      PhonePe, GPay, Paytm, Cards & NetBanking
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-1">
+                        <span className="w-4 h-4 rounded-full bg-white border border-slate-200 text-[#1A73E8] text-[9px] font-black flex items-center justify-center shadow-2xs">G</span>
+                        <span className="w-4 h-4 rounded-full bg-[#5F259F] text-white text-[8px] font-black flex items-center justify-center shadow-2xs">पे</span>
+                        <span className="px-1 h-4 rounded bg-[#002970] text-[#00BAF2] text-[7px] font-black flex items-center justify-center shadow-2xs">Paytm</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-medium">GPay, PhonePe, Cards, NetBanking</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                   paymentOption === 'online' && !useAmc ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"
                 }`}>
-                  {paymentOption === 'online' && !useAmc && <Check size={12} />}
+                  {paymentOption === 'online' && !useAmc && <Check size={12} className="stroke-[3]" />}
                 </div>
               </div>
 
