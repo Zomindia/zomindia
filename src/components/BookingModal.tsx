@@ -574,28 +574,29 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       setIsSearchingLive(true);
 
-      // 1. Attempt google.maps.Geocoder first
+      // 1. Resolve address via OpenStreetMap Nominatim search (unrestricted, zero authorization errors)
       try {
-        if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
-          const geocoder = new (window as any).google.maps.Geocoder();
-          const queryText = q.includes("indore") ? address : `${address}, Indore, India`;
-          const response = await geocoder.geocode({ address: queryText });
-          if (response && response.results && response.results.length > 0) {
-            const formatted = response.results.slice(0, 5).map((item: any, idx: number) => ({
-              placeId: item.place_id || `g_${idx}`,
-              name: item.address_components?.[0]?.long_name || item.formatted_address.split(',')[0],
-              area: item.formatted_address,
-              description: item.formatted_address,
-              lat: item.geometry.location.lat(),
-              lng: item.geometry.location.lng()
+        const queryText = q.includes("indore") ? address : `${address}, Indore, India`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&limit=5`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const formatted = data.map((item: any, idx: number) => ({
+              placeId: `osm_${item.place_id || idx}`,
+              name: item.name || item.display_name?.split(',')?.[0] || address,
+              area: item.display_name,
+              description: item.display_name,
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon)
             }));
             setLiveSuggestions(formatted);
             setIsSearchingLive(false);
             return;
           }
         }
-      } catch (gErr) {
-        console.warn("[Google Geocoder Autocomplete Notice - Non-blocking]:", gErr);
+      } catch (osmErr) {
+        console.warn("[Address Search Notice - Non-blocking]:", osmErr);
       }
 
       // 2. Seamless local Indore fallback without rate limits or UI freezing
@@ -627,22 +628,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const reverseGeocodeLocation = async (lat: number, lng: number) => {
     setIsGeocoding(true);
 
-    // 1. Attempt google.maps.Geocoder first
+    // 1. Attempt OpenStreetMap Nominatim reverse geocoding (unrestricted, zero authorization errors)
     try {
-      if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
-        const geocoder = new (window as any).google.maps.Geocoder();
-        const response = await geocoder.geocode({ location: { lat, lng } });
-        if (response && response.results && response.results.length > 0) {
-          const formatted = response.results[0].formatted_address;
-          if (formatted) {
-            setAddress(formatted);
-            setIsGeocoding(false);
-            return true;
-          }
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          setAddress(data.display_name);
+          setIsGeocoding(false);
+          return true;
         }
       }
-    } catch (gErr) {
-      console.warn("[Google Geocoder Reverse Notice - Non-blocking]:", gErr);
+    } catch (osmErr) {
+      console.warn("[Reverse Geocode Notice - Non-blocking]:", osmErr);
     }
 
     // 2. Seamless local Indore landmark fallback (instant, zero network latency, no 429 errors)
