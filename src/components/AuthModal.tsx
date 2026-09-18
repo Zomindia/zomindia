@@ -6,7 +6,6 @@ import {
   signInWithPhoneNumber,
   ConfirmationResult,
   updateProfile,
-  signInAnonymously,
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
@@ -15,7 +14,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import { LogoIcon, LogoHorizontal } from './BrandLogo';
 import { useAutoOTP } from '../hooks/useAutoOTP';
-import { sendSmsOtp } from '../lib/sms';
 import { 
   X, 
   Smartphone, 
@@ -24,6 +22,12 @@ import {
   AlertCircle,
   ChevronLeft
 } from 'lucide-react';
+
+declare global {
+  interface Window {
+    recaptchaVerifier?: RecaptchaVerifier | null;
+  }
+}
 
 interface Props {
   isOpen: boolean;
@@ -39,6 +43,30 @@ type AuthView =
   | 'profile-setup'
   | 'google-phone-setup'
   | 'success-transition';
+
+const getFriendlyAuthErrorMessage = (err: any): string => {
+  if (!err) return 'An unexpected error occurred. Please try again.';
+  switch (err.code) {
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized for Firebase Phone Authentication. Please add this domain to Authorized Domains in the Firebase Console.';
+    case 'auth/too-many-requests':
+      return 'Too many SMS requests. Please wait a few minutes and try again.';
+    case 'auth/invalid-phone-number':
+      return 'Invalid mobile number format. Please enter a valid 10-digit Indian phone number.';
+    case 'auth/quota-exceeded':
+      return 'SMS quota exceeded for this Firebase project. Please try again later.';
+    case 'auth/captcha-check-failed':
+      return 'reCAPTCHA verification failed. Please check your network and try again.';
+    case 'auth/invalid-verification-code':
+      return 'The 6-digit verification code entered is invalid. Please check and try again.';
+    case 'auth/code-expired':
+      return 'This verification code has expired. Please request a new OTP code.';
+    case 'auth/user-disabled':
+      return 'This user account has been disabled. Please contact support.';
+    default:
+      return err.message || 'Failed to send verification code. Please try again.';
+  }
+};
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [view, setView] = useState<AuthView>('login-selection');
@@ -60,17 +88,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
   const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
 
-  // Fallback & Simulation OTP pipeline states
-  const [fallbackOtp, setFallbackOtp] = useState<string | null>(null);
-  const [simulatedNoticeCode, setSimulatedNoticeCode] = useState<string | null>(null);
-
   // Zomato-Style Onboarding verification and interactive conflict resolution state
   const [isOnboardingVerification, setIsOnboardingVerification] = useState(false);
   const [shouldMergeConflictOnSuccess, setShouldMergeConflictOnSuccess] = useState(false);
   const [conflictUid, setConflictUid] = useState<string | null>(null);
   const [showConflictOptions, setShowConflictOptions] = useState(false);
-
-  const recaptchaRef = useRef<any>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,18 +123,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
   useEffect(() => {
     return () => {
-      if (recaptchaRef.current) {
+      if (window.recaptchaVerifier) {
         try {
-          recaptchaRef.current.clear();
+          window.recaptchaVerifier.clear();
         } catch (e) {
           console.warn("Recaptcha cleanup on unmount failed:", e);
         }
-      }
-      const anchor = document.getElementById('recaptcha-anchor-dynamic');
-      if (anchor) {
-        try {
-          anchor.remove();
-        } catch (e) {}
+        window.recaptchaVerifier = null;
       }
     };
   }, []);
@@ -149,12 +166,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setError(null);
     setConfirmationResult(null);
     setVerifiedUid(null);
-    setFallbackOtp(null);
-    setSimulatedNoticeCode(null);
     setIsOnboardingVerification(false);
     setShouldMergeConflictOnSuccess(false);
     setConflictUid(null);
     setShowConflictOptions(false);
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (e) {}
+      window.recaptchaVerifier = null;
+    }
   };
 
   useEffect(() => {
@@ -163,7 +184,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   }, [isOpen]);
 
-  // Handle Phone Number submission to request OTP
+  // Safe and clean RecaptchaVerifier factory
+  const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
+    if (!window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {}
+      });
+      await window.recaptchaVerifier.render();
+    }
+    return window.recaptchaVerifier;
+  };
+
   // Handle Phone Number submission to request OTP
   const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,68 +207,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
     setLoading(true);
     setError(null);
-    setFallbackOtp(null);
-    setSimulatedNoticeCode(null);
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      // Cleanup existing recaptcha verifier and its DOM anchor
-      if (recaptchaRef.current) {
-        try {
-          recaptchaRef.current.clear();
-        } catch (e) {
-          console.warn("Existing recaptcha clear error bypassed:", e);
-        }
-        recaptchaRef.current = null;
-      }
-
-      const existingAnchor = document.getElementById('recaptcha-anchor-dynamic');
-      if (existingAnchor) {
-        try {
-          existingAnchor.remove();
-        } catch (e) {
-          console.warn("Existing dynamic recaptcha anchor removal error bypassed:", e);
-        }
-      }
-
-      // Create a fresh, isolated anchor directly appended to body to ensure it exists in the DOM
-      const freshAnchor = document.createElement('div');
-      freshAnchor.id = 'recaptcha-anchor-dynamic';
-      document.body.appendChild(freshAnchor);
-
-      // Initialize Recaptcha Verifier
-      const verifier = new RecaptchaVerifier(auth, 'recaptcha-anchor-dynamic', {
-        size: 'invisible',
-        callback: () => {}
-      });
-      await verifier.render();
-      recaptchaRef.current = verifier;
-      (window as any).recaptchaVerifier = verifier;
-
+      const verifier = await getOrCreateRecaptchaVerifier();
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setView('otp-entry');
       setTimer(30);
     } catch (err: any) {
-      console.warn("[AuthModal] Firebase Phone Auth unavailable or unauthorized domain, activating unified SMS pipeline:", err);
-      // Seamless Fallback: Generate secure 6-digit OTP and dispatch via unified sendSmsOtp
-      const secureOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setFallbackOtp(secureOtp);
-      setSimulatedNoticeCode(secureOtp);
-      setConfirmationResult(null);
-
-      try {
-        await sendSmsOtp({
-          phone: formattedPhone,
-          otp: secureOtp,
-          type: 'login',
-        });
-      } catch (smsErr) {
-        console.warn("[AuthModal] Unified SMS pipeline dispatch notice:", smsErr);
+      console.error("[AuthModal] Phone Auth SMS dispatch failed:", err);
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (_) {}
+        window.recaptchaVerifier = null;
       }
-
-      setView('otp-entry');
-      setTimer(30);
+      setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -252,32 +239,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      const appVerifier = (window as any).recaptchaVerifier;
-      if (appVerifier && !fallbackOtp) {
-        const result = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
-        setConfirmationResult(result);
-        setTimer(30);
-        return;
-      }
-      throw new Error('Using unified SMS pipeline');
-    } catch (err: any) {
-      console.warn("[AuthModal] Resending OTP via unified SMS pipeline:", err);
-      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setFallbackOtp(newOtp);
-      setSimulatedNoticeCode(newOtp);
-      setConfirmationResult(null);
-
-      try {
-        await sendSmsOtp({
-          phone: formattedPhone,
-          otp: newOtp,
-          type: 'login',
-        });
-      } catch (smsErr) {
-        console.warn("[AuthModal] Resend SMS gateway dispatch notice:", smsErr);
-      }
-
+      const verifier = await getOrCreateRecaptchaVerifier();
+      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      setConfirmationResult(result);
       setTimer(30);
+    } catch (err: any) {
+      console.error("[AuthModal] Resend OTP failed:", err);
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (_) {}
+        window.recaptchaVerifier = null;
+      }
+      setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -334,133 +308,130 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
       return;
     }
 
+    if (!confirmationResult) {
+      setError('No active verification session detected. Please request a new code.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      let resolvedUserId: string;
+      const credential = await confirmationResult.confirm(code);
+      const userObj = credential.user;
+      setVerifiedUid(userObj.uid);
 
-      if (fallbackOtp) {
-        if (code !== fallbackOtp) {
-          setError('The verification code entered is invalid. Please try again.');
-          setLoading(false);
-          return;
-        }
-        // Fallback verification succeeded
-        let activeUser = auth.currentUser;
-        if (!activeUser) {
-          try {
-            const anonCred = await signInAnonymously(auth);
-            activeUser = anonCred.user;
-          } catch (anonErr) {
-            console.warn("[AuthModal] Anonymous auth session initialization notice:", anonErr);
-          }
-        }
+      if (isOnboardingVerification) {
+        const activeUid = userObj.uid;
         const cleanPhone = phoneNumber.replace(/\D/g, '');
-        resolvedUserId = activeUser?.uid || `usr_${cleanPhone}`;
-        setVerifiedUid(resolvedUserId);
-      } else {
-        if (!confirmationResult) {
-          throw new Error('No active verification session detected. Please request a new code.');
-        }
+        const formattedPhone = `+91${cleanPhone}`;
+        const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
-        const credential = await confirmationResult.confirm(code);
-        const userObj = credential.user;
-        resolvedUserId = userObj.uid;
-        setVerifiedUid(userObj.uid);
-      }
+        // Safe transactional pre-write merge/link
+        await runTransaction(db, async (transaction) => {
+          const activeUserRef = doc(db, 'users', activeUid);
+          const activeUserSnap = await transaction.get(activeUserRef);
 
-        if (isOnboardingVerification) {
-          const activeUid = auth.currentUser?.uid || resolvedUserId;
-          const cleanPhone = phoneNumber.replace(/\D/g, '');
-          const formattedPhone = `+91${cleanPhone}`;
-          const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+          let walletVal = walletJoiningBonus;
+          let existingData: any = {};
 
-          // Safe transactional pre-write merge/link
-          await runTransaction(db, async (transaction) => {
-            const activeUserRef = doc(db, 'users', activeUid);
-            const activeUserSnap = await transaction.get(activeUserRef);
+          if (activeUserSnap.exists()) {
+            existingData = activeUserSnap.data();
+            if (existingData.walletBalance !== undefined) {
+              walletVal = existingData.walletBalance;
+            }
+          }
 
-            let walletVal = walletJoiningBonus;
-            let existingData: any = {};
+          const masterUid = conflictUid || activeUid;
+          const masterRef = doc(db, 'users', masterUid);
 
-            if (activeUserSnap.exists()) {
-              existingData = activeUserSnap.data();
-              if (existingData.walletBalance !== undefined) {
-                walletVal = existingData.walletBalance;
+          if (shouldMergeConflictOnSuccess && conflictUid) {
+            const conflictSnap = await transaction.get(masterRef);
+            if (conflictSnap.exists()) {
+              const conflictData = conflictSnap.data();
+              if (conflictData.walletBalance !== undefined) {
+                walletVal += conflictData.walletBalance;
               }
+              existingData = {
+                ...conflictData,
+                ...existingData,
+              };
             }
+          }
 
-            const masterUid = conflictUid || activeUid;
-            const masterRef = doc(db, 'users', masterUid);
-
-            if (shouldMergeConflictOnSuccess && conflictUid) {
-              const conflictSnap = await transaction.get(masterRef);
-              if (conflictSnap.exists()) {
-                const conflictData = conflictSnap.data();
-                if (conflictData.walletBalance !== undefined) {
-                  walletVal += conflictData.walletBalance;
-                }
-                existingData = {
-                  ...conflictData,
-                  ...existingData,
-                };
-              }
-            }
-
-            const profilePayload = buildDualPersonaUserDoc({
-              ...existingData,
-              uid: masterUid,
-              displayName: displayName.trim(),
-              fullName: displayName.trim(),
-              email: email.trim(),
-              phoneNumber: formattedPhone,
-              mobile: formattedPhone,
-              onboardingComplete: true,
-              walletBalance: walletVal,
-              updatedAt: Timestamp.now()
-            });
-
-            if (isSarthakEmail) {
-              profilePayload.role = 'admin';
-              profilePayload.adminSubRole = 'head';
-            } else if (!profilePayload.role) {
-              profilePayload.role = 'customer';
-            }
-
-            transaction.set(masterRef, profilePayload, { merge: true });
-
-            // Write a small pointer to activeUid if they are different, preventing any split/ghost records
-            if (activeUid !== masterUid) {
-              transaction.set(activeUserRef, {
-                uid: activeUid,
-                mergedInto: masterUid,
-                onboardingComplete: false,
-                updatedAt: Timestamp.now()
-              }, { merge: true });
-            }
+          const profilePayload = buildDualPersonaUserDoc({
+            ...existingData,
+            uid: masterUid,
+            displayName: displayName.trim(),
+            fullName: displayName.trim(),
+            email: email.trim(),
+            phoneNumber: formattedPhone,
+            mobile: formattedPhone,
+            onboardingComplete: true,
+            walletBalance: walletVal,
+            updatedAt: Timestamp.now()
           });
 
-          // Move any bookings/history in Firestore if needed (though resolvedUid ensures they access their bookings seamlessly)
-          if (shouldMergeConflictOnSuccess && conflictUid) {
-            try {
-              const bookingsQ1 = query(collection(db, 'bookings'), where('userId', '==', activeUid));
-              const bookingsQ2 = query(collection(db, 'bookings'), where('customerId', '==', activeUid));
-              const [bSnap1, bSnap2] = await Promise.all([getDocs(bookingsQ1), getDocs(bookingsQ2)]);
-
-              const batch = writeBatch(db);
-              bSnap1.docs.forEach((d) => {
-                batch.update(doc(db, 'bookings', d.id), { userId: conflictUid });
-              });
-              bSnap2.docs.forEach((d) => {
-                batch.update(doc(db, 'bookings', d.id), { customerId: conflictUid });
-              });
-              await batch.commit();
-            } catch (migrateErr) {
-              console.error("Non-blocking bookings migration error:", migrateErr);
-            }
+          if (isSarthakEmail) {
+            profilePayload.role = 'admin';
+            profilePayload.adminSubRole = 'head';
+          } else if (!profilePayload.role) {
+            profilePayload.role = 'customer';
           }
 
+          transaction.set(masterRef, profilePayload, { merge: true });
+
+          // Write a small pointer to activeUid if they are different, preventing any split/ghost records
+          if (activeUid !== masterUid) {
+            transaction.set(activeUserRef, {
+              uid: activeUid,
+              mergedInto: masterUid,
+              onboardingComplete: false,
+              updatedAt: Timestamp.now()
+            }, { merge: true });
+          }
+        });
+
+        // Move any bookings/history in Firestore if needed (though resolvedUid ensures they access their bookings seamlessly)
+        if (shouldMergeConflictOnSuccess && conflictUid) {
+          try {
+            const bookingsQ1 = query(collection(db, 'bookings'), where('userId', '==', activeUid));
+            const bookingsQ2 = query(collection(db, 'bookings'), where('customerId', '==', activeUid));
+            const [bSnap1, bSnap2] = await Promise.all([getDocs(bookingsQ1), getDocs(bookingsQ2)]);
+
+            const batch = writeBatch(db);
+            bSnap1.docs.forEach((d) => {
+              batch.update(doc(db, 'bookings', d.id), { userId: conflictUid });
+            });
+            bSnap2.docs.forEach((d) => {
+              batch.update(doc(db, 'bookings', d.id), { customerId: conflictUid });
+            });
+            await batch.commit();
+          } catch (migrateErr) {
+            console.error("Non-blocking bookings migration error:", migrateErr);
+          }
+        }
+
+        setView('success-transition');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+          resetForm();
+        }, 1500);
+      } else {
+        // Check Firestore for user profile
+        const cleanPhone = phoneNumber.replace(/\D/g, '');
+        const formattedPhone = `+91${cleanPhone}`;
+        let profileSnap = await getDoc(doc(db, 'users', userObj.uid));
+        if (!profileSnap.exists()) {
+          const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
+          const pSnap = await getDocs(phoneQ);
+          if (!pSnap.empty) {
+            profileSnap = pSnap.docs[0];
+          }
+        }
+
+        if (profileSnap && profileSnap.exists()) {
           setView('success-transition');
           setTimeout(() => {
             onSuccess();
@@ -468,40 +439,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
             resetForm();
           }, 1500);
         } else {
-          // Check Firestore
-          const cleanPhone = phoneNumber.replace(/\D/g, '');
-          const formattedPhone = `+91${cleanPhone}`;
-          let profileSnap = await getDoc(doc(db, 'users', resolvedUserId));
-          if (!profileSnap.exists()) {
-            const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
-            const pSnap = await getDocs(phoneQ);
-            if (!pSnap.empty) {
-              profileSnap = pSnap.docs[0];
-            }
-          }
-
-          if (profileSnap && profileSnap.exists()) {
-            setView('success-transition');
-            setTimeout(() => {
-              onSuccess();
-              onClose();
-              resetForm();
-            }, 1500);
-          } else {
-            setView('profile-setup');
-          }
+          setView('profile-setup');
         }
-    } catch (err: any) {
-      console.error("OTP verification error:", err);
-      let friendlyMessage = 'Invalid verification code. Please check and try again.';
-      if (err.code === 'auth/invalid-verification-code') {
-        friendlyMessage = 'The verification code entered is invalid. Please try again.';
-      } else if (err.code === 'auth/code-expired') {
-        friendlyMessage = 'This verification code is expired. Please request a new OTP code.';
-      } else if (err.message) {
-        friendlyMessage = err.message;
       }
-      setError(friendlyMessage);
+    } catch (err: any) {
+      console.error("[AuthModal] OTP verification error:", err);
+      setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -746,69 +689,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA or unified SMS pipeline
+  // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA
   const sendOnboardingOTP = async (formattedPhone: string) => {
     try {
-      // Cleanup existing recaptcha verifier and its DOM anchor
-      if (recaptchaRef.current) {
-        try {
-          recaptchaRef.current.clear();
-        } catch (e) {
-          console.warn("Existing recaptcha clear error bypassed:", e);
-        }
-        recaptchaRef.current = null;
-      }
-
-      const existingAnchor = document.getElementById('recaptcha-anchor-dynamic');
-      if (existingAnchor) {
-        try {
-          existingAnchor.remove();
-        } catch (e) {
-          console.warn("Existing dynamic recaptcha anchor removal error bypassed:", e);
-        }
-      }
-
-      // Create a fresh, isolated anchor directly appended to body to ensure it exists in the DOM
-      const freshAnchor = document.createElement('div');
-      freshAnchor.id = 'recaptcha-anchor-dynamic';
-      document.body.appendChild(freshAnchor);
-
-      // Initialize Recaptcha Verifier
-      const verifier = new RecaptchaVerifier(auth, 'recaptcha-anchor-dynamic', {
-        size: 'invisible',
-        callback: () => {}
-      });
-      await verifier.render();
-      recaptchaRef.current = verifier;
-      (window as any).recaptchaVerifier = verifier;
-
+      const verifier = await getOrCreateRecaptchaVerifier();
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
-      setFallbackOtp(null);
-      setSimulatedNoticeCode(null);
       setIsOnboardingVerification(true);
       setView('otp-entry');
       setTimer(30);
     } catch (err: any) {
-      console.warn("[AuthModal] Onboarding Firebase Phone Auth unavailable, activating unified SMS pipeline:", err);
-      const simulatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setFallbackOtp(simulatedOtp);
-      setSimulatedNoticeCode(simulatedOtp);
-      setConfirmationResult(null);
-
-      try {
-        await sendSmsOtp({
-          phone: formattedPhone,
-          otp: simulatedOtp,
-          type: 'login',
-        });
-      } catch (smsErr) {
-        console.warn("[AuthModal] Onboarding SMS gateway dispatch notice:", smsErr);
+      console.error("[AuthModal] Onboarding OTP failed:", err);
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (_) {}
+        window.recaptchaVerifier = null;
       }
-
-      setIsOnboardingVerification(true);
-      setView('otp-entry');
-      setTimer(30);
+      setError(getFriendlyAuthErrorMessage(err));
     }
   };
 
@@ -880,6 +778,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         onClick={undefined}
       />
       
+      {/* Permanent static container for Firebase Phone Auth invisible reCAPTCHA */}
+      <div id="recaptcha-container"></div>
+
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1269,29 +1170,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     We've sent a 6-digit OTP via SMS to <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
                   </p>
                 </div>
-
-                {/* Subtle Simulated Code Badge / Toast for Preview Environments */}
-                {simulatedNoticeCode && (
-                  <div className="flex items-center justify-between p-3 bg-blue-50/90 border border-blue-200/80 rounded-2xl text-blue-900 text-xs">
-                    <div className="flex items-center gap-2 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0" />
-                      <div>
-                        <span className="text-neutral-500 font-normal">Preview OTP: </span>
-                        <span className="font-mono font-bold text-blue-700 tracking-wider text-sm">{simulatedNoticeCode}</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOtpValues(simulatedNoticeCode.split(''));
-                        handleVerifyOTP(undefined, simulatedNoticeCode);
-                      }}
-                      className="text-[11px] font-bold text-[#050CA6] bg-white px-2.5 py-1 rounded-xl border border-blue-200 hover:bg-blue-100/60 transition-colors shadow-xs"
-                    >
-                      Auto-fill
-                    </button>
-                  </div>
-                )}
 
                 <form onSubmit={handleVerifyOTP} className="space-y-6">
                   {/* Digital glowing code squares: aligned specifically for responsive mobile screen widths */}
