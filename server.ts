@@ -721,7 +721,14 @@ async function startServer() {
       // Activate resilient, non-blocking checkout fallback using standard UPI Intent / QR so user payment never breaks
       console.warn("[PhonePe PG Notice] Live gateway returned 404 or rejected handshake:", lastHandshakeNotice, "- Engaging seamless high-availability checkout fallback.");
 
-      const fallbackVpa = (process.env.MERCHANT_UPI_ID || process.env.VITE_MERCHANT_UPI_ID || "zomindia.indore@icici").trim();
+      const fallbackVpa = (process.env.MERCHANT_UPI_ID || process.env.VITE_MERCHANT_UPI_ID || "").trim();
+      if (!fallbackVpa) {
+        console.error("[PhonePe PG] Merchant UPI ID is not configured (MERCHANT_UPI_ID or VITE_MERCHANT_UPI_ID is empty).");
+        return res.status(500).json({
+          success: false,
+          error: "Merchant UPI ID is not configured in server environment (MERCHANT_UPI_ID or VITE_MERCHANT_UPI_ID is required)."
+        });
+      }
       const fallbackName = (process.env.MERCHANT_NAME || process.env.VITE_MERCHANT_NAME || "Zomindia Home Services Indore").trim();
       const fallbackIntentUri = `upi://pay?pa=${fallbackVpa}&pn=${encodeURIComponent(
         fallbackName
@@ -777,25 +784,15 @@ async function startServer() {
       let statusData: any = null;
       let paymentInstrument = null;
 
-      // Allow test transactions to complete cleanly in test/preview mode (instant completion bypass)
-      // or explicit manual user confirmation ("I Have Completed Payment") so user is never stuck in infinite loop
-      const confirmPayment = req.body?.confirmPayment === true || req.query?.confirmPayment === "true";
-      const manualUtr = req.body?.utr || req.query?.utr;
+      // Strict security: Zero unverified client bypass.
+      // Only permit simulated mock when strictly running in non-production environment with explicit ?mock=true query.
+      const isExplicitDevMock = process.env.NODE_ENV !== "production" && req.query?.mock === "true";
 
-      const isTestTxn = String(merchantTransactionId).startsWith("TEST_") || 
-                        String(merchantTransactionId).startsWith("MOCK_") || 
-                        String(merchantTransactionId).includes("_TEST") ||
-                        String(merchantTransactionId).includes("_SIM_") ||
-                        req.query?.mock === "true" ||
-                        req.query?.test === "true";
-
-      if (confirmPayment) {
+      if (isExplicitDevMock) {
         isSuccess = true;
-        paymentInstrument = { type: "UPI_USER_CONFIRM", utr: manualUtr || merchantTransactionId };
-      } else if (isTestTxn) {
-        isSuccess = true;
+        paymentInstrument = { type: "DEV_MOCK_VERIFIED" };
       } else {
-        // Query status across candidate hosts if needed
+        // Query status strictly from PhonePe's upstream gateway API across candidate hosts
         for (const targetHost of allHosts) {
           try {
             const statusRes = await axios.get(`${targetHost.replace(/\/+$/, "")}${endpoint}`, {
@@ -1044,6 +1041,53 @@ async function startServer() {
       const txnId = merchantTransactionId || `PHONEPE_${Date.now()}`;
       const bookingRef = db.collection("bookings").doc(bookingId);
       const existingDoc = await bookingRef.get();
+      const existingData = existingDoc.exists ? existingDoc.data() : null;
+
+      // Strict security: Zero unverified client bypass.
+      // Must be already verified as paid in Firestore (via webhook or verified status poller), or verify directly with PhonePe
+      const isAlreadyPaidInDb = existingData?.paymentStatus === "paid";
+      const isExplicitDevMock = process.env.NODE_ENV !== "production" && req.body?.mock === true;
+
+      if (!isAlreadyPaidInDb && !isExplicitDevMock) {
+        const txnToCheck = merchantTransactionId || existingData?.paymentIntentId || existingData?.transactionId;
+        if (!txnToCheck) {
+          return res.status(400).json({ success: false, error: "Cannot verify payment: merchantTransactionId is required." });
+        }
+
+        const { merchantId, saltKey, saltIndex, allHosts } = getPhonePeConfig();
+        const endpoint = `/pg/v1/status/${merchantId}/${txnToCheck}`;
+        const stringToHash = endpoint + saltKey;
+        const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
+        const checksum = `${sha256}###${saltIndex}`;
+
+        let isVerifiedByGateway = false;
+        for (const targetHost of allHosts) {
+          try {
+            const statusRes = await axios.get(`${targetHost.replace(/\/+$/, "")}${endpoint}`, {
+              headers: {
+                "Content-Type": "application/json",
+                "X-VERIFY": checksum,
+                "X-MERCHANT-ID": merchantId
+              },
+              timeout: 6000
+            });
+            if (statusRes.data && (statusRes.data.code === "PAYMENT_SUCCESS" || statusRes.data.data?.state === "COMPLETED")) {
+              isVerifiedByGateway = true;
+              break;
+            }
+          } catch (err: any) {
+            if (err.response?.status === 404) continue;
+            break;
+          }
+        }
+
+        if (!isVerifiedByGateway) {
+          return res.status(400).json({
+            success: false,
+            error: "Payment verification failed: Upstream PhonePe gateway did not confirm PAYMENT_SUCCESS."
+          });
+        }
+      }
 
       let finalAmount = typeof amount === "number" ? amount : 0;
       let finalUserId = customerUid || "system";

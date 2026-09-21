@@ -123,9 +123,6 @@ export default function OnlinePaymentGatewayModal({
   const [dynamicQrData, setDynamicQrData] = useState<string | null>(null);
   const [isDynamicQr, setIsDynamicQr] = useState(false);
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
-  const [userUtr, setUserUtr] = useState('');
-  const [showUtrInput, setShowUtrInput] = useState(false);
-  const [isManualConfirming, setIsManualConfirming] = useState(false);
 
   // Processing & status
   const [isProcessing, setIsProcessing] = useState(false);
@@ -137,14 +134,16 @@ export default function OnlinePaymentGatewayModal({
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  const MERCHANT_VPA = (import.meta.env.VITE_MERCHANT_UPI_ID as string) || 'zomindia.indore@icici';
-  const MERCHANT_NAME = (import.meta.env.VITE_MERCHANT_NAME as string) || 'Zomindia Services Indore';
+  const MERCHANT_VPA = (import.meta.env.VITE_MERCHANT_UPI_ID as string || '').trim();
+  const MERCHANT_NAME = (import.meta.env.VITE_MERCHANT_NAME as string || 'Zomindia Services').trim();
 
   // Dynamic standard UPI Intent URI strictly containing complete pa, pn, am, cu, tn, and unique tr
   const currentTxnRef = activeTxnId || `TXN_${Date.now()}`;
-  const upiIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
-    MERCHANT_NAME
-  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(currentTxnRef)}`;
+  const upiIntentUri = MERCHANT_VPA
+    ? `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+        MERCHANT_NAME
+      )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(currentTxnRef)}`
+    : '';
 
   // QR Timer Countdown
   useEffect(() => {
@@ -175,12 +174,13 @@ export default function OnlinePaymentGatewayModal({
   const startStatusPolling = (txnId: string) => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     let attempts = 0;
-    const maxAttempts = 60; // Polling for 2.5 minutes (60 * 2.5s)
+    const maxAttempts = 72; // Polling for 3 minutes (72 * 2.5s)
 
     pollingRef.current = setInterval(async () => {
       attempts += 1;
       if (attempts > maxAttempts) {
         if (pollingRef.current) clearInterval(pollingRef.current);
+        setStatusMessage('Payment verification session timed out. If money was debited, it will reflect shortly.');
         return;
       }
 
@@ -192,7 +192,7 @@ export default function OnlinePaymentGatewayModal({
         const data = await res.json();
         if (data.status === 'SUCCESS' || (data.success && (data.code === 'PAYMENT_SUCCESS' || data.status === 'PAYMENT_SUCCESS'))) {
           if (pollingRef.current) clearInterval(pollingRef.current);
-          handlePaymentFinalized(txnId, 'PhonePe Gateway', 'upi');
+          handlePaymentFinalized(txnId, isDynamicQr ? 'PhonePe Dynamic QR' : 'PhonePe Gateway', 'upi');
         }
       } catch (err) {
         console.warn('[PaymentDrawer Polling Notice]:', err);
@@ -227,13 +227,21 @@ export default function OnlinePaymentGatewayModal({
       } else {
         setDynamicQrData(null);
         setIsDynamicQr(false);
-        startStatusPolling(txnId);
+        if (!MERCHANT_VPA) {
+          setErrorMessage('Merchant UPI ID is not configured (VITE_MERCHANT_UPI_ID missing). Please configure a valid VPA.');
+        } else {
+          startStatusPolling(txnId);
+        }
       }
     } catch (err) {
       console.warn('[OnlinePaymentGatewayModal] Dynamic QR notice:', err);
       setDynamicQrData(null);
       setIsDynamicQr(false);
-      startStatusPolling(txnId);
+      if (!MERCHANT_VPA) {
+        setErrorMessage('Merchant UPI ID is not configured (VITE_MERCHANT_UPI_ID missing). Please configure a valid VPA.');
+      } else {
+        startStatusPolling(txnId);
+      }
     } finally {
       setIsGeneratingQr(false);
     }
@@ -247,45 +255,8 @@ export default function OnlinePaymentGatewayModal({
     }
   }, [isOpen, selectedMethod]);
 
-  // Explicit User Confirmation ("I Have Completed Payment") - Never Stuck in Infinite Waiting Loop
-  const handleManualConfirmPayment = async (customUtr?: string) => {
-    setIsManualConfirming(true);
-    setErrorMessage(null);
-    const txnToConfirm = activeTxnId || currentTxnRef;
-    const utrValue = (customUtr || userUtr).trim() || txnToConfirm;
-
-    try {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-
-      // 1. Notify backend status API with confirmPayment flag
-      try {
-        await fetch(`/api/phonepe/status/${encodeURIComponent(txnToConfirm)}?bookingId=${encodeURIComponent(bookingId || '')}&confirmPayment=true&utr=${encodeURIComponent(utrValue)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookingId,
-            confirmPayment: true,
-            utr: utrValue,
-            merchantTransactionId: txnToConfirm
-          })
-        });
-      } catch (apiErr) {
-        console.warn('[OnlinePaymentGatewayModal] Status confirm API call notice:', apiErr);
-      }
-
-      handlePaymentFinalized(utrValue, isDynamicQr ? 'PhonePe Dynamic QR' : 'UPI QR', 'upi');
-    } catch (err: any) {
-      console.error('[OnlinePaymentGatewayModal] Manual confirmation error:', err);
-      handlePaymentFinalized(utrValue, 'UPI Payment', 'upi');
-    } finally {
-      setIsManualConfirming(false);
-    }
-  };
-
   const handleCopyVpa = () => {
+    if (!MERCHANT_VPA) return;
     navigator.clipboard.writeText(MERCHANT_VPA);
     setCopiedVpa(true);
     setTimeout(() => setCopiedVpa(false), 2000);
@@ -403,6 +374,11 @@ export default function OnlinePaymentGatewayModal({
 
       // 1. If standard UPI Intent is triggered (for other_upi or custom UPI ID)
       if (selectedMethod === 'other_upi') {
+        if (!MERCHANT_VPA) {
+          setIsProcessing(false);
+          setErrorMessage('Merchant UPI ID is not configured (VITE_MERCHANT_UPI_ID missing). Please choose Card or Net Banking.');
+          return;
+        }
         const standardIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
           MERCHANT_NAME
         )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
@@ -438,6 +414,12 @@ export default function OnlinePaymentGatewayModal({
       }
 
       // 3. Standard Fallback UPI Intent if gateway checkout is unavailable
+      if (!MERCHANT_VPA) {
+        setIsProcessing(false);
+        setErrorMessage('Online payment gateway is temporarily unavailable and Merchant UPI ID is not configured.');
+        return;
+      }
+
       const fallbackIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
         MERCHANT_NAME
       )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
@@ -451,6 +433,11 @@ export default function OnlinePaymentGatewayModal({
       startStatusPolling(generatedTxn);
     } catch (err: any) {
       console.warn('[PaymentDrawer] API Initiation Warning:', err);
+      if (!MERCHANT_VPA) {
+        setIsProcessing(false);
+        setErrorMessage('Failed to initiate payment session. Please check your connection or choose another method.');
+        return;
+      }
       const fallbackTxn = `TXN_PPE_${Date.now()}`;
       setActiveTxnId(fallbackTxn);
       const fallbackIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
@@ -670,81 +657,20 @@ export default function OnlinePaymentGatewayModal({
                       <span>100% Bank Secured</span>
                     </div>
 
-                    {/* EXPLICIT CONFIRMATION BUTTON - NO INFINITE WAITING LOOP */}
-                    <div className="pt-2 w-full max-w-sm mx-auto space-y-2">
-                      <button
-                        type="button"
-                        id="online-awaiting-confirm-completed-btn"
-                        disabled={isManualConfirming}
-                        onClick={() => handleManualConfirmPayment()}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
-                      >
-                        {isManualConfirming ? (
-                          <>
-                            <RefreshCw size={14} className="animate-spin" />
-                            <span>Verifying Confirmation...</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 size={16} className="stroke-[2.5]" />
-                            <span>I Have Completed Payment</span>
-                          </>
-                        )}
-                      </button>
-
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowUtrInput(!showUtrInput)}
-                          className="text-[11px] text-slate-500 hover:text-blue-600 font-semibold underline cursor-pointer"
-                        >
-                          {showUtrInput ? 'Hide UTR input' : 'Enter UPI Reference / UTR Number (Optional)'}
-                        </button>
-                      </div>
-
-                      {showUtrInput && (
-                        <div className="flex items-center gap-1.5 p-2 bg-white border border-blue-200 rounded-xl shadow-xs">
-                          <input
-                            type="text"
-                            maxLength={16}
-                            placeholder="Enter 12-digit UTR Number"
-                            value={userUtr}
-                            onChange={(e) => setUserUtr(e.target.value.replace(/\D/g, ''))}
-                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
-                          />
-                          <button
-                            type="button"
-                            disabled={isManualConfirming}
-                            onClick={() => handleManualConfirmPayment(userUtr)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs"
-                          >
-                            Confirm
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Preview / Test simulation helper */}
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const testTxn = activeTxnId || `TEST_PPE_${Date.now()}`;
-                          try {
-                            await fetch(`/api/phonepe/status/${encodeURIComponent(testTxn)}?bookingId=${bookingId || ''}&test=true`);
-                          } catch (e) {}
-                          handlePaymentFinalized(testTxn, 'PhonePe Gateway (Test Mode)', 'upi');
-                        }}
-                        className="text-[10px] text-slate-400 hover:text-blue-600 font-medium underline cursor-pointer transition-colors"
-                      >
-                        Simulate Bank Approval (Instant Test Mode)
-                      </button>
+                    <div className="pt-2 text-center">
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        Auto-detecting payment from PhonePe gateway. Please complete authorization in your UPI app.
+                      </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setAwaitingConfirmation(false)}
+                    onClick={() => {
+                      if (pollingRef.current) clearInterval(pollingRef.current);
+                      setAwaitingConfirmation(false);
+                      setIsProcessing(false);
+                    }}
                     className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-800 py-2 cursor-pointer transition-colors"
                   >
                     ← Cancel &amp; select another payment method
@@ -1056,118 +982,83 @@ export default function OnlinePaymentGatewayModal({
                       {/* Expandable QR Code Container */}
                       {selectedMethod === 'qr_code' && (
                         <div className="mt-3 pt-3 border-t border-blue-200/60 flex flex-col items-center text-center space-y-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-sm inline-block relative">
-                            {isGeneratingQr ? (
-                              <div className="w-40 h-40 flex flex-col items-center justify-center gap-2 text-slate-400">
-                                <RefreshCw size={24} className="animate-spin text-blue-600" />
-                                <span className="text-[11px] font-bold">Generating PhonePe QR...</span>
-                              </div>
-                            ) : dynamicQrData && (dynamicQrData.startsWith('data:image') || dynamicQrData.startsWith('http')) ? (
-                              <img
-                                src={dynamicQrData}
-                                alt="PhonePe Dynamic QR"
-                                className="w-40 h-40 object-contain mx-auto"
-                              />
-                            ) : (
-                              <QRCodeSVG
-                                value={dynamicQrData || upiIntentUri}
-                                size={160}
-                                level="H"
-                                includeMargin={true}
-                              />
-                            )}
-                          </div>
-
-                          {/* Dynamic vs Standard QR Status Badge */}
-                          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                            {isDynamicQr ? (
-                              <span className="flex items-center gap-1 text-emerald-700">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Dynamic PhonePe PG QR • Auto-Detect Active
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-slate-600">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                NPCI Standard UPI QR
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                            <span>Valid for: <strong className="text-slate-800 font-mono">{formattedQrTimer}</strong></span>
-                            <span>•</span>
-                            <button
-                              type="button"
-                              onClick={handleCopyVpa}
-                              className="text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <Copy size={12} /> {copiedVpa ? 'Copied VPA!' : 'Copy UPI ID'}
-                            </button>
-                          </div>
-
-                          {/* Live automated polling notice */}
-                          <div className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50/90 border border-blue-200/80 rounded-xl text-blue-800 text-[11px] font-semibold">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
-                            </span>
-                            <span>Waiting for payment confirmation from your UPI app... Do not close this screen.</span>
-                          </div>
-
-                          {/* EXPLICIT CONFIRMATION BUTTON - NO INFINITE WAITING LOOP */}
-                          <div className="w-full pt-1 space-y-2">
-                            <button
-                              type="button"
-                              id="online-modal-confirm-completed-btn"
-                              disabled={isManualConfirming}
-                              onClick={() => handleManualConfirmPayment()}
-                              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
-                            >
-                              {isManualConfirming ? (
-                                <>
-                                  <RefreshCw size={14} className="animate-spin" />
-                                  <span>Verifying Your Payment...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 size={16} className="stroke-[2.5]" />
-                                  <span>I Have Completed Payment</span>
-                                </>
-                              )}
-                            </button>
-
-                            <div className="flex items-center justify-between px-1">
-                              <button
-                                type="button"
-                                onClick={() => setShowUtrInput(!showUtrInput)}
-                                className="text-[10px] text-slate-500 hover:text-blue-600 font-medium underline cursor-pointer"
-                              >
-                                {showUtrInput ? 'Hide Reference Input' : 'Have a 12-digit UTR/Ref No.? (Optional)'}
-                              </button>
-                              <span className="text-[10px] text-slate-400">Never get stuck</span>
+                          {!dynamicQrData && !MERCHANT_VPA && !isGeneratingQr ? (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs text-center space-y-1 w-full">
+                              <AlertCircle className="mx-auto text-amber-600 mb-1" size={24} />
+                              <p className="font-bold">Merchant UPI ID Not Configured</p>
+                              <p className="text-[11px] text-amber-700">Please set VITE_MERCHANT_UPI_ID in environment settings or select Cards / Net Banking to proceed.</p>
                             </div>
-
-                            {showUtrInput && (
-                              <div className="flex items-center gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl">
-                                <input
-                                  type="text"
-                                  maxLength={16}
-                                  placeholder="Enter 12-digit UTR (optional)"
-                                  value={userUtr}
-                                  onChange={(e) => setUserUtr(e.target.value.replace(/\D/g, ''))}
-                                  className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 outline-none focus:border-blue-600"
-                                />
-                                <button
-                                  type="button"
-                                  disabled={isManualConfirming}
-                                  onClick={() => handleManualConfirmPayment(userUtr)}
-                                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer"
-                                >
-                                  Confirm
-                                </button>
+                          ) : (
+                            <>
+                              <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-sm inline-block relative">
+                                {isGeneratingQr ? (
+                                  <div className="w-40 h-40 flex flex-col items-center justify-center gap-2 text-slate-400">
+                                    <RefreshCw size={24} className="animate-spin text-blue-600" />
+                                    <span className="text-[11px] font-bold">Generating PhonePe QR...</span>
+                                  </div>
+                                ) : dynamicQrData && (dynamicQrData.startsWith('data:image') || dynamicQrData.startsWith('http')) ? (
+                                  <img
+                                    src={dynamicQrData}
+                                    alt="PhonePe Dynamic QR"
+                                    className="w-40 h-40 object-contain mx-auto"
+                                  />
+                                ) : (
+                                  <QRCodeSVG
+                                    value={dynamicQrData || upiIntentUri}
+                                    size={160}
+                                    level="H"
+                                    includeMargin={true}
+                                  />
+                                )}
                               </div>
-                            )}
-                          </div>
+
+                              {/* Dynamic vs Standard QR Status Badge */}
+                              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                {isDynamicQr ? (
+                                  <span className="flex items-center gap-1 text-emerald-700">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Dynamic PhonePe PG QR • Auto-Detect Active
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-slate-600">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                    NPCI Standard UPI QR
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                                <span>Valid for: <strong className="text-slate-800 font-mono">{formattedQrTimer}</strong></span>
+                                {MERCHANT_VPA && (
+                                  <>
+                                    <span>•</span>
+                                    <button
+                                      type="button"
+                                      onClick={handleCopyVpa}
+                                      className="text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Copy size={12} /> {copiedVpa ? 'Copied VPA!' : 'Copy UPI ID'}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Live automated polling notice */}
+                              <div className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50/90 border border-blue-200/80 rounded-xl text-blue-800 text-[11px] font-semibold">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                                </span>
+                                <span>Waiting for payment confirmation from your UPI app... Do not close this screen.</span>
+                              </div>
+
+                              <div className="w-full py-1 text-center">
+                                <p className="text-[11px] text-slate-400">
+                                  Scan using PhonePe, GPay, Paytm, or any BHIM UPI app. Status verifies automatically.
+                                </p>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
