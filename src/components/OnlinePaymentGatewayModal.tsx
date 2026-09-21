@@ -99,8 +99,12 @@ export default function OnlinePaymentGatewayModal({
   onPaymentSuccess,
   onPaymentCancel
 }: OnlinePaymentGatewayModalProps) {
-  // Method selection (Default to PhonePe as recommended)
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodId>('phonepe');
+  const isMobile = typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Method selection: default to QR Code on desktop for instant scannability, and PhonePe on mobile
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodId>(!isMobile ? 'qr_code' : 'phonepe');
+  const [webCheckoutUrl, setWebCheckoutUrl] = useState<string | null>(null);
+  const [qrInstructionApp, setQrInstructionApp] = useState<string>('PhonePe / GPay');
 
   // Specific method states
   const [customUpiId, setCustomUpiId] = useState('');
@@ -109,6 +113,12 @@ export default function OnlinePaymentGatewayModal({
   const [upiVerification, setUpiVerification] = useState<UpiVerificationResult | null>(null);
   const [suggestedSuffix, setSuggestedSuffix] = useState<string | null>(null);
   const [selectedBank, setSelectedBank] = useState('hdfc');
+
+  const selectedBankObj = POPULAR_BANKS.find((b) => b.id === selectedBank) || {
+    id: selectedBank,
+    name: selectedBank.toUpperCase(),
+    code: selectedBank.toUpperCase()
+  };
 
   // Card details
   const [cardNumber, setCardNumber] = useState('');
@@ -131,8 +141,11 @@ export default function OnlinePaymentGatewayModal({
   const [activeTxnId, setActiveTxnId] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pollingCountdown, setPollingCountdown] = useState<number>(60);
+  const [isPollingTimedOut, setIsPollingTimedOut] = useState<boolean>(false);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const MERCHANT_VPA = (import.meta.env.VITE_MERCHANT_UPI_ID as string || '').trim();
   const MERCHANT_NAME = (import.meta.env.VITE_MERCHANT_NAME as string || 'Zomindia Services').trim();
@@ -154,6 +167,18 @@ export default function OnlinePaymentGatewayModal({
     return () => clearInterval(interval);
   }, [isOpen]);
 
+  // Stop all status polling and countdown timers
+  const stopStatusPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  };
+
   // Reset state when opening/closing
   useEffect(() => {
     if (isOpen) {
@@ -162,25 +187,43 @@ export default function OnlinePaymentGatewayModal({
       setIsProcessing(false);
       setErrorMessage(null);
       setQrTimer(300);
+      setIsPollingTimedOut(false);
+      setPollingCountdown(60);
     } else {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      stopStatusPolling();
     }
   }, [isOpen]);
 
-  // PhonePe Background Status Poller (every 2.5 seconds)
+  // PhonePe Background Status Poller (strictly capped to 60 seconds with countdown and failover)
   const startStatusPolling = (txnId: string) => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
+    stopStatusPolling();
+    setIsPollingTimedOut(false);
+    setPollingCountdown(60);
+
+    // 1. Real-time 1-second countdown ticker
+    countdownTimerRef.current = setInterval(() => {
+      setPollingCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // 2. Status verification requests every 2.5s (max 24 attempts = 60s)
     let attempts = 0;
-    const maxAttempts = 72; // Polling for 3 minutes (72 * 2.5s)
+    const maxAttempts = 24;
 
     pollingRef.current = setInterval(async () => {
       attempts += 1;
       if (attempts > maxAttempts) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setStatusMessage('Payment verification session timed out. If money was debited, it will reflect shortly.');
+        stopStatusPolling();
+        setIsPollingTimedOut(true);
+        setStatusMessage('Payment not detected yet. If money was debited, it will reflect within 10 minutes.');
         return;
       }
 
@@ -191,7 +234,7 @@ export default function OnlinePaymentGatewayModal({
         });
         const data = await res.json();
         if (data.status === 'SUCCESS' || (data.success && (data.code === 'PAYMENT_SUCCESS' || data.status === 'PAYMENT_SUCCESS'))) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
+          stopStatusPolling();
           handlePaymentFinalized(txnId, isDynamicQr ? 'PhonePe Dynamic QR' : 'PhonePe Gateway', 'upi');
         }
       } catch (err) {
@@ -254,6 +297,63 @@ export default function OnlinePaymentGatewayModal({
       fetchPhonePeDynamicQr();
     }
   }, [isOpen, selectedMethod]);
+
+  // Handler for selecting UPI Apps with Desktop vs Mobile intelligence
+  const handleSelectUpiApp = (method: 'phonepe' | 'gpay' | 'paytm') => {
+    if (!isMobile) {
+      const appLabel = method === 'phonepe' ? 'PhonePe' : method === 'gpay' ? 'Google Pay' : 'Paytm';
+      setQrInstructionApp(appLabel);
+      setSelectedMethod('qr_code');
+    } else {
+      setSelectedMethod(method);
+    }
+  };
+
+  // Launch PhonePe Web Gateway in a new tab for desktop users
+  const handleLaunchWebGateway = async () => {
+    setIsProcessing(true);
+    setStatusMessage('Launching PhonePe Web Gateway...');
+    try {
+      const response = await fetch('/api/phonepe/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          bookingId: bookingId || '',
+          customerName,
+          customerPhone,
+          customerEmail,
+          serviceName,
+          redirectOrigin: window.location.origin
+        })
+      });
+      const data = await response.json();
+      const generatedTxn = data.merchantTransactionId || `TXN_${Date.now()}`;
+      setActiveTxnId(generatedTxn);
+      const checkoutUrl = data.checkoutUrl || data.redirectUrl;
+
+      if (checkoutUrl && /^https?:\/\//i.test(checkoutUrl)) {
+        window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+        setWebCheckoutUrl(checkoutUrl);
+        if (data.qrData) {
+          setDynamicQrData(data.qrData);
+          setIsDynamicQr(Boolean(data.isDynamicQr));
+        }
+        setAwaitingConfirmation(true);
+        startStatusPolling(generatedTxn);
+      } else {
+        if (data.qrData) {
+          setDynamicQrData(data.qrData);
+          setIsDynamicQr(Boolean(data.isDynamicQr));
+        }
+        startStatusPolling(generatedTxn);
+      }
+    } catch (e) {
+      console.warn('[OnlinePaymentGatewayModal] Web gateway launch notice:', e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleCopyVpa = () => {
     if (!MERCHANT_VPA) return;
@@ -361,7 +461,13 @@ export default function OnlinePaymentGatewayModal({
           customerPhone,
           customerEmail,
           serviceName,
-          redirectOrigin: window.location.origin
+          redirectOrigin: window.location.origin,
+          paymentMode: selectedMethod,
+          bank: selectedBank,
+          bankId: selectedBankObj.code,
+          bankName: selectedBankObj.name,
+          paymentInstrumentType: selectedMethod === 'netbanking' ? 'NET_BANKING' : (selectedMethod === 'qr_code' ? 'UPI_QR' : 'PAY_PAGE'),
+          instrumentType: selectedMethod === 'netbanking' ? 'NET_BANKING' : (selectedMethod === 'qr_code' ? 'UPI_QR' : 'PAY_PAGE')
         })
       });
 
@@ -369,72 +475,113 @@ export default function OnlinePaymentGatewayModal({
       const generatedTxn = data.merchantTransactionId || `TXN_${Date.now()}`;
       setActiveTxnId(generatedTxn);
 
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isMobile = typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       const checkoutUrl = data.checkoutUrl || data.redirectUrl;
+      const isHttpCheckout = Boolean(checkoutUrl && /^https?:\/\//i.test(checkoutUrl));
 
-      // 1. If standard UPI Intent is triggered (for other_upi or custom UPI ID)
-      if (selectedMethod === 'other_upi') {
-        if (!MERCHANT_VPA) {
+      // NET BANKING SEAMLESS REDIRECTION (Mobile & Desktop)
+      // Immediately redirect current browser tab directly to checkoutUrl (avoids browser popup blocker)
+      if (selectedMethod === 'netbanking') {
+        if (checkoutUrl) {
+          setWebCheckoutUrl(checkoutUrl);
           setIsProcessing(false);
-          setErrorMessage('Merchant UPI ID is not configured (VITE_MERCHANT_UPI_ID missing). Please choose Card or Net Banking.');
+          setAwaitingConfirmation(true);
+          setStatusMessage(`Connecting to secure ${selectedBankObj.name} Net Banking portal...`);
+          startStatusPolling(generatedTxn);
+
+          window.location.href = checkoutUrl;
+          return;
+        } else {
+          setIsProcessing(false);
+          setErrorMessage(`Unable to initialize ${selectedBankObj.name} Net Banking checkout. Please choose another method or try again.`);
           return;
         }
-        const standardIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
-          MERCHANT_NAME
-        )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
-
-        if (isMobile) {
-          window.location.href = standardIntentUri;
-        }
-        setIsProcessing(false);
-        setAwaitingConfirmation(true);
-        setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
-        startStatusPolling(generatedTxn);
-        return;
       }
 
-      // 2. For mobile checkout & desktop: all online payment selections (PhonePe, GPay, Paytm, Cards, Net Banking)
-      // strictly obtain and navigate to the official PhonePe gateway checkout URL
-      if (data.success && checkoutUrl) {
-        if (isMobile) {
-          // On mobile devices, direct window navigation launches PhonePe App / Web checkout seamlessly
-          window.location.href = checkoutUrl;
-        } else if (/^https?:\/\//i.test(checkoutUrl)) {
-          window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-        }
-        setIsProcessing(false);
-        setAwaitingConfirmation(true);
-        setStatusMessage(
-          /^https?:\/\//i.test(checkoutUrl)
-            ? 'Redirecting to secure PhonePe Gateway checkout...'
-            : 'Scan QR code or approve payment in your UPI app...'
-        );
-        startStatusPolling(generatedTxn);
-        return;
-      }
-
-      // 3. Standard Fallback UPI Intent if gateway checkout is unavailable
-      if (!MERCHANT_VPA) {
-        setIsProcessing(false);
-        setErrorMessage('Online payment gateway is temporarily unavailable and Merchant UPI ID is not configured.');
-        return;
-      }
-
-      const fallbackIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
-        MERCHANT_NAME
-      )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
-
+      // 1. MOBILE HANDLING (App deep-links & browser redirect)
       if (isMobile) {
-        window.location.href = fallbackIntentUri;
+        if (selectedMethod === 'other_upi') {
+          if (!MERCHANT_VPA) {
+            setIsProcessing(false);
+            setErrorMessage('Merchant UPI ID is not configured (VITE_MERCHANT_UPI_ID missing). Please choose Card or Net Banking.');
+            return;
+          }
+          const standardIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+            MERCHANT_NAME
+          )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
+
+          window.location.href = standardIntentUri;
+          setIsProcessing(false);
+          setAwaitingConfirmation(true);
+          setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
+          startStatusPolling(generatedTxn);
+          return;
+        }
+
+        if (data.success && checkoutUrl) {
+          window.location.href = checkoutUrl;
+          setIsProcessing(false);
+          setAwaitingConfirmation(true);
+          setStatusMessage('Redirecting to secure PhonePe Gateway checkout...');
+          startStatusPolling(generatedTxn);
+          return;
+        }
+
+        if (MERCHANT_VPA) {
+          const fallbackIntentUri = `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(
+            MERCHANT_NAME
+          )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}`;
+
+          window.location.href = fallbackIntentUri;
+          setIsProcessing(false);
+          setAwaitingConfirmation(true);
+          setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
+          startStatusPolling(generatedTxn);
+          return;
+        }
+
+        setIsProcessing(false);
+        setErrorMessage('Online payment gateway is temporarily unavailable.');
+        return;
       }
+
+      // 2. DESKTOP HANDLING (!isMobile)
+      // Only enter awaitingConfirmation if web gateway tab was opened OR scannable QR is visibly rendered!
+      if (isHttpCheckout) {
+        window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+        setWebCheckoutUrl(checkoutUrl);
+        if (data.qrData) {
+          setDynamicQrData(data.qrData);
+          setIsDynamicQr(Boolean(data.isDynamicQr));
+        }
+        setIsProcessing(false);
+        setAwaitingConfirmation(true);
+        setStatusMessage('PhonePe Web Gateway opened in a new tab. Please complete payment.');
+        startStatusPolling(generatedTxn);
+        return;
+      }
+
+      // If upstream PhonePe gateway did not return an HTTP URL (e.g. UPI Intent URI or fallback),
+      // NEVER enter the blank awaitingConfirmation screen on Desktop!
+      // Instead, switch to displaying the PhonePe Dynamic QR Code with clear instructions!
+      const resolvedQr = data.qrData || (MERCHANT_VPA ? `upi://pay?pa=${MERCHANT_VPA}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(generatedTxn)}` : null);
+
+      if (resolvedQr) {
+        setDynamicQrData(resolvedQr);
+        setIsDynamicQr(Boolean(data.isDynamicQr || data.qrData));
+        setSelectedMethod('qr_code');
+        setAwaitingConfirmation(false);
+        setIsProcessing(false);
+        startStatusPolling(generatedTxn);
+        return;
+      }
+
       setIsProcessing(false);
-      setAwaitingConfirmation(true);
-      setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
-      startStatusPolling(generatedTxn);
+      setErrorMessage('PhonePe gateway checkout is temporarily unavailable. Please try again or select another method.');
     } catch (err: any) {
       console.warn('[PaymentDrawer] API Initiation Warning:', err);
+      setIsProcessing(false);
       if (!MERCHANT_VPA) {
-        setIsProcessing(false);
         setErrorMessage('Failed to initiate payment session. Please check your connection or choose another method.');
         return;
       }
@@ -444,14 +591,19 @@ export default function OnlinePaymentGatewayModal({
         MERCHANT_NAME
       )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Service_${serviceName.slice(0, 15).replace(/\s+/g, '_')}`)}&tr=${encodeURIComponent(fallbackTxn)}`;
 
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isMobile = typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       if (isMobile) {
         window.location.href = fallbackIntentUri;
+        setAwaitingConfirmation(true);
+        setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
+        startStatusPolling(fallbackTxn);
+      } else {
+        // On desktop, render the scannable Dynamic QR code directly, never show empty waiting screen
+        setDynamicQrData(fallbackIntentUri);
+        setSelectedMethod('qr_code');
+        setAwaitingConfirmation(false);
+        startStatusPolling(fallbackTxn);
       }
-      setIsProcessing(false);
-      setAwaitingConfirmation(true);
-      setStatusMessage('Waiting for payment confirmation from your UPI app... Do not close this screen.');
-      startStatusPolling(fallbackTxn);
     }
   };
 
@@ -620,61 +772,196 @@ export default function OnlinePaymentGatewayModal({
                 /* AWAITING CONFIRMATION SCREEN - ZOMATO/SWIGGY STYLE AUTOMATED CHECKOUT */
                 <div className="py-6 space-y-5">
                   <div className="p-6 bg-gradient-to-b from-blue-50/80 via-blue-50/30 to-white border border-blue-200/80 rounded-3xl text-center space-y-4 shadow-sm">
-                    {/* Concentric Radar Pulse Ring */}
-                    <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                      <div className="absolute inset-0 rounded-full bg-blue-400/20 animate-ping" />
-                      <div className="absolute -inset-2 rounded-full border-2 border-blue-300 animate-pulse opacity-60" />
-                      <div className="relative w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
-                        <Smartphone size={28} className="animate-pulse" />
+                    {/* Net Banking Portal Redirection State & Desktop Fallback */}
+                    {selectedMethod === 'netbanking' ? (
+                      <div className="p-5 bg-white border-2 border-blue-200 rounded-2xl shadow-xs space-y-3.5 text-center">
+                        <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-xs flex items-center justify-center mx-auto">
+                          <Landmark size={24} />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[11px] font-black uppercase tracking-wider">
+                            <span>{selectedBankObj.name} Net Banking</span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-900 pt-1">
+                            Redirecting to {selectedBankObj.name} Portal...
+                          </h4>
+                          <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto leading-relaxed">
+                            If your browser did not redirect automatically, click below to proceed to your bank's secure portal:
+                          </p>
+                        </div>
+                        {webCheckoutUrl && (
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                window.location.href = webCheckoutUrl;
+                              }}
+                              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-105 active:scale-95 text-white rounded-xl text-xs font-black transition-all shadow-md inline-flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              <ExternalLink size={14} />
+                              <span>Proceed to {selectedBankObj.name} Portal</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        {/* On Desktop: Show Web Checkout status & re-open button if gateway tab was opened */}
+                        {!isMobile && webCheckoutUrl && (
+                          <div className="p-4 bg-white border-2 border-blue-200 rounded-2xl shadow-xs space-y-2 text-center">
+                            <div className="flex items-center justify-center gap-2 text-blue-900 font-bold text-xs">
+                              <ExternalLink size={15} className="text-blue-600" />
+                              <span>PhonePe Web Gateway opened in a new tab</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              Please complete payment in the checkout window. If your browser blocked the tab, click below:
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => window.open(webCheckoutUrl, '_blank', 'noopener,noreferrer')}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ExternalLink size={13} />
+                              <span>Re-open PhonePe Web Checkout</span>
+                            </button>
+                          </div>
+                        )}
 
-                    <div className="space-y-2">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100/90 text-blue-700 rounded-full text-[11px] font-black uppercase tracking-wider">
-                        <RefreshCw size={12} className="animate-spin text-blue-600" />
-                        <span>Live Verification Active</span>
+                        {/* On Desktop: Scannable Dynamic QR Code visibly rendered on screen */}
+                        {!isMobile && (
+                          <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+                            <div className="py-1 px-3 bg-blue-50 border border-blue-200 rounded-lg inline-block text-blue-900 text-xs font-bold">
+                              Scan this QR using your PhonePe / GPay app to pay
+                            </div>
+                            <div className="p-2 bg-white rounded-xl border border-slate-200 inline-block shadow-xs">
+                              {dynamicQrData && (dynamicQrData.startsWith('data:image') || dynamicQrData.startsWith('http')) ? (
+                                <img
+                                  src={dynamicQrData}
+                                  alt="PhonePe Dynamic QR"
+                                  className="w-36 h-36 object-contain mx-auto"
+                                />
+                              ) : (
+                                <QRCodeSVG
+                                  value={dynamicQrData || upiIntentUri}
+                                  size={144}
+                                  level="H"
+                                  includeMargin={true}
+                                />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              Scan with PhonePe, Google Pay, Paytm, or BHIM app on your phone
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Concentric Radar Pulse Ring (on Mobile) */}
+                    {isMobile && (
+                      <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full bg-blue-400/20 animate-ping" />
+                        <div className="absolute -inset-2 rounded-full border-2 border-blue-300 animate-pulse opacity-60" />
+                        <div className="relative w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
+                          <Smartphone size={28} className="animate-pulse" />
+                        </div>
                       </div>
-                      <h4 className="text-base font-black text-slate-900 leading-snug">
-                        Waiting for payment confirmation from your UPI app... Do not close this screen.
-                      </h4>
-                      <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
-                        Please approve the payment request for <span className="font-bold text-slate-900">₹{amount}</span> in PhonePe, GPay, Paytm, or your banking app.
-                      </p>
-                    </div>
+                    )}
 
-                    {/* Infinite Progress Shimmer */}
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <motion.div
-                        className="h-full bg-blue-600 rounded-full"
-                        animate={{ x: ['-100%', '100%'] }}
-                        transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-                      />
-                    </div>
+                    {!isPollingTimedOut ? (
+                      <>
+                        <div className="space-y-2">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100/90 text-blue-700 rounded-full text-[11px] font-black uppercase tracking-wider">
+                            <RefreshCw size={12} className="animate-spin text-blue-600" />
+                            <span>Verifying payment: {pollingCountdown}s remaining</span>
+                          </div>
+                          <h4 className="text-base font-black text-slate-900 leading-snug">
+                            Waiting for payment confirmation... Do not close this screen.
+                          </h4>
+                          <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
+                            Approving payment for <span className="font-bold text-slate-900">₹{amount}</span>. Status updates automatically.
+                          </p>
+                        </div>
 
-                    <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold pt-1">
-                      <span>Live status polling every 2.5s</span>
-                      <span>•</span>
-                      <span>100% Bank Secured</span>
-                    </div>
+                        {/* Infinite Progress Shimmer */}
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <motion.div
+                            className="h-full bg-blue-600 rounded-full"
+                            animate={{ x: ['-100%', '100%'] }}
+                            transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
+                          />
+                        </div>
 
-                    <div className="pt-2 text-center">
-                      <p className="text-[11px] text-slate-400 font-medium">
-                        Auto-detecting payment from PhonePe gateway. Please complete authorization in your UPI app.
-                      </p>
-                    </div>
+                        <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 font-semibold pt-1">
+                          <span>Live status polling every 2.5s ({pollingCountdown}s)</span>
+                          <span>•</span>
+                          <span>100% Bank Secured</span>
+                        </div>
+                      </>
+                    ) : (
+                      /* TIMEOUT FALLBACK UI */
+                      <div className="space-y-4 py-2">
+                        <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                          <AlertCircle size={24} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-slate-900">
+                            Payment verification timed out
+                          </h4>
+                          <p className="text-xs text-slate-600 font-medium max-w-sm mx-auto leading-relaxed">
+                            Payment not detected yet. If money was debited, it will reflect within 10 minutes.
+                          </p>
+                        </div>
+
+                        {/* Clear action buttons */}
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeTxnId) {
+                                startStatusPolling(activeTxnId);
+                              } else {
+                                const newTxn = `TXN_${Date.now()}`;
+                                setActiveTxnId(newTxn);
+                                startStatusPolling(newTxn);
+                              }
+                            }}
+                            className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <RefreshCw size={13} />
+                            <span>Check Status Again</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              stopStatusPolling();
+                              setAwaitingConfirmation(false);
+                              setIsProcessing(false);
+                              setIsPollingTimedOut(false);
+                            }}
+                            className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl text-xs font-bold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <span>Back to Payment Options</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (pollingRef.current) clearInterval(pollingRef.current);
-                      setAwaitingConfirmation(false);
-                      setIsProcessing(false);
-                    }}
-                    className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-800 py-2 cursor-pointer transition-colors"
-                  >
-                    ← Cancel &amp; select another payment method
-                  </button>
+                  {!isPollingTimedOut && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopStatusPolling();
+                        setAwaitingConfirmation(false);
+                        setIsProcessing(false);
+                        setIsPollingTimedOut(false);
+                      }}
+                      className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-800 py-2 cursor-pointer transition-colors"
+                    >
+                      ← Back to Payment Options
+                    </button>
+                  )}
                 </div>
               ) : (
                 /* PAYMENT OPTIONS ACCORDION & LIST */
@@ -687,7 +974,7 @@ export default function OnlinePaymentGatewayModal({
 
                     {/* Google Pay */}
                     <div
-                      onClick={() => setSelectedMethod('gpay')}
+                      onClick={() => handleSelectUpiApp('gpay')}
                       className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
                         selectedMethod === 'gpay'
                           ? 'border-blue-600 bg-blue-50/40 shadow-xs'
@@ -703,10 +990,12 @@ export default function OnlinePaymentGatewayModal({
                           <div className="flex items-center gap-2">
                             <h4 className="text-xs font-black text-slate-900">Google Pay</h4>
                             <span className="bg-blue-100 text-blue-800 text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
-                              Instant
+                              {!isMobile ? 'Scan QR' : 'Instant'}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 font-medium">Pay directly via GPay UPI</p>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {!isMobile ? 'Scan dynamic QR with Google Pay app' : 'Pay directly via GPay UPI'}
+                          </p>
                         </div>
                       </div>
 
@@ -719,7 +1008,7 @@ export default function OnlinePaymentGatewayModal({
 
                     {/* PhonePe */}
                     <div
-                      onClick={() => setSelectedMethod('phonepe')}
+                      onClick={() => handleSelectUpiApp('phonepe')}
                       className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
                         selectedMethod === 'phonepe'
                           ? 'border-[#5F259F] bg-purple-50/40 shadow-xs'
@@ -737,7 +1026,9 @@ export default function OnlinePaymentGatewayModal({
                               Recommended
                             </span>
                           </div>
-                          <p className="text-[11px] text-purple-700 font-medium">1-tap checkout via PhonePe Gateway</p>
+                          <p className="text-[11px] text-purple-700 font-medium">
+                            {!isMobile ? 'Scan dynamic QR or use web checkout' : '1-tap checkout via PhonePe Gateway'}
+                          </p>
                         </div>
                       </div>
 
@@ -750,7 +1041,7 @@ export default function OnlinePaymentGatewayModal({
 
                     {/* Paytm */}
                     <div
-                      onClick={() => setSelectedMethod('paytm')}
+                      onClick={() => handleSelectUpiApp('paytm')}
                       className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
                         selectedMethod === 'paytm'
                           ? 'border-[#00BAF2] bg-sky-50/40 shadow-xs'
@@ -763,7 +1054,9 @@ export default function OnlinePaymentGatewayModal({
                         </div>
                         <div>
                           <h4 className="text-xs font-black text-slate-900">Paytm UPI</h4>
-                          <p className="text-[11px] text-slate-500 font-medium">Pay via Paytm wallet or bank account</p>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {!isMobile ? 'Scan dynamic QR with Paytm app' : 'Pay via Paytm wallet or bank account'}
+                          </p>
                         </div>
                       </div>
 
@@ -990,6 +1283,12 @@ export default function OnlinePaymentGatewayModal({
                             </div>
                           ) : (
                             <>
+                              {!isMobile && (
+                                <div className="py-1 px-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-xs font-bold w-full">
+                                  Scan this QR using your {qrInstructionApp} app to pay
+                                </div>
+                              )}
+
                               <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-sm inline-block relative">
                                 {isGeneratingQr ? (
                                   <div className="w-40 h-40 flex flex-col items-center justify-center gap-2 text-slate-400">
@@ -1051,6 +1350,19 @@ export default function OnlinePaymentGatewayModal({
                                 </span>
                                 <span>Waiting for payment confirmation from your UPI app... Do not close this screen.</span>
                               </div>
+
+                              {!isMobile && (
+                                <div className="w-full pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleLaunchWebGateway}
+                                    className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <ExternalLink size={13} />
+                                    <span>Prefer browser checkout? Open PhonePe Web Gateway</span>
+                                  </button>
+                                </div>
+                              )}
 
                               <div className="w-full py-1 text-center">
                                 <p className="text-[11px] text-slate-400">
