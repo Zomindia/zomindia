@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   collection,
   query,
@@ -625,6 +625,10 @@ export default function CustomerDashboard({
   const [reviewPhoto, setReviewPhoto] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
+  // Guard refs to prevent infinite loop fetches when IDs do not exist in DB
+  const queriedPartnerIdsRef = useRef<Set<string>>(new Set());
+  const queriedServiceIdsRef = useRef<Set<string>>(new Set());
+
   // PWA prompt effect
   useEffect(() => {
     const checkPrompt = () => {
@@ -751,7 +755,7 @@ export default function CustomerDashboard({
         if (typeof unsub === "function") unsub();
       });
     };
-  }, [activeBookingIds, activeBookings]);
+  }, [activeBookingIds]);
 
   const activeCoordinatedCallBooking = useMemo(() => {
     return bookings.find(
@@ -1057,16 +1061,18 @@ export default function CustomerDashboard({
     };
   }, [profile?.uid, auth.currentUser?.uid]);
 
-  // Fetch partner profiles (UserProfile) for bookings
+  // Fetch partner profiles (UserProfile) for bookings with loop prevention
   useEffect(() => {
     const fetchPartners = async () => {
       const partnerIds = bookings
         .map((b) => b.partnerId)
-        .filter((id): id is string => !!id && !partners[id]);
+        .filter((id): id is string => !!id && !partners[id] && !queriedPartnerIdsRef.current.has(id));
 
       const uniqueMissingIds = Array.from(new Set(partnerIds));
-
       if (uniqueMissingIds.length === 0) return;
+
+      // Mark queried immediately to prevent duplicate requests
+      uniqueMissingIds.forEach((id) => queriedPartnerIdsRef.current.add(id));
 
       try {
         const batchSize = 10;
@@ -1089,15 +1095,17 @@ export default function CustomerDashboard({
     if (bookings.length > 0) {
       fetchPartners();
     }
-  }, [bookings, partners]);
+  }, [bookings]);
+
+  // Stable partner IDs key to avoid re-subscribing on irrelevant booking updates
+  const partnerIdsKey = useMemo(() => {
+    return Array.from(new Set(bookings.map((b) => b.partnerId).filter((id): id is string => !!id))).sort().join(',');
+  }, [bookings]);
 
   // Fetch & listen to real-time Partner details (PartnerProfile) for assigned bookings
   useEffect(() => {
-    const partnerIds = bookings
-      .map((b) => b.partnerId)
-      .filter((id): id is string => !!id);
-
-    const uniqueIds = Array.from(new Set(partnerIds));
+    if (!partnerIdsKey) return;
+    const uniqueIds = partnerIdsKey.split(',').filter(Boolean);
     if (uniqueIds.length === 0) return;
 
     let isMounted = true;
@@ -1162,18 +1170,20 @@ export default function CustomerDashboard({
         if (typeof unsub === "function") unsub();
       });
     };
-  }, [bookings]);
+  }, [partnerIdsKey]);
 
-  // Fetch service details for bookings
+  // Fetch service details for bookings with loop prevention
   useEffect(() => {
     const fetchServices = async () => {
       const serviceIds = bookings
         .map((b) => b.serviceId)
-        .filter((id) => id && !services[id]);
+        .filter((id) => id && !services[id] && !queriedServiceIdsRef.current.has(id));
 
       const uniqueMissingIds = Array.from(new Set(serviceIds));
-
       if (uniqueMissingIds.length === 0) return;
+
+      // Mark queried immediately
+      uniqueMissingIds.forEach((id) => queriedServiceIdsRef.current.add(id));
 
       try {
         const batchSize = 10;
@@ -1198,7 +1208,7 @@ export default function CustomerDashboard({
     if (bookings.length > 0) {
       fetchServices();
     }
-  }, [bookings, services]);
+  }, [bookings]);
 
   const getStatusColor = (status: Booking["status"]) => {
     switch (status) {
@@ -2807,13 +2817,13 @@ export default function CustomerDashboard({
                               )}
 
                               {/* Additional Charges added by Partner */}
-                              {booking.additionalCharges &&
+                              {Array.isArray(booking.additionalCharges) &&
                               booking.additionalCharges.length > 0 ? (
                                 <div className="space-y-1.5 pt-2 border-t border-slate-100 text-left">
                                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                     Technician Approved Add-ons
                                   </span>
-                                  {booking.additionalCharges.map((chg, i) => (
+                                  {booking.additionalCharges?.map((chg, i) => (
                                     <div
                                       key={i}
                                       className="flex justify-between items-start bg-amber-50 p-2.5 rounded-xl border border-amber-200/80"

@@ -842,7 +842,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {otp.toString().split("").map((digit, idx) => (
+                    {String(otp || "").split("").map((digit, idx) => (
                       <div
                         key={idx}
                         className="w-11 h-12 bg-white text-blue-700 border-2 border-blue-600 rounded-xl flex items-center justify-center text-xl font-black font-mono shadow-sm"
@@ -1013,9 +1013,9 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {(booking.checklist?.length
+                  {((Array.isArray(booking?.checklist) && booking.checklist.length > 0)
                     ? booking.checklist
-                    : service?.predefinedTasks?.length
+                    : (Array.isArray(service?.predefinedTasks) && service.predefinedTasks.length > 0)
                     ? service.predefinedTasks
                     : [
                         "Diagnostic inspection & health check",
@@ -1024,7 +1024,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                         "Final quality check & work area cleanup",
                       ]
                   ).map((task, idx) => {
-                    const isDone = isCompleted || booking.completedTasks?.includes(task);
+                    const isDone = isCompleted || (Array.isArray(booking?.completedTasks) && booking.completedTasks.includes(task));
                     return (
                       <div
                         key={idx}

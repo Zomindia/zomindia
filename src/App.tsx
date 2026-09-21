@@ -27,7 +27,12 @@ import {
   Download,
   Sparkles,
   Check,
-  Phone
+  Phone,
+  Briefcase,
+  Lock,
+  UserCheck,
+  CreditCard,
+  LifeBuoy
 } from 'lucide-react';
 
 // Modules
@@ -132,30 +137,65 @@ export type ActiveTabType = 'home' | 'bookings' | 'profile' | 'admin' | 'partner
 
 export const getTabFromUrl = (): ActiveTabType | null => {
   if (typeof window === 'undefined') return 'home';
-  const path = window.location.pathname;
-  if (path === '/about-us' || path === '/about') return 'about';
-  if (path === '/contact-us' || path === '/contact') return 'contact';
-  if (path === '/privacy-policy' || path === '/privacy') return 'privacy';
-  if (path === '/terms-and-conditions' || path === '/terms-of-service' || path === '/terms') return 'terms';
-  if (path === '/refund-policy' || path === '/cancellation-and-refund' || path === '/refund') return 'refund';
-  if (path === '/help-center' || path === '/help') return 'help';
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  const rawHash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
 
-  const hash = window.location.hash.replace('#', '');
-  if (hash === 'about-us' || hash === 'about') return 'about';
-  if (hash === 'contact-us' || hash === 'contact') return 'contact';
-  if (hash === 'privacy-policy' || hash === 'privacy') return 'privacy';
-  if (hash === 'terms-and-conditions' || hash === 'terms-of-service' || hash === 'terms') return 'terms';
-  if (hash === 'refund-policy' || hash === 'cancellation-and-refund' || hash === 'refund') return 'refund';
-  if (hash === 'help-center' || hash === 'help') return 'help';
+  const routeAliases: Record<string, ActiveTabType> = {
+    '': 'home',
+    'home': 'home',
+    'bookings': 'bookings',
+    'my-bookings': 'bookings',
+    'mybookings': 'bookings',
+    'orders': 'bookings',
+    'profile': 'profile',
+    'account': 'profile',
+    'settings': 'profile',
+    'service-details': 'service-details',
+    'service': 'service-details',
+    'services': 'service-details',
+    'offers': 'offers',
+    'coupons': 'offers',
+    'deals': 'offers',
+    'wallet': 'wallet',
+    'credits': 'wallet',
+    'amcs': 'amcs',
+    'amc': 'amcs',
+    'referrals': 'referrals',
+    'refer': 'referrals',
+    'notifications': 'notifications',
+    'tickets': 'tickets',
+    'support': 'tickets',
+    'admin': 'admin',
+    'admin-panel': 'admin',
+    'partner': 'partner',
+    'partner-dashboard': 'partner',
+    'partner-signup': 'partner-signup',
+    'become-partner': 'partner-signup',
+    'join-partner': 'partner-signup',
+    'about': 'about',
+    'about-us': 'about',
+    'contact': 'contact',
+    'contact-us': 'contact',
+    'privacy': 'privacy',
+    'privacy-policy': 'privacy',
+    'terms': 'terms',
+    'terms-and-conditions': 'terms',
+    'terms-of-service': 'terms',
+    'refund': 'refund',
+    'refund-policy': 'refund',
+    'cancellation-and-refund': 'refund',
+    'help': 'help',
+    'help-center': 'help'
+  };
 
-  const validTabs: ActiveTabType[] = [
-    'home', 'bookings', 'profile', 'admin', 'partner', 'partner-signup',
-    'about', 'contact', 'help', 'terms', 'privacy', 'refund',
-    'service-details', 'notifications', 'offers', 'tickets', 'wallet', 'amcs', 'referrals'
-  ];
+  // 1. Check hash first
+  if (rawHash && routeAliases[rawHash]) {
+    return routeAliases[rawHash];
+  }
 
-  if (validTabs.includes(hash as ActiveTabType)) {
-    return hash as ActiveTabType;
+  // 2. Check pathname
+  if (path && routeAliases[path]) {
+    return routeAliases[path];
   }
 
   return null;
@@ -205,10 +245,45 @@ export default function App() {
     if (savedTab) return savedTab;
     return 'home';
   });
-  const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [targetBookingId, setTargetBookingId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashPart = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+    const hashParams = new URLSearchParams(hashPart);
+    return (
+      urlParams.get('bookingId') ||
+      hashParams.get('bookingId') ||
+      localStorage.getItem('zomindia_last_target_booking_id') ||
+      null
+    );
+  });
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashPart = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+    const hashParams = new URLSearchParams(hashPart);
+    return (
+      urlParams.get('categoryId') ||
+      hashParams.get('categoryId') ||
+      localStorage.getItem('zomindia_last_selected_category_id') ||
+      null
+    );
+  });
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashPart = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+    const hashParams = new URLSearchParams(hashPart);
+    return (
+      urlParams.get('serviceId') ||
+      urlParams.get('id') ||
+      hashParams.get('serviceId') ||
+      hashParams.get('id') ||
+      localStorage.getItem('zomindia_last_selected_service_id') ||
+      null
+    );
+  });
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [systemUpdate, setSystemUpdate] = useState<{ reason: string } | null>(null);
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
@@ -403,31 +478,31 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab) {
-      const path = window.location.pathname;
-      const hash = window.location.hash.replace('#', '');
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+      const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
 
       const publicPaths: Record<string, string> = {
-        'about': '/about-us',
-        'contact': '/contact-us',
-        'privacy': '/privacy-policy',
-        'terms': '/terms-and-conditions',
-        'refund': '/refund-policy',
-        'help': '/help-center'
+        'about': 'about-us',
+        'contact': 'contact-us',
+        'privacy': 'privacy-policy',
+        'terms': 'terms-and-conditions',
+        'refund': 'refund-policy',
+        'help': 'help-center'
       };
 
       const targetPath = publicPaths[activeTab];
       if (targetPath) {
         if (path !== targetPath) {
-          window.history.pushState(null, '', targetPath);
+          window.history.pushState(null, '', `/${targetPath}`);
         }
       } else {
         const isPublicPath = Object.values(publicPaths).includes(path);
-        const resolvedPath = isPublicPath ? '/' : path;
-        
-        if (activeTab === 'home' && isPublicPath) {
-          window.history.pushState(null, '', '/#home');
-        } else if (hash !== activeTab) {
-          window.history.pushState(null, '', `${resolvedPath === '/' ? '' : resolvedPath}#${activeTab}`);
+        if (activeTab === 'home') {
+          if (isPublicPath || hash) {
+            window.history.pushState(null, '', '/');
+          }
+        } else if (hash !== activeTab && path !== activeTab) {
+          window.history.pushState(null, '', `#${activeTab}`);
         }
       }
       localStorage.setItem('zomindia_last_active_tab', activeTab);
@@ -463,28 +538,17 @@ export default function App() {
       const tab = getTabFromUrl();
       if (tab) {
         setActiveTabState(tab);
+        const urlParams = new URLSearchParams(window.location.search);
+        const hashPart = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+        const hashParams = new URLSearchParams(hashPart);
+        const sId = urlParams.get('serviceId') || urlParams.get('id') || hashParams.get('serviceId') || hashParams.get('id');
+        if (sId) setSelectedServiceId(sId);
+        const bId = urlParams.get('bookingId') || hashParams.get('bookingId');
+        if (bId) setTargetBookingId(bId);
+        const cId = urlParams.get('categoryId') || hashParams.get('categoryId');
+        if (cId) setSelectedCategoryId(cId);
       }
     };
-
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    const hasSpecificRoute = window.location.pathname !== '/' || !!window.location.hash;
-    if (!hasSpecificRoute && isStandalone) {
-      const savedTab = localStorage.getItem('zomindia_last_active_tab') as typeof activeTab | null;
-      const savedCatId = localStorage.getItem('zomindia_last_selected_category_id');
-      const savedBookingId = localStorage.getItem('zomindia_last_target_booking_id');
-      const savedServiceId = localStorage.getItem('zomindia_last_selected_service_id');
-
-      if (savedTab) {
-        setActiveTabState(savedTab);
-        if (savedCatId) setSelectedCategoryId(savedCatId);
-        if (savedBookingId) setTargetBookingId(savedBookingId);
-        if (savedServiceId) setSelectedServiceId(savedServiceId);
-      }
-    }
 
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('hashchange', handleUrlChange);
@@ -685,7 +749,11 @@ export default function App() {
           // Subscribe to the resolved master UID!
           const masterDocRef = doc(db, 'users', resolvedUid);
           unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
-            if (!isMounted || !snap.exists()) return;
+            if (!isMounted) return;
+            if (!snap.exists()) {
+              setLoading(false);
+              return;
+            }
             let currentProfile = snap.data() as UserProfile;
 
             // Follow mergedInto pointer if any
@@ -700,6 +768,7 @@ export default function App() {
                   const p = mergedSnap.data() as UserProfile;
                   setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
                 }
+                setLoading(false);
               });
               return;
             }
@@ -735,13 +804,18 @@ export default function App() {
               profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
             }
             setProfile(profileUpdate as UserProfile);
+            setLoading(false);
 
-            // Forced redirection for admin / partner
-            const currentHash = window.location.hash.replace('#', '');
-            if (userRole === 'admin' && (currentHash === 'home' || !currentHash || currentHash === 'partner-signup')) {
-              setActiveTab('admin');
-            } else if (userRole === 'partner' && (currentHash === 'home' || !currentHash)) {
-              setActiveTab('partner');
+            // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
+            const cleanHash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
+            const cleanPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+            const isAtRootHome = (!cleanPath || cleanPath === 'home') && (!cleanHash || cleanHash === 'home');
+            if (isAtRootHome) {
+              if (userRole === 'admin' && currentProfile?.currentMode !== 'customer') {
+                setActiveTab('admin');
+              } else if (userRole === 'partner' && currentProfile?.currentMode === 'partner') {
+                setActiveTab('partner');
+              }
             }
 
             // Global Active Booking Listener
@@ -758,21 +832,34 @@ export default function App() {
               if (!isMounted) return;
               console.error("Error subscribing to active bookings:", err);
             });
+          }, (err) => {
+            if (!isMounted) return;
+            console.error("Error in profile snapshot:", err);
+            setLoading(false);
           });
         };
 
-        resolveAndSubscribeProfile().catch(e => console.error("Error in resolveAndSubscribeProfile:", e));
+        resolveAndSubscribeProfile().catch((e) => {
+          console.error("Error in resolveAndSubscribeProfile:", e);
+          if (isMounted) setLoading(false);
+        });
 
       } else {
         setProfile(null);
         setHasActiveArrival(false);
         setPartnerApplication(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
+
+    // Safety timeout to ensure app never hangs indefinitely in loading screen
+    const hydrationTimer = setTimeout(() => {
+      if (isMounted) setLoading(false);
+    }, 3500);
 
     return () => {
       isMounted = false;
+      clearTimeout(hydrationTimer);
       if (typeof unsubscribeAuth === "function") unsubscribeAuth();
       if (typeof unsubscribeBookings === "function") unsubscribeBookings();
       if (typeof unsubscribeProfile === "function") unsubscribeProfile();
@@ -1293,35 +1380,6 @@ If you have any billing questions, or if your refund is delayed, please email us
       }
     }
 
-    if (!profile) {
-       if (activeTab === 'offers') {
-          return <OffersView profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} setActiveTab={setActiveTab} />;
-       }
-       if (activeTab === 'service-details' && selectedServiceId) {
-         return (
-           <ServiceDetails
-             serviceId={selectedServiceId}
-              profile={null}
-              onBack={() => setActiveTab('home')}
-              onAuthRequired={() => setIsAuthModalOpen(true)}
-              onSuccess={() => setActiveTab('home')}
-              onServiceSelect={handleServiceSelect}
-           />
-         );
-       }
-       return (
-         <motion.div
-           initial={{ opacity: 0 }}
-           animate={{ opacity: 1 }}
-           exit={{ opacity: 0 }}
-           transition={{ duration: 0.2, ease: "easeInOut" }}
-           className="w-full"
-         >
-           <CustomerHome setActiveTab={setActiveTab} profile={null} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
-         </motion.div>
-       );
-    }
-
     if (activeTab === 'partner') {
       if (!profile) {
         return (
@@ -1341,38 +1399,120 @@ If you have any billing questions, or if your refund is delayed, please email us
       return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
     }
 
+    if (activeTab === 'partner-signup') {
+      if (!profile) {
+        return (
+          <div className="max-w-xl mx-auto px-4 py-20 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
+              <Briefcase className="w-8 h-8 text-[#002e6e]" />
+            </div>
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">Join Zomindia as a Service Partner</h2>
+            <p className="text-slate-500 text-sm max-w-md mx-auto mb-8">Earn ₹30,000 to ₹60,000+ monthly with instant daily payouts, insurance coverage, and flexible working hours. Please sign in or create an account to start your onboarding application.</p>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In to Apply as Partner
+            </button>
+          </div>
+        );
+      }
+      return <SignUpAsPartner profile={profile} onSuccess={() => { setActiveTab('partner'); }} />;
+    }
+
     if (activeTab === 'admin') {
       if (!profile || profile.role !== 'admin') {
-         setActiveTab('home');
-         return (
-           <motion.div
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             exit={{ opacity: 0 }}
-             transition={{ duration: 0.2, ease: "easeInOut" }}
-             className="w-full"
-           >
-             <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
-           </motion.div>
-         );
+        return (
+          <div className="max-w-md mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">Admin Access Required</h2>
+            <p className="text-slate-500 text-sm mb-6">You need authorized head office or regional management credentials to access this portal.</p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setActiveTab('home')}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors"
+              >
+                Back to Home
+              </button>
+              {!profile && (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-[#002e6e] text-white font-bold hover:bg-[#002252] transition-colors"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
+          </div>
+        );
       }
       return <AdminDashboard profile={profile} setActiveTab={setActiveTab} />;
     }
 
-    if (activeTab === 'service-details' && selectedServiceId) {
+    if (activeTab === 'service-details') {
+      const effectiveServiceId =
+        selectedServiceId ||
+        localStorage.getItem('zomindia_last_selected_service_id') ||
+        allServices[0]?.id ||
+        null;
+
+      if (effectiveServiceId) {
+        return (
+          <ServiceDetails
+            serviceId={effectiveServiceId}
+            profile={profile}
+            onBack={() => setActiveTab('home')}
+            onAuthRequired={() => setIsAuthModalOpen(true)}
+            onSuccess={() => setActiveTab('bookings')}
+            onServiceSelect={handleServiceSelect}
+          />
+        );
+      }
+
       return (
-        <ServiceDetails
-          serviceId={selectedServiceId}
-          profile={profile}
-          onBack={() => setActiveTab('home')}
-          onAuthRequired={() => setIsAuthModalOpen(true)}
-          onSuccess={() => setActiveTab('home')}
-          onServiceSelect={handleServiceSelect}
-        />
+        <div className="max-w-md mx-auto px-4 py-24 text-center">
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Service Not Found</h2>
+          <p className="text-slate-500 text-sm mb-6">Please select a service from our catalog to see complete pricing and details.</p>
+          <button
+            onClick={() => setActiveTab('home')}
+            className="px-6 py-2.5 rounded-xl bg-[#002e6e] text-white font-bold hover:bg-[#002252] transition-colors"
+          >
+            Browse All Services
+          </button>
+        </div>
       );
     }
 
-    if (activeTab === 'bookings' && profile) {
+    if (activeTab === 'bookings') {
+      if (!profile) {
+        return (
+          <div className="max-w-lg mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
+              <Calendar className="w-8 h-8 text-[#002e6e]" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Track Your Service Bookings</h2>
+            <p className="text-slate-500 text-sm max-w-md mx-auto mb-8">
+              Sign in with your mobile number to view live technician locations, start OTP codes, and manage upcoming or past appointments.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="w-full sm:w-auto bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+              >
+                Sign In / Sign Up
+              </button>
+              <button
+                onClick={() => setActiveTab('home')}
+                className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-6 py-3.5 rounded-2xl transition-all"
+              >
+                Explore Services
+              </button>
+            </div>
+          </div>
+        );
+      }
       if (profile.role === 'admin') {
         return <AdminDashboard profile={profile} setActiveTab={setActiveTab} initialAdminTab="bookings" />;
       }
@@ -1393,15 +1533,32 @@ If you have any billing questions, or if your refund is delayed, please email us
       );
     }
 
-    if (activeTab === 'amcs' && profile.role === 'customer') {
+    if (activeTab === 'amcs') {
       return <CustomerAmcView profile={profile} onBack={() => setActiveTab('home')} />;
     }
 
-    if ((profile?.role === 'customer' || profile?.role === 'admin') && activeTab === 'partner-signup') {
-      return <SignUpAsPartner profile={profile} onSuccess={() => { setActiveTab('partner'); }} />;
+    if (activeTab === 'offers') {
+      return <OffersView profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} setActiveTab={setActiveTab} />;
     }
 
     if (activeTab === 'profile') {
+      if (!profile) {
+        return (
+          <div className="max-w-md mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
+              <UserCheck className="w-8 h-8 text-[#002e6e]" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">My Profile & Account</h2>
+            <p className="text-slate-500 text-sm mb-8">Sign in to manage saved addresses, contact information, wallet credits, and notification settings.</p>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In to Your Account
+            </button>
+          </div>
+        );
+      }
       return (
         <motion.div
           initial={{ opacity: 0 }}
@@ -1420,38 +1577,88 @@ If you have any billing questions, or if your refund is delayed, please email us
       );
     }
 
-
-
-    if (activeTab === 'notifications' && profile) {
-      return <NotificationsView profile={profile} onNavigate={(tab, bId) => {
-        if (profile.role === 'admin') {
-          setActiveTab('admin', bId || null);
-        } else if (profile.role === 'partner') {
-          setActiveTab('partner', bId || null);
-        } else {
-          if (tab === 'bookings' || tab === 'jobs') {
-            setActiveTab('bookings', bId || null);
-          } else if (tab === 'offers' || tab === 'wallet' || tab === 'tickets' || tab === 'amcs') {
-            setActiveTab(tab as any);
-          } else if (bId) {
-            setActiveTab('bookings', bId);
-          } else {
-            setActiveTab(tab as any, bId || null);
-          }
-        }
-      }} />;
+    if (activeTab === 'wallet') {
+      if (!profile) {
+        return (
+          <div className="max-w-md mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-purple-50 text-purple-700 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CreditCard className="w-8 h-8 text-purple-700" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Zomindia Wallet</h2>
+            <p className="text-slate-500 text-sm mb-8">Log in to check your ₹100 Welcome Bonus, referral earnings, and instant cashback balance.</p>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In to Access Wallet
+            </button>
+          </div>
+        );
+      }
+      return <WalletView profile={profile} setActiveTab={setActiveTab} />;
     }
 
-    if (activeTab === 'offers' && profile) {
-      return <OffersView profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} setActiveTab={setActiveTab} />;
-    }
-
-    if (activeTab === 'tickets' && profile) {
+    if (activeTab === 'tickets') {
+      if (!profile) {
+        return (
+          <div className="max-w-md mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
+              <LifeBuoy className="w-8 h-8 text-[#002e6e]" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Help & Support Tickets</h2>
+            <p className="text-slate-500 text-sm mb-8">Sign in to check the resolution status of your existing service complaints or raise a ticket.</p>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In
+            </button>
+          </div>
+        );
+      }
       return <SupportTicketsView profile={profile} />;
     }
 
-    if (activeTab === 'wallet' && profile) {
-      return <WalletView profile={profile} setActiveTab={setActiveTab} />;
+    if (activeTab === 'notifications') {
+      if (!profile) {
+        return (
+          <div className="max-w-md mx-auto px-4 py-24 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
+              <Bell className="w-8 h-8 text-[#002e6e]" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Notifications</h2>
+            <p className="text-slate-500 text-sm mb-8">Sign in to view real-time booking updates, promotional coupons, and technician arrival alerts.</p>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-[#002e6e] hover:bg-[#002252] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition-all"
+            >
+              Sign In
+            </button>
+          </div>
+        );
+      }
+      return (
+        <NotificationsView
+          profile={profile}
+          onNavigate={(tab, bId) => {
+            if (profile.role === 'admin') {
+              setActiveTab('admin', bId || null);
+            } else if (profile.role === 'partner') {
+              setActiveTab('partner', bId || null);
+            } else {
+              if (tab === 'bookings' || tab === 'jobs') {
+                setActiveTab('bookings', bId || null);
+              } else if (tab === 'offers' || tab === 'wallet' || tab === 'tickets' || tab === 'amcs') {
+                setActiveTab(tab as any);
+              } else if (bId) {
+                setActiveTab('bookings', bId);
+              } else {
+                setActiveTab(tab as any, bId || null);
+              }
+            }
+          }}
+        />
+      );
     }
 
     if (activeTab === 'referrals') {

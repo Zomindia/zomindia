@@ -46,25 +46,26 @@ class ErrorBoundary extends React.Component<Props, State> {
                 {this.state.error?.message}
               </span>
             </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full flex items-center justify-center gap-3 py-4 bg-blue-700 text-white rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 active:scale-95"
-            >
-              <RotateCcw size={18} />
-              Re-sync Dashboard
-            </button>
-            <button 
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="w-full flex items-center justify-center gap-3 py-3.5 bg-[#002e6e] text-white rounded-2xl font-bold hover:bg-[#002252] transition-all shadow-lg active:scale-95 cursor-pointer"
+              >
+                <RotateCcw size={18} />
+                Try Again
+              </button>
+              <button 
                 onClick={() => {
-                   // Clear cache logic
-                   localStorage.clear();
-                   sessionStorage.clear();
-                   window.location.hash = '#home';
-                   window.location.reload();
+                  this.setState({ hasError: false, error: null });
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = '#home';
+                  }
                 }}
-                className="w-full mt-4 py-2 text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-all"
-            >
-                Clear Local Cache & Reset
-            </button>
+                className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+              >
+                Return to Home
+              </button>
+            </div>
           </div>
         </div>
       );

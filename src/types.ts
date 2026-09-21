@@ -304,6 +304,7 @@ export interface Booking {
   lat?: number;
   lng?: number;
   totalPrice: number; // This will now represent the base price + any approved/added charges
+  items?: Array<{ name?: string; title?: string; quantity?: number; price?: number }>;
   additionalCharges?: AdditionalCharge[];
   cancellationReason?: string;
   pendingReason?: string;
