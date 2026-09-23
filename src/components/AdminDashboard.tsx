@@ -1975,7 +1975,7 @@ export default function AdminDashboard({
                                 </span>
                                 <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">
                                   {b.paymentStatus === "paid"
-                                    ? (b.paymentMethod === "phonepe_qr" ? "PAID VIA PHONEPE QR" : (b.paymentMethod === "online" ? "PAID VIA PHONEPE PG" : "SETTLED / PAID"))
+                                    ? (b.paymentMethod === "upi_qr" || b.paymentMethod === "dynamic_qr" ? "PAID VIA DYNAMIC QR" : (b.paymentMethod === "online" ? "PAID VIA CASHFREE PG" : "SETTLED / PAID"))
                                     : "PENDING"}
                                 </span>
                               </div>
@@ -1983,10 +1983,10 @@ export default function AdminDashboard({
                                 <span className="text-slate-400 font-semibold">
                                   Channel Method:
                                 </span>
-                                <span className="font-extrabold text-purple-700 uppercase tracking-wide text-[10px]">
-                                  {b.paymentMethod === "phonepe_qr" 
-                                    ? "PhonePe Dynamic QR" 
-                                    : (b.paymentMethod === "online" ? "PhonePe Gateway" : (b.paymentMethod || "Online"))}
+                                <span className="font-extrabold text-blue-700 uppercase tracking-wide text-[10px]">
+                                  {b.paymentMethod === "upi_qr" || b.paymentMethod === "dynamic_qr" 
+                                    ? "Dynamic UPI QR" 
+                                    : (b.paymentMethod === "online" ? "Cashfree Gateway" : (b.paymentMethod || "Online"))}
                                 </span>
                               </div>
                             </div>

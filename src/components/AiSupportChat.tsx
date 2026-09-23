@@ -379,16 +379,17 @@ export default function AiSupportChat({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef<boolean>(false);
   
-  // PhonePe Payment Gateway In Chat State
-  const [activePhonePePayment, setActivePhonePePayment] = useState<{
+  // Cashfree Payment Gateway In Chat State
+  const [activePaymentSession, setActivePaymentSession] = useState<{
     bookingId: string;
     amount: number;
     serviceType: string;
-    merchantTransactionId: string;
-    redirectUrl?: string;
+    orderId: string;
+    paymentSessionId?: string;
+    checkoutUrl?: string;
   } | null>(null);
-  const [isConfirmingPhonePe, setIsConfirmingPhonePe] = useState(false);
-  const [phonePeError, setPhonePeError] = useState<string | null>(null);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  const [paymentGatewayError, setPaymentGatewayError] = useState<string | null>(null);
 
   // Multilingual voice configurations
   const [selectedLang, setSelectedLang] = useState("hi-IN");
@@ -917,7 +918,7 @@ export default function AiSupportChat({
     if (isSubmittingRef.current || isSubmitting) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    setPhonePeError(null);
+    setPaymentGatewayError(null);
 
     try {
       let bookingPayload = draftBookings[bookingId];
@@ -1014,65 +1015,108 @@ export default function AiSupportChat({
 
       const amountToPay = updatedPayload.totalPrice || updatedPayload.visitationFee || 195;
 
-      const payRes = await fetch("/api/phonepe/pay", {
+      const payRes = await fetch("/api/cashfree/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: amountToPay,
           bookingId,
           customerUid: activeUid,
-          mobileNumber: resolvedMobile
+          customerPhone: resolvedMobile || "9999999999",
+          customerName: userProfile?.fullName || (auth.currentUser as any)?.displayName || "Customer",
+          serviceName: updatedPayload.serviceType || "Home Service",
+          redirectOrigin: window.location.origin
         })
       });
 
-      let merchantTransactionId = `PHONEPE_${Date.now()}`;
-      let redirectUrl = "";
+      let orderId = `ORDER_${Date.now()}`;
+      let paymentSessionId = "";
+      let checkoutUrl = "";
 
       if (payRes.ok) {
         const payData = await payRes.json();
-        if (payData.merchantTransactionId) merchantTransactionId = payData.merchantTransactionId;
-        if (payData.redirectUrl) redirectUrl = payData.redirectUrl;
+        if (payData.order_id) orderId = payData.order_id;
+        if (payData.payment_session_id) paymentSessionId = payData.payment_session_id;
+        if (payData.checkoutUrl || payData.redirectUrl) checkoutUrl = payData.checkoutUrl || payData.redirectUrl;
       }
 
-      // Launch PhonePe PG Modal in Chat
-      setActivePhonePePayment({
+      // Check if Cashfree JS SDK is available for instant checkout
+      const cashfreeGlobal = typeof window !== "undefined" && (window as any).Cashfree;
+      if (cashfreeGlobal && paymentSessionId) {
+        try {
+          const cashfreeMode = (import.meta as any).env?.VITE_CASHFREE_ENV === "SANDBOX" ? "sandbox" : "production";
+          const cashfree = cashfreeGlobal({ mode: cashfreeMode });
+          cashfree.checkout({
+            paymentSessionId,
+            redirectTarget: "_self"
+          });
+          return;
+        } catch (sdkErr) {
+          console.warn("[AiSupportChat] Cashfree SDK launch notice:", sdkErr);
+        }
+      }
+
+      // Launch Cashfree In-Chat Modal
+      setActivePaymentSession({
         bookingId,
         amount: amountToPay,
         serviceType: updatedPayload.serviceType,
-        merchantTransactionId,
-        redirectUrl
+        orderId,
+        paymentSessionId,
+        checkoutUrl
       });
     } catch (err: any) {
-      console.error("Error launching PhonePe payment:", err);
-      alert(`Error starting PhonePe checkout: ${err.message || err}`);
+      console.error("Error launching Cashfree payment:", err);
+      alert(`Error starting Cashfree checkout: ${err.message || err}`);
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
-  const handleExecutePhonePePayment = async () => {
-    if (!activePhonePePayment) return;
-    setIsConfirmingPhonePe(true);
-    setPhonePeError(null);
+  const handleExecutePayment = async () => {
+    if (!activePaymentSession) return;
+    setIsConfirmingPayment(true);
+    setPaymentGatewayError(null);
 
-    const { bookingId, amount, merchantTransactionId } = activePhonePePayment;
+    const { bookingId, amount, orderId, paymentSessionId, checkoutUrl } = activePaymentSession;
     const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
 
+    // If Cashfree SDK is available and session exists, trigger checkout
+    const cashfreeGlobal = typeof window !== "undefined" && (window as any).Cashfree;
+    if (cashfreeGlobal && paymentSessionId) {
+      try {
+        const cashfreeMode = (import.meta as any).env?.VITE_CASHFREE_ENV === "SANDBOX" ? "sandbox" : "production";
+        const cashfree = cashfreeGlobal({ mode: cashfreeMode });
+        cashfree.checkout({
+          paymentSessionId,
+          redirectTarget: "_self"
+        });
+        return;
+      } catch (e) {}
+    } else if (checkoutUrl) {
+      window.location.href = checkoutUrl;
+      return;
+    }
+
     try {
-      const verifyRes = await fetch("/api/phonepe/verify-and-confirm", {
+      const verifyRes = await fetch("/api/cashfree/verify-and-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bookingId,
           customerUid: activeUid,
-          merchantTransactionId
+          orderId,
+          merchantTransactionId: orderId,
+          amount,
+          onlinePaymentProvider: "Cashfree PG",
+          onlinePaymentMethod: "UPI / Online"
         })
       });
 
       const verifyData = await verifyRes.json().catch(() => ({}));
       if (!verifyRes.ok) {
-        throw new Error(verifyData.error || "PhonePe gateway confirmation failed");
+        throw new Error(verifyData.error || "Cashfree payment confirmation failed");
       }
 
       // Update message state in chat
@@ -1108,7 +1152,7 @@ export default function AiSupportChat({
           text: confirmMsg,
           bookingData: {
             id: bookingId,
-            serviceType: activePhonePePayment.serviceType,
+            serviceType: activePaymentSession.serviceType,
             visitationFee: amount,
             status: resolvedBookingStatus,
             paymentStatus: "paid"
@@ -1123,22 +1167,22 @@ export default function AiSupportChat({
         origin: { y: 0.6 }
       });
 
-      setActivePhonePePayment(null);
+      setActivePaymentSession(null);
     } catch (err: any) {
-      console.error("PhonePe execution error:", err);
-      setPhonePeError(err.message || "Payment verification failed. Please try again.");
+      console.error("Cashfree execution error:", err);
+      setPaymentGatewayError(err.message || "Payment verification failed. Please try again.");
     } finally {
-      setIsConfirmingPhonePe(false);
+      setIsConfirmingPayment(false);
     }
   };
 
-  const handleCancelPhonePePayment = () => {
-    if (!activePhonePePayment) return;
-    const { bookingId, amount, serviceType } = activePhonePePayment;
+  const handleCancelPayment = () => {
+    if (!activePaymentSession) return;
+    const { bookingId, amount, serviceType } = activePaymentSession;
 
-    setActivePhonePePayment(null);
-    setIsConfirmingPhonePe(false);
-    setPhonePeError(null);
+    setActivePaymentSession(null);
+    setIsConfirmingPayment(false);
+    setPaymentGatewayError(null);
 
     setMessages((prev) => [
       ...prev,
@@ -2127,12 +2171,12 @@ export default function AiSupportChat({
                                 <button
                                   onClick={() => handlePayOnline(bookingId)}
                                   disabled={isSubmitting || !isValidSlotSelected}
-                                  className={`w-full bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[11px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 group ${
+                                  className={`w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-[11px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 group ${
                                     isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
                                   }`}
                                 >
-                                  <CreditCard size={14} className="text-purple-200 group-hover:scale-110 transition-transform" />
-                                  <span>{isSubmitting ? "Launching PhonePe..." : "💳 Pay via PhonePe / UPI"}</span>
+                                  <CreditCard size={14} className="text-blue-100 group-hover:scale-110 transition-transform" />
+                                  <span>{isSubmitting ? "Launching Checkout..." : "💳 Pay via Cashfree / UPI"}</span>
                                 </button>
                                 <button
                                   onClick={() => handlePayAfterService(bookingId)}
@@ -2478,35 +2522,35 @@ export default function AiSupportChat({
               </div>
             </div>
 
-            {/* PhonePe Gateway In-Chat Modal Overlay */}
+            {/* Cashfree Gateway In-Chat Modal Overlay */}
             <AnimatePresence>
-              {activePhonePePayment && (
+              {activePaymentSession && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs z-[130] flex items-center justify-center p-3 rounded-t-3xl sm:rounded-3xl"
                 >
-                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-purple-200 flex flex-col text-left">
-                    {/* PhonePe Header */}
-                    <div className="bg-[#5f259f] text-white p-3.5 flex items-center justify-between">
+                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-blue-200 flex flex-col text-left">
+                    {/* Header */}
+                    <div className="bg-blue-600 text-white p-3.5 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center font-black text-white text-xs border border-white/20 shadow-xs">
-                          पे
+                          CF
                         </div>
                         <div>
                           <h4 className="text-xs font-black tracking-wide flex items-center gap-1">
-                            PhonePe Payment Gateway
+                            Cashfree Payment Gateway
                           </h4>
-                          <p className="text-[9px] text-purple-200 font-semibold flex items-center gap-1">
+                          <p className="text-[9px] text-blue-200 font-semibold flex items-center gap-1">
                             <ShieldCheck size={11} className="text-emerald-300" />
                             100% SECURE • 256-BIT ENCRYPTION
                           </p>
                         </div>
                       </div>
                       <button
-                        onClick={handleCancelPhonePePayment}
-                        disabled={isConfirmingPhonePe}
+                        onClick={handleCancelPayment}
+                        disabled={isConfirmingPayment}
                         className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
                         title="Cancel Payment"
                       >
@@ -2515,17 +2559,17 @@ export default function AiSupportChat({
                     </div>
 
                     {/* Order Details */}
-                    <div className="p-4 space-y-3 bg-gradient-to-b from-purple-50/50 to-white">
-                      <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-xs space-y-2">
+                    <div className="p-4 space-y-3 bg-gradient-to-b from-blue-50/50 to-white">
+                      <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-xs space-y-2">
                         <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
                           <span>Booking Ref</span>
                           <span className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            #{activePhonePePayment.bookingId.slice(-6).toUpperCase()}
+                            #{activePaymentSession.bookingId.slice(-6).toUpperCase()}
                           </span>
                         </div>
                         <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                          <span className="text-[11px] font-black text-slate-800">{activePhonePePayment.serviceType}</span>
-                          <span className="text-[#5f259f] font-black text-base">₹{activePhonePePayment.amount}</span>
+                          <span className="text-[11px] font-black text-slate-800">{activePaymentSession.serviceType}</span>
+                          <span className="text-blue-600 font-black text-base">₹{activePaymentSession.amount}</span>
                         </div>
                       </div>
 
@@ -2533,36 +2577,26 @@ export default function AiSupportChat({
                       <div className="space-y-1.5">
                         <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider">Payment Options</label>
                         
-                        <div className="p-2.5 rounded-xl border-2 border-[#5f259f] bg-purple-50/60 flex items-center justify-between shadow-xs cursor-pointer">
+                        <div className="p-2.5 rounded-xl border-2 border-blue-600 bg-blue-50/60 flex items-center justify-between shadow-xs cursor-pointer">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-[#5f259f] text-white flex items-center justify-center text-[10px] font-black shadow-xs">
-                              UPI
+                            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
+                              CF
                             </div>
                             <div>
-                              <p className="text-[11px] font-black text-slate-900">PhonePe UPI / Instant QR</p>
-                              <p className="text-[9px] text-purple-700 font-semibold">Zero transaction fee • Instant confirmation</p>
+                              <p className="text-[11px] font-black text-slate-900">Cashfree PG (UPI / Cards / NetBanking)</p>
+                              <p className="text-[9px] text-blue-700 font-semibold">Zero transaction fee • Instant confirmation</p>
                             </div>
                           </div>
-                          <div className="w-4 h-4 rounded-full bg-[#5f259f] text-white flex items-center justify-center text-[10px] font-bold">
+                          <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
                             ✓
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 opacity-60 flex items-center justify-between cursor-not-allowed">
-                          <div className="flex items-center gap-2.5">
-                            <CreditCard size={18} className="text-slate-500" />
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-700">Cards / NetBanking</p>
-                              <p className="text-[8.5px] text-slate-400">Supported on PhonePe Gateway</p>
-                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {phonePeError && (
+                      {paymentGatewayError && (
                         <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-[10px] font-semibold text-center flex items-center justify-center gap-1">
                           <AlertCircle size={12} />
-                          <span>{phonePeError}</span>
+                          <span>{paymentGatewayError}</span>
                         </div>
                       )}
                     </div>
@@ -2570,26 +2604,26 @@ export default function AiSupportChat({
                     {/* Footer Actions */}
                     <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
                       <button
-                        onClick={handleExecutePhonePePayment}
-                        disabled={isConfirmingPhonePe}
-                        className="w-full bg-[#5f259f] hover:bg-[#4c1d82] active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-purple-900/20 cursor-pointer flex items-center justify-center gap-2"
+                        onClick={handleExecutePayment}
+                        disabled={isConfirmingPayment}
+                        className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-blue-900/20 cursor-pointer flex items-center justify-center gap-2"
                       >
-                        {isConfirmingPhonePe ? (
+                        {isConfirmingPayment ? (
                           <>
                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Verifying PhonePe Gateway...</span>
+                            <span>Connecting to Gateway...</span>
                           </>
                         ) : (
                           <>
                             <Lock size={13} />
-                            <span>PAY ₹{activePhonePePayment.amount} WITH PHONEPE</span>
+                            <span>PAY ₹{activePaymentSession.amount} VIA CASHFREE</span>
                           </>
                         )}
                       </button>
 
                       <button
-                        onClick={handleCancelPhonePePayment}
-                        disabled={isConfirmingPhonePe}
+                        onClick={handleCancelPayment}
+                        disabled={isConfirmingPayment}
                         className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-700 py-1 cursor-pointer text-center"
                       >
                         Cancel & Pay Cash on Delivery

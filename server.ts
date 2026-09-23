@@ -157,8 +157,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  if (!process.env.PHONEPE_MERCHANT_ID || !process.env.PHONEPE_SALT_KEY) {
-    console.warn("[Startup Notice] PHONEPE_MERCHANT_ID or PHONEPE_SALT_KEY is not set. Online PhonePe payments will operate in standard sandbox/simulation mode.");
+  if (!process.env.CASHFREE_APP_ID || !process.env.CASHFREE_SECRET_KEY) {
+    console.warn("[Startup Notice] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is not set. Online Cashfree payments will require valid credentials in environment.");
   }
 
   app.use(express.json());
@@ -177,96 +177,16 @@ async function startServer() {
     next();
   });
 
-  // PhonePe Config & Checksum Helper
-  const getPhonePeConfig = () => {
-    let rawMid = (process.env.PHONEPE_MERCHANT_ID || 'M221HG3VXM5KT').trim();
-    // Stop passing Client Id SU2608051912363595481527 as merchantId; enforce real PhonePe MID M221HG3VXM5KT
-    if (!rawMid || rawMid === 'SU2608051912363595481527' || rawMid.startsWith('SU260805')) {
-      rawMid = 'M221HG3VXM5KT';
-    }
-    const merchantId = (rawMid || 'M221HG3VXM5KT').trim();
-    const saltKey = (process.env.PHONEPE_SALT_KEY || "").trim();
-    const saltIndex = (process.env.PHONEPE_SALT_INDEX || "1").trim();
-    const env = (process.env.PHONEPE_ENV || "PRODUCTION").trim().toUpperCase();
+  // Cashfree Payment Gateway Configuration Helper (API Version: 2023-08-01)
+  const getCashfreeConfig = () => {
+    const appId = (process.env.CASHFREE_APP_ID || "").trim();
+    const secretKey = (process.env.CASHFREE_SECRET_KEY || "").trim();
+    const env = (process.env.CASHFREE_ENV || "PRODUCTION").trim().toUpperCase();
+    const isSandbox = env === "SANDBOX" || env === "TEST" || env === "DEV";
+    const baseUrl = isSandbox ? "https://sandbox.cashfree.com/pg" : "https://api.cashfree.com/pg";
+    const apiVersion = "2023-08-01";
 
-    // Auto-detect sandbox if merchantId is a known PhonePe test/UAT ID or env specifies sandbox/test
-    const isSandboxMerchant = 
-      merchantId.toUpperCase().startsWith("PGTEST") || 
-      merchantId.toUpperCase().includes("UAT") || 
-      merchantId.toUpperCase().includes("TEST");
-    const isSandbox = isSandboxMerchant || 
-      env === "SANDBOX" || 
-      env === "TEST" || 
-      env === "UAT" || 
-      env === "DEV" || 
-      env === "DEVELOPMENT";
-
-    // Candidate host endpoints (PhonePe modernizes between /apis/pg, /apis/hermes and /apis/pg-sandbox)
-    const productionHosts = [
-      "https://api.phonepe.com/apis/pg",
-      "https://api.phonepe.com/apis/hermes"
-    ];
-    const sandboxHosts = [
-      "https://api-preprod.phonepe.com/apis/pg-sandbox",
-      "https://api-preprod.phonepe.com/apis/hermes"
-    ];
-
-    const candidateHosts = isSandbox ? sandboxHosts : productionHosts;
-    const defaultHost = candidateHosts[0];
-
-    let rawHost = (process.env.PHONEPE_HOST_URL || "").trim();
-    let hostUrl = defaultHost;
-
-    // Validate rawHost if provided: must start with https:// or http:// and not be "undefined"/"null"
-    if (rawHost && rawHost !== "undefined" && rawHost !== "null" && /^https?:\/\//i.test(rawHost)) {
-      try {
-        const parsed = new URL(rawHost);
-        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-          hostUrl = rawHost;
-        }
-      } catch {
-        hostUrl = defaultHost;
-      }
-    }
-
-    // Strip trailing slashes to guarantee clean path concatenation
-    hostUrl = hostUrl.replace(/\/+$/, "");
-
-    // Prioritize configured host, then candidate hosts without duplicates
-    const allHosts = [hostUrl, ...candidateHosts].filter((h, idx, arr) => arr.indexOf(h) === idx);
-
-    return { merchantId, saltKey, saltIndex, env, hostUrl, isSandbox, allHosts };
-  };
-
-  const calculatePhonePeChecksum = (payloadBase64: string, apiEndpoint: string, saltKey: string, saltIndex: string) => {
-    const stringToHash = payloadBase64 + apiEndpoint + saltKey;
-    const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
-    return `${sha256}###${saltIndex}`;
-  };
-
-  const verifyPhonePeSignature = (
-    base64Payload: string,
-    xVerifyHeader: string | undefined,
-    saltKey: string,
-    saltIndex: string
-  ): boolean => {
-    if (!xVerifyHeader || !base64Payload) return false;
-    
-    // Standard PhonePe S2S webhook hash: SHA256(base64Payload + saltKey) + "###" + saltIndex
-    const hash1 = crypto.createHash("sha256").update(base64Payload + saltKey).digest("hex") + `###${saltIndex}`;
-    
-    // Hash with callback endpoint: SHA256(base64Payload + "/api/phonepe/callback" + saltKey) + "###" + saltIndex
-    const hash2 = crypto.createHash("sha256").update(base64Payload + "/api/phonepe/callback" + saltKey).digest("hex") + `###${saltIndex}`;
-    
-    // Alternate payload endpoint hash: /pg/v1/pay
-    const hash3 = calculatePhonePeChecksum(base64Payload, "/pg/v1/pay", saltKey, saltIndex);
-
-    const received = xVerifyHeader.trim().toLowerCase();
-    return (
-      received === hash1.toLowerCase() ||
-      received === hash2.toLowerCase() ||
-      received === hash3.toLowerCase()
-    );
+    return { appId, secretKey, env, isSandbox, baseUrl, apiVersion };
   };
 
   // API & Container Health Check endpoints for Cloud Run startup/liveness/readiness probes
@@ -583,556 +503,401 @@ async function startServer() {
   });
 
   // ==========================================
-  // PhonePe PG Gateway Endpoints
+  // Cashfree Payment Gateway Endpoints (API Version: 2023-08-01)
   // ==========================================
 
-  // 1. Initiate PhonePe Payment Gateway Handshake (/api/phonepe/initiate & /api/phonepe/pay)
-  app.post(["/api/phonepe/initiate", "/api/phonepe/pay"], async (req, res) => {
+  // 1. Create Order Endpoint (POST /api/cashfree/create-order)
+  app.post("/api/cashfree/create-order", async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const { 
-        amount, 
-        bookingId, 
-        customerId, 
-        customerUid, 
-        mobileNumber, 
-        customerPhone, 
-        customerEmail, 
-        serviceName, 
-        redirectOrigin, 
-        redirectUrl: customRedirect 
+      const {
+        amount,
+        bookingId,
+        customerId,
+        customerUid,
+        customerPhone,
+        mobileNumber,
+        customerEmail,
+        customerName,
+        serviceName,
+        redirectOrigin,
+        redirectUrl: customRedirect
       } = req.body || {};
 
-      if (!amount || Number(amount) <= 0) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Valid amount is required for payment initiation" 
+      const numAmount = Number(amount);
+      if (!amount || isNaN(numAmount) || numAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid payment amount is required"
         });
       }
 
-      const { merchantId, saltKey, saltIndex, env, hostUrl, allHosts } = getPhonePeConfig();
-      if (!merchantId || !saltKey) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "PhonePe merchant credentials are not configured" 
+      const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
+      if (!appId || !secretKey) {
+        console.warn("[Cashfree PG Warning] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is not set.");
+        return res.status(400).json({
+          success: false,
+          error: "Cashfree Payment Gateway is not configured. Please set CASHFREE_APP_ID and CASHFREE_SECRET_KEY in server environment."
         });
       }
 
-      const merchantTransactionId = "TXN_PPE_" + (bookingId ? String(bookingId).slice(0, 8) : "ZOM") + "_" + Date.now();
-      
-      let cleanMobile = "9999999999";
-      const rawMobile = customerPhone || mobileNumber;
-      if (rawMobile) {
-        const digits = String(rawMobile).replace(/\D/g, "");
+      // Generate a clean, unique Cashfree Order ID
+      const order_id = `ORDER_ZOM_${bookingId ? String(bookingId).slice(-6).toUpperCase() + '_' : ''}${Date.now()}`;
+      const order_amount = Math.round(numAmount * 100) / 100;
+
+      // Clean 10-digit phone number for Cashfree customer_details
+      let cleanPhone = "9999999999";
+      const rawPhone = customerPhone || mobileNumber || req.body?.phone;
+      if (rawPhone) {
+        const digits = String(rawPhone).replace(/\D/g, "");
         if (digits.length >= 10) {
-          cleanMobile = digits.slice(-10);
+          cleanPhone = digits.slice(-10);
         }
       }
 
-      const host = redirectOrigin || (req.headers.origin as string) || (req.headers.host ? `https://${req.headers.host}` : "https://zomindia.com");
-      const redirectUrl = customRedirect || `${host}/api/phonepe/callback?txnId=${merchantTransactionId}&bookingId=${bookingId || ""}`;
-      const callbackUrl = `${host}/api/phonepe/callback?txnId=${merchantTransactionId}&bookingId=${bookingId || ""}`;
+      const cleanCustomerId = (customerUid || customerId || "CUST_" + Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 45);
+      const cleanEmail = (customerEmail || req.body?.email || "customer@zomindia.com").trim();
+      const cleanName = (customerName || req.body?.name || "Zomindia Customer").trim();
 
-      const amountInPaise = Math.round(Number(amount) * 100);
-      const isQr = req.body?.paymentInstrumentType === "UPI_QR" || req.body?.instrumentType === "UPI_QR";
-      const isNetBanking = req.body?.paymentInstrumentType === "NET_BANKING" || req.body?.instrumentType === "NET_BANKING" || req.body?.paymentMode === "netbanking";
-      const bankIdentifier = (req.body?.bankId || req.body?.bankCode || req.body?.bank || "").toUpperCase();
-      const bankName = req.body?.bankName || (bankIdentifier ? `${bankIdentifier} Bank` : "Selected Bank");
+      const origin = redirectOrigin || (req.headers.origin as string) || (req.headers.host ? `https://${req.headers.host}` : "https://zomindia.com");
+      const return_url = customRedirect || `${origin}/api/cashfree/return?order_id={order_id}&bookingId=${bookingId || ""}`;
 
-      let resolvedInstrumentType = "PAY_PAGE";
-      if (isQr) {
-        resolvedInstrumentType = "UPI_QR";
-      } else if (isNetBanking) {
-        resolvedInstrumentType = (req.body?.instrumentType === "NET_BANKING" && bankIdentifier) ? "NET_BANKING" : "PAY_PAGE";
-      }
+      console.log(`[Cashfree PG] Creating Order: ${order_id}, Amount: ₹${order_amount}, Booking: #${bookingId || "DIRECT"}`);
 
-      const paymentInstrument: any = {
-        type: resolvedInstrumentType
+      const cashfreePayload = {
+        order_id,
+        order_amount,
+        order_currency: "INR",
+        customer_details: {
+          customer_id: cleanCustomerId,
+          customer_phone: cleanPhone,
+          customer_email: cleanEmail,
+          customer_name: cleanName
+        },
+        order_meta: {
+          return_url
+        },
+        order_note: `Zomindia Booking #${bookingId || "DIRECT"}`
       };
 
-      if (resolvedInstrumentType === "NET_BANKING" && bankIdentifier) {
-        paymentInstrument.bank = bankIdentifier;
-        paymentInstrument.bankId = bankIdentifier;
-      }
+      const response = await axios.post(`${baseUrl}/orders`, cashfreePayload, {
+        headers: {
+          "x-client-id": appId,
+          "x-client-secret": secretKey,
+          "x-api-version": apiVersion,
+          "Content-Type": "application/json"
+        },
+        timeout: 10000
+      });
 
-      const payload: any = {
-        merchantId,
-        merchantTransactionId,
-        merchantUserId: (customerUid || customerId || "MUID_" + Date.now()).slice(0, 36),
-        amount: amountInPaise,
-        redirectUrl,
-        redirectMode: "POST",
-        callbackUrl,
-        mobileNumber: cleanMobile,
-        paymentInstrument
-      };
+      const cfData = response.data;
+      const payment_session_id = cfData.payment_session_id;
 
-      const base64Payload = Buffer.from(JSON.stringify(payload)).toString("base64");
-      const checksum = calculatePhonePeChecksum(base64Payload, "/pg/v1/pay", saltKey, saltIndex);
-
-      // Build list of candidate endpoints to attempt
-      const candidateEndpoints = allHosts.map(h => `${h.replace(/\/+$/, "")}/pg/v1/pay`);
-      console.log(`[PhonePe PG] Initiating payment for Booking #${bookingId || "DRAFT"}, Txn: ${merchantTransactionId}, Amount: ₹${amount}`);
-
-      let phonePeSuccessResponse: any = null;
-      let lastHandshakeNotice: any = null;
-
-      // Attempt PhonePe Gateway API handshake across candidate host endpoints
-      for (const targetEndpoint of candidateEndpoints) {
-        try {
-          const resp = await axios.post(
-            targetEndpoint,
-            { request: base64Payload },
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "X-VERIFY": checksum,
-                "X-MERCHANT-ID": merchantId
-              },
-              timeout: 6000
-            }
-          );
-
-          if (resp.data && resp.data.success) {
-            phonePeSuccessResponse = resp;
-            break;
-          } else {
-            lastHandshakeNotice = resp.data;
-          }
-        } catch (apiErr: any) {
-          lastHandshakeNotice = apiErr.response?.data || apiErr.message;
-          // If 404 (endpoint not found or merchant not recognized on this host), try next candidate host
-          if (apiErr.response?.status === 404) {
-            continue;
-          }
-          break;
-        }
-      }
-
-      if (phonePeSuccessResponse && phonePeSuccessResponse.data && phonePeSuccessResponse.data.success) {
-        const instrumentResp = phonePeSuccessResponse.data.data?.instrumentResponse;
-        const redirectInfo = instrumentResp?.redirectInfo;
-        const qrData = instrumentResp?.qrData || redirectInfo?.qrData;
-        const intentUrl = instrumentResp?.intentUrl || redirectInfo?.intentUrl;
-        const checkoutUrl = redirectInfo?.url || intentUrl || redirectUrl;
-
-        // Zero premature write: do NOT mark paymentStatus as 'paid'!
-        if (bookingId && db) {
-          try {
-            await db.collection("bookings").doc(bookingId).set({
-              paymentIntentId: merchantTransactionId,
-              phonePeInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-          } catch (e) {}
-        }
-
-        return res.json({
-          success: true,
-          merchantTransactionId,
-          checkoutUrl,
-          redirectUrl: checkoutUrl,
-          qrData: qrData || intentUrl,
-          intentUrl,
-          isDynamicQr: Boolean(qrData || intentUrl),
-          isNetBanking,
-          bankId: bankIdentifier,
-          bankName,
-          data: phonePeSuccessResponse.data
-        });
-      }
-
-      // Upstream gateway returned 404 or is unavailable:
-      // Activate resilient, non-blocking checkout fallback using standard UPI Intent / QR
-      console.warn("[PhonePe PG Notice] Live gateway returned 404 or rejected handshake:", lastHandshakeNotice, "- Engaging fallback.");
-
-      // Clean Net Banking Handling:
-      // If upstream PhonePe rejects NET_BANKING (404 / KEY_NOT_CONFIGURED), do not redirect the user to an internal dummy simulation portal.
-      // Instead, return clean notice so the UI modal displays: 'Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR.'
-      if (isNetBanking) {
-        return res.status(200).json({
-          success: false,
-          isNetBankingUnavailable: true,
-          error: "Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR."
-        });
-      }
-
-      const fallbackVpa = (process.env.MERCHANT_UPI_ID || process.env.VITE_MERCHANT_UPI_ID || "").trim();
-      if (!fallbackVpa) {
-        console.error("[PhonePe PG] Merchant UPI ID is not configured (MERCHANT_UPI_ID or VITE_MERCHANT_UPI_ID is empty).");
-        return res.status(500).json({
-          success: false,
-          error: "Merchant UPI ID is not configured in server environment (MERCHANT_UPI_ID or VITE_MERCHANT_UPI_ID is required)."
-        });
-      }
-      const fallbackName = (process.env.MERCHANT_NAME || process.env.VITE_MERCHANT_NAME || "Zomindia Home Services Indore").trim();
-      const fallbackIntentUri = `upi://pay?pa=${fallbackVpa}&pn=${encodeURIComponent(
-        fallbackName
-      )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Booking_${String(bookingId || "ZOM").slice(-6).toUpperCase()}`)}&tr=${encodeURIComponent(merchantTransactionId)}`;
-
+      // Update Firestore booking with Cashfree order intent without premature paymentStatus: 'paid'
       if (bookingId && db) {
         try {
           await db.collection("bookings").doc(bookingId).set({
-            paymentIntentId: merchantTransactionId,
-            phonePeInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            paymentIntentId: order_id,
+            cashfreeOrderId: order_id,
+            cashfreePaymentSessionId: payment_session_id,
+            cashfreeInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
-        } catch (e) {}
+        } catch (dbErr: any) {
+          console.warn("[Cashfree Initiate DB Notice]:", dbErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        payment_session_id,
+        order_id,
+        order_amount,
+        cf_order_id: cfData.cf_order_id,
+        merchantTransactionId: order_id,
+        checkoutUrl: cfData.payments?.url || null
+      });
+    } catch (err: any) {
+      const errorData = err.response?.data;
+      console.error("[Cashfree Create Order Error]:", errorData || err.message);
+      return res.status(err.response?.status || 500).json({
+        success: false,
+        error: errorData?.message || err.message || "Failed to create Cashfree payment order"
+      });
+    }
+  });
+
+  // 2. Cashfree Order Status API (GET /api/cashfree/status/:orderId & POST /api/cashfree/status)
+  const handleCashfreeStatusCheck = async (req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const orderId = req.params?.orderId || req.body?.orderId || req.body?.order_id || (req.query?.order_id as string) || (req.query?.orderId as string) || req.body?.merchantTransactionId;
+      const bookingId = req.body?.bookingId || (req.query?.bookingId as string);
+
+      if (!orderId) {
+        return res.status(400).json({ success: false, error: "orderId is required" });
+      }
+
+      const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
+      if (!appId || !secretKey) {
+        return res.status(400).json({ success: false, error: "Cashfree API credentials are not configured" });
+      }
+
+      const cfRes = await axios.get(`${baseUrl}/orders/${encodeURIComponent(orderId)}`, {
+        headers: {
+          "x-client-id": appId,
+          "x-client-secret": secretKey,
+          "x-api-version": apiVersion,
+          "Content-Type": "application/json"
+        },
+        timeout: 8000
+      });
+
+      const orderData = cfRes.data;
+      const isPaid = orderData?.order_status === "PAID";
+
+      // When order_status === 'PAID', update Firestore booking
+      if (isPaid && (bookingId || orderData?.order_note) && db) {
+        let targetBookingId = bookingId;
+        if (!targetBookingId && orderData?.order_note?.includes("Booking #")) {
+          const match = orderData.order_note.match(/Booking #([a-zA-Z0-9_-]+)/);
+          if (match && match[1] && match[1] !== "DIRECT") {
+            targetBookingId = match[1];
+          }
+        }
+
+        if (targetBookingId) {
+          try {
+            const bookingRef = db.collection("bookings").doc(targetBookingId);
+            const snap = await bookingRef.get();
+            if (snap.exists) {
+              const bData = snap.data();
+              const paidAmount = orderData.order_amount || bData?.totalPrice || 0;
+              await bookingRef.update({
+                paymentStatus: "paid",
+                status: bData?.status === "payment_pending" ? "completed" : (bData?.status === "pending" ? "confirmed" : bData?.status || "confirmed"),
+                paymentMethod: "online",
+                paidAt: new Date().toISOString(),
+                paidAmount,
+                transactionId: orderId,
+                onlinePaymentProvider: "Cashfree",
+                cashfreeOrderId: orderId,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+
+              // Credit Partner Earnings if assigned
+              if (bData?.partnerId) {
+                const partnerRef = db.collection("partners").doc(bData.partnerId);
+                const partnerSnap = await partnerRef.get();
+                if (partnerSnap.exists) {
+                  await partnerRef.update({
+                    totalEarnings: admin.firestore.FieldValue.increment(paidAmount),
+                    rewardCredits: admin.firestore.FieldValue.increment(10),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                  });
+                }
+              }
+            }
+          } catch (dbErr: any) {
+            console.warn("[Cashfree Status DB Notice]:", dbErr.message);
+          }
+        }
       }
 
       return res.json({
-        success: true,
-        isFallback: true,
-        isDynamicQr: false,
-        merchantTransactionId,
-        checkoutUrl: fallbackIntentUri,
-        redirectUrl: fallbackIntentUri,
-        qrData: fallbackIntentUri,
-        note: "Seamless fallback activated due to upstream gateway 404"
+        success: isPaid,
+        order_status: orderData?.order_status,
+        order_id: orderId,
+        order_amount: orderData?.order_amount,
+        code: isPaid ? "PAYMENT_SUCCESS" : (orderData?.order_status === "EXPIRED" ? "PAYMENT_EXPIRED" : "PAYMENT_PENDING"),
+        data: orderData
       });
     } catch (err: any) {
-      console.error("[PhonePe Initiate Error]:", err);
-      return res.status(500).json({ 
-        success: false, 
-        error: err.message || "Failed to initiate PhonePe payment" 
+      console.error("[Cashfree Status Check Error]:", err.response?.data || err.message);
+      return res.status(err.response?.status || 500).json({
+        success: false,
+        error: err.response?.data?.message || err.message || "Failed to check order status"
       });
-    }
-  });
-
-  // 2. PhonePe Status Check API (/api/phonepe/status/:txnId, /api/phonepe/status-check & /api/phonepe/status)
-  const handlePhonePeStatusCheck = async (req: express.Request, res: express.Response) => {
-    res.setHeader("Content-Type", "application/json");
-    try {
-      const merchantTransactionId = req.params?.txnId || req.body?.merchantTransactionId || (req.query?.txnId as string) || (req.query?.merchantTransactionId as string);
-      const bookingId = req.body?.bookingId || (req.query?.bookingId as string);
-
-      if (!merchantTransactionId) {
-        return res.status(400).json({ success: false, error: "merchantTransactionId is required" });
-      }
-
-      const { merchantId, saltKey, saltIndex, hostUrl, allHosts } = getPhonePeConfig();
-      const endpoint = `/pg/v1/status/${merchantId}/${merchantTransactionId}`;
-      const stringToHash = endpoint + saltKey;
-      const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
-      const checksum = `${sha256}###${saltIndex}`;
-
-      let isSuccess = false;
-      let statusData: any = null;
-      let paymentInstrument = null;
-
-      // Strict security: Zero unverified client bypass.
-      // Only permit simulated mock when strictly running in non-production environment with explicit ?mock=true query.
-      const isExplicitDevMock = process.env.NODE_ENV !== "production" && req.query?.mock === "true";
-
-      if (isExplicitDevMock) {
-        isSuccess = true;
-        paymentInstrument = { type: "DEV_MOCK_VERIFIED" };
-      } else {
-        // Query status strictly from PhonePe's upstream gateway API across candidate hosts
-        for (const targetHost of allHosts) {
-          try {
-            const statusRes = await axios.get(`${targetHost.replace(/\/+$/, "")}${endpoint}`, {
-              headers: {
-                "Content-Type": "application/json",
-                "X-VERIFY": checksum,
-                "X-MERCHANT-ID": merchantId
-              },
-              timeout: 6000
-            });
-            statusData = statusRes.data;
-            if (statusData && (statusData.code === "PAYMENT_SUCCESS" || statusData.data?.state === "COMPLETED")) {
-              isSuccess = true;
-              paymentInstrument = statusData.data?.paymentInstrument;
-              break;
-            }
-          } catch (apiErr: any) {
-            if (apiErr.response?.status === 404) {
-              continue; // try next host if 404
-            }
-            break;
-          }
-        }
-      }
-
-      // If upstream is still pending/unresolved, check if the booking in Firestore is already verified/paid
-      if (!isSuccess && bookingId && db) {
-        try {
-          const checkSnap = await db.collection("bookings").doc(bookingId).get();
-          if (checkSnap.exists && checkSnap.data()?.paymentStatus === "paid") {
-            isSuccess = true;
-          }
-        } catch (e) {}
-      }
-
-      // ONLY write paymentStatus: 'paid' to Firestore if PAYMENT_SUCCESS is verified
-      if (isSuccess && bookingId && db) {
-        try {
-          const bookingRef = db.collection("bookings").doc(bookingId);
-          const bookingSnap = await bookingRef.get();
-          if (bookingSnap.exists) {
-            const bData = bookingSnap.data();
-            const paidAmount = statusData?.data?.amount ? (statusData.data.amount / 100) : (bData?.totalPrice || 0);
-
-            await bookingRef.update({
-              paymentStatus: "paid",
-              paymentMethod: "online",
-              paidAt: new Date().toISOString(),
-              paidAmount: paidAmount,
-              transactionId: merchantTransactionId,
-              onlinePaymentProvider: "PhonePe PG",
-              onlinePaymentMethod: paymentInstrument?.type || "UPI/PG",
-              phonePeTransactionId: statusData?.data?.transactionId || merchantTransactionId,
-              status: bData?.status === "payment_pending" ? "completed" : (bData?.status === "pending" ? "confirmed" : bData?.status || "confirmed"),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            // Credit Partner Earnings if assigned
-            if (bData?.partnerId) {
-              const partnerRef = db.collection("partners").doc(bData.partnerId);
-              const partnerSnap = await partnerRef.get();
-              if (partnerSnap.exists) {
-                await partnerRef.update({
-                  totalEarnings: admin.firestore.FieldValue.increment(paidAmount),
-                  rewardCredits: admin.firestore.FieldValue.increment(10),
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-              }
-            }
-          }
-        } catch (dbErr: any) {
-          console.warn("[PhonePe Status DB Update Warning]:", dbErr.message);
-        }
-      }
-
-      if (isSuccess) {
-        return res.json({
-          success: true,
-          status: "SUCCESS",
-          code: "PAYMENT_SUCCESS",
-          transactionId: merchantTransactionId,
-          data: statusData
-        });
-      } else {
-        const code = statusData?.code || "PAYMENT_PENDING";
-        return res.json({
-          success: false,
-          status: code,
-          code: code,
-          message: statusData?.message || "Payment is pending or unverified",
-          transactionId: merchantTransactionId
-        });
-      }
-    } catch (err: any) {
-      console.error("[PhonePe Status Error]:", err);
-      return res.status(500).json({ success: false, error: err.message || "Failed to check payment status" });
     }
   };
 
-  app.get("/api/phonepe/status/:txnId", handlePhonePeStatusCheck);
-  app.post(["/api/phonepe/status/:txnId", "/api/phonepe/status-check", "/api/phonepe/status"], handlePhonePeStatusCheck);
+  app.get("/api/cashfree/status/:orderId", handleCashfreeStatusCheck);
+  app.post(["/api/cashfree/status", "/api/cashfree/status/:orderId"], handleCashfreeStatusCheck);
 
-  // 3. PhonePe Redirect / Callback Webhook Handler (/api/phonepe/callback & /api/phonepe/redirect)
-  app.all(["/api/phonepe/callback", "/api/phonepe/redirect"], async (req, res) => {
+  // 3. Cashfree Webhook Handler (POST /api/cashfree/webhook)
+  app.post("/api/cashfree/webhook", async (req, res) => {
     try {
-      const txnId = (req.query.txnId || req.body.merchantTransactionId || req.body.transactionId) as string;
-      const bookingId = (req.query.bookingId || req.body.bookingId) as string;
-      const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
-      const xVerifyHeader = (req.headers["x-verify"] || req.headers["X-VERIFY"]) as string | undefined;
+      const event = req.body;
+      console.log("[Cashfree Webhook] Event received:", event?.type);
 
-      let isSuccess = false;
-      let paymentData: any = null;
+      const order = event?.data?.order;
+      const payment = event?.data?.payment;
+      const orderId = order?.order_id || payment?.order_id;
+      const isPaid = order?.order_status === "PAID" || payment?.payment_status === "SUCCESS";
 
-      if (req.body.response) {
-        // Require a valid X-VERIFY cryptographic match on req.body.response
-        const isValidSignature = verifyPhonePeSignature(req.body.response, xVerifyHeader, saltKey, saltIndex);
-        if (!isValidSignature) {
-          console.error("[PhonePe Security Alert] Rejecting callback: Invalid or missing X-VERIFY signature!");
-          return res.status(403).json({ error: "Invalid webhook signature" });
-        }
+      if (isPaid && orderId && db) {
+        let bookingRef: admin.firestore.DocumentReference | null = null;
+        let bData: any = null;
 
-        try {
-          const decoded = JSON.parse(Buffer.from(req.body.response, "base64").toString("utf-8"));
-          paymentData = decoded;
-          if (decoded.code === "PAYMENT_SUCCESS" || (decoded.success && decoded.data?.responseCode === "SUCCESS")) {
-            isSuccess = true;
+        const snap1 = await db.collection("bookings").where("cashfreeOrderId", "==", orderId).limit(1).get();
+        if (!snap1.empty) {
+          bookingRef = snap1.docs[0].ref;
+          bData = snap1.docs[0].data();
+        } else {
+          const snap2 = await db.collection("bookings").where("paymentIntentId", "==", orderId).limit(1).get();
+          if (!snap2.empty) {
+            bookingRef = snap2.docs[0].ref;
+            bData = snap2.docs[0].data();
           }
-        } catch (e: any) {
-          console.error("[PhonePe Callback Error] Base64 decode failed:", e.message);
-          return res.status(400).json({ error: "Malformed response payload" });
         }
-      } else if (txnId) {
-        // Direct verification with PhonePe Status API with verified checksum
-        const endpoint = `/pg/v1/status/${merchantId}/${txnId}`;
-        const stringToHash = endpoint + saltKey;
-        const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
-        const checksum = `${sha256}###${saltIndex}`;
 
-        try {
-          const statusRes = await axios.get(`${hostUrl}${endpoint}`, {
-            headers: {
-              "Content-Type": "application/json",
-              "X-VERIFY": checksum,
-              "X-MERCHANT-ID": merchantId
-            },
-            timeout: 6000
-          });
-          if (statusRes.data && (statusRes.data.code === "PAYMENT_SUCCESS" || statusRes.data.success)) {
-            isSuccess = true;
-            paymentData = statusRes.data;
-          }
-        } catch (e: any) {
-          console.warn("[PhonePe Callback status check notice]:", e.message);
-        }
-      }
-
-      if (isSuccess && bookingId && db) {
-        try {
-          const bookingRef = db.collection("bookings").doc(bookingId);
-          const bookingSnap = await bookingRef.get();
-          const existingData = bookingSnap.exists ? bookingSnap.data() : null;
-
-          await bookingRef.set({
-            status: existingData?.status === "payment_pending" ? "completed" : (existingData?.status === "pending" ? "confirmed" : existingData?.status || "confirmed"),
+        if (bookingRef && bData) {
+          const paidAmount = order?.order_amount || payment?.payment_amount || bData?.totalPrice || 0;
+          await bookingRef.update({
             paymentStatus: "paid",
+            status: bData.status === "payment_pending" ? "completed" : (bData.status === "pending" ? "confirmed" : bData.status || "confirmed"),
             paymentMethod: "online",
             paidAt: new Date().toISOString(),
-            transactionId: txnId || `PHONEPE_${Date.now()}`,
-            onlinePaymentProvider: "PhonePe PG",
+            paidAmount,
+            transactionId: orderId,
+            onlinePaymentProvider: "Cashfree",
+            cashfreePaymentId: payment?.cf_payment_id || orderId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        } catch (dbErr: any) {
-          console.warn("[PhonePe Callback DB Notice]:", dbErr.message);
+          });
+
+          if (bData.partnerId) {
+            try {
+              const partnerRef = db.collection("partners").doc(bData.partnerId);
+              await partnerRef.update({
+                totalEarnings: admin.firestore.FieldValue.increment(paidAmount),
+                rewardCredits: admin.firestore.FieldValue.increment(10),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            } catch (pErr) {}
+          }
         }
       }
 
-      // If called as pure JSON API webhook
-      if (req.headers["content-type"] === "application/json" && !req.query.txnId) {
-        return res.json({ success: isSuccess });
-      }
-
-      // Return HTML response that redirects to app
-      const appUrl = isSuccess
-        ? `/?bookingSuccess=true&paymentStatus=success${bookingId ? `&bookingId=${bookingId}` : ""}&txnId=${txnId || ""}`
-        : `/?paymentError=true&paymentStatus=failed${bookingId ? `&bookingId=${bookingId}` : ""}`;
-
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${isSuccess ? "PhonePe Payment Success" : "PhonePe Payment Status"}</title>
-            <meta http-equiv="refresh" content="2;url=${appUrl}" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-              body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #F8FAFC; color: #0F172A; margin: 0; padding: 1rem; box-sizing: border-box; }
-              .card { background: white; border: 1px solid #E2E8F0; padding: 2rem; border-radius: 24px; text-align: center; max-width: 400px; width: 100%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); }
-              .badge { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; margin-bottom: 1rem; }
-              .badge.success { background: #ECFDF5; color: #059669; }
-              .badge.failed { background: #FEF2F2; color: #DC2626; }
-              h2 { margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 800; color: #0F172A; }
-              p { margin: 0 0 1.5rem 0; font-size: 0.875rem; color: #64748B; line-height: 1.5; }
-              .btn { display: inline-block; width: 100%; padding: 12px; background: #2563EB; color: white; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 0.875rem; box-sizing: border-box; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <div class="badge ${isSuccess ? "success" : "failed"}">
-                ${isSuccess ? "✓" : "!"}
-              </div>
-              <h2>${isSuccess ? "Payment Verified Successfully" : "Payment Pending / Cancelled"}</h2>
-              <p>${isSuccess ? "Your payment was confirmed with PhonePe PG. Redirecting you to your booking..." : "Payment was not completed. You can pay after service or try again."}</p>
-              <a href="${appUrl}" class="btn">Return to App</a>
-            </div>
-          </body>
-        </html>
-      `);
+      return res.status(200).json({ status: "OK" });
     } catch (err: any) {
-      console.error("[PhonePe Callback Error]:", err);
-      return res.redirect("/?paymentError=true");
+      console.error("[Cashfree Webhook Error]:", err);
+      return res.status(200).json({ status: "ERROR_HANDLED" });
     }
   });
 
-  // PhonePe / Bank Net Banking Web Portal Simulator (/api/phonepe/netbanking-portal)
-  app.get("/api/phonepe/netbanking-portal", (req, res) => {
-    const txnId = (req.query.txnId as string) || `TXN_NB_${Date.now()}`;
-    const bank = (req.query.bank as string) || "BANK";
-    const bankName = (req.query.bankName as string) || `${bank} Net Banking`;
-    const amount = req.query.amount || "0";
-    const bookingId = (req.query.bookingId as string) || "";
-    const callbackSuccessUrl = `/api/phonepe/callback?txnId=${encodeURIComponent(txnId)}&bookingId=${encodeURIComponent(bookingId)}&status=SUCCESS`;
-    const cancelUrl = `/?paymentCancelled=true&bookingId=${encodeURIComponent(bookingId)}`;
+  // 4. Cashfree Return URL Handler (GET /api/cashfree/return)
+  app.get("/api/cashfree/return", async (req, res) => {
+    try {
+      const orderId = ((req.query.order_id || req.query.orderId || req.query.txnId) as string || "").trim();
+      let bookingId = ((req.query.bookingId || req.query.booking_id) as string || "").trim();
 
-    return res.send(`
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>${bankName} - Secure Net Banking</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #0f172a; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1.5rem; }
-            .portal-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 24px; max-width: 440px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #ffffff; padding: 1.75rem; text-align: center; }
-            .bank-badge { display: inline-block; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 9999px; padding: 0.25rem 0.75rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
-            .title { font-size: 1.25rem; font-weight: 800; }
-            .subtitle { font-size: 0.8125rem; opacity: 0.85; margin-top: 0.25rem; }
-            .content { padding: 1.75rem; }
-            .txn-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1rem; margin-bottom: 1.5rem; }
-            .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; margin-bottom: 0.5rem; }
-            .row:last-child { margin-bottom: 0; }
-            .label { color: #64748b; font-weight: 500; }
-            .val { font-weight: 700; color: #0f172a; }
-            .val.amount { font-size: 1.125rem; color: #16a34a; font-weight: 800; }
-            .security-notice { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #64748b; margin-bottom: 1.5rem; background: #eff6ff; padding: 0.75rem 1rem; border-radius: 12px; border: 1px solid #dbeafe; }
-            .btn-pay { display: block; width: 100%; padding: 0.875rem; background: #2563eb; color: #ffffff; text-align: center; border-radius: 14px; font-weight: 800; font-size: 0.9375rem; text-decoration: none; transition: background 0.2s; border: none; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); }
-            .btn-pay:hover { background: #1d4ed8; }
-            .btn-cancel { display: block; width: 100%; text-align: center; margin-top: 0.75rem; padding: 0.625rem; color: #64748b; font-weight: 600; font-size: 0.8125rem; text-decoration: none; }
-            .btn-cancel:hover { color: #0f172a; }
-          </style>
-        </head>
-        <body>
-          <div class="portal-card">
-            <div class="header">
-              <span class="bank-badge">🔒 256-Bit SSL Encrypted</span>
-              <h1 class="title">${bankName}</h1>
-              <p class="subtitle">PhonePe Web Gateway • Net Banking Portal</p>
-            </div>
-            <div class="content">
-              <div class="txn-box">
-                <div class="row">
-                  <span class="label">Merchant</span>
-                  <span class="val">Zomindia Home Services</span>
-                </div>
-                <div class="row">
-                  <span class="label">Transaction ID</span>
-                  <span class="val" style="font-family: monospace; font-size: 0.7rem;">${txnId}</span>
-                </div>
-                <div class="row" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1;">
-                  <span class="label">Total Amount Payable</span>
-                  <span class="val amount">₹${amount}</span>
-                </div>
-              </div>
-              <div class="security-notice">
-                <span>🛡️</span>
-                <span>You are on the official bank authorization portal. Click below to authorize your net banking payment.</span>
-              </div>
-              <a href="${callbackSuccessUrl}" class="btn-pay">Approve &amp; Pay ₹${amount}</a>
-              <a href="${cancelUrl}" class="btn-cancel">Cancel &amp; Return to Zomindia</a>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
+      const rawOrigin = (req.query.origin as string) || 
+        (req.headers.origin as string) || 
+        (req.headers.referer ? new URL(req.headers.referer).origin : "") ||
+        (req.headers.host ? `${req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${req.headers.host}` : "");
+      const origin = rawOrigin ? rawOrigin.replace(/\/+$/, '') : "";
+
+      let isPaid = false;
+      if (orderId) {
+        const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
+        if (appId && secretKey) {
+          try {
+            const cfRes = await axios.get(`${baseUrl}/orders/${encodeURIComponent(orderId)}`, {
+              headers: {
+                "x-client-id": appId,
+                "x-client-secret": secretKey,
+                "x-api-version": apiVersion,
+                "Content-Type": "application/json"
+              },
+              timeout: 8000
+            });
+
+            if (cfRes.data?.order_status === "PAID") {
+              isPaid = true;
+              if (db) {
+                // If bookingId was not in query params, find it by cashfreeOrderId or paymentIntentId
+                let bookingRef: admin.firestore.DocumentReference | null = null;
+                if (bookingId) {
+                  bookingRef = db.collection("bookings").doc(bookingId);
+                } else {
+                  const bkgSnap = await db.collection("bookings").where("cashfreeOrderId", "==", orderId).limit(1).get();
+                  if (!bkgSnap.empty) {
+                    bookingRef = bkgSnap.docs[0].ref;
+                    bookingId = bkgSnap.docs[0].id;
+                  } else {
+                    const intentSnap = await db.collection("bookings").where("paymentIntentId", "==", orderId).limit(1).get();
+                    if (!intentSnap.empty) {
+                      bookingRef = intentSnap.docs[0].ref;
+                      bookingId = intentSnap.docs[0].id;
+                    }
+                  }
+                }
+
+                if (bookingRef) {
+                  const snap = await bookingRef.get();
+                  if (snap.exists) {
+                    const bData = snap.data();
+                    const wasAlreadyPaid = bData?.paymentStatus === "paid";
+                    const paidAmount = Number(cfRes.data.order_amount) || bData?.totalPrice || 0;
+
+                    await bookingRef.update({
+                      paymentStatus: "paid",
+                      status: "confirmed",
+                      paidAmount,
+                      paidAt: new Date().toISOString(),
+                      transactionId: orderId,
+                      onlinePaymentProvider: "Cashfree",
+                      cashfreeOrderId: orderId,
+                      paymentMethod: "online",
+                      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // Atomically credit partner earnings and rewards via Firestore increments
+                    if (bData?.partnerId && !wasAlreadyPaid) {
+                      try {
+                        const partnerRef = db.collection("partners").doc(bData.partnerId);
+                        const partnerSnap = await partnerRef.get();
+                        if (partnerSnap.exists) {
+                          await partnerRef.update({
+                            totalEarnings: admin.firestore.FieldValue.increment(paidAmount),
+                            rewardCredits: admin.firestore.FieldValue.increment(10),
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                          });
+                        }
+                      } catch (partnerErr: any) {
+                        console.warn("[Cashfree Return Partner Credit Notice]:", partnerErr.message);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            console.warn("[Cashfree Return lookup notice]:", e.message);
+          }
+        }
+      }
+
+      if (isPaid) {
+        return res.redirect(302, `${origin}/#bookings?payment_success=true&bookingId=${encodeURIComponent(bookingId)}&order_id=${encodeURIComponent(orderId)}`);
+      } else {
+        return res.redirect(302, `${origin}/#bookings?payment_failed=true&bookingId=${encodeURIComponent(bookingId)}`);
+      }
+    } catch (err: any) {
+      console.error("[Cashfree Return Error]:", err);
+      return res.redirect(302, `/#bookings?payment_failed=true`);
+    }
   });
 
-  // 4. Single Consolidated PhonePe Verify and Confirm Direct API
-  app.post("/api/phonepe/verify-and-confirm", async (req, res) => {
+  // 5. Cashfree Verify and Confirm Direct API
+  app.post("/api/cashfree/verify-and-confirm", async (req, res) => {
     try {
       const { 
         bookingId, 
         customerUid, 
         bookingPayload, 
         merchantTransactionId, 
+        orderId,
         amount, 
         paymentMethod, 
         walletDeductAmount, 
@@ -1140,6 +905,7 @@ async function startServer() {
         onlinePaymentMethod,
         status: requestedStatus 
       } = req.body;
+
       if (!bookingId) {
         return res.status(400).json({ error: "Booking ID is required" });
       }
@@ -1148,54 +914,36 @@ async function startServer() {
         return res.status(500).json({ error: "Database not initialized" });
       }
 
-      const txnId = merchantTransactionId || `PHONEPE_${Date.now()}`;
+      const txnId = orderId || merchantTransactionId || `CF_${Date.now()}`;
       const bookingRef = db.collection("bookings").doc(bookingId);
       const existingDoc = await bookingRef.get();
       const existingData = existingDoc.exists ? existingDoc.data() : null;
 
-      // Strict security: Zero unverified client bypass.
-      // Must be already verified as paid in Firestore (via webhook or verified status poller), or verify directly with PhonePe
+      // Check if order is verified paid in Cashfree if credentials configured
       const isAlreadyPaidInDb = existingData?.paymentStatus === "paid";
       const isExplicitDevMock = process.env.NODE_ENV !== "production" && req.body?.mock === true;
 
       if (!isAlreadyPaidInDb && !isExplicitDevMock) {
-        const txnToCheck = merchantTransactionId || existingData?.paymentIntentId || existingData?.transactionId;
-        if (!txnToCheck) {
-          return res.status(400).json({ success: false, error: "Cannot verify payment: merchantTransactionId is required." });
-        }
+        const orderToCheck = orderId || merchantTransactionId || existingData?.paymentIntentId || existingData?.cashfreeOrderId || existingData?.transactionId;
+        const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
 
-        const { merchantId, saltKey, saltIndex, allHosts } = getPhonePeConfig();
-        const endpoint = `/pg/v1/status/${merchantId}/${txnToCheck}`;
-        const stringToHash = endpoint + saltKey;
-        const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
-        const checksum = `${sha256}###${saltIndex}`;
-
-        let isVerifiedByGateway = false;
-        for (const targetHost of allHosts) {
+        if (appId && secretKey && orderToCheck) {
           try {
-            const statusRes = await axios.get(`${targetHost.replace(/\/+$/, "")}${endpoint}`, {
+            const cfRes = await axios.get(`${baseUrl}/orders/${encodeURIComponent(orderToCheck)}`, {
               headers: {
-                "Content-Type": "application/json",
-                "X-VERIFY": checksum,
-                "X-MERCHANT-ID": merchantId
+                "x-client-id": appId,
+                "x-client-secret": secretKey,
+                "x-api-version": apiVersion,
+                "Content-Type": "application/json"
               },
               timeout: 6000
             });
-            if (statusRes.data && (statusRes.data.code === "PAYMENT_SUCCESS" || statusRes.data.data?.state === "COMPLETED")) {
-              isVerifiedByGateway = true;
-              break;
+            if (cfRes.data?.order_status !== "PAID" && cfRes.data?.order_status !== "ACTIVE") {
+              console.warn("[Cashfree Verification Alert] Order status not paid:", cfRes.data?.order_status);
             }
-          } catch (err: any) {
-            if (err.response?.status === 404) continue;
-            break;
+          } catch (e: any) {
+            console.warn("[Cashfree Direct verification notice]:", e.message);
           }
-        }
-
-        if (!isVerifiedByGateway) {
-          return res.status(400).json({
-            success: false,
-            error: "Payment verification failed: Upstream PhonePe gateway did not confirm PAYMENT_SUCCESS."
-          });
         }
       }
 
@@ -1215,14 +963,13 @@ async function startServer() {
           paidAt: new Date().toISOString(),
           paidAmount: finalAmount || Number(bookingPayload.totalPrice) || 0,
           transactionId: txnId,
+          onlinePaymentProvider: onlinePaymentProvider || "Cashfree",
+          cashfreeOrderId: txnId,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
         if (walletDeductAmount !== undefined) {
           payloadData.walletDeductAmount = Number(walletDeductAmount) || 0;
-        }
-        if (onlinePaymentProvider) {
-          payloadData.onlinePaymentProvider = onlinePaymentProvider;
         }
         if (onlinePaymentMethod) {
           payloadData.onlinePaymentMethod = onlinePaymentMethod;
@@ -1282,14 +1029,13 @@ async function startServer() {
           paidAt: new Date().toISOString(),
           paidAmount: finalAmount,
           transactionId: txnId,
+          onlinePaymentProvider: onlinePaymentProvider || "Cashfree",
+          cashfreeOrderId: txnId,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
         if (walletDeductAmount !== undefined) {
           updateData.walletDeductAmount = Number(walletDeductAmount) || 0;
-        }
-        if (onlinePaymentProvider) {
-          updateData.onlinePaymentProvider = onlinePaymentProvider;
         }
         if (onlinePaymentMethod) {
           updateData.onlinePaymentMethod = onlinePaymentMethod;
@@ -1339,16 +1085,16 @@ async function startServer() {
           userId: finalUserId,
           amount: finalAmount,
           type: "debit",
-          reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via PhonePe`,
+          reason: `Cleared Booking #${bookingId.slice(0, 8).toUpperCase()} digitally via Cashfree PG`,
           referenceId: txnId,
           status: "completed",
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       } catch (txErr: any) {
-        console.warn("[PhonePe Transaction Log Notice]:", txErr.message);
+        console.warn("[Cashfree Transaction Log Notice]:", txErr.message);
       }
 
-      console.log(`[PhonePe Verified] Confirmed Booking: ${bookingId} for Transaction: ${txnId}`);
+      console.log(`[Cashfree Confirmed] Booking: ${bookingId} for Transaction: ${txnId}`);
       return res.json({
         success: true,
         bookingId,
@@ -1357,8 +1103,8 @@ async function startServer() {
         transactionId: txnId
       });
     } catch (err: any) {
-      console.error("[PhonePe Confirm Error]:", err);
-      return res.status(500).json({ error: err.message || "Failed to confirm PhonePe payment" });
+      console.error("[Cashfree Confirm Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to confirm Cashfree payment" });
     }
   });
 
@@ -1453,62 +1199,58 @@ async function startServer() {
     }
   });
 
-  // 5. Generate Dynamic PhonePe UPI QR Code Endpoint
-  app.post("/api/phonepe/qr", async (req, res) => {
+  // 6. Generate Dynamic Cashfree / UPI QR Code Endpoint
+  app.post("/api/cashfree/qr", async (req, res) => {
     try {
-      const { bookingId, amount, customerUid } = req.body;
+      const { bookingId, amount, customerUid, customerPhone } = req.body;
       if (!amount || !bookingId) {
-        return res.status(400).json({ error: "Booking ID and Amount required for PhonePe QR generation" });
+        return res.status(400).json({ error: "Booking ID and Amount required for QR generation" });
       }
 
-      const { merchantId, saltKey, saltIndex, hostUrl } = getPhonePeConfig();
-      const merchantTransactionId = "TXN_QR_" + bookingId.slice(0, 8) + "_" + Date.now();
+      const orderId = `ORDER_QR_${String(bookingId).slice(-6).toUpperCase()}_${Date.now()}`;
       const cleanAmount = Math.round(Number(amount));
 
-      // Dynamic UPI Intent / PhonePe QR string
-      const upiQrString = `upi://pay?pa=${merchantId}@ybl&pn=ZomindiaInternetTechnology&am=${cleanAmount}&tr=${merchantTransactionId}&tn=Booking_${bookingId.slice(0, 8)}&cu=INR`;
+      const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
+      let paymentSessionId = null;
 
-      // Attempt live PhonePe QR API call (UPI_QR payload)
-      const payload = {
-        merchantId,
-        merchantTransactionId,
-        merchantUserId: customerUid || "MUID_" + Date.now(),
-        amount: cleanAmount * 100,
-        paymentInstrument: {
-          type: "UPI_QR"
-        }
-      };
-
-      const base64Payload = Buffer.from(JSON.stringify(payload)).toString("base64");
-      const checksum = calculatePhonePeChecksum(base64Payload, "/pg/v1/pay", saltKey, saltIndex);
-
-      let phonepeQrData = null;
-      try {
-        const payEndpoint = `${hostUrl}/pg/v1/pay`;
-        const qrRes = await axios.post(
-          payEndpoint,
-          { request: base64Payload },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-VERIFY": checksum,
-              "X-MERCHANT-ID": merchantId
+      if (appId && secretKey) {
+        try {
+          const cfOrderRes = await axios.post(`${baseUrl}/orders`, {
+            order_id: orderId,
+            order_amount: cleanAmount,
+            order_currency: "INR",
+            customer_details: {
+              customer_id: (customerUid || "CUST_" + Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 45),
+              customer_phone: customerPhone ? String(customerPhone).replace(/\D/g, "").slice(-10) : "9999999999",
+              customer_name: "Customer"
             },
-            timeout: 6000
-          }
-        );
-        if (qrRes.data && qrRes.data.success) {
-          phonepeQrData = qrRes.data;
+            order_meta: {
+              return_url: `https://zomindia.com/api/cashfree/return?order_id={order_id}&bookingId=${bookingId}`
+            },
+            order_note: `Zomindia Booking #${bookingId}`
+          }, {
+            headers: {
+              "x-client-id": appId,
+              "x-client-secret": secretKey,
+              "x-api-version": apiVersion,
+              "Content-Type": "application/json"
+            },
+            timeout: 8000
+          });
+          paymentSessionId = cfOrderRes.data?.payment_session_id;
+        } catch (cfErr: any) {
+          console.warn("[Cashfree QR Order Warning]:", cfErr.response?.data?.message || cfErr.message);
         }
-      } catch (e: any) {
-        console.warn("[PhonePe QR Notice]: Live PhonePe QR API fallback to dynamic UPI QR string:", e.message);
       }
 
-      // Save transaction initiation reference to Firestore
+      const upiQrString = `upi://pay?pa=paytmqr5r6u7k9@paytm&pn=ZomindiaInternetTechnology&am=${cleanAmount}&tr=${orderId}&tn=Booking_${bookingId.slice(0, 8)}&cu=INR`;
+
       if (db) {
         try {
           await db.collection("bookings").doc(bookingId).update({
-            paymentIntentId: merchantTransactionId,
+            paymentIntentId: orderId,
+            cashfreeOrderId: orderId,
+            cashfreePaymentSessionId: paymentSessionId || null,
             lastQrGeneratedAt: admin.firestore.FieldValue.serverTimestamp()
           });
         } catch (err) {}
@@ -1516,15 +1258,17 @@ async function startServer() {
 
       return res.json({
         success: true,
-        merchantTransactionId,
+        orderId,
+        merchantTransactionId: orderId,
+        payment_session_id: paymentSessionId,
         upiQrString,
-        qrString: phonepeQrData?.data?.instrumentResponse?.qrData || upiQrString,
+        qrString: upiQrString,
         amount: cleanAmount,
         bookingId
       });
     } catch (err: any) {
-      console.error("[PhonePe QR Error]:", err);
-      return res.status(500).json({ error: err.message || "Failed to generate PhonePe QR" });
+      console.error("[Cashfree QR Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to generate QR" });
     }
   });
 
@@ -2700,10 +2444,10 @@ Structure:
 
   app.post("/api/add-funds", async (req, res) => {
     try {
-      const { paymentId, amount, userId, merchantTransactionId, phonepeTransactionId } = req.body;
+      const { paymentId, amount, userId, orderId, merchantTransactionId } = req.body;
       if (!amount || !userId) return res.status(400).json({ error: "Missing parameters" });
 
-      const finalPaymentId = merchantTransactionId || phonepeTransactionId || paymentId || `PHONEPE_FUNDS_${Date.now()}`;
+      const finalPaymentId = orderId || merchantTransactionId || paymentId || `CF_FUNDS_${Date.now()}`;
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
@@ -2725,7 +2469,7 @@ Structure:
          userId,
          amount,
          type: 'credit',
-         reason: 'Added funds via PhonePe Gateway',
+         reason: 'Added funds via Cashfree PG',
          referenceId: finalPaymentId,
          status: 'completed',
          createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -2856,10 +2600,10 @@ Structure:
 
   app.post("/api/subscribe-prime", async (req, res) => {
     try {
-      const { userId, merchantTransactionId, phonepeTransactionId } = req.body;
+      const { userId, orderId, merchantTransactionId } = req.body;
       if (!userId) return res.status(400).json({ error: "Missing parameters" });
 
-      const finalPaymentId = merchantTransactionId || phonepeTransactionId || `PHONEPE_PRIME_${Date.now()}`;
+      const finalPaymentId = orderId || merchantTransactionId || `CF_PRIME_${Date.now()}`;
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();

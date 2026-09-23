@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export type PaymentCategoryType = 'upi' | 'card' | 'cash' | 'wallet';
-export type UpiSubAppType = 'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'custom_upi';
+export type UpiSubAppType = 'gpay' | 'paytm' | 'bhim' | 'custom_upi';
 
 export interface PaymentSelection {
   category: PaymentCategoryType;
@@ -169,7 +169,7 @@ export default function PaymentMethodSelector({
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                      UPI (Google Pay, PhonePe, Paytm, BHIM)
+                      UPI (Google Pay, Paytm, BHIM UPI)
                     </h4>
                     <span className="bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
                       Instant &amp; Recommended
@@ -229,25 +229,25 @@ export default function PaymentMethodSelector({
                       )}
                     </button>
 
-                    {/* PhonePe */}
+                    {/* BHIM UPI */}
                     <button
                       type="button"
                       onClick={() => {
                         onSelectCategory('upi');
-                        onSelectUpiApp('phonepe');
+                        onSelectUpiApp('bhim');
                       }}
                       className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                        selectedUpiApp === 'phonepe'
-                          ? 'bg-white border-purple-600 shadow-sm ring-2 ring-purple-600/15 text-purple-700'
+                        selectedUpiApp === 'bhim'
+                          ? 'bg-white border-[#002e6e] shadow-sm ring-2 ring-[#002e6e]/15 text-[#002e6e]'
                           : 'bg-white border-slate-200/80 hover:border-slate-300 text-slate-700'
                       }`}
                     >
-                      <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-sm font-black text-purple-700 shadow-inner">
-                        पे
+                      <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-xs font-black text-emerald-700 shadow-inner">
+                        BHIM
                       </div>
-                      <span className="text-xs font-extrabold leading-tight">PhonePe</span>
-                      {selectedUpiApp === 'phonepe' && (
-                        <span className="text-[9px] font-bold text-purple-600 flex items-center gap-0.5">
+                      <span className="text-xs font-extrabold leading-tight">BHIM UPI</span>
+                      {selectedUpiApp === 'bhim' && (
+                        <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
                           <Check size={10} className="stroke-[3]" /> Selected
                         </span>
                       )}
@@ -465,7 +465,7 @@ export default function PaymentMethodSelector({
 
                   <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500">
                     <Lock size={12} className="text-emerald-600 shrink-0" />
-                    <span>Card details will be processed securely via PhonePe / PCI-DSS Gateway</span>
+                    <span>Card details will be processed securely via Cashfree / PCI-DSS Gateway</span>
                   </div>
                 </motion.div>
               )}

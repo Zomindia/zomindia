@@ -21,10 +21,10 @@ export const VALID_BANK_HANDLES: Record<string, string> = {
   'okaxis': 'Axis Bank (Google Pay)',
   'okicici': 'ICICI Bank (Google Pay)',
 
-  // PhonePe handles
-  'ybl': 'YES Bank (PhonePe)',
-  'ibl': 'ICICI Bank (PhonePe)',
-  'axl': 'Axis Bank (PhonePe)',
+  // Common UPI handles
+  'ybl': 'YES Bank UPI',
+  'ibl': 'ICICI Bank UPI',
+  'axl': 'Axis Bank UPI',
 
   // Paytm handles
   'paytm': 'Paytm Payments Bank',

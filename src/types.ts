@@ -291,10 +291,10 @@ export interface Booking {
   isReviewed?: boolean;
   status: BookingStatus;
   paymentStatus: 'paid' | 'unpaid' | 'pay_after_service';
-  paymentMethod?: 'online' | 'cash' | 'phonepe_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
+  paymentMethod?: 'online' | 'cash' | 'cashfree' | 'upi_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
   paidAt?: any;
   transactionId?: string;
-  onlinePaymentProvider?: string;
+  onlinePaymentProvider?: 'Cashfree' | 'Cashfree PG' | string;
   paidAmount?: number;
   isAmcCovered?: boolean;
   tier?: string;

@@ -279,7 +279,8 @@ export function formatBookingSchedule(scheduledAt: any): {
 function formatPaymentMethodName(method?: string): string {
   if (!method) return "Online";
   const m = method.toLowerCase();
-  if (m === "phonepe" || m === "phonepe_qr") return "PhonePe / UPI";
+  if (m === "cashfree" || m === "online") return "Cashfree Gateway";
+  if (m === "upi_qr" || m === "dynamic_qr") return "UPI / Dynamic QR";
   if (m === "upi") return "UPI";
   if (m === "cash") return "Cash on Delivery";
   if (m === "wallet") return "ZomIndia Wallet";

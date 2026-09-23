@@ -1593,10 +1593,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex items-center gap-1">
                         <span className="w-4 h-4 rounded-full bg-white border border-slate-200 text-[#1A73E8] text-[9px] font-black flex items-center justify-center shadow-2xs">G</span>
-                        <span className="w-4 h-4 rounded-full bg-[#5F259F] text-white text-[8px] font-black flex items-center justify-center shadow-2xs">पे</span>
                         <span className="px-1 h-4 rounded bg-[#002970] text-[#00BAF2] text-[7px] font-black flex items-center justify-center shadow-2xs">Paytm</span>
+                        <span className="px-1 h-4 rounded bg-emerald-700 text-white text-[7px] font-black flex items-center justify-center shadow-2xs">UPI</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-medium">GPay, PhonePe, Cards, NetBanking</span>
+                      <span className="text-[10px] text-slate-500 font-medium">UPI, Cards, NetBanking (Cashfree)</span>
                     </div>
                   </div>
                 </div>

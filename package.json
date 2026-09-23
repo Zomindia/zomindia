@@ -19,6 +19,7 @@
     "@capacitor/camera": "^8.2.0",
     "@capacitor/core": "^8.3.4",
     "@capacitor/push-notifications": "^8.1.1",
+    "@cashfreepayments/cashfree-js": "^1.0.7",
     "@google/genai": "^2.2.0",
     "@ionic/pwa-elements": "^3.4.0",
     "@tailwindcss/vite": "^4.0.0",

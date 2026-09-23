@@ -728,24 +728,18 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [qrChecking, setQrChecking] = useState<boolean>(false);
   const [qrSuccessMessage, setQrSuccessMessage] = useState<string | null>(null);
 
-  // PhonePe QR Real-Time Polling Effect
+  // Cashfree Dynamic QR Real-Time Polling Effect
   useEffect(() => {
     if (!showPartnerQRId || !activeQrTxnId) return;
 
     let isMounted = true;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch('/api/phonepe/status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            merchantTransactionId: activeQrTxnId,
-            bookingId: showPartnerQRId
-          })
-        });
+        const res = await fetch(`/api/cashfree/status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(showPartnerQRId)}`);
         const data = await res.json();
-        if (isMounted && data && (data.code === 'PAYMENT_SUCCESS' || data.success)) {
-          setQrSuccessMessage("PAID VIA PHONEPE QR - Payment Received!");
+        const isPaid = (data.order_status === 'PAID') || (data.status === 'SUCCESS') || (data.success === true);
+        if (isMounted && data && isPaid) {
+          setQrSuccessMessage("PAID & SETTLED - Payment Received!");
           setTimeout(() => {
             if (isMounted) {
               setShowPartnerQRId(null);
@@ -755,7 +749,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           }, 3000);
         }
       } catch (e) {
-        console.warn("[PhonePe QR Polling Notice]:", e);
+        console.warn("[Cashfree QR Polling Notice]:", e);
       }
     }, 3000);
 
@@ -765,13 +759,13 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     };
   }, [showPartnerQRId, activeQrTxnId]);
 
-  const handleGeneratePhonePeQR = async (booking: Booking) => {
+  const handleGeneratePartnerDynamicQR = async (booking: Booking) => {
     setIsGeneratingQR(true);
     setShowPartnerQRId(booking.id);
     setQrSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/phonepe/qr', {
+      const res = await fetch('/api/cashfree/qr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -783,16 +777,18 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       const data = await res.json();
       if (data.success) {
         setPartnerQRValue(data.qrString || data.upiQrString);
-        setActiveQrTxnId(data.merchantTransactionId);
+        setActiveQrTxnId(data.merchantTransactionId || data.orderId);
       } else {
-        const fallbackTxn = `TXN_QR_${booking.id.slice(0, 8)}_${Date.now()}`;
-        const fallbackUrl = `upi://pay?pa=PGTESTPAYUAT@ybl&pn=ZomindiaInternetTechnology&am=${booking.totalPrice}&tr=${fallbackTxn}&tn=Booking_${booking.id.slice(0, 8)}&cu=INR`;
+        const fallbackTxn = `ORDER_QR_${booking.id.slice(0, 8)}_${Date.now()}`;
+        const merchantVpa = (import.meta as any).env?.VITE_MERCHANT_UPI_ID || 'paytmqr2810050501011vd64k9b8z97@paytm';
+        const fallbackUrl = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=ZomindiaInternetTechnology&am=${booking.totalPrice}&tr=${fallbackTxn}&tn=Booking_${booking.id.slice(0, 8)}&cu=INR`;
         setPartnerQRValue(fallbackUrl);
         setActiveQrTxnId(fallbackTxn);
       }
     } catch (err) {
-      const fallbackTxn = `TXN_QR_${booking.id.slice(0, 8)}_${Date.now()}`;
-      const fallbackUrl = `upi://pay?pa=PGTESTPAYUAT@ybl&pn=ZomindiaInternetTechnology&am=${booking.totalPrice}&tr=${fallbackTxn}&tn=Booking_${booking.id.slice(0, 8)}&cu=INR`;
+      const fallbackTxn = `ORDER_QR_${booking.id.slice(0, 8)}_${Date.now()}`;
+      const merchantVpa = (import.meta as any).env?.VITE_MERCHANT_UPI_ID || 'paytmqr2810050501011vd64k9b8z97@paytm';
+      const fallbackUrl = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=ZomindiaInternetTechnology&am=${booking.totalPrice}&tr=${fallbackTxn}&tn=Booking_${booking.id.slice(0, 8)}&cu=INR`;
       setPartnerQRValue(fallbackUrl);
       setActiveQrTxnId(fallbackTxn);
     } finally {
@@ -800,28 +796,22 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     }
   };
 
-  const handleCheckPhonePeQRStatus = async (bookingId: string) => {
+  const handleCheckPartnerDynamicQRStatus = async (bookingId: string) => {
     if (!activeQrTxnId) return;
     setQrChecking(true);
     try {
-      const res = await fetch('/api/phonepe/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          merchantTransactionId: activeQrTxnId,
-          bookingId
-        })
-      });
+      const res = await fetch(`/api/cashfree/status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(bookingId)}`);
       const data = await res.json();
-      if (data.success || data.code === 'PAYMENT_SUCCESS') {
-        setQrSuccessMessage("PAID VIA PHONEPE QR - Verification Successful!");
+      const isPaid = (data.order_status === 'PAID') || (data.status === 'SUCCESS') || (data.success === true);
+      if (isPaid) {
+        setQrSuccessMessage("PAID & SETTLED - Verification Successful!");
         setTimeout(() => {
           setShowPartnerQRId(null);
           setActiveQrTxnId(null);
           setQrSuccessMessage(null);
         }, 2500);
       } else {
-        alert("Payment is pending on PhonePe. Please ask customer to approve payment on their UPI App.");
+        alert("Payment is pending. Please ask customer to approve payment on their UPI App.");
       }
     } catch (e: any) {
       alert("Status check error: " + e.message);
@@ -1987,38 +1977,38 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                         if (showPartnerQRId === booking.id) {
                           setShowPartnerQRId(null);
                         } else {
-                          handleGeneratePhonePeQR(booking);
+                          handleGeneratePartnerDynamicQR(booking);
                         }
                       }}
                       disabled={isGeneratingQR}
-                      className="w-full bg-purple-700 hover:bg-purple-800 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-[9px] cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-purple-700/20 active:scale-95 transition-all"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-[9px] cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 active:scale-95 transition-all"
                     >
                       <Smartphone size={14} />
-                      {isGeneratingQR ? 'Generating PhonePe QR...' : '⚡ Dynamic PhonePe QR'}
+                      {isGeneratingQR ? 'Generating Dynamic QR...' : '⚡ Dynamic UPI QR'}
                     </button>
                   </div>
 
                   <AnimatePresence>
                     {showPartnerQRId === booking.id && (
                       <motion.div
-                        key={`partner-phonepe-qr-${booking.id}`}
+                        key={`partner-dynamic-qr-${booking.id}`}
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className="bg-white rounded-3xl p-5 border-2 border-purple-200 shadow-2xl flex flex-col items-center justify-center gap-3 text-slate-800 mt-3 relative overflow-hidden"
+                        className="bg-white rounded-3xl p-5 border-2 border-blue-200 shadow-2xl flex flex-col items-center justify-center gap-3 text-slate-800 mt-3 relative overflow-hidden"
                       >
-                        {/* PhonePe Header */}
-                        <div className="w-full bg-gradient-to-r from-purple-700 to-indigo-800 p-3.5 -mt-5 -mx-5 mb-1 text-white flex items-center justify-between shadow-sm">
+                        {/* Dynamic QR Header */}
+                        <div className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 p-3.5 -mt-5 -mx-5 mb-1 text-white flex items-center justify-between shadow-sm">
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center font-black text-xs text-white">
-                              P
+                              CF
                             </div>
                             <div>
-                              <p className="text-[11px] font-black tracking-wide leading-none">PhonePe Dynamic QR</p>
-                              <p className="text-[8px] opacity-80 font-medium">Scan with PhonePe, Paytm or GPay</p>
+                              <p className="text-[11px] font-black tracking-wide leading-none">Dynamic Gateway QR</p>
+                              <p className="text-[8px] opacity-80 font-medium">Scan with any UPI app (GPay, Paytm, BHIM)</p>
                             </div>
                           </div>
-                          <span className="text-[9px] font-black bg-white/20 px-2 py-0.5 rounded-full text-purple-100">
+                          <span className="text-[9px] font-black bg-white/20 px-2 py-0.5 rounded-full text-blue-100">
                             ₹{booking.totalPrice}
                           </span>
                         </div>
@@ -2028,12 +2018,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                             <CheckCircle2 size={48} />
                             <p className="text-sm font-black text-center">{qrSuccessMessage}</p>
                             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold">
-                              PAID VIA PHONEPE QR
+                              PAID & SETTLED
                             </span>
                           </div>
                         ) : (
                           <>
-                            <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-100 flex flex-col items-center justify-center shadow-inner relative">
+                            <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col items-center justify-center shadow-inner relative">
                               {partnerQRValue ? (
                                 <QRCodeSVG
                                   value={partnerQRValue}
@@ -2041,8 +2031,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                   level="M"
                                 />
                               ) : (
-                                <div className="w-40 h-40 flex items-center justify-center text-purple-400 text-xs font-bold animate-pulse">
-                                  Loading PhonePe QR...
+                                <div className="w-40 h-40 flex items-center justify-center text-blue-400 text-xs font-bold animate-pulse">
+                                  Loading Gateway QR...
                                 </div>
                               )}
                             </div>
@@ -2050,10 +2040,10 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                             {/* Live Status Sync Indicator */}
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full text-[9px] font-extrabold text-slate-600 uppercase tracking-wider">
                               <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-600" />
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600" />
                               </span>
-                              <span>Real-Time PhonePe Sync Active</span>
+                              <span>Real-Time Payment Sync Active</span>
                             </div>
 
                             <div className="w-full text-center space-y-0.5">
@@ -2064,26 +2054,27 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                             <div className="w-full flex gap-2 pt-1">
                               <button
                                 type="button"
-                                onClick={() => handleCheckPhonePeQRStatus(booking.id)}
+                                onClick={() => handleCheckPartnerDynamicQRStatus(booking.id)}
                                 disabled={qrChecking}
-                                className="flex-1 bg-purple-700 hover:bg-purple-800 text-white font-black text-[10px] uppercase tracking-wider py-3 rounded-xl transition-all active:scale-95 cursor-pointer text-center border-0 shadow-md shadow-purple-700/20 disabled:opacity-50"
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] uppercase tracking-wider py-3 rounded-xl transition-all active:scale-95 cursor-pointer text-center border-0 shadow-md shadow-blue-600/20 disabled:opacity-50"
                               >
-                                {qrChecking ? 'Checking PhonePe...' : 'Check Status'}
+                                {qrChecking ? 'Checking Gateway...' : 'Check Status'}
                               </button>
                               <button
                                 type="button"
                                 onClick={async () => {
                                   if (confirm("Confirm payment received directly from customer?")) {
                                     try {
-                                      const res = await fetch('/api/phonepe/verify-and-confirm', {
+                                      const res = await fetch('/api/cashfree/verify-and-confirm', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
                                           bookingId: booking.id,
                                           customerUid: booking.customerId || booking.customerUid || (booking as any).userId || '',
                                           merchantTransactionId: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
+                                          orderId: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
                                           amount: booking.totalPrice,
-                                          paymentMethod: 'phonepe_qr',
+                                          paymentMethod: 'upi_qr',
                                           status: 'completed'
                                         })
                                       });
@@ -2091,7 +2082,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                       if (!res.ok || !data.success) {
                                         throw new Error(data.error || 'Server settlement failed');
                                       }
-                                      setQrSuccessMessage("PAID VIA PHONEPE QR - Confirmed & Settled!");
+                                      setQrSuccessMessage("PAID & SETTLED - Confirmed by Partner!");
                                       setTimeout(() => {
                                         setShowPartnerQRId(null);
                                         setQrSuccessMessage(null);
