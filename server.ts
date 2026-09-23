@@ -179,7 +179,12 @@ async function startServer() {
 
   // PhonePe Config & Checksum Helper
   const getPhonePeConfig = () => {
-    const merchantId = (process.env.PHONEPE_MERCHANT_ID || "").trim();
+    let rawMid = (process.env.PHONEPE_MERCHANT_ID || 'M221HG3VXM5KT').trim();
+    // Stop passing Client Id SU2608051912363595481527 as merchantId; enforce real PhonePe MID M221HG3VXM5KT
+    if (!rawMid || rawMid === 'SU2608051912363595481527' || rawMid.startsWith('SU260805')) {
+      rawMid = 'M221HG3VXM5KT';
+    }
+    const merchantId = (rawMid || 'M221HG3VXM5KT').trim();
     const saltKey = (process.env.PHONEPE_SALT_KEY || "").trim();
     const saltIndex = (process.env.PHONEPE_SALT_INDEX || "1").trim();
     const env = (process.env.PHONEPE_ENV || "PRODUCTION").trim().toUpperCase();
@@ -738,33 +743,17 @@ async function startServer() {
       }
 
       // Upstream gateway returned 404 or is unavailable:
-      // Activate resilient, non-blocking checkout fallback using standard UPI Intent / QR or dedicated Net Banking portal
-      console.warn("[PhonePe PG Notice] Live gateway returned 404 or rejected handshake:", lastHandshakeNotice, "- Engaging seamless high-availability checkout fallback.");
+      // Activate resilient, non-blocking checkout fallback using standard UPI Intent / QR
+      console.warn("[PhonePe PG Notice] Live gateway returned 404 or rejected handshake:", lastHandshakeNotice, "- Engaging fallback.");
 
+      // Clean Net Banking Handling:
+      // If upstream PhonePe rejects NET_BANKING (404 / KEY_NOT_CONFIGURED), do not redirect the user to an internal dummy simulation portal.
+      // Instead, return clean notice so the UI modal displays: 'Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR.'
       if (isNetBanking) {
-        const netbankingPortalUrl = `${host}/api/phonepe/netbanking-portal?txnId=${merchantTransactionId}&bank=${encodeURIComponent(bankIdentifier)}&bankName=${encodeURIComponent(bankName)}&amount=${amount}&bookingId=${bookingId || ""}`;
-
-        if (bookingId && db) {
-          try {
-            await db.collection("bookings").doc(bookingId).set({
-              paymentIntentId: merchantTransactionId,
-              phonePeInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-          } catch (e) {}
-        }
-
-        return res.json({
-          success: true,
-          isFallback: true,
-          isDynamicQr: false,
-          isNetBanking: true,
-          merchantTransactionId,
-          checkoutUrl: netbankingPortalUrl,
-          redirectUrl: netbankingPortalUrl,
-          bankId: bankIdentifier,
-          bankName,
-          note: "PhonePe Net Banking portal activated"
+        return res.status(200).json({
+          success: false,
+          isNetBankingUnavailable: true,
+          error: "Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR."
         });
       }
 

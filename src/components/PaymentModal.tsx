@@ -543,6 +543,12 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       // NET BANKING SEAMLESS REDIRECTION (Mobile & Desktop)
       // Immediately redirect current browser tab directly to checkoutUrl (avoids browser popup blocker)
       if (selectedMethod === 'netbanking') {
+        if (data.isNetBankingUnavailable || !data.success || !checkoutUrl) {
+          setIsProcessing(false);
+          setErrorMessage(data.error || 'Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR.');
+          return;
+        }
+
         if (checkoutUrl) {
           setWebCheckoutUrl(checkoutUrl);
           setIsProcessing(false);
@@ -554,7 +560,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           return;
         } else {
           setIsProcessing(false);
-          setErrorMessage(`Unable to initialize ${selectedBankObj.name} Net Banking checkout. Please choose another method or try again.`);
+          setErrorMessage('Net Banking is temporarily unavailable via gateway. Please pay instantly using PhonePe UPI or Dynamic QR.');
           return;
         }
       }
@@ -790,9 +796,27 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-left">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-xs font-semibold text-rose-700">
-              <AlertCircle size={15} className="shrink-0 text-rose-600" />
-              <span>{errorMessage}</span>
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs font-semibold text-rose-800 shadow-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={16} className="shrink-0 text-rose-600" />
+                <span>{errorMessage}</span>
+              </div>
+              {errorMessage.includes('Net Banking') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage(null);
+                    if (isMobile) {
+                      setSelectedMethod('phonepe');
+                    } else {
+                      setSelectedMethod('qr_code');
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold shrink-0 shadow-xs transition-colors cursor-pointer"
+                >
+                  Pay via UPI / QR
+                </button>
+              )}
             </div>
           )}
 
