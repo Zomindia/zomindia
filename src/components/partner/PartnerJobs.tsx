@@ -37,6 +37,7 @@ import { offlineSyncEngine } from '../../lib/offlineQueue';
 import { CORPORATE_LANDLINE_GATEWAY } from '../../lib/telephony';
 import { formatTime12Hour } from '../../utils/formatTime';
 import { useAutoOTP } from '../../hooks/useAutoOTP';
+import { reverseGeocode } from '../../utils/reverseGeocode';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -60,21 +61,12 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
       if (address.includes('Location detected') || address.includes('[') || (address.includes(',') && !isNaN(parseFloat(address.split(',')[0])))) {
         const fetchNominatimAndGoogle = async () => {
           let resolved = '';
-          // 1. Try Nominatim FIRST
           try {
-            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-            const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-            if (res.ok) {
-              const data = await res.json();
-              if (data && data.display_name) {
-                resolved = data.display_name;
-              }
-            }
+            const res = await reverseGeocode(lat, lng);
+            resolved = res.fullAddress;
           } catch (err) {
-            console.warn("OSM Fallback error in PartnerJobs useEffect:", err);
+            console.warn("Reverse geocode error in PartnerJobs useEffect:", err);
           }
-
-          // 2. Try Google Geocoder backup bypassed to avoid API authorization logs.
 
           setLocalAddress(resolved || address);
         };
@@ -129,21 +121,12 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
     setIsUpdating(true);
     
     let newAddress = '';
-    // 1. Try Nominatim reverse-geocode FIRST (unrestricted)
     try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${newCoords.lat}&lon=${newCoords.lng}`;
-      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.display_name) {
-          newAddress = data.display_name;
-        }
-      }
+      const res = await reverseGeocode(newCoords.lat, newCoords.lng);
+      newAddress = res.fullAddress;
     } catch (err) {
-      console.warn('OSM reverse-geocode on map click failed, trying Google fallback:', err);
+      console.warn('Reverse-geocode on map click failed:', err);
     }
-
-    // 2. Cascade fallback to Google Maps Geocoder bypassed to avoid API authorization logs.
 
     if (!newAddress) {
       newAddress = `Point: ${newCoords.lat.toFixed(6)}, ${newCoords.lng.toFixed(6)}`;

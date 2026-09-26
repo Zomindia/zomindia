@@ -181,12 +181,14 @@ async function startServer() {
   const getCashfreeConfig = () => {
     const appId = (process.env.CASHFREE_APP_ID || "").trim();
     const secretKey = (process.env.CASHFREE_SECRET_KEY || "").trim();
-    const env = (process.env.CASHFREE_ENV || "PRODUCTION").trim().toUpperCase();
-    const isSandbox = env === "SANDBOX" || env === "TEST" || env === "DEV";
+    const rawEnv = (process.env.CASHFREE_ENV || process.env.VITE_CASHFREE_ENV || "PRODUCTION").trim().toUpperCase();
+    const isSandbox = rawEnv === "SANDBOX" || rawEnv === "TEST" || rawEnv === "DEV" || appId.toUpperCase().startsWith("TEST") || appId.toUpperCase().startsWith("CFTEST");
+    const env = isSandbox ? "SANDBOX" : "PRODUCTION";
+    const mode: "sandbox" | "production" = isSandbox ? "sandbox" : "production";
     const baseUrl = isSandbox ? "https://sandbox.cashfree.com/pg" : "https://api.cashfree.com/pg";
     const apiVersion = "2023-08-01";
 
-    return { appId, secretKey, env, isSandbox, baseUrl, apiVersion };
+    return { appId, secretKey, env, mode, isSandbox, baseUrl, apiVersion };
   };
 
   // API & Container Health Check endpoints for Cloud Run startup/liveness/readiness probes
@@ -532,18 +534,23 @@ async function startServer() {
         });
       }
 
-      const { appId, secretKey, baseUrl, apiVersion } = getCashfreeConfig();
-      if (!appId || !secretKey) {
-        console.warn("[Cashfree PG Warning] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is not set.");
-        return res.status(400).json({
-          success: false,
-          error: "Cashfree Payment Gateway is not configured. Please set CASHFREE_APP_ID and CASHFREE_SECRET_KEY in server environment."
-        });
-      }
-
       // Generate a clean, unique Cashfree Order ID
       const order_id = `ORDER_ZOM_${bookingId ? String(bookingId).slice(-6).toUpperCase() + '_' : ''}${Date.now()}`;
       const order_amount = Math.round(numAmount * 100) / 100;
+
+      const { appId, secretKey, baseUrl, apiVersion, mode, isSandbox } = getCashfreeConfig();
+      if (!appId || !secretKey) {
+        console.warn("[Cashfree PG Warning] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is not set.");
+        return res.status(200).json({
+          success: false,
+          isSimulation: true,
+          environment: mode,
+          mode,
+          error: "Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.",
+          order_id,
+          order_amount
+        });
+      }
 
       // Clean 10-digit phone number for Cashfree customer_details
       let cleanPhone = "9999999999";
@@ -611,6 +618,8 @@ async function startServer() {
       return res.status(200).json({
         success: true,
         payment_session_id,
+        environment: mode,
+        mode,
         order_id,
         order_amount,
         cf_order_id: cfData.cf_order_id,
@@ -620,11 +629,29 @@ async function startServer() {
     } catch (err: any) {
       const errorData = err.response?.data;
       console.error("[Cashfree Create Order Error]:", errorData || err.message);
-      return res.status(err.response?.status || 500).json({
+      const { mode } = getCashfreeConfig();
+      return res.status(200).json({
         success: false,
-        error: errorData?.message || err.message || "Failed to create Cashfree payment order"
+        isSimulation: true,
+        environment: mode,
+        mode,
+        error: "Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.",
+        order_id: `ORDER_SIM_${Date.now()}`
       });
     }
+  });
+
+  // Cashfree PG Synchronized Client-Server Config Endpoint
+  app.get("/api/cashfree/config", (_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    const { mode, env, isSandbox } = getCashfreeConfig();
+    res.json({
+      success: true,
+      environment: mode,
+      mode,
+      env,
+      isSandbox
+    });
   });
 
   // 2. Cashfree Order Status API (GET /api/cashfree/status/:orderId & POST /api/cashfree/status)

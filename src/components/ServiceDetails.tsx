@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   collection,
   getDocs,
@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import BookingModal from "./BookingModal";
 import { LoadingScreen } from "./LoadingIndicator";
+import { getSampledIndoreHighDemandAreas } from "../utils/indoreDemandAreas";
 
 interface ServiceDetailsProps {
   serviceId: string;
@@ -165,6 +166,11 @@ export default function ServiceDetails({
   const [loading, setLoading] = useState(true);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const carouselScrollRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic Posh Areas Rotation with Smart Local Area Inclusion
+  const randomizedAreas = useMemo(() => {
+    return getSampledIndoreHighDemandAreas(profile);
+  }, [profile]);
 
   useEffect(() => {
     setCurrentServiceId(serviceId);
@@ -631,7 +637,7 @@ export default function ServiceDetails({
                     We are currently experiencing high demand in Indore's posh
                     areas like{" "}
                     <span className="text-amber-300 font-extrabold">
-                      Vijay Nagar, Palasia, Nipania, Saket, and Mahalaxmi Nagar
+                      {randomizedAreas.join(", ")}
                     </span>
                     . Lock in your booking now!
                   </p>

@@ -43,10 +43,13 @@ import {
   Wallet,
   Banknote,
   ShieldCheck,
-  Check
+  Check,
+  Sparkles
 } from 'lucide-react';
 import PartnerIdentityMarker from './PartnerIdentityMarker';
 import OnlinePaymentGatewayModal, { PaymentSuccessData } from './OnlinePaymentGatewayModal';
+import { reverseGeocode } from '../utils/reverseGeocode';
+import { getSampledIndoreHighDemandAreas } from '../utils/indoreDemandAreas';
 
 interface Props {
   service: Service;
@@ -159,6 +162,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [selectedFromDropdown, setSelectedFromDropdown] = useState(false);
   const [liveSuggestions, setLiveSuggestions] = useState<{ placeId: string; name: string; area: string; description: string; lat?: number; lng?: number }[]>([]);
   const [isSearchingLive, setIsSearchingLive] = useState(false);
+
+  // Dynamic Posh Areas Rotation with Smart Local Area Inclusion
+  const highDemandAreas = useMemo(() => {
+    return getSampledIndoreHighDemandAreas(
+      address
+        ? { address, customerData: { address }, savedAddresses: profile?.savedAddresses }
+        : profile
+    );
+  }, [profile, address]);
 
   // Payment Options & Wallet Balance
   // 'cash' = Pay After Service, 'online' = Instant UPI / Cards, 'amc' = AMC Pass
@@ -628,42 +640,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const reverseGeocodeLocation = async (lat: number, lng: number) => {
     setIsGeocoding(true);
 
-    // 1. Attempt OpenStreetMap Nominatim reverse geocoding (unrestricted, zero authorization errors)
     try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-      const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.display_name) {
-          setAddress(data.display_name);
-          setIsGeocoding(false);
-          return true;
-        }
+      const result = await reverseGeocode(lat, lng);
+      if (result && result.fullAddress && result.fullAddress.trim().length > 0) {
+        setAddress(result.fullAddress);
+        setIsGeocoding(false);
+        return true;
       }
-    } catch (osmErr) {
-      console.warn("[Reverse Geocode Notice - Non-blocking]:", osmErr);
+    } catch (err) {
+      console.warn("[Reverse Geocode Notice - Non-blocking]:", err);
     }
 
-    // 2. Seamless local Indore landmark fallback (instant, zero network latency, no 429 errors)
-    let nearest = INDORE_FALLBACK_LOCATIONS[0];
-    let minDistance = 999999;
-    for (const loc of INDORE_FALLBACK_LOCATIONS) {
-      if (loc.lat && loc.lng) {
-        const d = haversineDistance(lat, lng, loc.lat, loc.lng);
-        if (d < minDistance) {
-          minDistance = d;
-          nearest = loc;
-        }
-      }
-    }
-
-    if (nearest) {
-      setAddress(`${nearest.name}, Indore, Madhya Pradesh`);
-      setIsGeocoding(false);
-      return true;
-    }
-
-    setAddress(`Indore, Madhya Pradesh (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    // Precise coordinate fallback preserving exact location without snapping to static landmarks
+    setAddress(`Indore, Madhya Pradesh (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
     setIsGeocoding(false);
     return false;
   };
@@ -1415,6 +1404,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+ 
+          {/* High Demand Spot Banner */}
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col gap-1 relative overflow-hidden">
+            <div className="flex items-center gap-2 text-amber-700 text-xs font-black uppercase tracking-wider animate-pulse">
+              <Sparkles size={14} className="text-amber-600" /> High Demand Spot
+            </div>
+            <p className="text-[11px] text-amber-950 font-medium leading-normal">
+              We are currently experiencing high demand in Indore's posh areas like{" "}
+              <span className="text-amber-800 font-extrabold">
+                {highDemandAreas.join(", ")}
+              </span>
+              . Lock in your booking now!
+            </p>
           </div>
 
           {/* 2. Date & Slot Horizontal Selector */}

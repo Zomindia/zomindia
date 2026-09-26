@@ -1,5 +1,7 @@
 import { load } from '@cashfreepayments/cashfree-js';
 
+export type CashfreeMode = 'sandbox' | 'production';
+
 export interface CashfreeCheckoutOptions {
   paymentSessionId: string;
   redirectTarget?: '_self' | '_modal' | '_blank';
@@ -10,26 +12,59 @@ export interface DropinCallbacks {
   onFailure: (data: any) => void;
 }
 
+let cachedServerMode: CashfreeMode | null = null;
+
+/**
+ * Resolves the Cashfree environment mode strictly aligned with the backend server.
+ */
+export async function resolveCashfreeMode(overrideMode?: CashfreeMode): Promise<CashfreeMode> {
+  if (overrideMode) return overrideMode;
+  if (cachedServerMode) return cachedServerMode;
+
+  try {
+    const res = await fetch('/api/cashfree/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.mode === 'sandbox' || data.mode === 'production')) {
+        cachedServerMode = data.mode;
+        return data.mode;
+      }
+    }
+  } catch (err) {
+    console.warn('[Cashfree] Could not fetch server config, using env fallback:', err);
+  }
+
+  const envVar = ((import.meta as any).env?.VITE_CASHFREE_ENV || '').toLowerCase();
+  const fallback: CashfreeMode = envVar === 'sandbox' || envVar === 'test' ? 'sandbox' : 'production';
+  return fallback;
+}
+
 /**
  * Loads the Cashfree SDK instance with the appropriate environment mode.
+ * Strictly aligns mode ('sandbox' or 'production') with backend server orders.
  */
-export async function getCashfreeInstance() {
+export async function getCashfreeInstance(explicitMode?: CashfreeMode) {
   if (typeof window === 'undefined') return null;
 
   try {
-    const envMode = (import.meta as any).env?.VITE_CASHFREE_ENV === 'SANDBOX' ? 'sandbox' : 'production';
-    
-    // First try the official @cashfreepayments/cashfree-js loader
+    const mode = explicitMode || await resolveCashfreeMode();
+
+    // 1. First try the official @cashfreepayments/cashfree-js loader
     try {
-      const instance = await load({ mode: envMode });
+      const instance = await load({ mode });
       if (instance) return instance;
     } catch (loadErr) {
       console.warn('[Cashfree] @cashfreepayments/cashfree-js load warning:', loadErr);
     }
 
-    // Fallback: check window.Cashfree directly
-    if ((window as any).Cashfree) {
-      return (window as any).Cashfree({ mode: envMode });
+    // 2. Direct Cashfree SDK factory from window object: const cashfree = Cashfree({ mode })
+    if (typeof (window as any).Cashfree === 'function') {
+      try {
+        const instance = (window as any).Cashfree({ mode });
+        if (instance) return instance;
+      } catch (winErr) {
+        console.warn('[Cashfree] window.Cashfree init warning:', winErr);
+      }
     }
 
     return null;
@@ -40,64 +75,37 @@ export async function getCashfreeInstance() {
 }
 
 /**
- * Mounts the official Cashfree Drop-in UI into a DOM element.
- * If container mounting is unavailable in the environment, returns false so callers can fallback to checkout().
+ * Backward-compatible helper export for any active browser sessions or modules.
  */
-export async function mountCashfreeDropin(
-  container: HTMLElement,
-  paymentSessionId: string,
-  callbacks: DropinCallbacks
-): Promise<{ success: boolean; instance?: any; error?: string }> {
-  try {
-    const cashfree = await getCashfreeInstance();
-    if (!cashfree) {
-      return { success: false, error: 'Cashfree SDK is not available or blocked by ad-blocker' };
-    }
+export async function getCashfreeSdk(explicitMode?: CashfreeMode): Promise<any> {
+  if (typeof window === 'undefined') return null;
 
-    const dropinConfig = {
-      paymentSessionId,
-      components: ['order-details', 'card', 'upi', 'app', 'netbanking', 'paylater'],
-      onSuccess: callbacks.onSuccess,
-      onFailure: callbacks.onFailure,
-      style: {
-        theme: 'light' as const,
-        backgroundColor: '#ffffff',
-        color: '#1e293b',
-        fontSize: '14px',
-        fontFamily: 'Inter, sans-serif',
-        errorColor: '#ef4444'
-      }
-    };
+  const instance = await getCashfreeInstance(explicitMode);
+  if (instance) return instance;
 
-    // Cashfree JS SDK v3 dropin mounting methods
-    if (typeof cashfree.initialiseDropin === 'function') {
-      const dropinInstance = cashfree.initialiseDropin(container, dropinConfig);
-      return { success: true, instance: dropinInstance };
-    } else if (typeof cashfree.dropin === 'function') {
-      const dropinInstance = cashfree.dropin(container, dropinConfig);
-      return { success: true, instance: dropinInstance };
-    }
-
-    // If dropin mounting method is not present on the SDK object, fallback to direct hosted checkout
-    if (typeof cashfree.checkout === 'function') {
-      cashfree.checkout({ paymentSessionId, redirectTarget: '_self' });
-      return { success: true };
-    }
-
-    return { success: false, error: 'Cashfree dropin method not supported by this version' };
-  } catch (err: any) {
-    console.warn('[Cashfree] Dropin mounting exception:', err);
-    return { success: false, error: err?.message || 'Failed to mount drop-in' };
+  if (typeof (window as any).Cashfree === 'function') {
+    const mode = explicitMode || await resolveCashfreeMode();
+    return (window as any).Cashfree({ mode });
   }
+
+  return null;
 }
 
 /**
- * Direct checkout redirect or modal trigger
+ * Direct checkout redirect or modal trigger with verified payment_session_id.
  */
-export async function launchCashfreeCheckout(paymentSessionId: string, redirectTarget: '_self' | '_modal' = '_self') {
-  const cashfree = await getCashfreeInstance();
+export async function launchCashfreeCheckout(
+  paymentSessionId: string, 
+  redirectTarget: '_self' | '_modal' = '_modal',
+  explicitMode?: CashfreeMode
+) {
+  if (!paymentSessionId || typeof paymentSessionId !== 'string' || !paymentSessionId.trim()) {
+    throw new Error('payment_session_id is required to launch Cashfree checkout');
+  }
+
+  const cashfree = await getCashfreeInstance(explicitMode);
   if (cashfree && typeof cashfree.checkout === 'function') {
-    cashfree.checkout({ paymentSessionId, redirectTarget });
+    cashfree.checkout({ paymentSessionId: paymentSessionId.trim(), redirectTarget });
     return true;
   }
   return false;

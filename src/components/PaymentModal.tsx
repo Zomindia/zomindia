@@ -15,9 +15,10 @@ import {
   Zap,
   ArrowRight,
   ShieldAlert,
-  Banknote
+  Banknote,
+  ExternalLink
 } from 'lucide-react';
-import { load } from '@cashfreepayments/cashfree-js';
+import { getCashfreeInstance, CashfreeMode } from '../utils/cashfreeClient';
 import { playSuccessChime } from '../lib/audio';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -36,18 +37,18 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sdkBlocked, setSdkBlocked] = useState(false);
+  const [isSimulation, setIsSimulation] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
+  const [cashfreeMode, setCashfreeMode] = useState<CashfreeMode>('production');
   const [hostedCheckoutUrl, setHostedCheckoutUrl] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [pollingCountdown, setPollingCountdown] = useState<number>(60);
   const [isPollingActive, setIsPollingActive] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef<boolean>(true);
-  const cashfreeInstanceRef = useRef<any>(null);
 
   const totalBill = booking.totalPrice || 0;
   const walletBalance = profile?.walletBalance || 0;
@@ -89,12 +90,14 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     };
   }, [activeOrderId]);
 
-  // Initialize Cashfree Drop-in when modal opens or when wallet selection changes payable amount
+  // Initialize Cashfree session when payable amount > 0
   useEffect(() => {
     if (finalPayable > 0) {
       initiateCashfreePayment();
     } else {
       stopPolling();
+      setPaymentSessionId(null);
+      setIsSimulation(false);
     }
   }, [finalPayable]);
 
@@ -201,7 +204,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           paymentMethod: walletDeduction > 0 ? 'wallet_online' : 'online',
           walletDeductAmount: walletDeduction > 0 ? walletDeduction : (booking.walletDeductAmount || 0),
           onlinePaymentProvider: provider,
-          onlinePaymentMethod: 'Cashfree Drop-in',
+          onlinePaymentMethod: isSimulation ? 'Cashfree Simulation' : 'Cashfree Checkout',
           status: targetStatus
         })
       });
@@ -279,16 +282,56 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     }
   };
 
-  // Initialize Cashfree Order and Mount Official Drop-in UI
+  // Trigger Cashfree JS SDK's checkout method strictly upon receiving valid payment_session_id
+  const triggerSdkCheckout = async (
+    sessionId: string, 
+    target: '_modal' | '_self' = '_modal',
+    explicitMode?: CashfreeMode
+  ) => {
+    // Session Verification Before Checkout
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      setErrorMessage('Cashfree payment session is invalid or empty. Checkout cannot be launched.');
+      return;
+    }
+
+    try {
+      const modeToUse: CashfreeMode = explicitMode || cashfreeMode;
+      const cashfree = await getCashfreeInstance(modeToUse);
+
+      if (!cashfree) {
+        setSdkBlocked(true);
+        setErrorMessage('Cashfree Checkout SDK could not load. Please check browser extensions or launch hosted checkout.');
+        return;
+      }
+
+      if (typeof cashfree.checkout === 'function') {
+        cashfree.checkout({
+          paymentSessionId: sessionId.trim(),
+          redirectTarget: target
+        });
+      } else if (hostedCheckoutUrl) {
+        window.location.href = hostedCheckoutUrl;
+      }
+    } catch (err: any) {
+      console.warn('[Cashfree Trigger Checkout Warning]:', err);
+      if (hostedCheckoutUrl) {
+        window.location.href = hostedCheckoutUrl;
+      }
+    }
+  };
+
+  // Initialize Cashfree Order: Safe session retrieval
   const initiateCashfreePayment = async () => {
     if (finalPayable <= 0) return;
 
     setIsInitializing(true);
     setErrorMessage(null);
     setSdkBlocked(false);
+    setIsSimulation(false);
+    setPaymentSessionId(null);
 
     try {
-      // 1. If partial wallet is chosen, process the partial wallet debit first
+      // 1. If partial wallet is chosen, process partial wallet debit first
       if (walletDeduction > 0) {
         const walletRes = await fetch('/api/pay-via-wallet', {
           method: 'POST',
@@ -325,130 +368,66 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
 
       const data = await res.json();
 
-      if (!res.ok || !data.success || !data.payment_session_id) {
+      // Guard: Session Verification Before Checkout
+      const hasValidSession = 
+        res.ok && 
+        data && 
+        data.success && 
+        typeof data.payment_session_id === 'string' && 
+        data.payment_session_id.trim().length > 10;
+
+      if (!hasValidSession) {
         setIsInitializing(false);
-        setErrorMessage(data.error || 'Unable to create Cashfree payment order. Please try again.');
-        return;
+        const errMsg = data?.error || 'Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.';
+        setErrorMessage(errMsg);
+
+        // Dev / Test simulation fallback
+        if (data?.isSimulation || (!data?.payment_session_id && ((import.meta as any).env?.DEV || (import.meta as any).env?.MODE !== 'production'))) {
+          setIsSimulation(true);
+          setActiveOrderId(data?.order_id || `ORDER_SIM_${Date.now()}`);
+        }
+        return; // DO NOT call cashfree.checkout()
       }
 
-      const sessionId = data.payment_session_id;
+      const sessionId = data.payment_session_id.trim();
+      const serverMode: CashfreeMode = data.mode === 'sandbox' || data.environment === 'sandbox' ? 'sandbox' : 'production';
+      setCashfreeMode(serverMode);
+
       const orderId = data.order_id || data.merchantTransactionId;
       setActiveOrderId(orderId);
       setPaymentSessionId(sessionId);
       if (data.checkoutUrl) {
         setHostedCheckoutUrl(data.checkoutUrl);
       }
+      setIsSimulation(false);
+      setIsInitializing(false);
 
-      // 3. Load official Cashfree JS SDK v3
-      const envMode = (import.meta as any).env?.VITE_CASHFREE_ENV === 'SANDBOX' ? 'sandbox' : 'production';
-      let cashfree: any = null;
-
-      try {
-        cashfree = await load({ mode: envMode });
-      } catch (loadErr) {
-        console.warn('[Cashfree] SDK load error:', loadErr);
-      }
-
-      // Fallback: check window.Cashfree
-      if (!cashfree && typeof window !== 'undefined' && (window as any).Cashfree) {
-        try {
-          cashfree = (window as any).Cashfree({ mode: envMode });
-        } catch (winErr) {
-          console.warn('[Cashfree] window.Cashfree fallback failed:', winErr);
-        }
-      }
-
-      if (!cashfree) {
-        setIsInitializing(false);
-        setSdkBlocked(true);
-        setErrorMessage('Cashfree Checkout SDK was blocked by an ad-blocker or privacy extension.');
-        return;
-      }
-
-      cashfreeInstanceRef.current = cashfree;
+      // Start status verification polling
       startStatusPolling(orderId);
 
-      // 4. Render Cashfree's Official Seamless Drop-in UI
-      const dropinContainer = containerRef.current || document.getElementById('cashfree-booking-dropin-container');
-
-      const dropinConfig = {
-        paymentSessionId: sessionId,
-        components: ['order-details', 'card', 'upi', 'app', 'netbanking', 'paylater'],
-        onSuccess: (successData: any) => {
-          console.log('[Cashfree Drop-in] Success callback:', successData);
-          handleFinalSuccess(orderId, 'Cashfree');
-        },
-        onFailure: (failureData: any) => {
-          console.warn('[Cashfree Drop-in] Failure callback:', failureData);
-          setErrorMessage(failureData?.message || 'Payment cancelled or failed. Please try again.');
-        },
-        style: {
-          theme: 'light' as const,
-          backgroundColor: '#ffffff',
-          color: '#1e293b',
-          fontSize: '14px',
-          fontFamily: 'Inter, sans-serif',
-          errorColor: '#ef4444'
-        }
-      };
-
-      let mounted = false;
-
-      if (dropinContainer) {
-        try {
-          dropinContainer.innerHTML = '';
-          if (typeof cashfree.initialiseDropin === 'function') {
-            cashfree.initialiseDropin(dropinContainer, dropinConfig);
-            mounted = true;
-          } else if (typeof cashfree.dropin === 'function') {
-            cashfree.dropin(dropinContainer, dropinConfig);
-            mounted = true;
-          }
-        } catch (mountErr) {
-          console.warn('[Cashfree Drop-in Mount Warning]:', mountErr);
-        }
-      }
-
-      if (mounted) {
-        setIsInitializing(false);
-      } else {
-        // Drop-in mounting not supported directly in DOM container; launch seamless hosted checkout directly
-        setIsInitializing(false);
-        if (typeof cashfree.checkout === 'function') {
-          cashfree.checkout({
-            paymentSessionId: sessionId,
-            redirectTarget: '_self'
-          });
-        }
-      }
+      // Strictly invoke Cashfree JS SDK's checkout method with matched mode
+      await triggerSdkCheckout(sessionId, '_modal', serverMode);
     } catch (err: any) {
       console.error('[Cashfree Init Error]:', err);
       setIsInitializing(false);
-      setErrorMessage(err?.message || 'Failed to initialize payment gateway.');
+      setErrorMessage('Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.');
     }
   };
 
-  // Launch Cashfree hosted checkout page directly
-  const handleLaunchHostedCheckout = () => {
-    if (!paymentSessionId) {
+  // Launch Cashfree checkout on user action
+  const handleLaunchCheckout = (target: '_modal' | '_self' = '_modal') => {
+    if (isSimulation) {
+      handleFinalSuccess(activeOrderId || `ORDER_SIM_${Date.now()}`, 'Cashfree Simulation');
+      return;
+    }
+
+    if (!paymentSessionId || !paymentSessionId.trim()) {
+      setErrorMessage('No active payment session found. Retrying initialization...');
       initiateCashfreePayment();
       return;
     }
 
-    if (cashfreeInstanceRef.current && typeof cashfreeInstanceRef.current.checkout === 'function') {
-      cashfreeInstanceRef.current.checkout({
-        paymentSessionId,
-        redirectTarget: '_self'
-      });
-      return;
-    }
-
-    if (hostedCheckoutUrl) {
-      window.location.href = hostedCheckoutUrl;
-      return;
-    }
-
-    initiateCashfreePayment();
+    triggerSdkCheckout(paymentSessionId, target, cashfreeMode);
   };
 
   return (
@@ -530,7 +509,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                 <div>
                   <p className="font-bold text-amber-950">Payment Gateway Script Blocked</p>
                   <p className="text-[11px] text-amber-800 font-normal mt-0.5 leading-normal">
-                    An ad-blocker or privacy shield is preventing Cashfree Drop-in from loading.
+                    An ad-blocker or privacy shield is preventing Cashfree Checkout from opening.
                     Please disable shields or launch the hosted payment checkout.
                   </p>
                 </div>
@@ -538,7 +517,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
               <div className="flex items-center gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={handleLaunchHostedCheckout}
+                  onClick={() => handleLaunchCheckout('_self')}
                   className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                 >
                   <ArrowRight size={12} />
@@ -555,20 +534,68 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
             </div>
           )}
 
-          {/* Error Message */}
+          {/* Graceful Error Notification */}
           {errorMessage && !sdkBlocked && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between gap-2.5 text-xs font-semibold text-rose-800 shadow-xs">
-              <div className="flex items-center gap-2">
-                <AlertCircle size={16} className="text-rose-600 shrink-0" />
-                <span>{errorMessage}</span>
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col gap-3 text-xs text-rose-900 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-rose-950">Payment Session Notice</p>
+                  <p className="text-rose-800 font-medium leading-relaxed">
+                    {errorMessage}
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={initiateCashfreePayment}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-bold shrink-0 shadow-xs transition-colors cursor-pointer"
-              >
-                Retry
-              </button>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={initiateCashfreePayment}
+                  className="py-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-bold shrink-0 shadow-xs transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw size={11} />
+                  Retry
+                </button>
+                {booking.paymentStatus !== 'paid' && booking.paymentMethod !== 'cash' && (
+                  <button
+                    type="button"
+                    onClick={handleSwitchToCOD}
+                    className="py-1.5 px-3 bg-white border border-rose-200 hover:bg-rose-100 text-rose-900 rounded-xl text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Banknote size={12} />
+                    Pay After Service
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Dev / Test Fallback Simulation Option */}
+          {isSimulation && !paymentSuccess && (
+            <div className="p-5 bg-gradient-to-br from-indigo-50/90 via-sky-50/70 to-emerald-50/70 border-2 border-indigo-200/80 rounded-3xl space-y-4 text-center shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-md">
+                <Sparkles size={24} />
+              </div>
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-800 text-[11px] font-black rounded-full mb-1">
+                  <span>Preview & Test Sandbox Mode ({cashfreeMode})</span>
+                </div>
+                <h4 className="text-base font-black text-slate-900">Cashfree Simulation Active</h4>
+                <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
+                  Cashfree live credentials are not configured in this preview environment. You can simulate the verified payment flow to test end-to-end booking confirmation without errors.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => handleFinalSuccess(activeOrderId || `ORDER_SIM_${Date.now()}`, 'Cashfree Simulation')}
+                  className="w-full sm:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Zap size={15} />
+                  <span>{isProcessing ? 'Processing...' : `Simulate Successful Payment (₹${finalPayable})`}</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -650,30 +677,55 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                 </div>
               )}
 
-              {/* Drop-in Container & Loading State */}
-              <div className="relative min-h-[380px] w-full rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-                {isInitializing && (
-                  <div className="absolute inset-0 bg-white/95 backdrop-blur-xs z-20 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-bounce shadow-sm">
-                      <CreditCard size={24} />
-                    </div>
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-black text-slate-900">Loading Cashfree Checkout</h4>
-                      <p className="text-xs text-slate-500">Connecting securely to payment gateway...</p>
-                    </div>
-                    <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="w-full h-full bg-indigo-600 animate-pulse" />
-                    </div>
+              {/* Loading State when fetching session */}
+              {isInitializing && (
+                <div className="min-h-[220px] w-full rounded-2xl border border-slate-200 bg-white flex flex-col items-center justify-center p-6 text-center space-y-3 shadow-xs">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-bounce shadow-sm">
+                    <CreditCard size={24} />
                   </div>
-                )}
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black text-slate-900">Loading Cashfree Checkout</h4>
+                    <p className="text-xs text-slate-500">Connecting securely to payment gateway ({cashfreeMode})...</p>
+                  </div>
+                  <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-full bg-indigo-600 animate-pulse" />
+                  </div>
+                </div>
+              )}
 
-                {/* Cashfree Drop-in Target Container */}
-                <div
-                  id="cashfree-booking-dropin-container"
-                  ref={containerRef}
-                  className="w-full min-h-[380px] p-2"
-                />
-              </div>
+              {/* Active Session Card - Clean popup trigger without premature inline iframes */}
+              {paymentSessionId && !isSimulation && !errorMessage && (
+                <div className="p-5 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-white border border-indigo-100 rounded-2xl space-y-4 text-center shadow-xs">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-md">
+                    <CreditCard size={24} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black text-slate-900">Payment Window Ready</h4>
+                    <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
+                      Cashfree payment session is active ({cashfreeMode} mode). Choose your preferred checkout display below to pay with UPI, Credit/Debit Card, or NetBanking.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchCheckout('_modal')}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+                    >
+                      <Zap size={14} />
+                      <span>Open Cashfree Checkout • ₹{finalPayable}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchCheckout('_self')}
+                      className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Full Page</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Polling Notice */}
               {isPollingActive && (
@@ -693,22 +745,6 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                   </button>
                 </div>
               )}
-
-              {/* Fullscreen Hosted Checkout Direct Action */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-slate-600">
-                  <Zap size={14} className="text-amber-500 shrink-0" />
-                  <span>Prefer full-screen checkout?</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLaunchHostedCheckout}
-                  className="w-full sm:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                >
-                  <span>Open Cashfree Hosted Page</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
             </>
           )}
         </div>

@@ -29,6 +29,7 @@ import { buildDualPersonaUserDoc } from "../lib/user-schema";
 import { formatTime12Hour } from "../utils/formatTime";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
+import { reverseGeocode } from "../utils/reverseGeocode";
 import { motion, AnimatePresence } from "motion/react";
 import Avatar from "./Avatar";
 import HardwarePermissionDiagnoser from "./HardwarePermissionDiagnoser";
@@ -2344,21 +2345,11 @@ export default function ProfileSettings({
                             let resolvedAddress = "";
 
                             try {
-                              const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-                              const res = await fetch(url, {
-                                headers: {
-                                  "Accept-Language": "en",
-                                  "User-Agent": "zomindia-app-preview",
-                                },
-                              });
-                              if (res.ok) {
-                                const data = await res.json();
-                                if (data && data.display_name) {
-                                  resolvedAddress = data.display_name;
-                                }
-                              }
+                              const result = await reverseGeocode(lat, lng);
+                              resolvedAddress = result.fullAddress;
                             } catch (err) {
-                              console.warn(err);
+                              console.warn("Reverse geocode error in ProfileSettings:", err);
+                              resolvedAddress = `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
                             }
 
                             if (!resolvedAddress) {
