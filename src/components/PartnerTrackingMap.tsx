@@ -691,63 +691,88 @@ export default function PartnerTrackingMap({
               </div>
             </div>
 
-            {/* Full View: Compact Bottom Floating Action Bar */}
+            {/* Full View: Compact Bottom Floating Action Bar with Persistent Help & Support Dock */}
             <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-20 pointer-events-auto">
-              <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xl border border-slate-200 flex items-center justify-between gap-3">
-                {/* Technician Info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative shrink-0">
-                    {partnerAvatar ? (
-                      <img
-                        src={partnerAvatar}
-                        alt={partnerName}
-                        className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-xs"
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-700 to-blue-500 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                        {partnerName.charAt(0).toUpperCase()}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xl border border-slate-200 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  {/* Technician Info */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative shrink-0">
+                      {partnerAvatar ? (
+                        <img
+                          src={partnerAvatar}
+                          alt={partnerName}
+                          className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-700 to-blue-500 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                          {partnerName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                          {partnerName}
+                        </h4>
+                        <span className="inline-flex items-center gap-0.5 text-[11px] font-extrabold text-amber-500">
+                          <Star size={11} className="fill-amber-400 stroke-amber-400" />
+                          {partnerRating}
+                        </span>
                       </div>
-                    )}
-                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                      <p className="text-[11px] font-bold text-slate-500 truncate">
+                        {serviceName || partnerInfo?.skills?.[0] || partnerInfo?.categories?.[0] || "Service Professional"}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                        {partnerName}
-                      </h4>
-                      <span className="inline-flex items-center gap-0.5 text-[11px] font-extrabold text-amber-500">
-                        <Star size={11} className="fill-amber-400 stroke-amber-400" />
-                        {partnerRating}
-                      </span>
-                    </div>
-                    <p className="text-[11px] font-bold text-slate-500 truncate">
-                      {serviceName || partnerInfo?.skills?.[0] || partnerInfo?.categories?.[0] || "Service Professional"}
-                    </p>
+                  {/* Direct Action Buttons: [ 📞 Call Pro ] and [ 💬 Chat ] */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleDefaultCall}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
+                      title="Call Professional"
+                    >
+                      <Phone size={13} className="fill-white" />
+                      <span className="hidden sm:inline">Call Pro</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDefaultChat}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
+                      title="Live Chat"
+                    >
+                      <MessageSquare size={13} className="fill-white" />
+                      <span className="hidden sm:inline">Chat</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Direct Action Buttons: [ 📞 Call Pro ] and [ 💬 Chat ] */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleDefaultCall}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
-                    title="Call Professional"
-                  >
-                    <Phone size={13} className="fill-white" />
-                    <span className="hidden sm:inline">Call Pro</span>
-                  </button>
-
+                {/* Persistent Help & Support Dock */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600 flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={handleDefaultChat}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
-                    title="Live Chat"
+                    className="font-bold text-slate-700 hover:text-blue-600 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <MessageSquare size={13} className="fill-white" />
-                    <span className="hidden sm:inline">Chat</span>
+                    <MessageSquare size={12} className="text-blue-600" />
+                    <span>Need Help? Chat Support</span>
                   </button>
+
+                  <div className="h-3 w-px bg-slate-200 hidden sm:block" />
+
+                  <a
+                    href={`tel:${CORPORATE_LANDLINE_GATEWAY}`}
+                    className="font-bold text-slate-700 hover:text-emerald-600 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title={`Helpline: ${CORPORATE_LANDLINE_GATEWAY}`}
+                  >
+                    <Phone size={11} className="text-emerald-600" />
+                    <span>Call Support ({CORPORATE_LANDLINE_GATEWAY})</span>
+                  </a>
                 </div>
               </div>
             </div>

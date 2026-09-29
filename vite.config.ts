@@ -86,12 +86,21 @@ export default defineConfig(({ mode }) => {
     define: {
       // Avoid exposing server secrets. Only public vars here.
       'process.env.GOOGLE_MAPS_PLATFORM_KEY': JSON.stringify(env.GOOGLE_MAPS_PLATFORM_KEY || ''),
+      'process.env.VITE_RAZORPAY_KEY_ID': JSON.stringify(env.VITE_RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || ''),
+      'process.env.RAZORPAY_KEY_ID': JSON.stringify(env.RAZORPAY_KEY_ID || env.VITE_RAZORPAY_KEY_ID || ''),
     },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
-      dedupe: ['react', 'react-dom'],
+      dedupe: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'react-is',
+        'use-sync-external-store'
+      ],
     },
     optimizeDeps: {
       include: [
@@ -106,7 +115,10 @@ export default defineConfig(({ mode }) => {
         'firebase/app',
         'firebase/auth',
         'firebase/firestore',
-        'firebase/storage'
+        'firebase/storage',
+        'recharts',
+        'react-redux',
+        'use-sync-external-store'
       ],
     },
     build: {

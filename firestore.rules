@@ -516,7 +516,7 @@ service cloud.firestore {
           existing().get('userId', '') == request.auth.uid) && (
           incoming().diff(existing()).affectedKeys().hasOnly([
             'status', 'scheduledAt', 'partnerId', 'activeCall', 
-            'secondaryContact', 'updatedAt', 'cancellationReason', 'address', 'customerData', 
+            'secondaryContact', 'updatedAt', 'cancellationReason', 'cancelledAt', 'address', 'customerData', 
             'customerMobile', 'customerName', 'customerBookedName', 'customerBookedPhone', 
             'customerBookedEmail', 'progressPercentage', 'checklist',
             'rating', 'review', 'comment', 'reviewText', 'feedbackScores', 'ratingDetails', 'reviewedAt', 'isReviewed', 'photoURL'

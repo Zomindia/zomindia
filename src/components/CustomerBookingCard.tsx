@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Clock,
-  Calendar,
   MapPin,
   CheckCircle2,
   ShieldCheck,
@@ -10,26 +9,31 @@ import {
   User,
   Phone,
   MessageSquare,
-  CreditCard,
   ChevronDown,
   ChevronUp,
   Star,
-  Download,
   HelpCircle,
-  Compass,
   FileText,
   RotateCcw,
-  ShieldAlert,
   Navigation,
   XCircle,
   X,
-  Lock,
+  Droplets,
+  Snowflake,
+  Tv,
+  Wrench,
+  Sparkles,
+  ShieldAlert,
 } from "lucide-react";
+import { doc, updateDoc, Timestamp, serverTimestamp } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
 import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import LogoIcon from "../assets/images/logo-icon.png";
+import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
+import { getCancellationSecondsRemaining } from "../utils/cancellation";
 
 export interface CustomerBookingCardProps {
   booking: Booking;
@@ -51,6 +55,7 @@ export interface CustomerBookingCardProps {
   onDownloadInvoice?: (booking: Booking) => void;
   onSupport?: (bookingId: string) => void;
   onReschedule?: (bookingId: string, newDate: string, newTime: string) => void;
+  onCancel?: (booking: Booking) => void;
   isPast?: boolean;
   inlineRating?: number;
   inlineComment?: string;
@@ -64,134 +69,43 @@ export interface CustomerBookingCardProps {
 }
 
 /**
- * Category-specific styling themes
+ * Clean Category Icon Resolver
  */
-export function getServiceCategoryTheme(
-  serviceName: string = "",
-  categoryId: string = "",
-) {
+function getCategoryIcon(serviceName: string = "", categoryId: string = "") {
   const s = `${serviceName} ${categoryId}`.toLowerCase();
-
-  // 1. AC Service / Cooling
   if (
     s.includes("ac ") ||
     s.includes(" ac") ||
-    s.includes("air conditioner") ||
     s.includes("cooling") ||
-    s.includes("split ac") ||
-    s.includes("window ac") ||
-    s.includes("duct")
+    s.includes("air conditioner")
   ) {
-    return {
-      type: "ac",
-      name: "AC Service",
-      cardGradient: "bg-white",
-      borderColor: "border-slate-150",
-      iconGrad: "from-cyan-500 to-blue-600 shadow-cyan-500/25",
-      badgeClass: "bg-cyan-50 text-cyan-800 border-cyan-200",
-      accentText: "text-cyan-700",
-      pulseColor: "bg-cyan-500",
-    };
+    return <Snowflake size={18} className="text-cyan-600 shrink-0" />;
   }
-
-  // 2. RO Water Purifier
-  if (
-    s.includes("ro") ||
-    s.includes("water purifier") ||
-    s.includes("purifier") ||
-    s.includes("filter") ||
-    s.includes("aquaguard") ||
-    s.includes("kent")
-  ) {
-    return {
-      type: "ro",
-      name: "Water Purifier",
-      cardGradient: "bg-white",
-      borderColor: "border-slate-150",
-      iconGrad: "from-teal-500 to-emerald-600 shadow-teal-500/25",
-      badgeClass: "bg-teal-50 text-teal-800 border-teal-200",
-      accentText: "text-teal-700",
-      pulseColor: "bg-teal-500",
-    };
+  if (s.includes("ro") || s.includes("water") || s.includes("purifier")) {
+    return <Droplets size={18} className="text-teal-600 shrink-0" />;
   }
-
-  // 3. Refrigerator / Deep Freezer
-  if (
-    s.includes("refrigerator") ||
-    s.includes("fridge") ||
-    s.includes("freezer")
-  ) {
-    return {
-      type: "fridge",
-      name: "Refrigerator",
-      cardGradient: "bg-white",
-      borderColor: "border-slate-150",
-      iconGrad: "from-violet-500 to-indigo-600 shadow-violet-500/25",
-      badgeClass: "bg-violet-50 text-violet-800 border-violet-200",
-      accentText: "text-violet-700",
-      pulseColor: "bg-violet-500",
-    };
+  if (s.includes("tv") || s.includes("television") || s.includes("audio")) {
+    return <Tv size={18} className="text-indigo-600 shrink-0" />;
   }
-
-  // 4. TV / Electrical / Wiring / Geyser
+  if (s.includes("fridge") || s.includes("refrigerator") || s.includes("freezer")) {
+    return <Snowflake size={18} className="text-blue-600 shrink-0" />;
+  }
+  if (s.includes("clean") || s.includes("wash") || s.includes("pest")) {
+    return <Sparkles size={18} className="text-emerald-600 shrink-0" />;
+  }
   if (
-    s.includes("tv") ||
-    s.includes("television") ||
-    s.includes("electrical") ||
-    s.includes("electrician") ||
+    s.includes("electric") ||
     s.includes("wiring") ||
-    s.includes("geyser") ||
     s.includes("inverter") ||
-    s.includes("switch") ||
-    s.includes("fan") ||
-    s.includes("light")
+    s.includes("switch")
   ) {
-    return {
-      type: "electrical",
-      name: "Electrical & TV",
-      cardGradient: "bg-white",
-      borderColor: "border-slate-150",
-      iconGrad: "from-amber-500 to-orange-600 shadow-amber-500/25",
-      badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
-      accentText: "text-amber-700",
-      pulseColor: "bg-amber-500",
-    };
+    return <Zap size={18} className="text-amber-600 shrink-0" />;
   }
-
-  // 5. Washing Machine / Laundry
-  if (
-    s.includes("washing") ||
-    s.includes("laundry") ||
-    s.includes("dryer")
-  ) {
-    return {
-      type: "washing",
-      name: "Washing Machine",
-      cardGradient: "bg-white",
-      borderColor: "border-slate-150",
-      iconGrad: "from-emerald-500 to-teal-600 shadow-emerald-500/25",
-      badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
-      accentText: "text-emerald-700",
-      pulseColor: "bg-emerald-500",
-    };
-  }
-
-  // 6. Default / All other services
-  return {
-    type: "default",
-    name: "Home Service",
-    cardGradient: "bg-white",
-    borderColor: "border-slate-150",
-    iconGrad: "from-[#002e6e] to-[#004bb5] shadow-blue-500/25",
-    badgeClass: "bg-blue-50 text-[#002e6e] border-blue-200",
-    accentText: "text-[#002e6e]",
-    pulseColor: "bg-[#002e6e]",
-  };
+  return <Wrench size={18} className="text-blue-600 shrink-0" />;
 }
 
 /**
- * Formats scheduledAt timestamp into a human-friendly string:
- * e.g., "Today, 02:00 PM - 04:00 PM" or "Wed, 26 Aug • 02:00 PM - 04:00 PM"
+ * Formats scheduledAt timestamp or date into human-friendly "Today, 6:00 PM - 7:00 PM"
  */
 export function formatBookingSchedule(scheduledAt: any): {
   dateLabel: string;
@@ -213,14 +127,13 @@ export function formatBookingSchedule(scheduledAt: any): {
 
   const rawSlotTime = formatBookingTime(scheduledAt) || "11:00 AM";
 
-  // Build slot range e.g. "02:00 PM - 04:00 PM"
   const buildSlotRange = (startSlot: string): string => {
     const match = startSlot.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     if (!match) return startSlot;
     let hour = parseInt(match[1], 10);
     const min = match[2];
     const period = match[3].toUpperCase();
-    let endHour = hour + 2;
+    let endHour = hour + 1;
     let endPeriod = period;
     if (hour < 12 && endHour >= 12) {
       endPeriod = period === "AM" ? "PM" : "AM";
@@ -274,20 +187,30 @@ export function formatBookingSchedule(scheduledAt: any): {
 }
 
 /**
- * Format payment method for display
+ * Extracts concise 2-part locality e.g. "Scheme 54, Vijay Nagar"
  */
-function formatPaymentMethodName(method?: string): string {
-  if (!method) return "Online";
-  const m = method.toLowerCase();
-  if (m === "cashfree" || m === "online") return "Cashfree Gateway";
-  if (m === "upi_qr" || m === "dynamic_qr") return "UPI / Dynamic QR";
-  if (m === "upi") return "UPI";
-  if (m === "cash") return "Cash on Delivery";
-  if (m === "wallet") return "ZomIndia Wallet";
-  if (m === "amc_pass" || m === "amc") return "AMC Annual Pass";
-  if (m === "card" || m === "cards") return "Credit / Debit Card";
-  if (m === "pay_after_service") return "Pay After Service";
-  return method.charAt(0).toUpperCase() + method.slice(1);
+function getShortLocality(address?: string): string {
+  if (!address || typeof address !== "string") return "Indore, MP";
+  const clean = address.trim();
+  const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return "Indore, MP";
+  if (parts.length === 1) return parts[0];
+
+  // Exclude broad non-local labels like "India" or "Madhya Pradesh"
+  const meaningful = parts.filter((p) => {
+    const l = p.toLowerCase();
+    return (
+      l !== "india" &&
+      l !== "madhya pradesh" &&
+      l !== "mp" &&
+      !l.includes("tehsil")
+    );
+  });
+
+  if (meaningful.length >= 2) {
+    return `${meaningful[meaningful.length - 2]}, ${meaningful[meaningful.length - 1]}`;
+  }
+  return meaningful[0] || "Indore, MP";
 }
 
 export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
@@ -310,7 +233,8 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   onDownloadInvoice,
   onSupport,
   onReschedule: _onReschedule,
-  isPast = false,
+  onCancel,
+  isPast: _isPast = false,
   inlineRating = 0,
   inlineComment = "",
   onRatingChange,
@@ -322,18 +246,18 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   routingCallBookingId,
 }) => {
   const [internalExpanded, setInternalExpanded] = useState(false);
-  const [showLiveMap, setShowLiveMap] = useState(false);
   const [isFullscreenTrackingOpen, setIsFullscreenTrackingOpen] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(Date.now());
 
   const expanded = onToggleExpand ? isExpanded : internalExpanded;
   const toggleExpanded = onToggleExpand || (() => setInternalExpanded((prev) => !prev));
 
   const serviceName = service?.name || booking.serviceName || "Professional Service";
-  const theme = getServiceCategoryTheme(serviceName, service?.categoryId || booking.serviceId);
+  const rawStatus = (booking.status || "pending").toLowerCase();
 
   // Status breakdown
-  const rawStatus = (booking.status || "pending").toLowerCase();
   const isCompleted = ["completed", "finalized", "closed"].includes(rawStatus);
   const isCancelled = rawStatus === "cancelled";
   const isInProgress = rawStatus === "in_progress";
@@ -343,30 +267,63 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
     rawStatus === "in_transit" ||
     rawStatus === "pro_en_route";
   const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
-  const isPaymentPending = rawStatus === "payment_pending";
-  const isPending = [
-    "pending",
-    "pending_acceptance",
-    "pending_assignment",
-    "pending_parts",
-    "pending_checkout",
-    "confirmed_pay_after_service",
-  ].includes(rawStatus);
+  const isSearchingOrPending =
+    [
+      "pending",
+      "searching",
+      "pending_acceptance",
+      "pending_assignment",
+      "pending_parts",
+      "pending_checkout",
+      "confirmed_pay_after_service",
+    ].includes(rawStatus) && !booking.partnerId;
 
-  const isActive = !isCompleted && !isCancelled;
+  // Partner assignment status
   const hasPartner = !!(booking.partnerId || partnerUser);
 
   // Dynamic OTP calculation
   const otp = propOtpCode || booking.serviceOtp || booking.startOTP;
-  // OTP box rendered ONLY when status is between assigned, confirmed, on_the_way, and arrived, and not yet verified
   const showOtpBox =
     Boolean(otp) &&
     !booking.otpVerified &&
     !isCompleted &&
     !isCancelled &&
-    (isAssigned || isOnTheWay || isArrived);
+    (isAssigned || isOnTheWay || isArrived || hasPartner);
 
-  // Payment status resolution: strict resolution guard
+  // Formatted date & time slot
+  const rawDate = (booking as any).date;
+  const rawTime = (booking as any).time;
+  const scheduleInfo = formatBookingSchedule(booking.scheduledAt || rawDate);
+  const displayTimeSlot = rawTime
+    ? `${scheduleInfo.dateLabel || "Today"}, ${rawTime}`
+    : scheduleInfo.fullDisplay;
+
+  // Short locality
+  const shortLocality = getShortLocality(booking.address);
+
+  // Completed date formatting
+  let completedDateStr = "";
+  if (booking.completedAt) {
+    const d =
+      typeof (booking.completedAt as any).toDate === "function"
+        ? (booking.completedAt as any).toDate()
+        : new Date(booking.completedAt);
+    if (!isNaN(d.getTime())) {
+      completedDateStr = d.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    }
+  }
+  if (!completedDateStr && rawDate) {
+    completedDateStr = rawDate;
+  }
+  if (!completedDateStr) {
+    completedDateStr = scheduleInfo.dateLabel || "recently";
+  }
+
+  // Payment status
   const isAmc = Boolean(
     booking.isAmcBooking || booking.isAmcCovered || booking.tier === "amc"
   );
@@ -376,37 +333,45 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
       booking.paymentMethod !== "cash" &&
       booking.paymentMethod !== "pay_after_service"
   );
-
   const isPaid =
     isAmc ||
-    (booking.paymentMethod === "wallet" &&
-      (booking.walletDeductAmount ?? 0) > 0) ||
+    (booking.paymentMethod === "wallet" && (booking.walletDeductAmount ?? 0) > 0) ||
     hasValidOnlineTxn;
 
-  const isPayAfterService = !isPaid;
-  const isOnlineUnpaid = false; // Always show Pay on Completion + Pay Online Instead if not paid
+  // 1-second interval for live cancellation countdown
+  useEffect(() => {
+    if (!isSearchingOrPending) return;
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSearchingOrPending]);
 
-  // Formatted schedule info
-  const scheduleInfo = formatBookingSchedule(booking.scheduledAt);
+  const secondsRemaining = getCancellationSecondsRemaining(booking.createdAt, nowMs);
+  const isFreeCancelActive = secondsRemaining > 0 && isSearchingOrPending;
 
-  // Stepper pipeline stages
-  const stages = [
-    { label: "Confirmed", icon: Clock },
-    { label: "Assigned", icon: User },
-    { label: "On The Way", icon: Navigation },
-    { label: "In Progress", icon: Zap },
-    { label: "Completed", icon: CheckCircle2 },
-  ];
+  // Cancel Handler
+  const handleCancelBooking = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onCancel) {
+      onCancel(booking);
+    } else if (typeof (window as any).__openCancellationModal === "function") {
+      (window as any).__openCancellationModal(booking);
+    }
+  };
 
-  const currentStageIndex = (() => {
-    if (isPending) return 0;
-    if (isAssigned) return 1;
-    if (isOnTheWay || isArrived) return 2;
-    if (isInProgress || isPaymentPending) return 3;
-    if (isCompleted) return 4;
-    return 0;
-  })();
+  const handleCancelPolicyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onCancel) {
+      onCancel(booking);
+    } else if (onSupport) {
+      onSupport(booking.id);
+    } else if (typeof (window as any).__openSupportChat === "function") {
+      (window as any).__openSupportChat(booking);
+    }
+  };
 
+  // Download Invoice Handler
   const handleDownloadInvoice = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsGeneratingInvoice(true);
@@ -421,14 +386,8 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
           partnerDetail,
           customerProfile,
         });
-        if (success) {
-          if ((window as any).__showToast) {
-            (window as any).__showToast("Invoice downloaded successfully!");
-          }
-        } else {
-          if ((window as any).__showToast) {
-            (window as any).__showToast("Failed to generate invoice. Please try again.");
-          }
+        if (success && (window as any).__showToast) {
+          (window as any).__showToast("Invoice downloaded successfully!");
         }
       }
     } catch (err) {
@@ -444,604 +403,525 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   return (
     <motion.div
       id={`booking-card-${booking.id}`}
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -12 }}
-      transition={{ duration: 0.28, ease: "easeOut" }}
-      className="rounded-2xl border border-slate-200/90 hover:border-blue-300 bg-white p-4 sm:p-5 relative overflow-hidden transition-all duration-300 shadow-xs hover:shadow-md"
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      className="bg-white rounded-2xl border border-slate-200/90 hover:border-slate-300 p-4 sm:p-5 relative overflow-hidden transition-all duration-200 shadow-xs hover:shadow-sm"
     >
       {/* Privacy Shield Active Call Routing Overlay */}
       {routingCallBookingId === booking.id && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-6 rounded-2xl">
-          <div className="w-14 h-14 bg-emerald-50 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-3 animate-bounce shadow-md">
-            <Phone size={22} className="text-emerald-600" />
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-xs z-50 flex flex-col items-center justify-center text-center p-6 rounded-2xl">
+          <div className="w-12 h-12 bg-emerald-50 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-2 animate-bounce shadow-xs">
+            <Phone size={20} className="text-emerald-600" />
           </div>
-          <h4 className="text-slate-900 font-black text-xs uppercase tracking-widest mb-1.5">
-            Connecting via Secure Shield...
+          <h4 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider mb-1">
+            Connecting Secure Call...
           </h4>
-          <p className="text-slate-600 text-[11px] max-w-xs leading-relaxed font-medium">
+          <p className="text-slate-600 text-[11px] max-w-xs font-medium">
             Privacy shield active. Connecting safely to your assigned technician.
           </p>
         </div>
       )}
 
-      {/* 1. Header Row: Service Icon + Service Name + Real-Time Lifecycle Status Badge */}
-      <div className="flex items-start justify-between gap-3 relative z-10">
+      {/* 1. Header: Large Service Title + Category Icon + Status Badge */}
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          {/* Service Icon with Theme Gradient */}
-          <div
-            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl shrink-0 overflow-hidden bg-gradient-to-br ${theme.iconGrad} p-0.5 flex items-center justify-center text-white shadow-md relative group`}
-          >
-            {service?.imageURL ? (
-              <img
-                src={service.imageURL}
-                alt={serviceName}
-                className="w-full h-full object-cover rounded-[10px]"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-              />
-            ) : (
-              <Zap size={20} className="text-white drop-shadow" />
-            )}
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
+            {getCategoryIcon(serviceName, service?.categoryId || booking.serviceId)}
           </div>
-
-          {/* Service Title & ID */}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-wider">
-                #{booking.id.slice(-6).toUpperCase()}
-              </span>
-              {booking.isAmcBooking && (
-                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
-                  AMC Plan
-                </span>
-              )}
-            </div>
-            <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate uppercase tracking-tight mt-0.5">
+            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-snug truncate">
               {serviceName}
-            </h4>
+            </h3>
+            {booking.isAmcBooking && (
+              <span className="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 border border-purple-200 mt-0.5">
+                AMC Plan
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Real-Time Lifecycle Status Badge */}
+        {/* Status Badge */}
         <div className="shrink-0">
-          {isPending && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
-              <Clock size={11} className="text-amber-600 shrink-0 animate-spin" />
+          {isSearchingOrPending && (
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1.5 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
               Assigning Pro
             </span>
           )}
-          {isAssigned && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-[#2563EB] border border-blue-300 shadow-2xs inline-flex items-center gap-1.5">
-              <User size={11} className="text-[#2563EB] shrink-0" />
+
+          {hasPartner && isAssigned && (
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1.5">
+              <User size={12} className="text-blue-600 shrink-0" />
               Pro Assigned
             </span>
           )}
-          {isOnTheWay && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
-              <Navigation size={11} className="text-sky-600 shrink-0" />
-              Pro En-Route
+
+          {hasPartner && isOnTheWay && (
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-300 inline-flex items-center gap-1.5 animate-pulse">
+              <Navigation size={12} className="text-sky-600 shrink-0" />
+              En Route
             </span>
           )}
-          {isArrived && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-300 shadow-2xs inline-flex items-center gap-1.5">
-              <MapPin size={11} className="text-indigo-600 shrink-0" />
-              Pro Arrived at Location
+
+          {hasPartner && isArrived && (
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 inline-flex items-center gap-1.5">
+              <MapPin size={12} className="text-indigo-600 shrink-0" />
+              Arrived
             </span>
           )}
+
           {isInProgress && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              Job In Progress
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+              In Progress
             </span>
           )}
+
           {isCompleted && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs inline-flex items-center gap-1.5">
-              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
-              Service Completed
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+              <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+              Completed
             </span>
           )}
+
           {isCancelled && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-300 shadow-2xs inline-flex items-center gap-1.5">
-              <XCircle size={11} className="text-rose-600 shrink-0" />
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+              <XCircle size={12} className="text-rose-500 shrink-0" />
               Cancelled
             </span>
           )}
-          {isPaymentPending && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-50 text-orange-900 border border-orange-300 shadow-2xs inline-flex items-center gap-1.5 animate-pulse">
-              <CreditCard size={11} className="text-orange-600 shrink-0" />
-              Pay Invoice
-            </span>
-          )}
         </div>
       </div>
 
-      {/* 2. Middle Row: Chips (Date & Time Range, Location Area, Support Badge) */}
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-3 relative z-10">
-        {/* Scheduled Date & Time Slot Chip */}
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200/90 text-slate-700 text-[11px] font-bold shadow-2xs">
-          <Calendar size={12} className="text-blue-600 shrink-0" />
-          <span>{scheduleInfo.dateLabel}</span>
-          <span className="text-slate-300">•</span>
-          <Clock size={12} className="text-slate-400 shrink-0" />
-          <span className="text-slate-900 font-extrabold">{scheduleInfo.timeSlot}</span>
+      {/* 2. Body (2 lines max): Date/Time Slot & Short Locality */}
+      <div className="mt-3 space-y-1 text-xs">
+        {/* Line 1: Date & Time Slot */}
+        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+          <Clock size={13} className="text-slate-400 shrink-0" />
+          <span>{displayTimeSlot}</span>
         </div>
 
-        {/* Service Area Chip */}
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200/90 text-slate-700 text-[11px] font-bold shadow-2xs max-w-[220px] truncate">
-          <MapPin size={12} className="text-slate-400 shrink-0" />
-          <span className="truncate">
-            {booking.address ? booking.address.split(",")[0] : "Indore"}
-          </span>
+        {/* Line 2: Short Address Locality */}
+        <div className="flex items-center gap-1.5 font-medium text-slate-600">
+          <MapPin size={13} className="text-slate-400 shrink-0" />
+          <span className="truncate">{shortLocality}</span>
         </div>
+      </div>
 
-        {/* Assigned Partner Chip (if assigned) */}
-        {hasPartner && (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-bold shadow-2xs">
-            <User size={12} className="text-blue-600 shrink-0" />
-            <span className="truncate">
-              Pro: {partnerUser?.displayName || (booking as any).partnerName || "Assigned Pro"}
-            </span>
-            <span className="text-[10px] font-black text-amber-600 flex items-center gap-0.5 ml-0.5">
-              ★ {(partnerDetail?.rating || 4.9).toFixed(1)}
-            </span>
+      {/* 3. State-Driven Dynamic Middle Content & Actions */}
+
+      {/* STATE A: Status === 'searching' or 'pending' */}
+      {isSearchingOrPending && (
+        <>
+          <div className="mt-3 p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0 mt-0.5" />
+            <div className="space-y-0.5 min-w-0">
+              <p className="font-bold text-[12px] leading-tight text-amber-950">
+                Assigning closest verified technician in Indore... Expected in ~2-3 mins. Need assistance? Tap Help.
+              </p>
+            </div>
           </div>
-        )}
 
-        {/* Real-Time Active Support/Warranty Ticket Badge */}
-        {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onSupport) onSupport(booking.id);
-            }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-orange-50 border border-orange-300 text-orange-900 text-[10px] font-black uppercase tracking-wider shadow-2xs animate-pulse cursor-pointer hover:bg-orange-100"
-          >
-            <ShieldAlert size={12} className="text-orange-600 shrink-0" />
-            <span>Warranty #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
-          </button>
-        )}
+          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={handleCancelBooking}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                title="Cancel Booking"
+              >
+                <span>⏳ Cancel{isFreeCancelActive ? ` (${secondsRemaining}s)` : ''}</span>
+              </button>
 
-        {activeTicket && activeTicket.status === "resolved" && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onSupport) onSupport(booking.id);
-            }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-black uppercase tracking-wider shadow-2xs cursor-pointer hover:bg-emerald-100"
-          >
-            <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
-            <span>Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
-          </button>
-        )}
-      </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSupport) {
+                    onSupport(booking.id);
+                  } else if (typeof (window as any).__openSupportChat === "function") {
+                    (window as any).__openSupportChat(booking);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Need Help? Chat Support"
+              >
+                <MessageSquare size={13} className="text-blue-600" />
+                <span>💬 Need Help?</span>
+              </button>
+            </div>
 
-      {/* 2.5. Embedded Live Tracking Mini-Map (Zomato/Uber Style for PRO EN-ROUTE) */}
-      {hasPartner && isOnTheWay && (
-        <div className="mt-3 relative z-10">
-          <PartnerTrackingMap
-            partnerId={booking.partnerId!}
-            partnerLat={booking.partnerLocation?.lat}
-            partnerLng={booking.partnerLocation?.lng}
-            customerLat={booking.lat}
-            customerLng={booking.lng}
-            destinationAddress={booking.address}
-            bookingLocation={
-              booking.lat && booking.lng
-                ? { lat: booking.lat, lng: booking.lng }
-                : undefined
-            }
-            bookingId={booking.id}
-            serviceName={serviceName}
-            variant="mini"
-            heightClassName="h-36 sm:h-44"
-            onExpand={() => setIsFullscreenTrackingOpen(true)}
-            onCall={() => {
-              if (partnerUser && onCallPartner) {
-                onCallPartner(partnerUser, booking);
-              }
-            }}
-            onChat={() => {
-              if (onChatPartner) {
-                onChatPartner(booking);
-              }
-            }}
-          />
-        </div>
+            <button
+              type="button"
+              onClick={toggleExpanded}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
+            >
+              <span>{expanded ? "Less" : "Details"}</span>
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </>
       )}
 
-      {/* Transparent Payment Breakup */}
-      {(() => {
-        const baseFee = (booking as any).visitationFee || (booking as any).originalBillValue || service?.basePrice || booking.totalPrice || 0;
-        const discount = (booking as any).couponDiscount || booking.discountApplied || 0;
-        const walletDeduct = booking.walletDeductAmount || 0;
-        const finalPayable = booking.totalPrice ?? (baseFee - discount - walletDeduct);
+      {/* STATE B: Status === 'assigned', 'on_the_way', 'arrived', or 'in_progress' */}
+      {(hasPartner || isInProgress) && !isCompleted && !isCancelled && !isSearchingOrPending && (
+        <>
+          {/* Mini Partner Tile */}
+          <div className="mt-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-200 bg-white shadow-2xs">
+                <img
+                  src={
+                    partnerUser?.photoURL ||
+                    (partnerDetail as any)?.profilePhoto ||
+                    LogoIcon
+                  }
+                  alt="Partner"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-slate-900 text-xs truncate">
+                    {partnerUser?.displayName || (booking as any).partnerName || "Assigned Technician"}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 shrink-0">
+                    ★ {(partnerDetail?.rating || 4.9).toFixed(1)}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 flex items-center gap-1 font-medium">
+                  <ShieldCheck size={10} className="text-emerald-600" />
+                  Verified Pro • Indore
+                </span>
+              </div>
+            </div>
 
-        return (
-          <div className="mt-3 bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 space-y-1.5 text-xs relative z-10">
-            <div className="flex items-center justify-between text-slate-600 text-[11.5px]">
-              <span className="font-semibold">Base / Inspection Fee</span>
-              <span className="font-bold text-slate-800">₹{baseFee}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex items-center justify-between text-emerald-700 font-semibold text-[11.5px]">
-                <span>Discount / Coupon {booking.promoCode ? `(${booking.promoCode})` : ""}</span>
-                <span className="font-bold">-₹{discount}</span>
+            {/* Start Job OTP chip */}
+            {showOtpBox && otp && (
+              <div className="shrink-0 bg-blue-50 border border-blue-200 rounded-xl px-2.5 py-1 text-center shadow-2xs">
+                <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 block leading-tight">
+                  Start OTP
+                </span>
+                <span className="font-mono font-black text-sm text-blue-800 tracking-wider">
+                  {otp}
+                </span>
               </div>
             )}
-            {walletDeduct > 0 && (
-              <div className="flex items-center justify-between text-purple-700 font-semibold text-[11.5px]">
-                <span>Wallet Deduction</span>
-                <span className="font-bold">-₹{walletDeduct}</span>
+
+            {isInProgress && (
+              <div className="shrink-0 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1 text-center shadow-2xs">
+                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block leading-tight">
+                  OTP Verified
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800">
+                  In Service
+                </span>
               </div>
             )}
-            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/80 font-black">
-              <span className="text-slate-800 uppercase tracking-wider text-[10.5px]">Final Payable</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-[#002e6e] font-black">₹{finalPayable}</span>
-                {isPaid ? (
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                    <CheckCircle2 size={11} className="text-emerald-600" />
-                    Paid Online
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 inline-flex items-center gap-1">
-                    Pay Cash/UPI After Service
-                  </span>
-                )}
-              </div>
-            </div>
           </div>
-        );
-      })()}
 
-      {/* 3. Single Dynamic Payment & Action Bar (Eliminates Dual-Payment Button Conflict) */}
-      <div className="flex items-center justify-between pt-3.5 mt-3.5 border-t border-slate-200/80 relative z-10 gap-3 flex-wrap">
-        {/* Left: Total & Context-Aware Payment Indicator */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none block mb-0.5">
-              {isPaid ? "Total Paid" : "Total Payable"}
-            </span>
-            <span className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+          {/* Action Row */}
+          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Primary Track Live Button */}
+              <button
+                type="button"
+                onClick={() => setIsFullscreenTrackingOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Navigation size={13} />
+                <span>Track Live</span>
+              </button>
+
+              {/* Call Partner Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (partnerUser && onCallPartner) {
+                    onCallPartner(partnerUser, booking);
+                  } else {
+                    window.open(`tel:${partnerUser?.phoneNumber || CORPORATE_LANDLINE_GATEWAY}`);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Phone size={13} className="text-emerald-600" />
+                <span>Call Partner</span>
+              </button>
+
+              {/* Chat Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onChatPartner) {
+                    onChatPartner(booking);
+                  } else if (typeof (window as any).__openSupportChat === "function") {
+                    (window as any).__openSupportChat(booking);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Chat with partner / technician"
+              >
+                <MessageSquare size={13} className="text-slate-600" />
+                <span>Chat</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleExpanded}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
+            >
+              <span>{expanded ? "Less" : "Details"}</span>
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* STATE C: Status === 'completed' */}
+      {isCompleted && (
+        <>
+          <div className="mt-3 p-2.5 bg-emerald-50/70 border border-emerald-200/70 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+            <div className="flex items-center gap-1.5 font-medium text-[11.5px]">
+              <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+              <span>Service completed on {completedDateStr}</span>
+            </div>
+            <span className="font-extrabold text-slate-900 text-xs">
               ₹{booking.totalPrice || 0}
             </span>
           </div>
 
-          {/* Context-Aware Dynamic Payment Badge / Indicator (Single Source of Truth) */}
-          <div className="flex items-center gap-2">
-            {/* Scenario A (Paid): Verified Green Badge & HIDE all payment trigger buttons */}
-            {isPaid && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-black uppercase tracking-wider shadow-2xs">
-                <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                <span>
-                  Paid via{" "}
-                  {booking.paymentMethod === "wallet"
-                    ? "Wallet"
-                    : isAmc
-                    ? "AMC Plan"
-                    : booking.onlinePaymentProvider || "Online / UPI"}
+          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Rate & Review Button */}
+              {!isReviewSubmitted && onRatingChange ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!expanded) toggleExpanded();
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Star size={13} className="text-amber-500 fill-amber-500" />
+                  <span>Rate & Review</span>
+                </button>
+              ) : isReviewSubmitted ? (
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 inline-flex items-center gap-1">
+                  <Star size={12} className="text-amber-500 fill-amber-500" />
+                  Rated
                 </span>
-              </span>
-            )}
+              ) : null}
 
-            {/* Scenario B (Pay After Service / Cash): Clear indicator + subtle optional outline button: Pay Online Instead */}
-            {isPayAfterService && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold shadow-2xs">
-                  <span>💵 Cash / UPI on Completion (₹{booking.totalPrice || 0})</span>
-                </span>
-                {onPayOnline && !isCompleted && !isCancelled && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPayOnline(booking);
-                    }}
-                    className="text-[11px] font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Pay Online Instead
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Scenario C (Unpaid / Online Pending): Exactly ONE prominent Royal Blue button */}
-            {isOnlineUnpaid && !isCompleted && !isCancelled && onPayOnline && (
-              <motion.button
-                whileTap={{ scale: 0.98 }}
+              {/* Download Bill */}
+              <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPayOnline(booking);
-                }}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black tracking-wide px-4 py-2 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
+                disabled={isGeneratingInvoice}
+                onClick={handleDownloadInvoice}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Lock size={12} className="shrink-0" />
-                <span>Pay ₹{booking.totalPrice || 0} Now</span>
-              </motion.button>
-            )}
-          </div>
-        </div>
+                {isGeneratingInvoice ? (
+                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <FileText size={13} className="text-blue-600" />
+                )}
+                <span>Download Bill</span>
+              </button>
 
-        {/* Right: Consolidated Action Buttons */}
-        <div className="flex items-center gap-2 ml-auto">
-          {/* Book Again Button for Completed Jobs */}
-          {isCompleted && onBookAgain && service && (
-            <motion.button
-              whileTap={{ scale: 0.96 }}
+              {/* Book Again */}
+              {onBookAgain && service && (
+                <button
+                  type="button"
+                  onClick={() => onBookAgain(service)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <RotateCcw size={12} />
+                  <span>Book Again</span>
+                </button>
+              )}
+            </div>
+
+            <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBookAgain(service);
-              }}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+              onClick={toggleExpanded}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
             >
-              <RotateCcw size={12} className="shrink-0" />
-              <span>Book Again</span>
-            </motion.button>
-          )}
+              <span>{expanded ? "Less" : "Details"}</span>
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </>
+      )}
 
-          {/* Primary View Details / OTP Toggle */}
-          <motion.button
-            whileTap={{ scale: 0.96 }}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleExpanded();
-            }}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
-              expanded
-                ? "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200"
-                : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50"
-            }`}
-          >
-            {showOtpBox ? (
-              <>
-                <ShieldCheck size={13} className="shrink-0 text-blue-600" />
-                <span>{expanded ? "Hide Details" : "View Details & OTP"}</span>
-              </>
-            ) : (
-              <span>{expanded ? "Hide Details" : "View Details"}</span>
-            )}
-            <motion.span
-              animate={{ rotate: expanded ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-              className="shrink-0"
+      {/* STATE D: Status === 'cancelled' */}
+      {isCancelled && (
+        <>
+          <div className="mt-3 p-2.5 bg-rose-50/70 border border-rose-200/70 rounded-xl flex items-center gap-1.5 text-xs text-rose-800">
+            <XCircle size={13} className="text-rose-500 shrink-0" />
+            <span className="font-medium text-[11.5px]">This booking was cancelled.</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
+            <div className="flex items-center gap-2">
+              {onBookAgain && service && (
+                <button
+                  type="button"
+                  onClick={() => onBookAgain(service)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <RotateCcw size={12} />
+                  <span>Book Again</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSupport) {
+                    onSupport(booking.id);
+                  } else if (typeof (window as any).__openSupportChat === "function") {
+                    (window as any).__openSupportChat(booking);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <HelpCircle size={13} className="text-slate-500" />
+                <span>Need Help?</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleExpanded}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
             >
-              <ChevronDown size={13} />
-            </motion.span>
-          </motion.button>
-        </div>
-      </div>
+              <span>{expanded ? "Less" : "Details"}</span>
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </>
+      )}
 
-      {/* 4. Animated Expandable Drawer (Details & Real-Time Modules on Tap) */}
+      {/* 4. Expandable Details Drawer (Tucked behind "Details ▾") */}
       <AnimatePresence>
         {expanded && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="overflow-hidden relative z-10"
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="overflow-hidden"
           >
-            <div className="pt-4 mt-3 border-t border-slate-200/80 space-y-4">
-              {/* A. Dynamic 4-Digit Security OTP Block (ONLY between 'assigned' and 'arrived', hidden once verified or in_progress/completed) */}
-              {showOtpBox && otp && (
-                <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="text-center sm:text-left">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-white border border-blue-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                      <ShieldCheck size={12} className="text-blue-600" /> 4-Digit Security Verification PIN
+            <div className="pt-3.5 mt-3 border-t border-slate-200/80 space-y-3.5">
+              {/* Technical Reference & Price Header */}
+              <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+                <span className="font-mono text-[11px] font-bold text-slate-600">
+                  ID: #{booking.id.slice(-6).toUpperCase()}
+                </span>
+                <span className="text-[11px] font-bold text-slate-700">
+                  {isPaid ? "Paid in Full" : "Payment: Cash / UPI on Arrival"}
+                </span>
+              </div>
+
+              {/* Transparent Price Breakdown */}
+              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-slate-600 text-[11.5px]">
+                  <span>Inspection & Service Fee</span>
+                  <span className="font-bold text-slate-800">
+                    ₹{(booking as any).visitationFee || service?.basePrice || booking.totalPrice || 0}
+                  </span>
+                </div>
+                {((booking as any).couponDiscount || booking.discountApplied || 0) > 0 && (
+                  <div className="flex items-center justify-between text-emerald-700 text-[11.5px] font-medium">
+                    <span>Discount {booking.promoCode ? `(${booking.promoCode})` : ""}</span>
+                    <span className="font-bold">
+                      -₹{(booking as any).couponDiscount || booking.discountApplied}
                     </span>
-                    <p className="text-xs text-slate-700 font-bold mt-1.5">
-                      Share this OTP with your technician <span className="text-blue-800 font-black">ONLY when they arrive</span> at your location.
-                    </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {String(otp || "").split("").map((digit, idx) => (
-                      <div
-                        key={idx}
-                        className="w-11 h-12 bg-white text-blue-700 border-2 border-blue-600 rounded-xl flex items-center justify-center text-xl font-black font-mono shadow-sm"
-                      >
-                        {digit}
-                      </div>
-                    ))}
+                )}
+                {(booking.walletDeductAmount || 0) > 0 && (
+                  <div className="flex items-center justify-between text-purple-700 text-[11.5px] font-medium">
+                    <span>Wallet Balance Applied</span>
+                    <span className="font-bold">-₹{booking.walletDeductAmount}</span>
                   </div>
-                </div>
-              )}
-
-              {/* In-Progress OTP Verified Notification */}
-              {isInProgress && (
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                  <span>Security OTP Verified • Technician is actively performing your service.</span>
-                </div>
-              )}
-
-              {/* B. Stepper Progress Pipeline */}
-              <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
-                <div className="relative w-full max-w-xl mx-auto py-1">
-                  {/* Progress Line Track */}
-                  <div className="absolute top-[18px] left-5 right-5 h-[3px] bg-slate-200 rounded-full z-0" />
-                  {/* Animated Progress Line */}
-                  <motion.div
-                    initial={{ width: "0%" }}
-                    animate={{
-                      width: isCompleted
-                        ? "100%"
-                        : `${(currentStageIndex / (stages.length - 1)) * 100}%`,
-                    }}
-                    transition={{ duration: 0.5, ease: "easeInOut" }}
-                    className="absolute top-[18px] left-5 h-[3px] bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 rounded-full z-0"
-                  />
-
-                  <div className="flex items-center justify-between relative z-10">
-                    {stages.map((stage, idx) => {
-                      const isPastStep = idx <= currentStageIndex || isCompleted;
-                      const isCurrentStep = idx === currentStageIndex && !isCompleted;
-                      const StageIcon = stage.icon;
-
-                      return (
-                        <div key={idx} className="flex flex-col items-center">
-                          <div
-                            className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-                              isPastStep
-                                ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-                                : isCurrentStep
-                                ? "bg-[#2563EB] border-[#2563EB] text-white ring-4 ring-blue-500/20 shadow-md scale-105"
-                                : "bg-white border-slate-300 text-slate-300"
-                            }`}
-                          >
-                            <StageIcon size={15} />
-                          </div>
-                          <span
-                            className={`text-[9px] font-black tracking-tight uppercase mt-1.5 text-center max-w-[65px] leading-tight ${
-                              isPastStep
-                                ? "text-emerald-700"
-                                : isCurrentStep
-                                ? "text-blue-700"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            {stage.label}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 font-extrabold">
+                  <span className="text-slate-800 uppercase text-[10px] tracking-wider">
+                    Total Amount
+                  </span>
+                  <span className="text-sm font-black text-slate-900">
+                    ₹{booking.totalPrice || 0}
+                  </span>
                 </div>
               </div>
 
-              {/* C. Dynamic Partner Details Tile (Rendered if booking.partnerId exists) */}
-              {hasPartner && (
-                <div className="p-4 bg-white rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-emerald-500 bg-slate-100 shadow-2xs">
-                      <img
-                        src={
-                          partnerUser?.photoURL ||
-                          (partnerDetail as any)?.profilePhoto ||
-                          LogoIcon
-                        }
-                        alt="Partner"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-black text-slate-900 text-sm">
-                          {partnerUser?.displayName || (booking as any).partnerName || "Expert Technician"}
-                        </span>
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-black uppercase tracking-wider">
-                          <CheckCircle2 size={10} className="text-emerald-600 shrink-0" /> Verified Pro
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                        ★ {(partnerDetail?.rating || 4.9).toFixed(1)} Rating • {partnerDetail?.reviewCount || 38} completed jobs
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Direct Call & Chat Buttons */}
-                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-                    {partnerUser && onCallPartner && (
-                      <motion.button
-                        whileTap={{ scale: 0.96 }}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCallPartner(partnerUser, booking);
-                        }}
-                        className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                        title="Secure privacy phone call"
-                      >
-                        <Phone size={13} className="text-emerald-600" />
-                        <span>Call Pro</span>
-                      </motion.button>
-                    )}
-                    {onChatPartner && (
-                      <motion.button
-                        whileTap={{ scale: 0.96 }}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onChatPartner(booking);
-                        }}
-                        className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                        title="Open direct live chat"
-                      >
-                        <MessageSquare size={13} className="text-blue-600" />
-                        <span>Chat</span>
-                      </motion.button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* D. Full Address & Notes */}
-              <div className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1.5 text-xs">
-                <div className="flex items-start gap-2 text-slate-700">
-                  <MapPin size={14} className="text-blue-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-black text-slate-900 block uppercase text-[10px] tracking-wider">
-                      Service Address
-                    </span>
-                    <p className="font-medium text-slate-700">{booking.address || "Indore, Madhya Pradesh"}</p>
-                  </div>
-                </div>
+              {/* Full Address Block */}
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/70 text-xs space-y-1">
+                <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">
+                  Service Address
+                </span>
+                <p className="font-medium text-slate-800 leading-relaxed">
+                  {booking.address || "Indore, Madhya Pradesh"}
+                </p>
                 {booking.notes && (
-                  <div className="pt-2 border-t border-slate-200/60 text-slate-600 text-[11px]">
-                    <span className="font-bold text-slate-800">Special Instructions:</span> {booking.notes}
-                  </div>
+                  <p className="text-[11px] text-slate-600 pt-1 border-t border-slate-200/60 mt-1">
+                    <span className="font-bold">Note:</span> {booking.notes}
+                  </p>
                 )}
               </div>
 
-              {/* E. Service Protocol Checklist */}
-              <div className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
-                <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                    <FileText size={13} className="text-blue-600" /> Service Protocol Checklist
+              {/* Service Protocol Checklist */}
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/70 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <FileText size={12} className="text-blue-600" />
+                    Standard Protocol
                   </span>
-                  <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-mono">
-                    Progress: {booking.progressPercentage || (isCompleted ? 100 : 0)}%
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {booking.progressPercentage || (isCompleted ? 100 : 0)}% Completed
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {((Array.isArray(booking?.checklist) && booking.checklist.length > 0)
-                    ? booking.checklist
-                    : (Array.isArray(service?.predefinedTasks) && service.predefinedTasks.length > 0)
-                    ? service.predefinedTasks
-                    : [
-                        "Diagnostic inspection & health check",
-                        "Perform professional repair/deep clean",
-                        "Component testing & calibration",
-                        "Final quality check & work area cleanup",
-                      ]
-                  ).map((task, idx) => {
-                    const isDone = isCompleted || (Array.isArray(booking?.completedTasks) && booking.completedTasks.includes(task));
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                  {[
+                    "Diagnostic inspection & health check",
+                    "Perform professional repair/deep clean",
+                    "Component testing & calibration",
+                    "Final quality check & work area cleanup",
+                  ].map((task, idx) => {
+                    const isDone =
+                      isCompleted ||
+                      (Array.isArray(booking?.completedTasks) &&
+                        booking.completedTasks.includes(task));
                     return (
                       <div
                         key={idx}
-                        className="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200/70 text-xs"
+                        className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-slate-200/70 text-[11px]"
                       >
                         <div
-                          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                          className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border ${
                             isDone
                               ? "bg-emerald-500 border-emerald-500 text-white"
                               : "border-slate-300 text-transparent"
                           }`}
                         >
-                          <CheckCircle2 size={11} className="text-white" />
+                          <CheckCircle2 size={10} className="text-white" />
                         </div>
                         <span
-                          className={`text-[11px] font-medium leading-tight truncate ${
+                          className={`truncate ${
                             isDone ? "line-through text-emerald-700" : "text-slate-700"
                           }`}
                         >
@@ -1053,203 +933,98 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                 </div>
               </div>
 
-              {/* F. Live Tracking Map Toggle (if en-route, arrived, or in-progress) */}
-              {hasPartner && (isOnTheWay || isArrived || isInProgress) && (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowLiveMap((prev) => !prev)}
-                    className="w-full text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                  >
-                    <Compass size={13} />
-                    <span>{showLiveMap ? "Hide Live Tracking Map" : "View Live Tracking Map"}</span>
-                  </button>
-
-                  <AnimatePresence>
-                    {showLiveMap && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+              {/* Completed Jobs: Rating & Feedback section inside Details */}
+              {isCompleted && !isReviewSubmitted && onRatingChange && (
+                <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200/70 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Star size={13} className="text-amber-500 fill-amber-500" />
+                      Rate Your Technician:
+                    </span>
+                    {onSkipReview && (
+                      <button
+                        type="button"
+                        onClick={() => onSkipReview(booking.id)}
+                        className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200 cursor-pointer"
                       >
-                        <PartnerTrackingMap
-                          partnerId={booking.partnerId!}
-                          destinationAddress={booking.address}
-                          bookingLocation={booking.lat && booking.lng ? { lat: booking.lat, lng: booking.lng } : undefined}
-                          bookingId={booking.id}
-                          serviceName={booking.serviceName}
-                          onCall={() => {
-                            if (partnerUser && onCallPartner) {
-                              onCallPartner(partnerUser, booking);
-                            }
-                          }}
-                          onChat={() => {
-                            if (onChatPartner) {
-                              onChatPartner(booking);
-                            }
-                          }}
-                          heightClassName="h-[340px] sm:h-[380px]"
-                        />
-                      </motion.div>
+                        Skip
+                      </button>
                     )}
-                  </AnimatePresence>
-                </div>
-              )}
+                  </div>
 
-              {/* G. Completed Feedback & Rating Section */}
-              {isCompleted && (
-                <div className="p-4 bg-blue-50/40 rounded-2xl border border-blue-200/70 space-y-3">
-                  {isReviewSubmitted ? (
-                    <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                      <span className="text-xs font-bold">Review captured. Thank you for rating your expert!</span>
+                  <div className="flex gap-2 items-center">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => onRatingChange(booking.id, star)}
+                        className="transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                      >
+                        <Star
+                          size={20}
+                          fill={star <= inlineRating ? "currentColor" : "none"}
+                          className={
+                            star <= inlineRating
+                              ? "text-amber-400 drop-shadow-xs"
+                              : "text-slate-300 hover:text-amber-300"
+                          }
+                        />
+                      </button>
+                    ))}
+                  </div>
+
+                  {inlineRating > 0 && onCommentChange && (
+                    <div className="space-y-1.5 pt-1">
+                      <textarea
+                        value={inlineComment}
+                        onChange={(e) => onCommentChange(booking.id, e.target.value)}
+                        placeholder="Share your experience (optional)..."
+                        rows={2}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={isReviewSubmitting || inlineRating === 0}
+                          onClick={() => {
+                            if (onSubmitReview) onSubmitReview(booking);
+                          }}
+                          className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 px-3.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-xs"
+                        >
+                          {isReviewSubmitting ? "Submitting..." : "Submit Review"}
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                          <Star size={13} className="text-amber-500 fill-amber-500" /> Share Your Rating & Experience:
-                        </span>
-                        {onSkipReview && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSkipReview(booking.id);
-                            }}
-                            className="text-[10px] font-bold text-slate-500 hover:text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200 cursor-pointer"
-                          >
-                            Maybe Later
-                          </button>
-                        )}
-                      </div>
-
-                      {/* 5 Stars */}
-                      <div className="flex gap-2 items-center">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onRatingChange) onRatingChange(booking.id, star);
-                            }}
-                            className="transition-transform hover:scale-115 active:scale-95 cursor-pointer"
-                          >
-                            <Star
-                              size={22}
-                              fill={star <= inlineRating ? "currentColor" : "none"}
-                              className={
-                                star <= inlineRating
-                                  ? "text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.4)]"
-                                  : "text-slate-300 hover:text-amber-300"
-                              }
-                            />
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Comment Input */}
-                      {inlineRating > 0 && onCommentChange && (
-                        <div className="space-y-1.5">
-                          <textarea
-                            value={inlineComment}
-                            onChange={(e) => onCommentChange(booking.id, e.target.value)}
-                            placeholder="Write a quick note about your experience..."
-                            rows={2}
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
-                          />
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              disabled={isReviewSubmitting || inlineRating === 0}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onSubmitReview) onSubmitReview(booking);
-                              }}
-                              className="text-xs font-black uppercase tracking-wider text-white bg-[#2563EB] hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
-                            >
-                              {isReviewSubmitting ? "Submitting..." : "Submit Review"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </>
                   )}
                 </div>
               )}
 
-              {/* H. Invoice & Support Buttons (for completed bookings) */}
-              {isCompleted && (
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70">
-                  <button
-                    type="button"
-                    disabled={isGeneratingInvoice}
-                    onClick={handleDownloadInvoice}
-                    className="text-[11px] font-black uppercase tracking-wider text-blue-700 flex items-center gap-1.5 hover:bg-blue-100 bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-200 transition-all cursor-pointer disabled:opacity-60"
-                  >
-                    {isGeneratingInvoice ? (
+              {/* Warranty & Support shortcut */}
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSupport) {
+                      onSupport(booking.id);
+                    } else if (typeof (window as any).__openSupportChat === "function") {
+                      (window as any).__openSupportChat(booking);
+                    }
+                  }}
+                  className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
+                >
+                    {activeTicket ? (
                       <>
-                        <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                        <span>Generating Invoice...</span>
+                        <ShieldAlert size={12} className="text-amber-600" />
+                        <span>Warranty Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} Active</span>
                       </>
                     ) : (
                       <>
-                        <Download size={13} className="shrink-0" />
-                        <span>Download Invoice</span>
+                        <HelpCircle size={12} className="text-slate-400" />
+                        <span>Warranty & Resolution Desk</span>
                       </>
                     )}
                   </button>
-
-                  {onSupport && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSupport(booking.id);
-                      }}
-                      className={`text-[11px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
-                        activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress")
-                          ? "text-amber-900 bg-amber-100 hover:bg-amber-200/90 border-amber-300 animate-pulse ring-2 ring-amber-400/30"
-                          : activeTicket && activeTicket.status === "resolved"
-                          ? "text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border-emerald-300"
-                          : "text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200"
-                      }`}
-                    >
-                      {activeTicket && (activeTicket.status === "open" || activeTicket.status === "in_progress") ? (
-                        <>
-                          <ShieldAlert size={13} className="text-amber-600 shrink-0" />
-                          <span>Warranty #{activeTicket.id.slice(0, 6).toUpperCase()} - In Review</span>
-                        </>
-                      ) : activeTicket && activeTicket.status === "resolved" ? (
-                        <>
-                          <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
-                          <span>Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} - Resolved</span>
-                        </>
-                      ) : (
-                        <>
-                          <HelpCircle size={13} className="shrink-0" />
-                          <span>Warranty & Support</span>
-                        </>
-                      )}
-                    </button>
-                  )}
                 </div>
-              )}
-
-              {/* I. Collapse Drawer Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpanded();
-                }}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <ChevronUp size={14} />
-                <span>Hide Details</span>
-              </button>
             </div>
           </motion.div>
         )}
@@ -1262,33 +1037,30 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsFullscreenTrackingOpen(false);
-            }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setIsFullscreenTrackingOpen(false)}
           >
             <motion.div
-              initial={{ opacity: 0, y: 80, scale: 0.96 }}
+              initial={{ opacity: 0, y: 60, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 80, scale: 0.96 }}
-              transition={{ type: "spring", damping: 26, stiffness: 320 }}
+              exit={{ opacity: 0, y: 60, scale: 0.97 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]"
+              className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh]"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/80 bg-slate-50/90 backdrop-blur-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
-                    <Navigation size={17} className="animate-pulse" />
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/80 bg-slate-50/90">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
+                    <Navigation size={16} className="animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
-                      Live Navigation • {serviceName}
+                    <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                      Live Technician Location • {serviceName}
                     </h3>
-                    <p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-                      <span>Technician is actively en-route to your doorstep</span>
+                    <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                      Technician is en-route to your Indore address
                     </p>
                   </div>
                 </div>
@@ -1299,7 +1071,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
                   title="Close Live Navigation"
                 >
-                  <X size={17} />
+                  <X size={16} />
                 </button>
               </div>
 
@@ -1320,7 +1092,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                   bookingId={booking.id}
                   serviceName={serviceName}
                   variant="full"
-                  heightClassName="h-[380px] sm:h-[430px]"
+                  heightClassName="h-[360px] sm:h-[400px]"
                   onCall={() => {
                     if (partnerUser && onCallPartner) {
                       onCallPartner(partnerUser, booking);
@@ -1335,33 +1107,65 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
 
                 {/* Additional Info Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5 shadow-2xs">
-                    <MapPin size={15} className="text-rose-600 shrink-0 mt-0.5" />
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start gap-2 shadow-2xs">
+                    <MapPin size={14} className="text-rose-600 shrink-0 mt-0.5" />
                     <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                         Service Destination
                       </span>
-                      <span className="font-bold text-slate-800 line-clamp-2 mt-0.5">
+                      <span className="font-semibold text-slate-800 line-clamp-2 mt-0.5">
                         {booking.address || "Indore, Madhya Pradesh"}
                       </span>
                     </div>
                   </div>
 
                   {showOtpBox && otp && (
-                    <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 block">
-                          Security Verification PIN
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block">
+                          Start Job Verification OTP
                         </span>
                         <span className="text-[11px] font-medium text-slate-600">
                           Share with pro on arrival
                         </span>
                       </div>
-                      <span className="text-lg font-black font-mono tracking-widest text-blue-700 bg-white px-2.5 py-1 rounded-xl border border-blue-300 shadow-2xs">
+                      <span className="text-base font-black font-mono tracking-widest text-blue-700 bg-white px-2.5 py-0.5 rounded-lg border border-blue-300 shadow-2xs">
                         {otp}
                       </span>
                     </div>
                   )}
+                </div>
+
+                {/* Persistent Help & Support Dock inside live tracking modal */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center justify-between flex-wrap gap-2 text-xs shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-extrabold text-slate-800">
+                    <ShieldCheck size={15} className="text-emerald-600" />
+                    <span>Priority Support Dock</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSupport) {
+                          onSupport(booking.id);
+                        } else if (typeof (window as any).__openSupportChat === "function") {
+                          (window as any).__openSupportChat(booking);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl font-bold text-blue-700 bg-white hover:bg-blue-50 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <MessageSquare size={13} className="text-blue-600" />
+                      <span>Need Help? Chat Support</span>
+                    </button>
+                    <a
+                      href={`tel:${CORPORATE_LANDLINE_GATEWAY}`}
+                      className="px-3 py-1.5 rounded-xl font-bold text-emerald-800 bg-white hover:bg-emerald-50 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      title={`Helpline: ${CORPORATE_LANDLINE_GATEWAY}`}
+                    >
+                      <Phone size={13} className="text-emerald-600" />
+                      <span>Call Support</span>
+                    </a>
+                  </div>
                 </div>
               </div>
             </motion.div>

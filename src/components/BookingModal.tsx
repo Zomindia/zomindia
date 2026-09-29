@@ -13,7 +13,7 @@ import {
   runTransaction 
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Service, UserProfile, Promotion, Redemption, PartnerProfile, AMC } from '../types';
+import { Service, UserProfile, Promotion, Redemption, PartnerProfile, AMC, SavedAddress } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { getWhatsAppBookingLink } from '../lib/whatsapp';
 import { generateGoogleCalendarUrl } from '../utils/calendar';
@@ -44,11 +44,18 @@ import {
   Banknote,
   ShieldCheck,
   Check,
-  Sparkles
+  Sparkles,
+  Home,
+  Briefcase,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare
 } from 'lucide-react';
+import SupportChatModal from './SupportChatModal';
 import PartnerIdentityMarker from './PartnerIdentityMarker';
 import OnlinePaymentGatewayModal, { PaymentSuccessData } from './OnlinePaymentGatewayModal';
-import { reverseGeocode } from '../utils/reverseGeocode';
+import { reverseGeocode, findNearestIndoreLocality, isBroadIndoreName, INDORE_REFERENCE_POINTS } from '../utils/reverseGeocode';
 import { getSampledIndoreHighDemandAreas } from '../utils/indoreDemandAreas';
 
 interface Props {
@@ -130,19 +137,98 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return dates;
   }, []);
 
+  const INDORE_QUICK_LOCALITIES = [
+    'Vijay Nagar',
+    'Palasia',
+    'Scheme 54',
+    'Bhanwarkua',
+    'Mahalaxmi Nagar',
+    'Saket',
+    'Annapurna'
+  ] as const;
+
+  // Memoized user saved addresses from profile or synthesized from profile address
+  const userSavedAddresses = useMemo<SavedAddress[]>(() => {
+    const list: SavedAddress[] = [];
+    if (Array.isArray(profile?.savedAddresses) && profile.savedAddresses.length > 0) {
+      return profile.savedAddresses;
+    }
+    const profileAddr = profile?.address || profile?.customerData?.address;
+    if (profileAddr && !isBroadIndoreName(profileAddr)) {
+      list.push({
+        id: 'profile_home_default',
+        tag: 'Home',
+        houseNumber: (profile as any)?.houseNumber || '',
+        address: profileAddr,
+        city: 'Indore',
+        fullAddress: [(profile as any)?.houseNumber, profileAddr].filter(Boolean).join(', '),
+        isDefault: true
+      });
+    }
+    return list;
+  }, [profile]);
+
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(() => {
+    if (userSavedAddresses.length > 0) {
+      return userSavedAddresses[0].id;
+    }
+    return null;
+  });
+  const [addressTag, setAddressTag] = useState<'Home' | 'Work' | 'Other'>('Home');
+  const [showMapHelper, setShowMapHelper] = useState(false);
+
+  const initialRawAddress = savedState?.address || profile?.address || profile?.customerData?.address || '';
+  const initialAddress = (!initialRawAddress || isBroadIndoreName(initialRawAddress))
+    ? findNearestIndoreLocality(
+        Number(savedState?.location?.lat || 22.7196),
+        Number(savedState?.location?.lng || 75.8577)
+      )
+    : initialRawAddress;
+
   const [date, setDate] = useState<string>(
     savedState?.date || availableDates[0]?.dateValue || new Date().toISOString().split('T')[0]
   );
   const [time, setTime] = useState<string>(savedState?.time || '');
-  const [address, setAddress] = useState<string>(
-    savedState?.address || profile?.address || profile?.customerData?.address || ''
-  );
+  const [address, setAddress] = useState<string>(initialAddress);
   const [houseNumber, setHouseNumber] = useState<string>(
-    savedState?.houseNumber || ''
+    (savedState?.houseNumber && !isBroadIndoreName(savedState.houseNumber)) ? savedState.houseNumber : ''
   );
   const [isChangingAddress, setIsChangingAddress] = useState<boolean>(
     !savedState?.address && !profile?.address && !profile?.customerData?.address
   );
+
+  const handleSelectSavedAddress = (saved: SavedAddress) => {
+    setSelectedSavedAddressId(saved.id);
+    setAddressTag(saved.tag || 'Home');
+    setHouseNumber(saved.houseNumber || '');
+    setAddress(saved.address);
+    setSelectedFromDropdown(true);
+    setShowSearchSuggestions(false);
+    setIsChangingAddress(false);
+    if (saved.lat && saved.lng && !isNaN(Number(saved.lat)) && !isNaN(Number(saved.lng))) {
+      const pos = { lat: Number(saved.lat), lng: Number(saved.lng) };
+      setLocation(pos);
+      setMapCenter(pos);
+    }
+  };
+
+  const handleSelectNewAddress = (tag: 'Home' | 'Work' | 'Other' = 'Other') => {
+    setSelectedSavedAddressId(null);
+    setAddressTag(tag);
+    setIsChangingAddress(true);
+  };
+
+  const handleSelectQuickLocality = (locality: string) => {
+    setAddress(locality);
+    setSelectedFromDropdown(true);
+    setShowSearchSuggestions(false);
+    const ref = INDORE_REFERENCE_POINTS.find(p => p.name.toLowerCase().includes(locality.toLowerCase()));
+    if (ref) {
+      const pos = { lat: ref.lat, lng: ref.lng };
+      setLocation(pos);
+      setMapCenter(pos);
+    }
+  };
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(
     savedState?.location && typeof savedState.location.lat !== 'undefined' && typeof savedState.location.lng !== 'undefined'
       ? { lat: Number(savedState.location.lat), lng: Number(savedState.location.lng) }
@@ -195,6 +281,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [showOnlineGateway, setShowOnlineGateway] = useState<boolean>(false);
   const [onlineBookingAmount, setOnlineBookingAmount] = useState<number>(0);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [isSuccessSupportOpen, setIsSuccessSupportOpen] = useState<boolean>(false);
   const [lastBookingId, setLastBookingId] = useState<string | null>(null);
   const [showLocalLogin, setShowLocalLogin] = useState<boolean>(false);
   const [showContactPopup, setShowContactPopup] = useState<boolean>(false);
@@ -245,11 +332,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       if (!contactEmail && profile.email) setContactEmail(profile.email);
       const initialPhone = cleanPhoneTo10(profile.phoneNumber || profile.mobile || '');
       if (!contactPhone && initialPhone) setContactPhone(initialPhone);
-      if (!address && (profile.address || profile.customerData?.address)) {
-        setAddress(profile.address || profile.customerData?.address || '');
+      const profAddr = profile.address || profile.customerData?.address || '';
+      if (!address || isBroadIndoreName(address)) {
+        if (profAddr && !isBroadIndoreName(profAddr)) {
+          setAddress(profAddr);
+        } else {
+          reverseGeocodeLocation(location?.lat || 22.7196, location?.lng || 75.8577);
+        }
       }
     }
   }, [profile]);
+
+  // Initial Mount / Profile Stale Address Overwrite:
+  // If initial address is literally "Indore City" or empty, trigger reverse geocode on initial location coordinates
+  useEffect(() => {
+    const raw = savedState?.address || profile?.address || profile?.customerData?.address || '';
+    if (!raw || isBroadIndoreName(raw)) {
+      const initLat = location?.lat || 22.7196;
+      const initLng = location?.lng || 75.8577;
+      reverseGeocodeLocation(initLat, initLng);
+    }
+  }, []);
 
   // Real-time busy slots listener
   const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
@@ -560,7 +663,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return R * c;
   };
 
-  // Dynamic Google Places / Geocoder autocomplete search lookup with local fallback
+  // Dynamic autocomplete search lookup with local fallback
   useEffect(() => {
     if (address.trim().length < 2 || selectedFromDropdown) {
       if (!selectedFromDropdown) setLiveSuggestions([]);
@@ -642,8 +745,35 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
     try {
       const result = await reverseGeocode(lat, lng);
-      if (result && result.fullAddress && result.fullAddress.trim().length > 0) {
-        setAddress(result.fullAddress);
+      if (result) {
+        // 1. Clean result.colony and result.area. If they contain "Indore City" or "Indore" or are broad, force to findNearestIndoreLocality
+        let colonyName = (result.colony || result.area || '').trim();
+        if (!colonyName || isBroadIndoreName(colonyName) || colonyName.toLowerCase().includes('indore city')) {
+          colonyName = findNearestIndoreLocality(lat, lng);
+        }
+
+        // 2. Explicitly update setAddress so COLONY / AREA IN INDORE is never "Indore City"
+        setAddress(colonyName);
+
+        // 3. Flat / House No. / Landmark prefill:
+        // If building/house number is returned, prefill FLAT / HOUSE NO. / LANDMARK.
+        // If result.road exists, prefill houseNumber with result.road if houseNumber is currently blank or "Indore City".
+        if (result.premise && result.premise.trim().length > 0) {
+          setHouseNumber(result.premise.trim());
+        } else if (result.road && result.road.trim().length > 0) {
+          setHouseNumber((prev) => {
+            const cleanPrev = (prev || '').trim();
+            if (!cleanPrev || isBroadIndoreName(cleanPrev) || cleanPrev.toLowerCase() === 'indore city') {
+              return result.road!.trim();
+            }
+            return prev;
+          });
+        }
+
+        // Dismiss search dropdown and mark selected
+        setShowSearchSuggestions(false);
+        setSelectedFromDropdown(true);
+
         setIsGeocoding(false);
         return true;
       }
@@ -651,8 +781,11 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       console.warn("[Reverse Geocode Notice - Non-blocking]:", err);
     }
 
-    // Precise coordinate fallback preserving exact location without snapping to static landmarks
-    setAddress(`Indore, Madhya Pradesh (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+    // Precise proximity fallback: strictly set granular colony instead of broad city name
+    const nearestLocality = findNearestIndoreLocality(lat, lng);
+    setAddress(nearestLocality);
+    setShowSearchSuggestions(false);
+    setSelectedFromDropdown(true);
     setIsGeocoding(false);
     return false;
   };
@@ -663,17 +796,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     houseNo?: string, 
     coords?: { lat: number; lng: number } | null
   ): boolean => {
+    // If selected from saved addresses and has valid colony, it is valid
+    if (selectedSavedAddressId && addr && addr.trim().length >= 2 && !isBroadIndoreName(addr)) {
+      return false;
+    }
+
     // If coordinates (lat, lng) exist AND the user has entered their House/Flat number, treat the address as 100% valid!
-    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && houseNo && houseNo.trim().length >= 1) {
+    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && houseNo && houseNo.trim().length >= 1 && !isBroadIndoreName(houseNo)) {
       return false;
     }
 
     const combined = [houseNo?.trim(), addr?.trim()].filter(Boolean).join(', ');
     if (!combined || combined.trim().length < 3) return true;
 
+    if (isBroadIndoreName(addr) || isBroadIndoreName(combined)) return true;
+
     const clean = combined.trim().toLowerCase();
     const genericList = [
       'indore',
+      'indore city',
+      'indore tehsil',
+      'indore district',
       'indore, madhya pradesh',
       'indore, madhya pradesh, india',
       'indore, mp',
@@ -684,8 +827,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     ];
     if (genericList.includes(clean)) return true;
 
-    // If coordinates exist and there is either a house number or an address string
-    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && ((houseNo && houseNo.trim().length > 0) || addr.trim().length >= 3)) {
+    // If valid colony and house number exist, treat as valid
+    if (addr && addr.trim().length >= 3 && !isBroadIndoreName(addr)) {
+      return false;
+    }
+
+    // If coordinates exist and there is a non-generic address string
+    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number' && !isBroadIndoreName(addr) && addr.trim().length >= 3) {
       return false;
     }
 
@@ -753,6 +901,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     overridePhone?: string,
     onlinePaymentData?: PaymentSuccessData
   ) => {
+    // If incoming verified online payment, unlock idempotency ref
+    if (onlinePaymentData) {
+      isSubmittingRef.current = false;
+    }
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
@@ -865,11 +1017,39 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         const userRef = doc(db, "users", activeUid);
         const userSnap = await transaction.get(userRef);
 
-        const updateData = {
+        const currentSavedList: SavedAddress[] = Array.isArray(userSnap.data()?.savedAddresses)
+          ? [...userSnap.data()?.savedAddresses]
+          : Array.isArray(profile?.savedAddresses)
+          ? [...profile.savedAddresses]
+          : [];
+
+        const newSavedItem: SavedAddress = {
+          id: selectedSavedAddressId || `addr_${Date.now()}`,
+          tag: addressTag || 'Home',
+          houseNumber: houseNumber.trim(),
+          address: address.trim(),
+          city: 'Indore',
+          fullAddress: [houseNumber.trim(), address.trim()].filter(Boolean).join(', '),
+          lat: location?.lat,
+          lng: location?.lng,
+          isDefault: true
+        };
+
+        const existingIdx = currentSavedList.findIndex(
+          a => (selectedSavedAddressId && a.id === selectedSavedAddressId) || a.tag === addressTag
+        );
+        if (existingIdx >= 0) {
+          currentSavedList[existingIdx] = newSavedItem;
+        } else {
+          currentSavedList.unshift(newSavedItem);
+        }
+
+        const updateData: any = {
           email: emailToUse,
           phoneNumber: cleanPhone,
           mobile: cleanPhone,
           address: address.trim(),
+          savedAddresses: currentSavedList.slice(0, 5),
           updatedAt: Timestamp.now()
         };
 
@@ -1014,7 +1194,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         issueDetails: service.name,
         visitationFee: service.basePrice,
         partnerId: assignedPartnerId,
-        status: assignedPartnerId ? "pending_acceptance" : "pending", 
+        status: isOnlineConfirmed ? "confirmed" : (assignedPartnerId ? "pending_acceptance" : "pending"), 
         paymentStatus: resolvedPaymentStatus,
         scheduledAt: Timestamp.fromDate(scheduledAt),
         scheduledSlot: scheduledSlotStr,
@@ -1206,45 +1386,144 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         {/* Main Scrollable Body */}
         <div className="overflow-y-auto flex-1 p-4 sm:p-6 space-y-5 no-scrollbar">
           
-          {/* 1. Address Section: Clean Compact Chip with 'Change' toggle */}
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                <div className="p-2 bg-blue-100/80 text-blue-700 rounded-xl mt-0.5 shrink-0">
-                  <MapPin size={16} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      Service Address
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">
-                      Primary
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-slate-900 mt-0.5 line-clamp-2 leading-relaxed">
-                    {[houseNumber.trim(), address.trim()].filter(Boolean).join(', ') || "No address selected yet. Tap change to set location."}
-                  </p>
-                </div>
-              </div>
-
+          {/* 1. Address Section: Zomato/Swiggy Saved Addresses Selector & Quick Locality Chips */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 space-y-3">
+            {/* Header & Category Pills (Home / Work / Other / Add New) */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                Delivery / Service Address
+              </span>
               <button
                 type="button"
                 onClick={() => setIsChangingAddress(!isChangingAddress)}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-blue-600 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm shrink-0 cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 text-blue-600 border border-slate-200 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer"
               >
-                {isChangingAddress ? "Close" : "Change"}
+                {isChangingAddress ? "Done" : "Edit / Change"}
               </button>
             </div>
 
-            {/* Expandable Address Selector / Map Drawer */}
+            {/* Zomato-Style Category Selector Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+              {(['Home', 'Work', 'Other'] as const).map((tag) => {
+                const hasSaved = userSavedAddresses.some(a => a.tag === tag);
+                const isTagActive = addressTag === tag;
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      const match = userSavedAddresses.find(a => a.tag === tag);
+                      if (match) {
+                        handleSelectSavedAddress(match);
+                      } else {
+                        handleSelectNewAddress(tag);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                      isTagActive
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {tag === 'Home' && <Home size={12} />}
+                    {tag === 'Work' && <Briefcase size={12} />}
+                    {tag === 'Other' && <MapPin size={12} />}
+                    <span>{tag}</span>
+                    {hasSaved && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${isTagActive ? 'bg-white' : 'bg-emerald-500'}`}></span>
+                    )}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => handleSelectNewAddress('Other')}
+                className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1 shrink-0 cursor-pointer transition-colors ml-auto"
+              >
+                <Plus size={12} />
+                <span>Add New</span>
+              </button>
+            </div>
+
+            {/* Saved Address Cards (if user has saved addresses and not currently editing) */}
+            {userSavedAddresses.length > 0 && !isChangingAddress && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {userSavedAddresses.map((saved) => {
+                  const isSelected = selectedSavedAddressId === saved.id || (address === saved.address && (!houseNumber || houseNumber === saved.houseNumber));
+                  return (
+                    <div
+                      key={saved.id}
+                      onClick={() => handleSelectSavedAddress(saved)}
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all relative ${
+                        isSelected
+                          ? 'bg-blue-50/70 border-blue-500 shadow-xs ring-1 ring-blue-500/30'
+                          : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                          saved.tag === 'Home' 
+                            ? 'bg-amber-100 text-amber-900' 
+                            : saved.tag === 'Work' 
+                            ? 'bg-indigo-100 text-indigo-900' 
+                            : 'bg-slate-100 text-slate-800'
+                        }`}>
+                          {saved.tag === 'Home' ? <Home size={10} /> : saved.tag === 'Work' ? <Briefcase size={10} /> : <MapPin size={10} />}
+                          {saved.tag}
+                        </span>
+                        {isSelected && (
+                          <span className="text-blue-600 bg-blue-100 rounded-full p-0.5">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      {saved.houseNumber && (
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {saved.houseNumber}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-600 truncate mt-0.5">
+                        {saved.address}, Indore
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Compact Current Selected Address Bar */}
+            {!isChangingAddress && (
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg shrink-0">
+                    <MapPin size={14} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-900 truncate">
+                      {[houseNumber.trim(), address.trim()].filter(Boolean).join(', ') || "No address selected"}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Doorstep delivery in Indore</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChangingAddress(true)}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 shrink-0 cursor-pointer"
+                >
+                  Edit
+                </button>
+              </div>
+            )}
+
+            {/* Expandable Manual Address Form / Locality Chips / Optional Map */}
             <AnimatePresence>
               {isChangingAddress && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mt-3.5 pt-3.5 border-t border-slate-200 space-y-3"
+                  className="pt-2 border-t border-slate-200 space-y-3"
                 >
                   {/* Dedicated Flat / House No. / Landmark Input */}
                   <div>
@@ -1263,7 +1542,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                   {/* Area / Locality Search with Autocomplete */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                      Colony / Area in Indore
+                      Colony / Area in Indore <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <input
@@ -1307,97 +1586,175 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         </div>
                       )}
                     </div>
+
+                    {/* Quick One-Tap Indore Area Chips */}
+                    <div className="space-y-1.5 pt-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Popular Indore Localities:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {INDORE_QUICK_LOCALITIES.map((loc) => {
+                          const isSelected = address.toLowerCase().includes(loc.toLowerCase());
+                          return (
+                            <button
+                              key={loc}
+                              type="button"
+                              onClick={() => handleSelectQuickLocality(loc)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white font-bold shadow-xs'
+                                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}
+                            >
+                              {loc}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* GPS Location Button */}
-                  <button
-                    type="button"
-                    disabled={isFetchingGps}
-                    onClick={() => {
-                      setIsFetchingGps(true);
-                      setError(null);
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                          async (pos) => {
-                            const lat = Number(pos.coords.latitude);
-                            const lng = Number(pos.coords.longitude);
-                            setLocation({ lat, lng });
-                            setMapCenter({ lat, lng });
-                            await reverseGeocodeLocation(lat, lng);
-                            setIsFetchingGps(false);
-                          },
-                          () => {
-                            setError("Unable to acquire high accuracy GPS. Please search area above.");
-                            setIsFetchingGps(false);
-                          },
-                          { enableHighAccuracy: true, timeout: 8000 }
+                  {/* Save address as: [Home] [Work] [Other] */}
+                  <div className="pt-2 border-t border-slate-200/80">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                      Save address as:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {(['Home', 'Work', 'Other'] as const).map((tag) => {
+                        const isActive = addressTag === tag;
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setAddressTag(tag)}
+                            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                              isActive
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {tag === 'Home' && <Home size={12} />}
+                            {tag === 'Work' && <Briefcase size={12} />}
+                            {tag === 'Other' && <MapPin size={12} />}
+                            <span>{tag}</span>
+                          </button>
                         );
-                      } else {
-                        setIsFetchingGps(false);
-                      }
-                    }}
-                    className="w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    <Navigation size={13} className={isFetchingGps ? "animate-spin" : ""} />
-                    {isFetchingGps ? "Acquiring GPS location..." : "Use Current GPS Location"}
-                  </button>
+                      })}
+                    </div>
+                  </div>
 
-                  {/* Interactive Map */}
-                  <div className="w-full h-36 rounded-xl overflow-hidden border border-slate-200 relative bg-slate-100 shadow-inner">
-                    <Map
-                      defaultCenter={mapCenter || { lat: 22.7196, lng: 75.8577 }}
-                      center={mapCenter || undefined}
-                      zoom={mapZoom}
-                      onCameraChanged={(e) => {
-                        setMapCenter(e.detail.center);
-                        setMapZoom(e.detail.zoom);
-                      }}
-                      defaultZoom={15}
-                      mapId={GOOGLE_MAPS_MAP_ID}
-                      gestureHandling="greedy"
-                      disableDefaultUI={false}
-                      zoomControl={true}
-                      streetViewControl={false}
-                      mapTypeControl={false}
-                      className="w-full h-full"
-                      internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                      onClick={(e) => {
-                        if (e.detail?.latLng) {
-                          const coords = { lat: Number(e.detail.latLng.lat), lng: Number(e.detail.latLng.lng) };
-                          setLocation(coords);
-                          setMapCenter(coords);
-                          reverseGeocodeLocation(coords.lat, coords.lng);
-                        }
-                      }}
+                  {/* Optional Map & GPS Helper (Secondary) */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowMapHelper(!showMapHelper)}
+                      className="w-full py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
                     >
-                      {location && (
-                        <AdvancedMarker 
-                          position={location}
-                          draggable={true}
-                          onDragEnd={(e) => {
-                            if (e.latLng) {
-                              const coords = { lat: Number(e.latLng.lat()), lng: Number(e.latLng.lng()) };
-                              setLocation(coords);
-                              setMapCenter(coords);
-                              reverseGeocodeLocation(coords.lat, coords.lng);
+                      <span className="flex items-center gap-1.5 text-blue-700">
+                        <MapPin size={13} className="text-blue-600" />
+                        <span>Pinpoint on Map / Use GPS (Optional)</span>
+                      </span>
+                      {showMapHelper ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {showMapHelper && (
+                      <div className="mt-2.5 space-y-2.5">
+                        <button
+                          type="button"
+                          disabled={isFetchingGps}
+                          onClick={() => {
+                            setIsFetchingGps(true);
+                            setError(null);
+                            if (typeof navigator !== 'undefined' && navigator.geolocation) {
+                              navigator.geolocation.getCurrentPosition(
+                                async (pos) => {
+                                  const lat = Number(pos.coords.latitude);
+                                  const lng = Number(pos.coords.longitude);
+                                  setLocation({ lat, lng });
+                                  setMapCenter({ lat, lng });
+                                  setMapZoom(16);
+                                  await reverseGeocodeLocation(lat, lng);
+                                  setIsFetchingGps(false);
+                                },
+                                async (geoErr) => {
+                                  console.warn("[GPS] Notice:", geoErr);
+                                  const defaultCoords = { lat: 22.7533, lng: 75.8937 };
+                                  setLocation(defaultCoords);
+                                  setMapCenter(defaultCoords);
+                                  setMapZoom(16);
+                                  await reverseGeocodeLocation(defaultCoords.lat, defaultCoords.lng);
+                                  setIsFetchingGps(false);
+                                },
+                                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                              );
+                            } else {
+                              setIsFetchingGps(false);
                             }
                           }}
+                          className="w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-blue-200 transition-colors cursor-pointer"
                         >
-                          <Pin background="#2563eb" glyphColor="#fff" borderColor="#1e40af" />
-                        </AdvancedMarker>
-                      )}
-                    </Map>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span>💡 Tap map or drag pin to pinpoint doorstep</span>
-                    {isGeocoding && <span className="text-blue-600 font-semibold animate-pulse">Resolving location...</span>}
+                          <Navigation size={13} className={isFetchingGps ? "animate-spin" : ""} />
+                          {isFetchingGps ? "Acquiring GPS location..." : "Use Current GPS Location"}
+                        </button>
+
+                        <div className="w-full h-36 rounded-xl overflow-hidden border border-slate-200 relative bg-slate-100 shadow-inner">
+                          <Map
+                            defaultCenter={mapCenter || { lat: 22.7196, lng: 75.8577 }}
+                            center={mapCenter || undefined}
+                            zoom={mapZoom}
+                            onCameraChanged={(e) => {
+                              setMapCenter(e.detail.center);
+                              setMapZoom(e.detail.zoom);
+                            }}
+                            defaultZoom={15}
+                            mapId={GOOGLE_MAPS_MAP_ID}
+                            gestureHandling="greedy"
+                            disableDefaultUI={false}
+                            zoomControl={true}
+                            streetViewControl={false}
+                            mapTypeControl={false}
+                            className="w-full h-full"
+                            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                            onClick={(e) => {
+                              if (e.detail?.latLng) {
+                                const coords = { lat: Number(e.detail.latLng.lat), lng: Number(e.detail.latLng.lng) };
+                                setLocation(coords);
+                                setMapCenter(coords);
+                                reverseGeocodeLocation(coords.lat, coords.lng);
+                              }
+                            }}
+                          >
+                            {location && (
+                              <AdvancedMarker 
+                                position={location}
+                                draggable={true}
+                                onDragEnd={(e) => {
+                                  if (e.latLng) {
+                                    const coords = { lat: Number(e.latLng.lat()), lng: Number(e.latLng.lng()) };
+                                    setLocation(coords);
+                                    setMapCenter(coords);
+                                    reverseGeocodeLocation(coords.lat, coords.lng);
+                                  }
+                                }}
+                              >
+                                <Pin background="#2563eb" glyphColor="#fff" borderColor="#1e40af" />
+                              </AdvancedMarker>
+                            )}
+                          </Map>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>💡 Tap map or drag pin to adjust doorstep</span>
+                          {isGeocoding && <span className="text-blue-600 font-semibold animate-pulse">Resolving location...</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Confirm Button */}
                   <button
                     type="button"
                     onClick={() => setIsChangingAddress(false)}
-                    className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
                   >
                     Confirm & Use This Address
                   </button>
@@ -1599,7 +1956,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                         <span className="px-1 h-4 rounded bg-[#002970] text-[#00BAF2] text-[7px] font-black flex items-center justify-center shadow-2xs">Paytm</span>
                         <span className="px-1 h-4 rounded bg-emerald-700 text-white text-[7px] font-black flex items-center justify-center shadow-2xs">UPI</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-medium">UPI, Cards, NetBanking (Cashfree)</span>
+                      <span className="text-[10px] text-slate-500 font-medium">UPI, Cards, NetBanking (Razorpay)</span>
                     </div>
                   </div>
                 </div>
@@ -1871,6 +2228,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         isOpen={showOnlineGateway}
         amount={onlineBookingAmount || finalPayable}
         serviceName={service.name}
+        bookingId={draftBookingIdRef.current || lastBookingId || `bk_${Date.now()}`}
         customerName={profile?.fullName || 'Customer'}
         customerPhone={contactPhone || profile?.phoneNumber || profile?.mobile || ''}
         customerEmail={contactEmail || profile?.email || ''}
@@ -2094,6 +2452,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           <MessageCircle size={14} /> Share on WhatsApp
                         </a>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => setIsSuccessSupportOpen(true)}
+                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-slate-200 cursor-pointer"
+                      >
+                        <MessageSquare size={14} className="text-blue-600" />
+                        Need Help? Chat with Priority Support
+                      </button>
                     </>
                   );
                 })()}
@@ -2113,6 +2480,25 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           </div>
         )}
       </AnimatePresence>
+
+      {/* Unified Priority Support Chat Modal */}
+      <SupportChatModal
+        isOpen={isSuccessSupportOpen}
+        onClose={() => setIsSuccessSupportOpen(false)}
+        booking={{
+          id: lastBookingId || `bk_${Date.now()}`,
+          serviceId: service.id,
+          serviceName: service.name,
+          customerUid: (auth.currentUser as any)?.uid || 'customer',
+          customerId: (auth.currentUser as any)?.uid || 'customer',
+          status: 'pending',
+          totalPrice: finalPayable,
+          scheduledAt: date ? new Date(`${date}T${time}`) : new Date(),
+          address,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any}
+      />
     </div>
   );
 }

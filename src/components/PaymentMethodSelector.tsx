@@ -465,7 +465,7 @@ export default function PaymentMethodSelector({
 
                   <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500">
                     <Lock size={12} className="text-emerald-600 shrink-0" />
-                    <span>Card details will be processed securely via Cashfree / PCI-DSS Gateway</span>
+                    <span>Card details will be processed securely via Razorpay / PCI-DSS Gateway</span>
                   </div>
                 </motion.div>
               )}

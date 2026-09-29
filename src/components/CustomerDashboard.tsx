@@ -12,6 +12,7 @@ import {
   updateDoc,
   doc,
   Timestamp,
+  serverTimestamp,
   addDoc,
   deleteField,
 } from "firebase/firestore";
@@ -39,6 +40,9 @@ import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
 import { WarrantySupportModal } from "./WarrantySupportModal";
+import SupportChatModal from "./SupportChatModal";
+import CancellationModal from "./CancellationModal";
+import { getCancellationSecondsRemaining } from "../utils/cancellation";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import {
@@ -62,6 +66,7 @@ import {
   Sparkles,
   CreditCard,
   X,
+  Bell,
 } from "lucide-react";
 
 const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
@@ -578,6 +583,8 @@ export default function CustomerDashboard({
 
   // Modal and action states
   const [showSuccessModal, setShowSuccessModal] = useState<string | null>(null);
+  const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+  const [liveNowMs, setLiveNowMs] = useState<number>(Date.now());
   const [finalizingBooking, setFinalizingBooking] = useState<Booking | null>(null);
   const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -824,7 +831,95 @@ export default function CustomerDashboard({
   const handleInitiateSupport = (bookingId: string) => {
     const found = bookings.find((b) => b.id === bookingId);
     if (found) {
-      setSelectedSupportBooking(found);
+      setActiveBookingChat(found);
+    }
+  };
+
+  // Ecosystem State Sync: Global open listener for support/messages window
+  useEffect(() => {
+    (window as any).__openSupportChat = (bookingOrId: Booking | string) => {
+      if (typeof bookingOrId === "object" && bookingOrId !== null) {
+        setActiveBookingChat(bookingOrId);
+      } else if (typeof bookingOrId === "string") {
+        const found = bookings.find((b) => b.id === bookingOrId);
+        if (found) {
+          setActiveBookingChat(found);
+        } else {
+          setActiveBookingChat({
+            id: bookingOrId,
+            serviceName: "Zomindia Service",
+            totalPrice: 345,
+            status: "pending",
+          } as any);
+        }
+      }
+    };
+    (window as any).__openCustomerChat = (bookingOrId: Booking | string) => {
+      (window as any).__openSupportChat?.(bookingOrId);
+    };
+    (window as any).__openCancellationModal = (booking: Booking) => {
+      setCancellingBooking(booking);
+    };
+    return () => {
+      delete (window as any).__openSupportChat;
+      delete (window as any).__openCustomerChat;
+      delete (window as any).__openCancellationModal;
+    };
+  }, [bookings]);
+
+  // 1-second live countdown ticker for grace periods
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLiveNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleCancelBooking = (booking: Booking) => {
+    setCancellingBooking(booking);
+  };
+
+  const handleConfirmCancel = async (booking: Booking, reason: string) => {
+    const isoNow = new Date().toISOString();
+
+    // 1. Optimistically update local state immediately
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === booking.id
+          ? {
+              ...b,
+              status: "cancelled",
+              cancellationReason: reason,
+              cancelledAt: isoNow,
+              updatedAt: isoNow,
+            }
+          : b
+      )
+    );
+
+    // 2. Atomic Firestore update
+    await updateDoc(doc(db, "bookings", booking.id), {
+      status: "cancelled",
+      cancellationReason: reason,
+      cancelledAt: isoNow,
+      updatedAt: serverTimestamp(),
+    });
+
+    // 3. Activity / Audit notification
+    try {
+      await addDoc(collection(db, "notifications"), {
+        userId: booking.customerUid || booking.customerId || profile?.uid || "user",
+        title: "Booking Cancelled",
+        message: `Your booking #${booking.id.slice(-6).toUpperCase()} was cancelled: ${reason}`,
+        type: "booking_cancelled",
+        bookingId: booking.id,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {}
+
+    if ((window as any).__showToast) {
+      (window as any).__showToast("Booking cancelled successfully.");
     }
   };
 
@@ -1800,6 +1895,43 @@ export default function CustomerDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
+      {/* Test Notification Toast Trigger (Preview/Dev Banner) */}
+      <div className="mb-6 flex items-center justify-between gap-3 bg-white border border-slate-200/90 p-3 sm:p-4 rounded-2xl shadow-xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+            <Bell size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                Notification System
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Auto-Dismiss 4s • Max Stack: 1
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+              Click to preview sliding top floating notification toast & chime
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof (window as any).__triggerTestNotification === "function") {
+              (window as any).__triggerTestNotification();
+            } else if (typeof (window as any).__showToast === "function") {
+              (window as any).__showToast("Notification toast triggered!");
+            }
+          }}
+          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer shrink-0"
+          title="Preview Top Notification Toast"
+        >
+          <span>🔔 Test Notification Toast</span>
+        </button>
+      </div>
+
       {/* 1. Global PWA Install Banner */}
       {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
@@ -2018,6 +2150,7 @@ export default function CustomerDashboard({
                     onDownloadInvoice={handleDownloadInvoice}
                     onSupport={(id) => handleInitiateSupport(id)}
                     onReschedule={handleReschedule}
+                    onCancel={handleCancelBooking}
                     routingCallBookingId={routingCallBookingId}
                   />
                 );
@@ -3500,11 +3633,26 @@ export default function CustomerDashboard({
 
       <AnimatePresence>
         {activeBookingChat && (
-          <ChatWindow
+          <SupportChatModal
             key={`active-booking-chat-${activeBookingChat.id}`}
+            isOpen={!!activeBookingChat}
             booking={activeBookingChat}
-            otherUser={partners[activeBookingChat.partnerId!] || null}
+            otherUser={activeBookingChat.partnerId ? partners[activeBookingChat.partnerId] || null : null}
             onClose={() => setActiveBookingChat(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {cancellingBooking && (
+          <CancellationModal
+            key={`cancelling-booking-${cancellingBooking.id}`}
+            isOpen={!!cancellingBooking}
+            onClose={() => setCancellingBooking(null)}
+            booking={cancellingBooking}
+            onConfirmCancel={handleConfirmCancel}
+            secondsRemaining={getCancellationSecondsRemaining(cancellingBooking.createdAt, liveNowMs)}
+            onOpenSupport={(b) => setActiveBookingChat(b)}
           />
         )}
       </AnimatePresence>

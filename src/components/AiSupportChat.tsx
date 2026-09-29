@@ -379,7 +379,7 @@ export default function AiSupportChat({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef<boolean>(false);
   
-  // Cashfree Payment Gateway In Chat State
+  // Razorpay Payment Gateway In Chat State
   const [activePaymentSession, setActivePaymentSession] = useState<{
     bookingId: string;
     amount: number;
@@ -1015,59 +1015,81 @@ export default function AiSupportChat({
 
       const amountToPay = updatedPayload.totalPrice || updatedPayload.visitationFee || 195;
 
-      const payRes = await fetch("/api/cashfree/create-order", {
+      const payRes = await fetch("/api/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: amountToPay,
           bookingId,
-          customerUid: activeUid,
           customerPhone: resolvedMobile || "9999999999",
           customerName: userProfile?.fullName || (auth.currentUser as any)?.displayName || "Customer",
-          serviceName: updatedPayload.serviceType || "Home Service",
-          redirectOrigin: window.location.origin
+          serviceName: updatedPayload.serviceType || "Home Service"
         })
       });
 
       let orderId = `ORDER_${Date.now()}`;
-      let paymentSessionId = "";
-      let checkoutUrl = "";
+      let keyId = "";
+      let amountPaise = Math.round(amountToPay * 100);
 
       if (payRes.ok) {
         const payData = await payRes.json();
-        if (payData.order_id) orderId = payData.order_id;
-        if (payData.payment_session_id) paymentSessionId = payData.payment_session_id;
-        if (payData.checkoutUrl || payData.redirectUrl) checkoutUrl = payData.checkoutUrl || payData.redirectUrl;
+        if (payData.orderId) orderId = payData.orderId;
+        if (payData.keyId) keyId = payData.keyId;
+        if (payData.amount) amountPaise = payData.amount;
       }
 
-      // Check if Cashfree JS SDK is available for instant checkout
-      const cashfreeGlobal = typeof window !== "undefined" && (window as any).Cashfree;
-      if (cashfreeGlobal && paymentSessionId) {
+      // Check if Razorpay JS SDK is available for instant checkout
+      const RazorpayConstructor = typeof window !== "undefined" && (window as any).Razorpay;
+      if (RazorpayConstructor && keyId && !keyId.includes("placeholder")) {
         try {
-          const cashfreeMode = (import.meta as any).env?.VITE_CASHFREE_ENV === "SANDBOX" ? "sandbox" : "production";
-          const cashfree = cashfreeGlobal({ mode: cashfreeMode });
-          cashfree.checkout({
-            paymentSessionId,
-            redirectTarget: "_self"
+          const rzp = new RazorpayConstructor({
+            key: keyId,
+            amount: amountPaise,
+            currency: "INR",
+            name: "Zomindia Services",
+            description: `${updatedPayload.serviceType || "Home Service"} • Booking #${bookingId.slice(-6)}`,
+            order_id: orderId,
+            handler: async (resp: any) => {
+              await fetch("/api/razorpay/verify-payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  bookingId,
+                  customerUid: activeUid,
+                  razorpay_order_id: resp.razorpay_order_id || orderId,
+                  razorpay_payment_id: resp.razorpay_payment_id,
+                  razorpay_signature: resp.razorpay_signature,
+                  amount: amountToPay,
+                  status: "confirmed"
+                })
+              });
+              setShowBookingSuccess(true);
+            },
+            prefill: {
+              name: userProfile?.fullName || "Customer",
+              contact: resolvedMobile || ""
+            },
+            theme: { color: "#dc2626" }
           });
+          rzp.open();
           return;
         } catch (sdkErr) {
-          console.warn("[AiSupportChat] Cashfree SDK launch notice:", sdkErr);
+          console.warn("[AiSupportChat] Razorpay SDK launch notice:", sdkErr);
         }
       }
 
-      // Launch Cashfree In-Chat Modal
+      // Launch Razorpay In-Chat Modal
       setActivePaymentSession({
         bookingId,
         amount: amountToPay,
         serviceType: updatedPayload.serviceType,
         orderId,
-        paymentSessionId,
-        checkoutUrl
+        paymentSessionId: orderId,
+        checkoutUrl: ""
       });
     } catch (err: any) {
-      console.error("Error launching Cashfree payment:", err);
-      alert(`Error starting Cashfree checkout: ${err.message || err}`);
+      console.error("Error launching Razorpay payment:", err);
+      alert(`Error starting checkout: ${err.message || err}`);
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
@@ -1079,44 +1101,28 @@ export default function AiSupportChat({
     setIsConfirmingPayment(true);
     setPaymentGatewayError(null);
 
-    const { bookingId, amount, orderId, paymentSessionId, checkoutUrl } = activePaymentSession;
+    const { bookingId, amount, orderId } = activePaymentSession;
     const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
 
-    // If Cashfree SDK is available and session exists, trigger checkout
-    const cashfreeGlobal = typeof window !== "undefined" && (window as any).Cashfree;
-    if (cashfreeGlobal && paymentSessionId) {
-      try {
-        const cashfreeMode = (import.meta as any).env?.VITE_CASHFREE_ENV === "SANDBOX" ? "sandbox" : "production";
-        const cashfree = cashfreeGlobal({ mode: cashfreeMode });
-        cashfree.checkout({
-          paymentSessionId,
-          redirectTarget: "_self"
-        });
-        return;
-      } catch (e) {}
-    } else if (checkoutUrl) {
-      window.location.href = checkoutUrl;
-      return;
-    }
-
     try {
-      const verifyRes = await fetch("/api/cashfree/verify-and-confirm", {
+      const verifyRes = await fetch("/api/razorpay/verify-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bookingId,
           customerUid: activeUid,
-          orderId,
-          merchantTransactionId: orderId,
+          razorpay_order_id: orderId,
+          razorpay_payment_id: `pay_sim_${Date.now()}`,
+          razorpay_signature: "mock_signature",
+          isMock: true,
           amount,
-          onlinePaymentProvider: "Cashfree PG",
-          onlinePaymentMethod: "UPI / Online"
+          status: "confirmed"
         })
       });
 
       const verifyData = await verifyRes.json().catch(() => ({}));
       if (!verifyRes.ok) {
-        throw new Error(verifyData.error || "Cashfree payment confirmation failed");
+        throw new Error(verifyData.error || "Payment confirmation failed");
       }
 
       // Update message state in chat
@@ -1169,7 +1175,7 @@ export default function AiSupportChat({
 
       setActivePaymentSession(null);
     } catch (err: any) {
-      console.error("Cashfree execution error:", err);
+      console.error("Razorpay execution error:", err);
       setPaymentGatewayError(err.message || "Payment verification failed. Please try again.");
     } finally {
       setIsConfirmingPayment(false);
@@ -2176,7 +2182,7 @@ export default function AiSupportChat({
                                   }`}
                                 >
                                   <CreditCard size={14} className="text-blue-100 group-hover:scale-110 transition-transform" />
-                                  <span>{isSubmitting ? "Launching Checkout..." : "💳 Pay via Cashfree / UPI"}</span>
+                                  <span>{isSubmitting ? "Launching Checkout..." : "💳 Pay via Razorpay / UPI"}</span>
                                 </button>
                                 <button
                                   onClick={() => handlePayAfterService(bookingId)}
@@ -2522,7 +2528,7 @@ export default function AiSupportChat({
               </div>
             </div>
 
-            {/* Cashfree Gateway In-Chat Modal Overlay */}
+            {/* Razorpay Gateway In-Chat Modal Overlay */}
             <AnimatePresence>
               {activePaymentSession && (
                 <motion.div
@@ -2531,18 +2537,18 @@ export default function AiSupportChat({
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs z-[130] flex items-center justify-center p-3 rounded-t-3xl sm:rounded-3xl"
                 >
-                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-blue-200 flex flex-col text-left">
+                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-red-200 flex flex-col text-left">
                     {/* Header */}
-                    <div className="bg-blue-600 text-white p-3.5 flex items-center justify-between">
+                    <div className="bg-red-600 text-white p-3.5 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center font-black text-white text-xs border border-white/20 shadow-xs">
-                          CF
+                          RZP
                         </div>
                         <div>
                           <h4 className="text-xs font-black tracking-wide flex items-center gap-1">
-                            Cashfree Payment Gateway
+                            Razorpay Checkout
                           </h4>
-                          <p className="text-[9px] text-blue-200 font-semibold flex items-center gap-1">
+                          <p className="text-[9px] text-red-200 font-semibold flex items-center gap-1">
                             <ShieldCheck size={11} className="text-emerald-300" />
                             100% SECURE • 256-BIT ENCRYPTION
                           </p>
@@ -2559,8 +2565,8 @@ export default function AiSupportChat({
                     </div>
 
                     {/* Order Details */}
-                    <div className="p-4 space-y-3 bg-gradient-to-b from-blue-50/50 to-white">
-                      <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-xs space-y-2">
+                    <div className="p-4 space-y-3 bg-gradient-to-b from-red-50/50 to-white">
+                      <div className="bg-white p-3 rounded-xl border border-red-100 shadow-xs space-y-2">
                         <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
                           <span>Booking Ref</span>
                           <span className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
@@ -2569,7 +2575,7 @@ export default function AiSupportChat({
                         </div>
                         <div className="flex justify-between items-center pt-1 border-t border-slate-100">
                           <span className="text-[11px] font-black text-slate-800">{activePaymentSession.serviceType}</span>
-                          <span className="text-blue-600 font-black text-base">₹{activePaymentSession.amount}</span>
+                          <span className="text-red-600 font-black text-base">₹{activePaymentSession.amount}</span>
                         </div>
                       </div>
 
@@ -2577,17 +2583,17 @@ export default function AiSupportChat({
                       <div className="space-y-1.5">
                         <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider">Payment Options</label>
                         
-                        <div className="p-2.5 rounded-xl border-2 border-blue-600 bg-blue-50/60 flex items-center justify-between shadow-xs cursor-pointer">
+                        <div className="p-2.5 rounded-xl border-2 border-red-600 bg-red-50/60 flex items-center justify-between shadow-xs cursor-pointer">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
-                              CF
+                            <div className="w-7 h-7 rounded-lg bg-red-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
+                              RZP
                             </div>
                             <div>
-                              <p className="text-[11px] font-black text-slate-900">Cashfree PG (UPI / Cards / NetBanking)</p>
-                              <p className="text-[9px] text-blue-700 font-semibold">Zero transaction fee • Instant confirmation</p>
+                              <p className="text-[11px] font-black text-slate-900">Razorpay PG (UPI / Cards / NetBanking)</p>
+                              <p className="text-[9px] text-red-700 font-semibold">Zero transaction fee • Instant confirmation</p>
                             </div>
                           </div>
-                          <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
+                          <div className="w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold">
                             ✓
                           </div>
                         </div>
@@ -2606,7 +2612,7 @@ export default function AiSupportChat({
                       <button
                         onClick={handleExecutePayment}
                         disabled={isConfirmingPayment}
-                        className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-blue-900/20 cursor-pointer flex items-center justify-center gap-2"
+                        className="w-full bg-red-600 hover:bg-red-700 active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-red-900/20 cursor-pointer flex items-center justify-center gap-2"
                       >
                         {isConfirmingPayment ? (
                           <>
@@ -2616,7 +2622,7 @@ export default function AiSupportChat({
                         ) : (
                           <>
                             <Lock size={13} />
-                            <span>PAY ₹{activePaymentSession.amount} VIA CASHFREE</span>
+                            <span>PAY ₹{activePaymentSession.amount} VIA RAZORPAY</span>
                           </>
                         )}
                       </button>

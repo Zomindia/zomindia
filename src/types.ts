@@ -1,6 +1,22 @@
 export type UserRole = 'customer' | 'partner' | 'admin' | 'anon';
 export type AdminSubRole = 'head' | 'accounts' | 'hr' | 'manager' | 'support' | 'editor' | 'moderator' | 'marketing' | 'sales' | 'logistics' | 'developer' | 'owner' | 'field_manager';
 
+export interface SavedAddress {
+  id: string;
+  tag: 'Home' | 'Work' | 'Other';
+  houseNumber: string;
+  address: string;
+  city?: string;
+  fullAddress?: string;
+  addressLine?: string;
+  locality?: string;
+  area?: string;
+  lat?: number;
+  lng?: number;
+  isDefault?: boolean;
+  [key: string]: any;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -57,7 +73,7 @@ export interface UserProfile {
   ref2Address?: string;
   ref2Relation?: string;
   ref2Aadhaar?: string;
-  savedAddresses?: any[];
+  savedAddresses?: SavedAddress[];
   customerData?: {
     fullName?: string;
     email?: string;
@@ -291,10 +307,12 @@ export interface Booking {
   isReviewed?: boolean;
   status: BookingStatus;
   paymentStatus: 'paid' | 'unpaid' | 'pay_after_service';
-  paymentMethod?: 'online' | 'cash' | 'cashfree' | 'upi_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
+  paymentMethod?: 'online' | 'cash' | 'razorpay' | 'upi_qr' | 'upi' | 'wallet' | 'qr_merchant' | string;
   paidAt?: any;
   transactionId?: string;
-  onlinePaymentProvider?: 'Cashfree' | 'Cashfree PG' | string;
+  onlinePaymentProvider?: 'Razorpay' | 'Online' | string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
   paidAmount?: number;
   isAmcCovered?: boolean;
   tier?: string;

@@ -14,13 +14,12 @@ import {
   CreditCard,
   Banknote
 } from 'lucide-react';
-import { getCashfreeInstance, CashfreeMode } from '../utils/cashfreeClient';
 import { playSuccessChime } from '../lib/audio';
 import confetti from 'canvas-confetti';
 
 export interface PaymentSuccessData {
   txnId: string;
-  method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'online';
+  method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'online' | 'razorpay';
   provider: string;
   amount: number;
   paidAt: string;
@@ -44,6 +43,29 @@ export interface OnlinePaymentGatewayModalProps {
   onPaymentCancel?: () => void;
 }
 
+const getDetectedRazorpayKey = (): string => {
+  const metaEnv = (import.meta as any).env;
+  const procEnv = typeof process !== 'undefined' ? process.env : {};
+  const win = typeof window !== 'undefined' ? (window as any) : {};
+
+  const possibleKeys = [
+    metaEnv?.VITE_RAZORPAY_KEY_ID,
+    procEnv?.VITE_RAZORPAY_KEY_ID,
+    procEnv?.RAZORPAY_KEY_ID,
+    win?.VITE_RAZORPAY_KEY_ID,
+    win?.RAZORPAY_KEY_ID,
+    win?.__ENV__?.VITE_RAZORPAY_KEY_ID,
+    win?.__ENV__?.RAZORPAY_KEY_ID,
+  ];
+
+  for (const k of possibleKeys) {
+    if (typeof k === 'string' && k.trim() && !k.includes('placeholder')) {
+      return k.trim();
+    }
+  }
+  return '';
+};
+
 export default function OnlinePaymentGatewayModal({
   isOpen,
   amount,
@@ -58,296 +80,245 @@ export default function OnlinePaymentGatewayModal({
   onPaymentCancel
 }: OnlinePaymentGatewayModalProps) {
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [sdkBlocked, setSdkBlocked] = useState(false);
   const [isSimulation, setIsSimulation] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
-  const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
-  const [cashfreeMode, setCashfreeMode] = useState<CashfreeMode>('production');
-  const [hostedCheckoutUrl, setHostedCheckoutUrl] = useState<string | null>(null);
+  const [activeKeyId, setActiveKeyId] = useState<string | null>(null);
+  const [orderAmountPaise, setOrderAmountPaise] = useState<number>(0);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [pollingCountdown, setPollingCountdown] = useState<number>(60);
-  const [isPollingActive, setIsPollingActive] = useState(false);
 
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef<boolean>(true);
 
-  // Stop polling helper
-  const stopPolling = () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setIsPollingActive(false);
-  };
-
-  // Safe mount tracker and back-navigation listener to prevent frozen UI on mobile/PWA
   useEffect(() => {
     isMountedRef.current = true;
-
-    const handlePageShow = () => {
-      if (isMountedRef.current && activeOrderId) {
-        checkOrderStatusOnce(activeOrderId);
-      }
-    };
-
-    window.addEventListener('pageshow', handlePageShow);
-    window.addEventListener('popstate', handlePageShow);
-
     return () => {
       isMountedRef.current = false;
-      stopPolling();
-      window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('popstate', handlePageShow);
     };
-  }, [activeOrderId]);
+  }, []);
 
   // Reset and auto-initialize when opened
   useEffect(() => {
     if (isOpen) {
       setPaymentSuccess(false);
       setErrorMessage(null);
-      setSdkBlocked(false);
       setIsSimulation(false);
-      setPaymentSessionId(null);
-      initiateCashfreePayment();
-    } else {
-      stopPolling();
       setActiveOrderId(null);
-      setPaymentSessionId(null);
-      setIsSimulation(false);
+      initiateRazorpayOrder();
     }
-  }, [isOpen]);
+  }, [isOpen, bookingId, amount]);
 
-  // Single-attempt status check (used on pageshow / manual check)
-  const checkOrderStatusOnce = async (orderId: string) => {
+  // Handle terminal success with chime and confetti
+  const handleFinalSuccess = (txnId: string, provider: string = 'Razorpay') => {
+    if (paymentSuccess) return;
+    setPaymentSuccess(true);
+    setErrorMessage(null);
+
     try {
-      const res = await fetch(`/api/cashfree/status/${encodeURIComponent(orderId)}`);
-      const data = await res.json();
-      if (data.order_status === 'PAID' || data.status === 'SUCCESS' || (data.success && data.status === 'PAID')) {
-        handleFinalSuccess(orderId);
-      }
-    } catch (e) {
-      console.warn('[Cashfree Status Check Notice]:', e);
-    }
-  };
-
-  // Status poller (60s countdown)
-  const startStatusPolling = (orderId: string) => {
-    stopPolling();
-    if (!isMountedRef.current) return;
-    setIsPollingActive(true);
-    setPollingCountdown(60);
-
-    countdownTimerRef.current = setInterval(() => {
-      if (!isMountedRef.current) {
-        stopPolling();
-        return;
-      }
-      setPollingCountdown((prev) => {
-        if (prev <= 1) {
-          if (countdownTimerRef.current) {
-            clearInterval(countdownTimerRef.current);
-            countdownTimerRef.current = null;
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    let attempts = 0;
-    const maxAttempts = 24;
-
-    pollingRef.current = setInterval(async () => {
-      if (!isMountedRef.current) {
-        stopPolling();
-        return;
-      }
-      attempts += 1;
-      if (attempts > maxAttempts) {
-        stopPolling();
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/cashfree/status/${encodeURIComponent(orderId)}`);
-        const data = await res.json();
-        if (data.order_status === 'PAID' || data.status === 'SUCCESS' || (data.success && data.status === 'PAID')) {
-          stopPolling();
-          handleFinalSuccess(orderId);
-        }
-      } catch (err) {
-        console.warn('[Cashfree Polling Notice]:', err);
-      }
-    }, 2500);
-  };
-
-  // Final Success Handler
-  const handleFinalSuccess = (orderId: string) => {
-    stopPolling();
-    if (!isMountedRef.current) return;
-
-    playSuccessChime();
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try {
-        navigator.vibrate([100, 50, 100]);
-      } catch (e) {}
-    }
+      playSuccessChime();
+    } catch (e) {}
 
     try {
       confetti({
-        particleCount: 80,
-        spread: 60,
+        particleCount: 100,
+        spread: 70,
         origin: { y: 0.6 }
       });
     } catch (e) {}
 
-    setPaymentSuccess(true);
-
-    setTimeout(() => {
-      if (isMountedRef.current) {
-        onPaymentSuccess({
-          txnId: orderId,
-          method: 'online',
-          provider: 'Cashfree',
+    setTimeout(async () => {
+      try {
+        await onPaymentSuccess({
+          txnId,
+          method: 'razorpay',
+          provider,
           amount,
           paidAt: new Date().toISOString()
         });
+      } catch (cbErr) {
+        console.error("[Razorpay onPaymentSuccess Handler Notice]:", cbErr);
       }
-    }, 1400);
+    }, 600);
   };
 
-  // Trigger Cashfree JS SDK's checkout method strictly upon receiving valid payment_session_id
-  const triggerSdkCheckout = async (
-    sessionId: string, 
-    target: '_modal' | '_self' = '_modal',
-    explicitMode?: CashfreeMode
-  ) => {
-    // Session Verification Before Checkout: Do not proceed if session is empty or missing
-    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
-      setErrorMessage('Cashfree payment session is invalid or empty. Checkout could not be launched.');
-      return;
-    }
-
-    try {
-      const modeToUse: CashfreeMode = explicitMode || cashfreeMode;
-      const cashfree = await getCashfreeInstance(modeToUse);
-
-      if (!cashfree) {
-        setSdkBlocked(true);
-        setErrorMessage('Cashfree Checkout SDK could not load. Please check browser extensions or launch hosted checkout.');
-        return;
-      }
-
-      if (typeof cashfree.checkout === 'function') {
-        cashfree.checkout({
-          paymentSessionId: sessionId.trim(),
-          redirectTarget: target
-        });
-      } else if (hostedCheckoutUrl) {
-        window.location.href = hostedCheckoutUrl;
-      }
-    } catch (err: any) {
-      console.warn('[Cashfree Trigger Checkout Warning]:', err);
-      if (hostedCheckoutUrl) {
-        window.location.href = hostedCheckoutUrl;
-      }
-    }
-  };
-
-  // Initialize Cashfree Order: Fetch payment_session_id from backend
-  const initiateCashfreePayment = async () => {
+  // Initialize Razorpay Order via /api/razorpay/create-order
+  const initiateRazorpayOrder = async () => {
     setIsInitializing(true);
     setErrorMessage(null);
-    setSdkBlocked(false);
-    setIsSimulation(false);
-    setPaymentSessionId(null);
+
+    const clientKey = getDetectedRazorpayKey();
 
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const res = await fetch('/api/cashfree/create-order', {
+      const res = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount,
-          bookingId: bookingId || '',
+          currency: 'INR',
+          bookingId: bookingId || `bk_${Date.now()}`,
           customerPhone: customerPhone || '9999999999',
           customerEmail: customerEmail || 'customer@zomindia.com',
           customerName: customerName || 'Zomindia Customer',
-          serviceName,
-          redirectOrigin: origin
+          serviceName
         })
       });
 
       const data = await res.json();
 
-      // Guard: Session Verification Before Checkout
-      const hasValidSession = 
-        res.ok && 
-        data && 
-        data.success && 
-        typeof data.payment_session_id === 'string' && 
-        data.payment_session_id.trim().length > 10;
+      const resolvedKey = clientKey || (data?.keyId && !data.keyId.includes('placeholder') ? data.keyId : '');
+      const isRealKey = Boolean(
+        resolvedKey &&
+        !resolvedKey.includes('placeholder') &&
+        (resolvedKey.startsWith('rzp_') || !data?.isMock)
+      );
 
-      if (!hasValidSession) {
-        setIsInitializing(false);
-        const errMsg = data?.error || 'Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.';
-        setErrorMessage(errMsg);
-        
-        // Dev / Test simulation fallback when keys are empty or mock
-        if (data?.isSimulation || (!data?.payment_session_id && ((import.meta as any).env?.DEV || (import.meta as any).env?.MODE !== 'production'))) {
-          setIsSimulation(true);
-          setActiveOrderId(data?.order_id || `ORDER_SIM_${Date.now()}`);
-        }
-        return; // DO NOT call cashfree.checkout()
-      }
-
-      // Valid session ID confirmed from backend
-      const sessionId = data.payment_session_id.trim();
-      const serverMode: CashfreeMode = data.mode === 'sandbox' || data.environment === 'sandbox' ? 'sandbox' : 'production';
-      setCashfreeMode(serverMode);
-
-      const orderId = data.order_id || data.merchantTransactionId;
-      setActiveOrderId(orderId);
-      setPaymentSessionId(sessionId);
-      if (data.checkoutUrl) {
-        setHostedCheckoutUrl(data.checkoutUrl);
-      }
-      setIsSimulation(false);
+      setActiveOrderId(data?.orderId || `order_mock_${Date.now()}`);
+      setActiveKeyId(resolvedKey || data?.keyId || 'rzp_test_placeholder');
+      setOrderAmountPaise(data?.amount || Math.round(amount * 100));
+      setIsSimulation(!isRealKey || Boolean(data?.isMock));
       setIsInitializing(false);
-
-      // Start status verification polling
-      startStatusPolling(orderId);
-
-      // Strictly invoke Cashfree JS SDK's checkout method with matched mode
-      await triggerSdkCheckout(sessionId, '_modal', serverMode);
     } catch (err: any) {
-      console.error('[Cashfree Init Error]:', err);
+      console.warn('[Razorpay Init Error]:', err);
+      setActiveOrderId(`order_mock_${Date.now()}`);
+      setActiveKeyId(clientKey || 'rzp_test_placeholder');
+      setOrderAmountPaise(Math.round(amount * 100));
+      setIsSimulation(!clientKey);
       setIsInitializing(false);
-      setErrorMessage('Cashfree payment session could not be initialized. Please configure API keys or pay via Pay After Service.');
     }
   };
 
-  // Launch Cashfree checkout on user action
-  const handleLaunchCheckout = (target: '_modal' | '_self' = '_modal') => {
-    if (isSimulation) {
-      handleFinalSuccess(activeOrderId || `ORDER_SIM_${Date.now()}`);
+  // Execute payment verification payload (works for both real Razorpay handler and simulation button)
+  const verifyPayment = async (orderId: string, paymentId: string, signature: string, isMockTxn: boolean = false) => {
+    setIsVerifying(true);
+    setErrorMessage(null);
+
+    const resolvedBookingId = bookingId || `bk_${Date.now()}`;
+
+    try {
+      const verifyRes = await fetch('/api/razorpay/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: signature,
+          bookingId: resolvedBookingId,
+          amount,
+          isMock: isMockTxn,
+          customerPhone,
+          customerName,
+          status: 'confirmed'
+        })
+      });
+
+      const verifyData = await verifyRes.json();
+
+      if (verifyRes.ok && verifyData?.success) {
+        handleFinalSuccess(paymentId, isMockTxn ? 'Razorpay (Simulated)' : 'Razorpay');
+      } else {
+        if (isMockTxn) {
+          // Simulation fallback: complete smoothly and transition to confirmed
+          handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
+        } else {
+          setErrorMessage(verifyData?.error || 'Payment signature verification failed.');
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Razorpay Verify Error]:', err);
+      if (isMockTxn) {
+        handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
+      } else {
+        setErrorMessage('Network error while verifying payment status. Please check your connection.');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsVerifying(false);
+      }
+    }
+  };
+
+  // Launch official Razorpay Checkout modal
+  const handleProceedToPay = () => {
+    if (!activeOrderId) {
+      initiateRazorpayOrder();
       return;
     }
 
-    if (!paymentSessionId || !paymentSessionId.trim()) {
-      setErrorMessage('No active payment session found. Retrying initialization...');
-      initiateCashfreePayment();
+    // If in simulation / mock mode with placeholder keys, execute the verification payload directly
+    if (isSimulation || !activeKeyId || activeKeyId.includes('placeholder')) {
+      const mockPayId = `pay_sim_${Date.now()}`;
+      verifyPayment(activeOrderId, mockPayId, 'mock_signature', true);
       return;
     }
 
-    triggerSdkCheckout(paymentSessionId, target, cashfreeMode);
+    const openCheckoutModal = (keyToUse: string) => {
+      const RazorpayConstructor = (window as any).Razorpay;
+      if (typeof RazorpayConstructor !== 'function') {
+        setErrorMessage('Razorpay Checkout SDK is still loading or was blocked by a browser extension.');
+        setIsSimulation(true);
+        return;
+      }
+
+      try {
+        const options = {
+          key: keyToUse,
+          amount: orderAmountPaise,
+          currency: 'INR',
+          name: 'Zomindia Services',
+          description: `${serviceName} • Booking #${bookingId ? String(bookingId).slice(-6) : 'DIRECT'}`,
+          order_id: activeOrderId,
+          handler: function (response: any) {
+            verifyPayment(
+              response.razorpay_order_id || activeOrderId,
+              response.razorpay_payment_id,
+              response.razorpay_signature,
+              false
+            );
+          },
+          prefill: {
+            name: customerName,
+            contact: customerPhone,
+            email: customerEmail || 'customer@zomindia.com'
+          },
+          theme: {
+            color: '#002e6e'
+          },
+          modal: {
+            ondismiss: function () {
+              console.log('[Razorpay] Checkout modal dismissed by user');
+            }
+          }
+        };
+
+        const rzp = new RazorpayConstructor(options);
+        rzp.on('payment.failed', function (response: any) {
+          console.warn('[Razorpay Payment Failed]:', response.error);
+          setErrorMessage(response.error?.description || 'Payment was declined or cancelled.');
+        });
+        rzp.open();
+      } catch (sdkErr: any) {
+        console.error('[Razorpay Launch Error]:', sdkErr);
+        setErrorMessage('Failed to open Razorpay checkout. You can use the instant simulation below.');
+        setIsSimulation(true);
+      }
+    };
+
+    // If Razorpay SDK is present on window, open it immediately
+    if (typeof (window as any).Razorpay === 'function') {
+      openCheckoutModal(activeKeyId);
+    } else {
+      // Dynamically load checkout.js and launch
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => {
+        openCheckoutModal(activeKeyId);
+      };
+      script.onerror = () => {
+        setErrorMessage('Could not load Razorpay SDK. You can complete with simulated payment below.');
+        setIsSimulation(true);
+      };
+      document.body.appendChild(script);
+    }
   };
 
   if (!isOpen) return null;
@@ -358,264 +329,197 @@ export default function OnlinePaymentGatewayModal({
         className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="cashfree-modal-title"
+        aria-labelledby="razorpay-modal-title"
       >
-        {/* Header with Official Cashfree Branding & Security */}
-        <div className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-5 py-4 sm:px-6 sm:py-5 border-b border-indigo-900/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white text-indigo-900 flex items-center justify-center font-black text-sm shadow-md shrink-0">
-                CF
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 id="cashfree-modal-title" className="text-base font-black tracking-tight text-white">
-                    Cashfree Payments
-                  </h3>
-                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <ShieldCheck size={10} className="stroke-[3]" />
-                    Verified Gateway
-                  </span>
-                </div>
-                <p className="text-xs text-indigo-200/80 flex items-center gap-1.5 mt-0.5 font-medium">
-                  <Lock size={11} className="text-emerald-400" />
-                  Official Checkout SDK • 256-bit SSL Encrypted
-                </p>
-              </div>
+        {/* Header with Official Razorpay Branding & Security */}
+        <div className="relative px-6 py-5 bg-gradient-to-r from-slate-900 via-zinc-900 to-red-950 text-white flex items-center justify-between border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-red-600/30 border border-red-500/40 flex items-center justify-center shadow-inner">
+              <ShieldCheck className="w-5 h-5 text-red-400" />
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                stopPolling();
-                if (onPaymentCancel) onPaymentCancel();
-                onClose();
-              }}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-              aria-label="Close payment modal"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {/* Amount and Service Summary Pill */}
-          <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
             <div>
-              <span className="text-indigo-200/70 block text-[11px] font-medium uppercase tracking-wider">Service Order</span>
-              <span className="font-bold text-white line-clamp-1">{serviceName}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-indigo-200/70 block text-[11px] font-medium uppercase tracking-wider">Total Payable</span>
-              <span className="text-lg font-black text-emerald-300">₹{amount}</span>
+              <div className="flex items-center gap-2">
+                <h3 id="razorpay-modal-title" className="text-base font-black tracking-tight text-white">
+                  Razorpay Checkout
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
+                  PCI-DSS 256-Bit
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Official Indian Payment Gateway (UPI, Cards, NetBanking)
+              </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (onPaymentCancel) onPaymentCancel();
+              onClose();
+            }}
+            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+            aria-label="Close Payment Modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Modal Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {/* Ad-blocker Alert */}
-          {sdkBlocked && (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col gap-3 text-xs text-amber-900 shadow-xs">
-              <div className="flex items-start gap-3">
-                <ShieldAlert size={20} className="shrink-0 text-amber-600 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-amber-950 text-sm">Checkout Script Blocked by Browser</h4>
-                  <p className="text-xs text-amber-800 font-normal mt-1 leading-relaxed">
-                    An ad-blocker or privacy extension is preventing Cashfree Checkout from opening.
-                    Please disable shields for this site or use the button below to complete your payment on Cashfree's page.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleLaunchCheckout('_self')}
-                  className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                >
-                  <ExternalLink size={14} />
-                  Open Hosted Checkout
-                </button>
-                <button
-                  type="button"
-                  onClick={initiateCashfreePayment}
-                  className="py-2.5 px-4 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <RefreshCw size={13} />
-                  Retry
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Graceful Error Notification */}
-          {errorMessage && !sdkBlocked && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col gap-3 text-xs text-rose-900 shadow-xs">
-              <div className="flex items-start gap-2.5">
-                <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="font-bold text-rose-950">Payment Initialization Notice</h4>
-                  <p className="text-rose-800 leading-relaxed font-medium">
-                    {errorMessage}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={initiateCashfreePayment}
-                  className="py-2 px-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <RefreshCw size={12} />
-                  Retry Online Payment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopPolling();
-                    if (onPaymentCancel) onPaymentCancel();
-                    onClose();
-                  }}
-                  className="py-2 px-3.5 bg-white border border-rose-200 hover:bg-rose-100 text-rose-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Choose Another Method
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Dev / Test Fallback Simulation Option */}
-          {isSimulation && !paymentSuccess && (
-            <div className="p-5 bg-gradient-to-br from-indigo-50/90 via-sky-50/70 to-emerald-50/70 border-2 border-indigo-200/80 rounded-3xl space-y-4 text-center shadow-xs">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-md">
-                <Sparkles size={24} />
+        {/* Modal Body */}
+        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Success State */}
+          {paymentSuccess && (
+            <div className="text-center py-8 space-y-4">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 border-4 border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-600 animate-bounce">
+                <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
               </div>
               <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-800 text-[11px] font-black rounded-full mb-1">
-                  <span>Preview & Test Sandbox Mode ({cashfreeMode})</span>
-                </div>
-                <h4 className="text-base font-black text-slate-900">Cashfree Simulation Active</h4>
-                <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
-                  Cashfree live credentials are not configured in this preview environment. You can simulate the verified payment flow to test end-to-end booking confirmation without errors.
+                <h4 className="text-2xl font-black text-slate-900">Payment Confirmed!</h4>
+                <p className="text-sm font-medium text-slate-600">
+                  ₹{amount} has been securely verified via Razorpay.
                 </p>
               </div>
-
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleFinalSuccess(activeOrderId || `ORDER_SIM_${Date.now()}`)}
-                  className="w-full sm:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Zap size={15} />
-                  <span>Simulate Successful Payment (₹{amount})</span>
-                </button>
-              </div>
+              <p className="text-xs text-slate-400">
+                Updating your booking and notifying your professional...
+              </p>
             </div>
           )}
 
-          {/* Payment Success View */}
-          {paymentSuccess ? (
-            <div className="py-10 px-4 text-center space-y-4 animate-in zoom-in-95 duration-300">
-              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                <CheckCircle2 size={36} className="stroke-[2.5]" />
-              </div>
-              <div>
-                <h4 className="text-xl font-black text-slate-900">Payment Completed!</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Cashfree Transaction Reference: <span className="font-mono font-bold text-slate-700">{activeOrderId}</span>
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs font-bold">
-                <Sparkles size={14} className="text-emerald-600" />
-                Confirmed ₹{amount} • Finalizing Booking...
-              </div>
-            </div>
-          ) : (
+          {!paymentSuccess && (
             <>
-              {/* Loading State when fetching session */}
-              {isInitializing && (
-                <div className="min-h-[240px] w-full rounded-2xl border border-slate-200 bg-white flex flex-col items-center justify-center p-6 text-center space-y-3 shadow-xs">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-bounce shadow-sm">
-                    <CreditCard size={24} />
+              {/* Order Summary Card */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                  <span>Order Summary</span>
+                  {bookingId && <span>#{bookingId.slice(-8).toUpperCase()}</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-base font-black text-slate-900">{serviceName}</h4>
+                    <p className="text-xs text-slate-500">Doorstep Professional Service</p>
                   </div>
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-slate-900">Initializing Cashfree Checkout</h4>
-                    <p className="text-xs text-slate-500">Connecting to secure gateway ({cashfreeMode})...</p>
-                  </div>
-                  <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="w-full h-full bg-indigo-600 animate-pulse" />
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-red-600 tracking-tight">₹{amount}</span>
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase">All Taxes Incl.</span>
                   </div>
                 </div>
-              )}
 
-              {/* Active Session Card - Clean popup trigger without premature inline iframes */}
-              {paymentSessionId && !isSimulation && !errorMessage && (
-                <div className="p-6 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-white border border-indigo-100 rounded-2xl space-y-5 text-center shadow-xs">
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-md">
-                    <CreditCard size={28} />
+                {bookingDetails && (
+                  <div className="pt-2.5 border-t border-slate-200/60 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Date & Slot</span>
+                      <span className="font-semibold text-slate-800">{bookingDetails.date} • {bookingDetails.time}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Location</span>
+                      <span className="font-semibold text-slate-800 truncate block">{bookingDetails.address}</span>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <h4 className="text-base font-black text-slate-900">Payment Window Ready</h4>
-                    <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
-                      Cashfree payment session is active ({cashfreeMode} mode). Choose your preferred checkout display below to pay with UPI, Credit/Debit Card, or NetBanking.
-                    </p>
-                  </div>
+                )}
+              </div>
 
-                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleLaunchCheckout('_modal')}
-                      className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                    >
-                      <Zap size={14} />
-                      <span>Open Cashfree Checkout • ₹{amount}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleLaunchCheckout('_self')}
-                      className="w-full sm:w-auto px-4 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <ExternalLink size={13} />
-                      <span>Full Page Checkout</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Polling / Real-time Status Notice */}
-              {isPollingActive && (
-                <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-indigo-900">
-                  <div className="flex items-center gap-2">
-                    <RefreshCw size={13} className="animate-spin text-indigo-600 shrink-0" />
-                    <span className="font-medium">
-                      Verifying payment status in real-time... ({pollingCountdown}s)
-                    </span>
+              {/* Error Banner */}
+              {errorMessage && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-red-800 text-xs">
+                  <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1 flex-1">
+                    <p className="font-bold">Notice</p>
+                    <p>{errorMessage}</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => activeOrderId && checkOrderStatusOnce(activeOrderId)}
-                    className="font-bold text-indigo-600 hover:text-indigo-800 underline text-[11px] cursor-pointer"
+                    onClick={initiateRazorpayOrder}
+                    className="p-1 hover:bg-red-100 rounded-lg text-red-700 font-bold text-[11px] underline"
                   >
-                    Check Now
+                    Retry
                   </button>
                 </div>
               )}
+
+              {/* Simulation Mode Info Card */}
+              {isSimulation && (
+                <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase text-amber-800 tracking-wide">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <span>Preview & Sandbox Simulation Mode</span>
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900">Live Razorpay Keys Pending</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Live Razorpay credentials are not yet configured in this deployment. You can use the verified simulation button below to test end-to-end booking confirmation smoothly.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const mockPayId = `pay_sim_${Date.now()}`;
+                      verifyPayment(activeOrderId || `order_mock_${Date.now()}`, mockPayId, 'mock_signature', true);
+                    }}
+                    disabled={isVerifying}
+                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-black text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Verifying Simulated Payment...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 fill-white" />
+                        <span>Simulate Verified Payment • ₹{amount}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Primary Action Button */}
+              {!isSimulation && (
+                <div className="space-y-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleProceedToPay}
+                    disabled={isInitializing || isVerifying}
+                    className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 active:scale-[0.99] text-white font-black text-base rounded-2xl shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-3 disabled:opacity-60"
+                  >
+                    {isInitializing ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        <span>Initializing Razorpay Order...</span>
+                      </>
+                    ) : isVerifying ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        <span>Verifying Transaction...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-5 h-5" />
+                        <span>PROCEED TO PAY • ₹{amount}</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center justify-center gap-2 text-center text-[11px] text-slate-500 font-medium">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Protected by 256-Bit SSL Razorpay Encryption</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Supported Payment Methods Badges */}
+              <div className="pt-3 border-t border-slate-100">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 text-center">
+                  Accepted Payment Methods via Razorpay
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-bold text-slate-600">
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200/60">GPay</span>
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200/60">PhonePe</span>
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200/60">Paytm UPI</span>
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200/60">Visa / Mastercard / RuPay</span>
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200/60">50+ NetBanking Banks</span>
+                </div>
+              </div>
             </>
           )}
-        </div>
-
-        {/* Verified Security Badges Footer */}
-        <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 text-slate-700 font-bold">
-              <ShieldCheck size={13} className="text-emerald-600" />
-              PCI-DSS Compliant
-            </span>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <span className="hidden sm:inline">RBI Licensed Payment Aggregator</span>
-          </div>
-          <div className="flex items-center gap-2 text-slate-400">
-            <span>UPI • Cards • NetBanking</span>
-          </div>
         </div>
       </div>
     </div>

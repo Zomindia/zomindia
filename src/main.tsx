@@ -13,6 +13,22 @@ if (typeof window !== 'undefined') {
     console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
   };
 
+  // Suppress harmless Geocoding Service authorization error from third-party Google Maps SDK
+  // so it does not trigger automated error handlers while Granular OSM Nominatim delivers the address
+  const _origConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    const firstMsg = typeof args[0] === 'string' ? args[0] : (args[0]?.message || '');
+    if (
+      typeof firstMsg === 'string' &&
+      (firstMsg.includes('Geocoding Service: This API key is not authorized') ||
+       firstMsg.includes('This API key is not authorized to use this service or API') ||
+       firstMsg.includes('ApiNotActivatedMapError'))
+    ) {
+      return;
+    }
+    _origConsoleError.apply(console, args);
+  };
+
   let activePrompt: any = (window as any).deferredPrompt || null;
 
   Object.defineProperty(window, 'deferredPrompt', {

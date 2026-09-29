@@ -1975,7 +1975,7 @@ export default function AdminDashboard({
                                 </span>
                                 <span className="font-black text-emerald-600 uppercase tracking-wider text-[9px]">
                                   {b.paymentStatus === "paid"
-                                    ? (b.paymentMethod === "upi_qr" || b.paymentMethod === "dynamic_qr" ? "PAID VIA DYNAMIC QR" : (b.paymentMethod === "online" ? "PAID VIA CASHFREE PG" : "SETTLED / PAID"))
+                                    ? (b.paymentMethod === "upi_qr" || b.paymentMethod === "dynamic_qr" ? "PAID VIA DYNAMIC QR" : (b.paymentMethod === "online" ? "PAID VIA RAZORPAY PG" : "SETTLED / PAID"))
                                     : "PENDING"}
                                 </span>
                               </div>
@@ -1986,7 +1986,7 @@ export default function AdminDashboard({
                                 <span className="font-extrabold text-blue-700 uppercase tracking-wide text-[10px]">
                                   {b.paymentMethod === "upi_qr" || b.paymentMethod === "dynamic_qr" 
                                     ? "Dynamic UPI QR" 
-                                    : (b.paymentMethod === "online" ? "Cashfree Gateway" : (b.paymentMethod || "Online"))}
+                                    : (b.paymentMethod === "online" || b.paymentMethod === "razorpay" ? "Razorpay Gateway" : (b.paymentMethod || "Online"))}
                                 </span>
                               </div>
                             </div>

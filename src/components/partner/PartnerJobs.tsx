@@ -59,7 +59,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
       setCoords({ lat, lng });
       // If address looks like coordinates, try to reverse geocode it to get a real address
       if (address.includes('Location detected') || address.includes('[') || (address.includes(',') && !isNaN(parseFloat(address.split(',')[0])))) {
-        const fetchNominatimAndGoogle = async () => {
+        const fetchAddressFromCoords = async () => {
           let resolved = '';
           try {
             const res = await reverseGeocode(lat, lng);
@@ -71,7 +71,7 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
           setLocalAddress(resolved || address);
         };
 
-        fetchNominatimAndGoogle();
+        fetchAddressFromCoords();
       } else {
         setLocalAddress(address);
       }
@@ -94,10 +94,8 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
           }
         }
       } catch (err) {
-        console.warn("OSM address search failure, trying Google backup:", err);
+        console.warn("OSM address search failure:", err);
       }
-
-      // 2. Google Maps fallback bypassed to avoid API authorization logs.
 
       if (resolvedLoc) {
         setCoords(resolvedLoc);
@@ -711,14 +709,14 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [qrChecking, setQrChecking] = useState<boolean>(false);
   const [qrSuccessMessage, setQrSuccessMessage] = useState<string | null>(null);
 
-  // Cashfree Dynamic QR Real-Time Polling Effect
+  // Dynamic QR Real-Time Polling Effect
   useEffect(() => {
     if (!showPartnerQRId || !activeQrTxnId) return;
 
     let isMounted = true;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/cashfree/status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(showPartnerQRId)}`);
+        const res = await fetch(`/api/razorpay/qr-status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(showPartnerQRId)}`);
         const data = await res.json();
         const isPaid = (data.order_status === 'PAID') || (data.status === 'SUCCESS') || (data.success === true);
         if (isMounted && data && isPaid) {
@@ -732,7 +730,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           }, 3000);
         }
       } catch (e) {
-        console.warn("[Cashfree QR Polling Notice]:", e);
+        console.warn("[QR Polling Notice]:", e);
       }
     }, 3000);
 
@@ -748,7 +746,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     setQrSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/cashfree/qr', {
+      const res = await fetch('/api/razorpay/qr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -783,7 +781,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     if (!activeQrTxnId) return;
     setQrChecking(true);
     try {
-      const res = await fetch(`/api/cashfree/status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(bookingId)}`);
+      const res = await fetch(`/api/razorpay/qr-status/${encodeURIComponent(activeQrTxnId)}?bookingId=${encodeURIComponent(bookingId)}`);
       const data = await res.json();
       const isPaid = (data.order_status === 'PAID') || (data.status === 'SUCCESS') || (data.success === true);
       if (isPaid) {
@@ -2048,16 +2046,17 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                                 onClick={async () => {
                                   if (confirm("Confirm payment received directly from customer?")) {
                                     try {
-                                      const res = await fetch('/api/cashfree/verify-and-confirm', {
+                                      const res = await fetch('/api/razorpay/verify-payment', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
                                           bookingId: booking.id,
                                           customerUid: booking.customerId || booking.customerUid || (booking as any).userId || '',
-                                          merchantTransactionId: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
-                                          orderId: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
+                                          razorpay_order_id: activeQrTxnId || `QR_SETTLE_${Date.now()}`,
+                                          razorpay_payment_id: `pay_qr_${Date.now()}`,
+                                          razorpay_signature: 'mock_signature',
+                                          isMock: true,
                                           amount: booking.totalPrice,
-                                          paymentMethod: 'upi_qr',
                                           status: 'completed'
                                         })
                                       });
