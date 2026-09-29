@@ -215,9 +215,6 @@ service cloud.firestore {
              (!('completedAt' in data) || (data.completedAt is timestamp || data.completedAt is string || data.completedAt == null)) &&
              (!('createdAt' in data) || (data.createdAt is timestamp || data.createdAt is string)) &&
              (!('updatedAt' in data) || (data.updatedAt is timestamp || data.updatedAt is string)) &&
-             (!('cashfreeOrderId' in data) || (data.cashfreeOrderId is string || data.cashfreeOrderId == null)) &&
-             (!('cashfreePaymentSessionId' in data) || (data.cashfreePaymentSessionId is string || data.cashfreePaymentSessionId == null)) &&
-             (!('cashfreeInitiatedAt' in data) || (data.cashfreeInitiatedAt is timestamp || data.cashfreeInitiatedAt is string || data.cashfreeInitiatedAt == null)) &&
              (!('paymentIntentId' in data) || (data.paymentIntentId is string || data.paymentIntentId == null)) &&
              (!('rating' in data) || (data.rating is number || data.rating == null)) &&
              (!('review' in data) || (data.review is string || data.review == null)) &&

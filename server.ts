@@ -510,7 +510,7 @@ async function startServer() {
   // ==========================================
 
   // 1. Create Order Endpoint (POST /api/razorpay/create-order)
-  app.post(["/api/razorpay/create-order", "/api/cashfree/create-order"], async (req, res) => {
+  app.post(["/api/razorpay/create-order"], async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const {
@@ -634,7 +634,7 @@ async function startServer() {
   });
 
   // Razorpay Gateway Config
-  app.get(["/api/razorpay/config", "/api/cashfree/config"], (_req, res) => {
+  app.get(["/api/razorpay/config"], (_req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.json({
       success: true,
@@ -644,7 +644,7 @@ async function startServer() {
   });
 
   // 2. Verify Payment Endpoint (POST /api/razorpay/verify-payment)
-  app.post(["/api/razorpay/verify-payment", "/api/cashfree/verify-and-confirm", "/api/cashfree/status"], async (req, res) => {
+  app.post(["/api/razorpay/verify-payment"], async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const {
@@ -1024,7 +1024,7 @@ async function startServer() {
   });
 
   // Generate Dynamic Razorpay / UPI QR Code Endpoint
-  app.post(["/api/razorpay/qr", "/api/cashfree/qr"], async (req, res) => {
+  app.post(["/api/razorpay/qr"], async (req, res) => {
     try {
       const { bookingId, amount, customerUid, customerPhone } = req.body;
       if (!amount || !bookingId) {
@@ -1062,7 +1062,7 @@ async function startServer() {
   });
 
   // Dynamic QR Status Polling Endpoint
-  app.get(["/api/razorpay/qr-status/:orderId", "/api/cashfree/status/:orderId"], async (req, res) => {
+  app.get(["/api/razorpay/qr-status/:orderId"], async (req, res) => {
     try {
       const orderId = req.params.orderId;
       const bookingId = (req.query.bookingId as string) || "";
