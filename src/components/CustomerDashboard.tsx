@@ -1895,43 +1895,6 @@ export default function CustomerDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
-      {/* Test Notification Toast Trigger (Preview/Dev Banner) */}
-      <div className="mb-6 flex items-center justify-between gap-3 bg-white border border-slate-200/90 p-3 sm:p-4 rounded-2xl shadow-xs">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
-            <Bell size={18} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Notification System
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Auto-Dismiss 4s • Max Stack: 1
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-              Click to preview sliding top floating notification toast & chime
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof (window as any).__triggerTestNotification === "function") {
-              (window as any).__triggerTestNotification();
-            } else if (typeof (window as any).__showToast === "function") {
-              (window as any).__showToast("Notification toast triggered!");
-            }
-          }}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer shrink-0"
-          title="Preview Top Notification Toast"
-        >
-          <span>🔔 Test Notification Toast</span>
-        </button>
-      </div>
-
       {/* 1. Global PWA Install Banner */}
       {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
@@ -2149,6 +2112,11 @@ export default function CustomerDashboard({
                     onChatPartner={(b) => setActiveBookingChat(b)}
                     onDownloadInvoice={handleDownloadInvoice}
                     onSupport={(id) => handleInitiateSupport(id)}
+                    onBookAgain={(srv) => {
+                      if (onServiceSelect && srv) {
+                        onServiceSelect(srv.id || (srv as any));
+                      }
+                    }}
                     onReschedule={handleReschedule}
                     onCancel={handleCancelBooking}
                     routingCallBookingId={routingCallBookingId}

@@ -257,9 +257,11 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   const serviceName = service?.name || booking.serviceName || "Professional Service";
   const rawStatus = (booking.status || "pending").toLowerCase();
 
-  // Status breakdown
+  const bookingShortCode = (booking.id || "").slice(-6).toUpperCase();
+
+  // Status breakdown & categorization
   const isCompleted = ["completed", "finalized", "closed"].includes(rawStatus);
-  const isCancelled = rawStatus === "cancelled";
+  const isCancelled = ["cancelled", "canceled", "rejected", "declined"].includes(rawStatus);
   const isInProgress = rawStatus === "in_progress";
   const isArrived = rawStatus === "arrived";
   const isOnTheWay =
@@ -267,19 +269,35 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
     rawStatus === "in_transit" ||
     rawStatus === "pro_en_route";
   const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
-  const isSearchingOrPending =
-    [
-      "pending",
-      "searching",
-      "pending_acceptance",
-      "pending_assignment",
-      "pending_parts",
-      "pending_checkout",
-      "confirmed_pay_after_service",
-    ].includes(rawStatus) && !booking.partnerId;
-
+  
   // Partner assignment status
   const hasPartner = !!(booking.partnerId || partnerUser);
+
+  // Searching or pending assignment
+  const isSearchingOrPending =
+    !hasPartner &&
+    !isCompleted &&
+    !isCancelled &&
+    (
+      [
+        "pending",
+        "searching",
+        "pending_acceptance",
+        "pending_assignment",
+        "pending_parts",
+        "pending_checkout",
+        "confirmed_pay_after_service",
+      ].includes(rawStatus) ||
+      !rawStatus ||
+      rawStatus === "undefined"
+    );
+
+  // Fallback state: if card doesn't fall cleanly into A, B, C, or D
+  const isFallbackState =
+    !isSearchingOrPending &&
+    !((hasPartner || isInProgress) && !isCompleted && !isCancelled) &&
+    !isCompleted &&
+    !isCancelled;
 
   // Dynamic OTP calculation
   const otp = propOtpCode || booking.serviceOtp || booking.startOTP;
@@ -407,7 +425,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      className="bg-white rounded-2xl border border-slate-200/90 hover:border-slate-300 p-4 sm:p-5 relative overflow-hidden transition-all duration-200 shadow-xs hover:shadow-sm"
+      className="bg-white rounded-2xl border border-slate-200/90 hover:border-slate-300 p-3 sm:p-3.5 relative overflow-hidden transition-all duration-200 shadow-xs hover:shadow-sm"
     >
       {/* Privacy Shield Active Call Routing Overlay */}
       {routingCallBookingId === booking.id && (
@@ -424,118 +442,149 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
         </div>
       )}
 
-      {/* 1. Header: Large Service Title + Category Icon + Status Badge */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
-            {getCategoryIcon(serviceName, service?.categoryId || booking.serviceId)}
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-snug truncate">
-              {serviceName}
-            </h3>
-            {booking.isAmcBooking && (
-              <span className="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 border border-purple-200 mt-0.5">
-                AMC Plan
-              </span>
-            )}
-          </div>
+      {/* 1. Ultra-Sleek Top Row: Service Name (Upper) + subtle ID badge on left, Compact Pulsing Status badge + Close (✕) on right */}
+      <div 
+        onClick={toggleExpanded}
+        className="flex items-center justify-between gap-2 cursor-pointer group/hdr select-none"
+        title="Click to view booking details"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-black text-slate-900 text-xs sm:text-sm tracking-wide uppercase truncate group-hover/hdr:text-blue-700 transition-colors">
+            {serviceName}
+          </h3>
+          <span className="font-mono text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0">
+            #{bookingShortCode}
+          </span>
+          {booking.isAmcBooking && (
+            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
+              AMC
+            </span>
+          )}
         </div>
 
-        {/* Status Badge */}
-        <div className="shrink-0">
+        {/* Compact Right Status Badge & Close button */}
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           {isSearchingOrPending && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1.5 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-900 border border-amber-300 inline-flex items-center gap-1.5 animate-pulse">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
               Assigning Pro
             </span>
           )}
 
           {hasPartner && isAssigned && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1.5">
-              <User size={12} className="text-blue-600 shrink-0" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
               Pro Assigned
             </span>
           )}
 
           {hasPartner && isOnTheWay && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-300 inline-flex items-center gap-1.5 animate-pulse">
-              <Navigation size={12} className="text-sky-600 shrink-0" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-sky-50 text-sky-800 border border-sky-300 inline-flex items-center gap-1 animate-pulse">
+              <Navigation size={10} className="text-sky-600 shrink-0" />
               En Route
             </span>
           )}
 
           {hasPartner && isArrived && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 inline-flex items-center gap-1.5">
-              <MapPin size={12} className="text-indigo-600 shrink-0" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 inline-flex items-center gap-1">
+              <MapPin size={10} className="text-indigo-600 shrink-0" />
               Arrived
             </span>
           )}
 
           {isInProgress && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               In Progress
             </span>
           )}
 
           {isCompleted && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
-              <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
               Completed
             </span>
           )}
 
           {isCancelled && (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
-              <XCircle size={12} className="text-rose-500 shrink-0" />
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+              <XCircle size={11} className="text-rose-500 shrink-0" />
               Cancelled
             </span>
+          )}
+
+          {isFallbackState && (
+            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-700 border border-slate-300 inline-flex items-center gap-1 capitalize">
+              <HelpCircle size={10} className="text-slate-500 shrink-0" />
+              {rawStatus ? rawStatus.replace(/_/g, " ") : "Placed"}
+            </span>
+          )}
+
+          {/* Small Close / Cancel / Dismiss button */}
+          {(isSearchingOrPending || (!isCompleted && !isCancelled)) && (
+            <button
+              type="button"
+              onClick={handleCancelBooking}
+              className="w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition-colors ml-0.5 cursor-pointer"
+              title={isSearchingOrPending ? "Cancel booking" : "Booking options / Cancel"}
+            >
+              <X size={12} strokeWidth={2.5} />
+            </button>
           )}
         </div>
       </div>
 
-      {/* 2. Body (2 lines max): Date/Time Slot & Short Locality */}
-      <div className="mt-3 space-y-1 text-xs">
-        {/* Line 1: Date & Time Slot */}
-        <div className="flex items-center gap-1.5 font-medium text-slate-700">
-          <Clock size={13} className="text-slate-400 shrink-0" />
+      {/* 2. Inline Single Horizontal Line: Date/Time + Partner / Dispatch Status */}
+      <div 
+        onClick={toggleExpanded}
+        className="mt-1 flex items-center text-slate-600 text-[11px] font-medium gap-1.5 truncate cursor-pointer"
+      >
+        <span className="inline-flex items-center gap-1 shrink-0">
+          <Clock size={11} className="text-slate-400" />
           <span>{displayTimeSlot}</span>
-        </div>
-
-        {/* Line 2: Short Address Locality */}
-        <div className="flex items-center gap-1.5 font-medium text-slate-600">
-          <MapPin size={13} className="text-slate-400 shrink-0" />
-          <span className="truncate">{shortLocality}</span>
-        </div>
+        </span>
+        <span className="text-slate-300">•</span>
+        <span className="truncate text-slate-500 font-normal">
+          {isSearchingOrPending ? (
+            <span className="text-amber-700 font-medium inline-flex items-center gap-1">
+              <span>⚡</span> Matching Expert Partner...
+            </span>
+          ) : hasPartner ? (
+            <span className="text-slate-700 font-medium inline-flex items-center gap-1">
+              <span>👤</span> {partnerUser?.displayName || (booking as any).partnerName || "Assigned Technician"}
+              {showOtpBox && otp ? ` • Start OTP: ${otp}` : ""}
+            </span>
+          ) : isCompleted ? (
+            <span className="text-emerald-700 font-medium">✓ Completed on {completedDateStr || "schedule"}</span>
+          ) : isCancelled ? (
+            <span className="text-rose-700 font-medium">Cancelled</span>
+          ) : (
+            <span className="text-slate-600">{shortLocality}</span>
+          )}
+        </span>
       </div>
 
-      {/* 3. State-Driven Dynamic Middle Content & Actions */}
+      {/* 3. Sleek Single Bottom Bar: Inline Price on Left + Compact Track Live Pill on Right */}
+      <div className="flex items-center justify-between gap-3 mt-2.5 pt-2 border-t border-slate-100">
+        <div 
+          onClick={toggleExpanded}
+          className="flex items-baseline gap-1.5 cursor-pointer select-none"
+        >
+          <span className="text-sm font-extrabold text-slate-900">
+            ₹{booking.totalPrice || 0}
+          </span>
+          <span className="text-[10px] text-slate-600 font-medium">
+            {isPaid ? "Paid" : "Est. Total"}
+          </span>
+        </div>
 
-      {/* STATE A: Status === 'searching' or 'pending' */}
-      {isSearchingOrPending && (
-        <>
-          <div className="mt-3 p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0 mt-0.5" />
-            <div className="space-y-0.5 min-w-0">
-              <p className="font-bold text-[12px] leading-tight text-amber-950">
-                Assigning closest verified technician in Indore... Expected in ~2-3 mins. Need assistance? Tap Help.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                disabled={isCancelling}
-                onClick={handleCancelBooking}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
-                title="Cancel Booking"
-              >
-                <span>⏳ Cancel{isFreeCancelActive ? ` (${secondsRemaining}s)` : ''}</span>
-              </button>
-
+        <div className="flex items-center gap-1.5">
+          {/* Active / Assigned / Searching CTA buttons */}
+          {isSearchingOrPending ? (
+            <>
               <button
                 type="button"
                 onClick={() => {
@@ -545,100 +594,26 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                     (window as any).__openSupportChat(booking);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                title="Need Help? Chat Support"
+                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-1"
+                title="Support"
               >
-                <MessageSquare size={13} className="text-blue-600" />
-                <span>💬 Need Help?</span>
+                <MessageSquare size={11} />
+                <span>Support</span>
               </button>
-            </div>
 
-            <button
-              type="button"
-              onClick={toggleExpanded}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
-            >
-              <span>{expanded ? "Less" : "Details"}</span>
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* STATE B: Status === 'assigned', 'on_the_way', 'arrived', or 'in_progress' */}
-      {(hasPartner || isInProgress) && !isCompleted && !isCancelled && !isSearchingOrPending && (
-        <>
-          {/* Mini Partner Tile */}
-          <div className="mt-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-200 bg-white shadow-2xs">
-                <img
-                  src={
-                    partnerUser?.photoURL ||
-                    (partnerDetail as any)?.profilePhoto ||
-                    LogoIcon
-                  }
-                  alt="Partner"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-slate-900 text-xs truncate">
-                    {partnerUser?.displayName || (booking as any).partnerName || "Assigned Technician"}
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 shrink-0">
-                    ★ {(partnerDetail?.rating || 4.9).toFixed(1)}
-                  </span>
-                </div>
-                <span className="text-[10px] text-slate-500 flex items-center gap-1 font-medium">
-                  <ShieldCheck size={10} className="text-emerald-600" />
-                  Verified Pro • Indore
-                </span>
-              </div>
-            </div>
-
-            {/* Start Job OTP chip */}
-            {showOtpBox && otp && (
-              <div className="shrink-0 bg-blue-50 border border-blue-200 rounded-xl px-2.5 py-1 text-center shadow-2xs">
-                <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 block leading-tight">
-                  Start OTP
-                </span>
-                <span className="font-mono font-black text-sm text-blue-800 tracking-wider">
-                  {otp}
-                </span>
-              </div>
-            )}
-
-            {isInProgress && (
-              <div className="shrink-0 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1 text-center shadow-2xs">
-                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block leading-tight">
-                  OTP Verified
-                </span>
-                <span className="text-[10px] font-bold text-emerald-800">
-                  In Service
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Action Row */}
-          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Primary Track Live Button */}
               <button
                 type="button"
                 onClick={() => setIsFullscreenTrackingOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                className="py-1.5 px-4 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title="Track Live"
               >
-                <Navigation size={13} />
-                <span>Track Live</span>
+                <Navigation size={11} />
+                <span>Track Live →</span>
               </button>
-
-              {/* Call Partner Button */}
+            </>
+          ) : (hasPartner || isInProgress) && !isCompleted && !isCancelled ? (
+            <>
+              {/* Call Partner icon button */}
               <button
                 type="button"
                 onClick={() => {
@@ -648,13 +623,13 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                     window.open(`tel:${partnerUser?.phoneNumber || CORPORATE_LANDLINE_GATEWAY}`);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                className="p-1.5 rounded-full text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                title="Call Partner"
               >
-                <Phone size={13} className="text-emerald-600" />
-                <span>Call Partner</span>
+                <Phone size={12} className="text-emerald-600" />
               </button>
 
-              {/* Chat Button */}
+              {/* Chat Partner icon button */}
               <button
                 type="button"
                 onClick={() => {
@@ -664,127 +639,61 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                     (window as any).__openSupportChat(booking);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                title="Chat with partner / technician"
+                className="p-1.5 rounded-full text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
+                title="Chat"
               >
-                <MessageSquare size={13} className="text-slate-600" />
-                <span>Chat</span>
+                <MessageSquare size={12} className="text-slate-600" />
               </button>
-            </div>
 
-            <button
-              type="button"
-              onClick={toggleExpanded}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
-            >
-              <span>{expanded ? "Less" : "Details"}</span>
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* STATE C: Status === 'completed' */}
-      {isCompleted && (
-        <>
-          <div className="mt-3 p-2.5 bg-emerald-50/70 border border-emerald-200/70 rounded-xl flex items-center justify-between text-xs text-emerald-900">
-            <div className="flex items-center gap-1.5 font-medium text-[11.5px]">
-              <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-              <span>Service completed on {completedDateStr}</span>
-            </div>
-            <span className="font-extrabold text-slate-900 text-xs">
-              ₹{booking.totalPrice || 0}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Rate & Review Button */}
-              {!isReviewSubmitted && onRatingChange ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!expanded) toggleExpanded();
-                  }}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Star size={13} className="text-amber-500 fill-amber-500" />
-                  <span>Rate & Review</span>
-                </button>
-              ) : isReviewSubmitted ? (
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 inline-flex items-center gap-1">
-                  <Star size={12} className="text-amber-500 fill-amber-500" />
-                  Rated
-                </span>
-              ) : null}
-
+              {/* Primary Sleek Track Live pill */}
+              <button
+                type="button"
+                onClick={() => setIsFullscreenTrackingOpen(true)}
+                className="py-1.5 px-4 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title="Track Live"
+              >
+                <Navigation size={11} />
+                <span>Track Live →</span>
+              </button>
+            </>
+          ) : isCompleted ? (
+            <>
               {/* Download Bill */}
               <button
                 type="button"
                 disabled={isGeneratingInvoice}
                 onClick={handleDownloadInvoice}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-1"
+                title="Download Bill"
               >
-                {isGeneratingInvoice ? (
-                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <FileText size={13} className="text-blue-600" />
-                )}
-                <span>Download Bill</span>
+                <FileText size={11} className="text-slate-500" />
+                <span>Bill</span>
               </button>
 
-              {/* Book Again */}
+              {/* Rebook */}
               {onBookAgain && service && (
                 <button
                   type="button"
                   onClick={() => onBookAgain(service)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
                 >
-                  <RotateCcw size={12} />
+                  <RotateCcw size={11} />
                   <span>Book Again</span>
                 </button>
               )}
-            </div>
-
-            <button
-              type="button"
-              onClick={toggleExpanded}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
-            >
-              <span>{expanded ? "Less" : "Details"}</span>
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* STATE D: Status === 'cancelled' */}
-      {isCancelled && (
-        <>
-          <div className="mt-3 p-2.5 bg-rose-50/70 border border-rose-200/70 rounded-xl flex items-center gap-1.5 text-xs text-rose-800">
-            <XCircle size={13} className="text-rose-500 shrink-0" />
-            <span className="font-medium text-[11.5px]">This booking was cancelled.</span>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
-            <div className="flex items-center gap-2">
+            </>
+          ) : isCancelled ? (
+            <>
               {onBookAgain && service && (
                 <button
                   type="button"
                   onClick={() => onBookAgain(service)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1 transition-colors cursor-pointer"
+                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
                 >
-                  <RotateCcw size={12} />
+                  <RotateCcw size={11} />
                   <span>Book Again</span>
                 </button>
               )}
-
               <button
                 type="button"
                 onClick={() => {
@@ -794,27 +703,41 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
                     (window as any).__openSupportChat(booking);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
               >
-                <HelpCircle size={13} className="text-slate-500" />
-                <span>Need Help?</span>
+                Help
               </button>
-            </div>
-
+            </>
+          ) : (
             <button
               type="button"
-              onClick={toggleExpanded}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer ml-auto"
+              onClick={() => {
+                if (onSupport) {
+                  onSupport(booking.id);
+                } else if (typeof (window as any).__openSupportChat === "function") {
+                  (window as any).__openSupportChat(booking);
+                }
+              }}
+              className="py-1 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
             >
-              <span>{expanded ? "Less" : "Details"}</span>
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              />
+              Support
             </button>
-          </div>
-        </>
-      )}
+          )}
+
+          {/* Details ▾ toggle */}
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            className="p-1 rounded-full text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+            title={expanded ? "Show less" : "Show details"}
+          >
+            <ChevronDown
+              size={14}
+              className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
+      </div>
 
       {/* 4. Expandable Details Drawer (Tucked behind "Details ▾") */}
       <AnimatePresence>
