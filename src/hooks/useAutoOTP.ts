@@ -33,8 +33,8 @@ export function useAutoOTP({
   useEffect(() => {
     if (!enabled) return;
 
-    // Check if WebOTP (OTPCredential) is supported in current environment
-    if (typeof window === 'undefined' || !('OTPCredential' in window) || !navigator.credentials) {
+    // Check if WebOTP is supported in the current environment
+    if (typeof window === 'undefined' || !navigator.credentials || !('get' in navigator.credentials)) {
       return;
     }
 
@@ -64,7 +64,7 @@ export function useAutoOTP({
         }
       })
       .catch((err: any) => {
-        // Silently catch and handle aborted or unsupported iframe contexts
+        // Silently catch and handle aborted or unsupported contexts
         if (
           err.name !== 'AbortError' &&
           err.name !== 'SecurityError' &&

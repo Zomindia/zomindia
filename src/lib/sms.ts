@@ -33,9 +33,11 @@ export interface LoginOtpOptions {
 }
 
 /**
- * Formats Login / Account Verification OTP message adhering strictly to Android SMS Retriever API.
- * Format:
- * <#> Your Zomindia verification code is: {OTP}. Valid for 5 mins. {APP_HASH}
+ * Formats Login / Account Verification OTP message adhering strictly to both:
+ * 1. WebOTP API (W3C standard for Chrome on Android / Desktop):
+ *    Your Zomindia verification code is 123456.
+ *    @zomindia.com #123456
+ * 2. Android SMS Retriever API (<#> prefix and 11-char app hash suffix).
  */
 export function formatLoginOtpMessage({
   otp,
@@ -44,7 +46,12 @@ export function formatLoginOtpMessage({
   appName = "Zomindia",
 }: LoginOtpOptions): string {
   const hash = getAppHash(appHash);
-  return `<#> Your ${appName} verification code is: ${otp}. Valid for ${validityMinutes} mins. ${hash}`;
+  // Domain tag for native WebOTP API auto-detection
+  const domainTag = typeof window !== "undefined" && window.location?.hostname
+    ? `@${window.location.hostname} #${otp}`
+    : `@zomindia.com #${otp}`;
+
+  return `<#> Your ${appName} verification code is: ${otp}. Valid for ${validityMinutes} mins.\n\n${domainTag}\n${hash}`;
 }
 
 // Backward compatibility alias
