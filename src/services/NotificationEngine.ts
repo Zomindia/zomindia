@@ -2,7 +2,6 @@ import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   formatServiceStartOtpMessage,
-  formatLoginOtpMessage,
   formatBookingReceivedMessage,
   formatPartnerAssignedMessage,
   formatServiceCompleteMessage,

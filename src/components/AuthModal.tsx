@@ -72,9 +72,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [view, setView] = useState<AuthView>('login-selection');
   const [phoneNumber, setPhoneNumber] = useState('');
   
-  // OTP states
-  const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(''));
-  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // OTP states: single unified 6-digit string feeding native WebOTP & single input
+  const [otpCode, setOtpCode] = useState('');
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
   
   // Registration data
   const [displayName, setDisplayName] = useState('');
@@ -147,20 +147,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     length: 6,
     enabled: view === 'otp-entry' && isOpen,
     onOTP: (code) => {
-      setOtpValues(code.split(''));
-      otpInputRefs.current[5]?.focus();
+      setOtpCode(code);
+      if (otpInputRef.current) {
+        otpInputRef.current.value = code;
+        otpInputRef.current.focus();
+      }
     },
     onAutoSubmit: (code) => {
       handleVerifyOTP(undefined, code);
     },
-    autoSubmitDelay: 500
+    autoSubmitDelay: 400
   });
 
-  // Clean form state upon open or close
+  // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
     setView('login-selection');
     setPhoneNumber('');
-    setOtpValues(Array(6).fill(''));
+    setOtpCode('');
     setDisplayName('');
     setEmail('');
     setError(null);
@@ -170,12 +173,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     setShouldMergeConflictOnSuccess(false);
     setConflictUid(null);
     setShowConflictOptions(false);
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {}
-      window.recaptchaVerifier = null;
-    }
   };
 
   useEffect(() => {
@@ -184,7 +181,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   }, [isOpen]);
 
-  // Safe and clean RecaptchaVerifier factory
+  // Optimized RecaptchaVerifier factory: reuses instance cleanly across sends/resends
   const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
     if (!window.recaptchaVerifier) {
       window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
@@ -257,52 +254,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  // Handle key input navigation in the 6 split digit boxes (like Urban Company / Zomato)
-  const handleOtpInput = (index: number, value: string) => {
-    const cleanVal = value.replace(/\D/g, '').slice(-1);
-    const newOtp = [...otpValues];
-    newOtp[index] = cleanVal;
-    setOtpValues(newOtp);
+  // Handle OTP input change with instant 6-digit auto-verify
+  const handleOtpChange = (val: string) => {
+    const cleanDigits = val.replace(/\D/g, '').slice(0, 6);
+    setOtpCode(cleanDigits);
+    setError(null);
 
-    // Auto focus next box
-    if (cleanVal !== '' && index < 5) {
-      otpInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace') {
-      if (otpValues[index] === '' && index > 0) {
-        const newOtp = [...otpValues];
-        newOtp[index - 1] = '';
-        setOtpValues(newOtp);
-        otpInputRefs.current[index - 1]?.focus();
-      } else {
-        const newOtp = [...otpValues];
-        newOtp[index] = '';
-        setOtpValues(newOtp);
-      }
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (pastedText.length > 0) {
-      const newOtp = [...otpValues];
-      for (let i = 0; i < 6; i++) {
-        if (pastedText[i]) newOtp[i] = pastedText[i];
-      }
-      setOtpValues(newOtp);
-      const focusIndex = Math.min(pastedText.length, 5);
-      otpInputRefs.current[focusIndex]?.focus();
+    // Instant auto-submit if user fills 6 digits
+    if (cleanDigits.length === 6) {
+      handleVerifyOTP(undefined, cleanDigits);
     }
   };
 
   // Verify OTP submission
   const handleVerifyOTP = async (e?: React.FormEvent, directOtpCode?: string) => {
     if (e) e.preventDefault();
-    const code = directOtpCode || otpValues.join('');
+    const code = directOtpCode || otpCode;
     if (code.length !== 6) {
       setError('Please enter the full 6-digit verification code');
       return;
@@ -1172,23 +1139,48 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                 </div>
 
                 <form onSubmit={handleVerifyOTP} className="space-y-6">
-                  {/* Digital glowing code squares: aligned specifically for responsive mobile screen widths */}
-                  <div className="flex justify-between gap-1.5 sm:gap-2 p-1.5 bg-slate-50/50 rounded-2xl border border-slate-100/80 shadow-inner" onPaste={handleOtpPaste}>
-                    {otpValues.map((digit, idx) => (
-                      <input
-                        key={idx}
-                        ref={(el) => { otpInputRefs.current[idx] = el; }}
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        maxLength={1}
-                        required
-                        value={digit}
-                        onChange={(e) => handleOtpInput(idx, e.target.value)}
-                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                        className="flex-1 h-12 sm:h-14 min-w-0 max-w-[42px] sm:max-w-[48px] bg-white border border-slate-300 text-slate-900 text-center text-lg sm:text-xl font-bold rounded-xl shadow-md focus:border-[#050CA6] focus:ring-4 focus:ring-[#050CA6]/10 focus:shadow-lg focus:shadow-blue-700/5 outline-none transition-all duration-200"
-                      />
-                    ))}
+                  {/* Single Unified 6-Digit OTP Input with Visual Box Presentation */}
+                  <div className="relative w-full">
+                    {/* Underlying single native input for Chrome/Android/iOS WebOTP, auto-fill, and SMS paste bar */}
+                    <input
+                      ref={otpInputRef}
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      autoFocus
+                      required
+                      value={otpCode}
+                      onChange={(e) => handleOtpChange(e.target.value)}
+                      className="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer caret-transparent"
+                    />
+
+                    {/* Visual 6-box representation synced directly with single unified state */}
+                    <div className="flex justify-between gap-1.5 sm:gap-2 p-1.5 bg-slate-50/50 rounded-2xl border border-slate-100/80 shadow-inner select-none pointer-events-none">
+                      {Array.from({ length: 6 }).map((_, idx) => {
+                        const digit = otpCode[idx] || '';
+                        const isCurrentActive = otpCode.length === idx || (idx === 5 && otpCode.length === 6);
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex-1 h-12 sm:h-14 min-w-0 max-w-[42px] sm:max-w-[48px] bg-white border text-center text-lg sm:text-xl font-bold rounded-xl shadow-md flex items-center justify-center transition-all duration-150 ${
+                              isCurrentActive
+                                ? 'border-[#050CA6] ring-4 ring-[#050CA6]/10 shadow-blue-700/5 text-[#050CA6]'
+                                : digit
+                                ? 'border-slate-400 text-slate-900'
+                                : 'border-slate-200 text-slate-400'
+                            }`}
+                          >
+                            {digit ? (
+                              <span>{digit}</span>
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {error && (
@@ -1201,8 +1193,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                   <div className="space-y-4">
                     <button
                       type="submit"
-                      disabled={loading || otpValues.join('').length < 6}
-                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md"
+                      disabled={loading || otpCode.length < 6}
+                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
@@ -1217,7 +1209,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                         disabled={timer > 0 || loading}
                         onClick={handleResendOTP}
                         className={`text-xs font-extrabold uppercase tracking-wider transition-colors ${
-                          timer > 0 ? 'text-neutral-300' : 'text-[#050CA6] hover:text-[#040980]'
+                          timer > 0 ? 'text-neutral-300' : 'text-[#050CA6] hover:text-[#040980] cursor-pointer'
                         }`}
                       >
                         {timer > 0 ? `Resend code in ${timer}s` : 'Send OTP again'}

@@ -453,63 +453,6 @@ async function startServer() {
     }
   });
 
-  // POST /api/send-sms-otp
-  // Dispatches an SMS OTP adhering to Android SMS Retriever API & WebOTP API format
-  app.post("/api/send-sms-otp", (req, res) => {
-    try {
-      const {
-        phone,
-        phoneNumber,
-        otp,
-        appHash: customHash,
-        validityMinutes = 5,
-        type = "login",
-        partnerName,
-      } = req.body;
-      const targetPhone = phone || phoneNumber;
-      if (!targetPhone || !otp) {
-        return res.status(400).json({ error: "Phone number and OTP are required" });
-      }
-
-      const message =
-        type === "service_start"
-          ? formatServiceStartOtpMessage({ otp, partnerName })
-          : formatLoginOtpMessage({ otp, appHash: customHash, validityMinutes });
-      const resolvedHash = getAppHash(customHash);
-
-      // Respond instantly to client to eliminate network wait latency
-      res.json({
-        success: true,
-        recipient: targetPhone,
-        message,
-        appHash: resolvedHash,
-      });
-
-      // Background dispatch to SMS provider without blocking client response
-      if (process.env.SMS_API_KEY && process.env.SMS_PROVIDER_URL) {
-        axios.post(process.env.SMS_PROVIDER_URL, {
-          apiKey: process.env.SMS_API_KEY,
-          sender: process.env.SMS_SENDER_ID || "ZOMIND",
-          number: targetPhone,
-          message,
-        }, { timeout: 3500 })
-        .then(() => {
-          console.log(`[SMS OTP Gateway] Dispatched to ${targetPhone}`);
-        })
-        .catch((smsErr: any) => {
-          console.warn("[SMS Gateway Warning]:", smsErr.message);
-        });
-      } else {
-        console.log(`[SMS OTP SIMULATION] To: ${targetPhone} | Message: ${message}`);
-      }
-    } catch (err: any) {
-      console.error("[SMS OTP Route Error]:", err);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || "Failed to dispatch SMS OTP" });
-      }
-    }
-  });
-
   // ==========================================
   // Official Razorpay Checkout Endpoints
   // ==========================================
