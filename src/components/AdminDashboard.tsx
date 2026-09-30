@@ -6436,37 +6436,52 @@ function PartnerManager({
                   </div>
                 )}
 
-                {user?.phoneNumber && (
-                  <div className="mb-6 w-full py-3 bg-slate-50 rounded-2xl flex items-center justify-between px-6 border border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Smartphone size={14} className="text-slate-400" />
-                      <span className="text-sm font-bold text-slate-900">
-                        {user.phoneNumber.startsWith("+91")
-                          ? `+91 •••••• ${user.phoneNumber.replace("+91", "").slice(-4)}`
-                          : `+91 •••••• ${user.phoneNumber.slice(-4)}`}
-                      </span>
-                    </div>
-                    <button
-                      id="admin-secure-call-partner-btn"
-                      disabled={isCalling}
-                      onClick={() => {
-                        if (user?.uid) {
-                          handleInitiateSecureCall(user.uid, 'partner');
-                        } else {
-                          if (typeof (window as any).__showToast === "function") {
-                            (window as any).__showToast("User ID is missing.");
+                {(() => {
+                  const partnerRawPhone = user?.phoneNumber || p.phone || (p as any).mobile || (user as any)?.mobile;
+                  if (!partnerRawPhone) return null;
+                  const cleanDigits = partnerRawPhone.replace(/\D/g, "");
+                  const formattedPhone = cleanDigits.length === 10
+                    ? `+91 ${cleanDigits.slice(0, 5)} ${cleanDigits.slice(5)}`
+                    : cleanDigits.length === 12 && cleanDigits.startsWith("91")
+                    ? `+91 ${cleanDigits.slice(2, 7)} ${cleanDigits.slice(7)}`
+                    : partnerRawPhone;
+                  const telHref = partnerRawPhone.startsWith("+")
+                    ? `tel:${partnerRawPhone}`
+                    : `tel:+91${cleanDigits.slice(-10)}`;
+
+                  return (
+                    <div className="mb-6 w-full py-3 bg-slate-50 rounded-2xl flex items-center justify-between px-4 sm:px-5 border border-slate-100 gap-2">
+                      <div 
+                        className="flex items-center gap-2 min-w-0 cursor-pointer select-all group/ph"
+                        title="Click to copy unmasked phone number"
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(formattedPhone);
+                            if (typeof (window as any).__showToast === "function") {
+                              (window as any).__showToast(`Copied ${formattedPhone} to clipboard!`);
+                            }
                           }
-                        }
-                      }}
-                      className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
-                    >
-                      <Phone size={12} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">
-                        {isCalling ? "Connecting..." : "Call"}
-                      </span>
-                    </button>
-                  </div>
-                )}
+                        }}
+                      >
+                        <Smartphone size={14} className="text-slate-400 group-hover/ph:text-blue-600 shrink-0 transition-colors" />
+                        <span className="text-xs sm:text-sm font-bold font-mono text-slate-900 truncate">
+                          {formattedPhone}
+                        </span>
+                      </div>
+                      <a
+                        id="admin-call-partner-btn"
+                        href={telHref}
+                        className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-3.5 py-1.5 rounded-xl transition-all active:scale-95 shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        title={`Call ${formattedPhone}`}
+                      >
+                        <Phone size={12} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Call
+                        </span>
+                      </a>
+                    </div>
+                  );
+                })()}
 
                 <div className="w-full mb-6 text-left space-y-3">
                   <div className="flex items-center justify-between">
@@ -7301,31 +7316,48 @@ function PartnerManager({
                       </p>
                     ) : null}
                     <div className="flex items-center gap-4 mt-2">
-                      <p className="text-slate-600 font-bold font-mono">
-                        {selectedProfilePartner.user?.phoneNumber
-                          ? selectedProfilePartner.user.phoneNumber.startsWith("+91")
-                            ? `+91 •••••• ${selectedProfilePartner.user.phoneNumber.replace("+91", "").slice(-4)}`
-                            : `+91 •••••• ${selectedProfilePartner.user.phoneNumber.slice(-4)}`
-                          : "No Phone Number"}
-                      </p>
-                      {selectedProfilePartner.user?.phoneNumber && (
-                        <button
-                          id="admin-secure-call-agent-btn"
-                          disabled={isCalling}
-                          onClick={() => {
-                            if (selectedProfilePartner.user?.uid) {
-                              handleInitiateSecureCall(selectedProfilePartner.user.uid, 'partner');
-                            } else {
-                              if (typeof (window as any).__showToast === "function") {
-                                (window as any).__showToast("User ID is missing.");
-                              }
-                            }
-                          }}
-                          className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
-                        >
-                          <Phone size={12} /> {isCalling ? "Connecting..." : "Call"}
-                        </button>
-                      )}
+                      {(() => {
+                        const modalPhone = selectedProfilePartner.user?.phoneNumber || (selectedProfilePartner as any).phone || (selectedProfilePartner as any).mobile;
+                        if (!modalPhone) {
+                          return <p className="text-slate-400 font-bold font-mono text-sm">No Phone Number</p>;
+                        }
+                        const cleanDigits = modalPhone.replace(/\D/g, "");
+                        const formattedPhone = cleanDigits.length === 10
+                          ? `+91 ${cleanDigits.slice(0, 5)} ${cleanDigits.slice(5)}`
+                          : cleanDigits.length === 12 && cleanDigits.startsWith("91")
+                          ? `+91 ${cleanDigits.slice(2, 7)} ${cleanDigits.slice(7)}`
+                          : modalPhone;
+                        const telHref = modalPhone.startsWith("+")
+                          ? `tel:${modalPhone}`
+                          : `tel:+91${cleanDigits.slice(-10)}`;
+
+                        return (
+                          <>
+                            <p 
+                              className="text-slate-800 font-bold font-mono text-sm cursor-pointer select-all hover:text-blue-700 transition-colors"
+                              title="Click to copy unmasked phone number"
+                              onClick={() => {
+                                if (navigator.clipboard) {
+                                  navigator.clipboard.writeText(formattedPhone);
+                                  if (typeof (window as any).__showToast === "function") {
+                                    (window as any).__showToast(`Copied ${formattedPhone} to clipboard!`);
+                                  }
+                                }
+                              }}
+                            >
+                              {formattedPhone}
+                            </p>
+                            <a
+                              id="admin-call-agent-btn"
+                              href={telHref}
+                              className="bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-slate-200 cursor-pointer"
+                              title={`Call ${formattedPhone}`}
+                            >
+                              <Phone size={12} /> Call
+                            </a>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
