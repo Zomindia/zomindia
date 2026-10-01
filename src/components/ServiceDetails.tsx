@@ -32,6 +32,7 @@ import {
 import BookingModal from "./BookingModal";
 import { LoadingScreen } from "./LoadingIndicator";
 import { getSampledIndoreHighDemandAreas } from "../utils/indoreDemandAreas";
+import { isValidCustomerService } from "../utils/formatters";
 
 interface ServiceDetailsProps {
   serviceId: string;
@@ -156,7 +157,6 @@ export default function ServiceDetails({
 }: ServiceDetailsProps) {
   const [service, setService] = useState<Service | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
-  const [isDescOpen, setIsDescOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [carouselActiveCategoryId, setCarouselActiveCategoryId] = useState<
@@ -177,10 +177,6 @@ export default function ServiceDetails({
   }, [serviceId]);
 
   useEffect(() => {
-    setIsDescOpen(false);
-  }, [currentServiceId]);
-
-  useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -193,9 +189,9 @@ export default function ServiceDetails({
 
         // 2. Fetch All Services for the category carousel
         const servicesSnap = await getDocs(collection(db, "services"));
-        const servicesList = servicesSnap.docs.map(
-          (d) => ({ id: d.id, ...d.data() }) as Service,
-        );
+        const servicesList = servicesSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Service)
+          .filter(isValidCustomerService);
         setAllServices(servicesList);
 
         // 3. Fetch Service
@@ -258,7 +254,7 @@ export default function ServiceDetails({
     service.images || (service.imageURL ? [service.imageURL] : []);
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen bg-slate-50/50 pb-4 md:pb-6">
       {/* Header Sticky */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -276,7 +272,7 @@ export default function ServiceDetails({
         </div>
       </motion.div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-4 md:pt-6 md:pb-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2 md:pt-6 md:pb-3">
         <motion.div
           initial="hidden"
           animate="visible"
@@ -290,7 +286,7 @@ export default function ServiceDetails({
               },
             },
           }}
-          className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 xl:gap-16 items-start"
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start"
         >
           {/* Main Content */}
           <motion.div
@@ -307,16 +303,16 @@ export default function ServiceDetails({
                 },
               },
             }}
-            className="lg:col-span-8 space-y-12 md:space-y-20"
+            className="lg:col-span-8 space-y-4 md:space-y-6"
           >
             {/* Hero Info */}
             <motion.section
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start bg-white rounded-[32px] p-6 md:p-10 border border-slate-100 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start bg-white rounded-3xl p-5 md:p-7 border border-slate-100 shadow-sm">
                 {/* Left side: Title, Description, Pricing, Metadata */}
-                <div className="lg:col-span-7 space-y-6 md:space-y-8">
+                <div className="lg:col-span-7 space-y-4">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="px-3 py-1.5 bg-blue-700 text-white rounded-full text-[9px] font-black uppercase tracking-[0.25em]">
                       {category?.name || "Expert Service"}
@@ -335,7 +331,7 @@ export default function ServiceDetails({
                     </span>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-8 border-b border-slate-100 pb-8 w-full">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-slate-100 pb-4 w-full">
                     {service.imageURL && (
                       <div className="w-full sm:w-80 h-40 sm:h-44 rounded-2xl overflow-hidden shadow-lg shrink-0 border-4 border-white ring-1 ring-slate-150 flex items-center justify-center bg-slate-50 transition-all duration-500 hover:scale-[1.02] hover:shadow-xl group">
                         <img
@@ -384,60 +380,12 @@ export default function ServiceDetails({
                     </div>
                   </div>
 
-                  {!isDescOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsDescOpen(true)}
-                      className="group w-full inline-flex items-center justify-between px-6 py-4.5 bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-slate-950/10 hover:shadow-blue-700/20 active:scale-[0.99] transition-all duration-300 select-none cursor-pointer border border-slate-800 hover:border-blue-600"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <span className="text-[14px] animate-pulse">💡</span>{" "}
-                        Explore service description
-                      </span>
-                      <span className="text-[10px] text-slate-400 group-hover:text-white transition-colors">
-                        View Details ➔
-                      </span>
-                    </button>
-                  ) : (
-                    <motion.div
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white border-2 border-indigo-150 rounded-3xl p-6 shadow-xl relative text-left overflow-hidden flex flex-col gap-4 w-full"
-                    >
-                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full blur-2xl opacity-70 pointer-events-none" />
-
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-750 rounded-lg">
-                            <Sparkles size={14} />
-                          </span>
-                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">
-                            Service Overview
-                          </h4>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setIsDescOpen(false)}
-                          className="p-1 text-slate-400 hover:text-slate-650 transition-colors"
-                          title="Close details"
-                        >
-                          ✕
-                        </button>
-                      </div>
-
-                      <p className="text-slate-800 text-base sm:text-lg font-bold leading-relaxed">
-                        {service.description}
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsDescOpen(false)}
-                        className="self-end mt-2 px-4 py-2 bg-[#002e6e] hover:bg-[#002456] text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md"
-                      >
-                        Close Info ✕
-                      </button>
-                    </motion.div>
-                  )}
+                  {/* Clean Service Description */}
+                  <div className="pt-2">
+                    <p className="text-slate-600 text-sm sm:text-base leading-relaxed font-medium">
+                      {service.description}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Right side: Imagecarousel */}
@@ -609,18 +557,18 @@ export default function ServiceDetails({
             }}
             className="lg:col-span-4"
           >
-            <div className="sticky top-40 space-y-8">
+            <div className="sticky top-28 space-y-4">
               {/* Booking Summary Card */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 whileHover={{ y: -4 }}
                 transition={{ duration: 0.4 }}
-                className="bg-gradient-to-br from-blue-700 via-indigo-750 to-blue-900 rounded-[40px] p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden group border border-blue-600/50"
+                className="bg-gradient-to-br from-blue-700 via-indigo-750 to-blue-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden group border border-blue-600/50"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
 
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200/90 flex items-center gap-1.5 leading-none">
                     <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />{" "}
                     Booking Summary
@@ -628,7 +576,7 @@ export default function ServiceDetails({
                 </div>
 
                 {/* High Conversion Banner */}
-                <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1 relative overflow-hidden">
+                <div className="mb-4 p-3.5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1 relative overflow-hidden">
                   <div className="flex items-center gap-2 text-amber-300 text-xs font-black uppercase tracking-wider animate-pulse">
                     <Sparkles size={14} className="text-amber-400" /> High
                     Demand Spot
@@ -643,8 +591,8 @@ export default function ServiceDetails({
                   </p>
                 </div>
 
-                <div className="space-y-4 mb-8">
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
                     <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
                       Base Rate
                     </span>
@@ -652,7 +600,7 @@ export default function ServiceDetails({
                       ₹{service.basePrice}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
                     <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
                       Insurance (Zom-Shield)
                     </span>
@@ -660,7 +608,7 @@ export default function ServiceDetails({
                       <ShieldCheck size={13} /> FREE COVER
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-3">
+                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
                     <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
                       Convenience Fee
                     </span>
@@ -676,7 +624,7 @@ export default function ServiceDetails({
                       Inclusive
                     </span>
                   </div>
-                  <div className="p-4 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl flex justify-between items-center text-xl font-black mt-2">
+                  <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl flex justify-between items-center text-xl font-black mt-2">
                     <span className="text-emerald-300 uppercase text-[10px] tracking-[0.15em] font-black">
                       Total Price
                     </span>
@@ -686,11 +634,11 @@ export default function ServiceDetails({
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/10 mb-8">
-                  <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-4">
+                <div className="pt-4 border-t border-white/10 mb-4">
+                  <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-3">
                     Immediate Privileges
                   </p>
-                  <ul className="space-y-3.5">
+                  <ul className="space-y-2.5">
                     {[
                       "100% Verified mastery & KYC cleared partner",
                       "30-day post-service quality warranty covered",
@@ -699,7 +647,7 @@ export default function ServiceDetails({
                     ].map((item, i) => (
                       <li
                         key={i}
-                        className="flex items-start gap-2.5 text-[11px] font-bold text-slate-200 leading-snug"
+                        className="flex items-start gap-2 text-[11px] font-bold text-slate-200 leading-snug"
                       >
                         <div className="p-0.5 bg-emerald-500/20 text-emerald-400 rounded-md shrink-0 mt-0.5">
                           <CheckCircle2
@@ -718,7 +666,7 @@ export default function ServiceDetails({
                   onClick={() =>
                     profile ? setIsBookingModalOpen(true) : onAuthRequired()
                   }
-                  className="w-full bg-white text-indigo-950 hover:bg-amber-300 hover:text-slate-955 py-5 rounded-2xl font-black text-center text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/20 border border-transparent hover:border-amber-400 cursor-pointer select-none group/btn flex items-center justify-center gap-2"
+                  className="w-full bg-white text-indigo-950 hover:bg-amber-300 hover:text-slate-955 py-3.5 rounded-xl font-black text-center text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/20 border border-transparent hover:border-amber-400 cursor-pointer select-none group/btn flex items-center justify-center gap-2"
                 >
                   Confirm Booking{" "}
                   <ArrowRight
@@ -735,17 +683,17 @@ export default function ServiceDetails({
                       "_blank",
                     );
                   }}
-                  className="w-full mt-3 bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2"
+                  className="w-full mt-2.5 bg-white/10 hover:bg-white/20 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2"
                 >
                   <Share2 size={13} /> Share Booking Info
                 </button>
               </motion.div>
 
               {/* Trust Indicators */}
-              <div className="bg-white rounded-[40px] p-8 border border-slate-100 space-y-6">
+              <div className="bg-white rounded-3xl p-5 border border-slate-100 space-y-4">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-slate-50 rounded-2xl text-slate-900">
-                    <ShieldCheck size={24} />
+                  <div className="p-2.5 bg-slate-50 rounded-xl text-slate-900">
+                    <ShieldCheck size={22} />
                   </div>
                   <div>
                     <h4 className="font-black text-slate-900 text-sm uppercase">
@@ -757,8 +705,8 @@ export default function ServiceDetails({
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-slate-50 rounded-2xl text-slate-900">
-                    <Clock size={24} />
+                  <div className="p-2.5 bg-slate-50 rounded-xl text-slate-900">
+                    <Clock size={22} />
                   </div>
                   <div>
                     <h4 className="font-black text-slate-900 text-sm uppercase">
@@ -775,29 +723,29 @@ export default function ServiceDetails({
         </motion.div>
 
         {/* Modern Categories & Services Carousel */}
-        <div className="mt-8 border-t border-slate-100 pt-8">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10 pb-4 border-b border-slate-50">
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-3 pb-3 border-b border-slate-50">
             <div>
-              <span className="text-[10px] sm:text-xs font-black uppercase text-blue-700 tracking-[0.25em] mb-2 flex items-center gap-2">
-                <Sparkles size={14} className="animate-pulse text-amber-500" />{" "}
+              <span className="text-[10px] font-black uppercase text-blue-700 tracking-[0.2em] mb-1 flex items-center gap-1.5">
+                <Sparkles size={12} className="animate-pulse text-amber-500" />{" "}
                 Discover Alternative Solutions
               </span>
-              <h3 className="text-3xl font-black text-slate-900 tracking-tight uppercase font-display">
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase font-display">
                 Browse Categories & Services
               </h3>
             </div>
 
             {/* Category Quick Filter Pills */}
-            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 shrink-0 max-w-full">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 shrink-0 max-w-full scroll-smooth">
               {categories.map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setCarouselActiveCategoryId(cat.id)}
                   type="button"
-                  className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
                     carouselActiveCategoryId === cat.id
-                      ? "bg-blue-700 border-blue-700 text-white shadow-xl shadow-blue-700/15 font-bold"
-                      : "bg-white border-slate-105 text-slate-400 hover:text-slate-950 hover:bg-slate-50"
+                      ? "bg-blue-700 border-blue-700 text-white shadow-md shadow-blue-700/15 font-bold"
+                      : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                   }`}
                 >
                   {cat.name}
@@ -843,7 +791,7 @@ export default function ServiceDetails({
 
             <div
               ref={carouselScrollRef}
-              className="flex gap-6 overflow-x-auto no-scrollbar pb-6 pt-2 scroll-smooth"
+              className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar pb-3 pt-2 scroll-smooth"
             >
               {allServices
                 .filter(
@@ -859,48 +807,51 @@ export default function ServiceDetails({
                       if (onServiceSelect) onServiceSelect(srv.id);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="flex-shrink-0 w-76 sm:w-80 group cursor-pointer"
+                    className="flex-shrink-0 w-68 sm:w-72 group cursor-pointer"
                   >
-                    <div className="bg-white border border-slate-105 rounded-[32px] p-5 hover:border-blue-700 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-300 flex flex-col gap-5 shadow-sm">
-                      {/* Image container */}
-                      <div className="w-full h-40 rounded-2xl overflow-hidden relative bg-slate-50 border border-slate-100 shrink-0">
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 hover:border-blue-600 hover:shadow-lg transition-all duration-200 flex flex-col justify-between gap-3 shadow-xs">
+                      {/* Top: Image & Price badge */}
+                      <div className="w-full h-32 rounded-xl overflow-hidden relative bg-slate-50 border border-slate-100 shrink-0">
                         {srv.imageURL ? (
                           <img
                             src={srv.imageURL}
                             alt={srv.name}
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             referrerPolicy="no-referrer"
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full bg-[#002e6e] flex items-center justify-center">
-                            <span className="text-white/30 font-black text-3xl italic tracking-tighter uppercase">
-                              {srv.name.slice(0, 2)}
-                            </span>
+                          <div className="w-full h-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">
+                            {srv.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
-                        <span className="absolute top-3.5 right-3.5 px-3 py-1.5 bg-[#f97316] text-white rounded-xl text-[9px] font-black italic tracking-widest uppercase shadow-md">
+                        <span className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-slate-900/90 text-white rounded-lg text-[10px] font-extrabold shadow-sm">
                           ₹{srv.basePrice}
                         </span>
                       </div>
 
                       {/* Content */}
-                      <div className="flex flex-col justify-between flex-1 gap-4">
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-black text-slate-905 group-hover:text-blue-700 transition-colors uppercase tracking-tight line-clamp-1 font-display">
+                      <div className="flex flex-col justify-between flex-1 gap-2">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-1">
                             {srv.name}
                           </h4>
-                          <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2 font-medium">
-                            {srv.description}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
+                              ★ {srv.rating || 4.8}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              • {srv.duration || "45-60m"}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="w-full flex items-center justify-between border-t border-slate-105 pt-4 mt-1">
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 leading-none">
-                            ⏱️ {srv.duration || "60 mins"}
+                        <div className="w-full flex items-center justify-between border-t border-slate-100 pt-2.5">
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            Starting price
                           </span>
-                          <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1 group-hover:translate-x-1.5 transition-transform leading-none">
-                            Book Service ➔
+                          <span className="text-[11px] font-bold text-blue-700 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            View ➔
                           </span>
                         </div>
                       </div>
@@ -927,6 +878,17 @@ export default function ServiceDetails({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Sleek Centered 'End of List' Notice */}
+        <div className="flex items-center justify-center gap-3 my-4 sm:my-5 px-4">
+          <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
+          <span className="text-xs text-slate-400 font-medium tracking-wide text-center flex items-center gap-2 select-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
+            You have reached the end of {category?.name || service.name} services
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
+          </span>
+          <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
         </div>
       </div>
 

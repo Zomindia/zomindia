@@ -32,7 +32,7 @@ export default function Footer({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5 }}
-      className="bg-white border-t border-slate-200/80 pt-16 pb-12 mt-20 relative z-10"
+      className="bg-white border-t border-slate-200/80 pt-8 sm:pt-10 pb-36 sm:pb-14 mt-4 sm:mt-6 relative z-10"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-14 mb-14 items-start">
@@ -61,49 +61,6 @@ export default function Footer({
                 100% Background Verified
               </span>
             </div>
-
-            {/* Real-time Administrative Showcase: Most Recently Added Service */}
-            {mostRecentAppService && (
-              <motion.div
-                whileHover={{ y: -3, transition: { duration: 0.2 } }}
-                onClick={() => {
-                  if (onSelectService) {
-                    onSelectService(mostRecentAppService.id);
-                  } else {
-                    onNavigate('service-details');
-                  }
-                }}
-                className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/60 via-slate-50 to-slate-50 border border-slate-200/80 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-100/80 hover:border-indigo-200 hover:shadow-xs transition-all group max-w-sm mt-6 relative overflow-hidden"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {mostRecentAppService.imageURL ? (
-                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-200 border border-slate-200 shrink-0">
-                      <img
-                        src={mostRecentAppService.imageURL}
-                        alt=""
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-[#050CA6] font-black text-white flex items-center justify-center text-xs shrink-0">
-                      {mostRecentAppService.name.charAt(0)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <span className="text-[8px] font-black uppercase tracking-widest text-[#050CA6] font-mono">Recent Launch</span>
-                    </div>
-                    <h5 className="text-xs font-black text-slate-900 group-hover:text-[#050CA6] transition-colors truncate">{mostRecentAppService.name}</h5>
-                  </div>
-                </div>
-
-                <div className="text-right shrink-0">
-                  <span className="text-xs font-black text-slate-900 block">₹{mostRecentAppService.basePrice}</span>
-                  <span className="text-[8px] font-black uppercase text-[#050CA6] tracking-wider">Book ⚡</span>
-                </div>
-              </motion.div>
-            )}
           </div>
 
           {/* Col 2: Quick Links */}

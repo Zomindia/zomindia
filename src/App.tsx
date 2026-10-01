@@ -49,6 +49,7 @@ import ZomatoPageEndMarker, { getPageDisplayName } from './components/ZomatoPage
 import AboutUs from './components/AboutUs';
 import Footer from './components/Footer';
 import AiSupportChat from './components/AiSupportChat';
+import { isValidCustomerService } from './utils/formatters';
 
 // Direct static imports for robust component resolution
 import CustomerDashboard from './components/CustomerDashboard';
@@ -415,7 +416,10 @@ export default function App() {
     let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       if (!isMounted) return;
-      setAllServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      const loadedServices = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Service))
+        .filter(isValidCustomerService);
+      setAllServices(loadedServices);
       if (isInitialServices) {
         isInitialServices = false;
       } else {
@@ -454,8 +458,9 @@ export default function App() {
   }, []);
 
   const mostRecentAppService = (() => {
-    if (!allServices || allServices.length === 0) return null;
-    return [...allServices].sort((a, b) => {
+    const valid = (allServices || []).filter(isValidCustomerService);
+    if (valid.length === 0) return null;
+    return [...valid].sort((a, b) => {
       const timeA = a.createdAt?.seconds || a.createdAt?._seconds || 0;
       const timeB = b.createdAt?.seconds || b.createdAt?._seconds || 0;
       return timeB - timeA;
@@ -2410,7 +2415,7 @@ If you have any billing questions, or if your refund is delayed, please email us
       <AiSupportChat userProfile={profile || undefined} isPartner={profile?.role === 'partner'} activeTab={activeTab} />
 
       {/* Footer */}
-      {(['home', 'about', 'contact', 'help', 'terms', 'privacy', 'refund', 'offers'].includes(activeTab)) && (
+      {(['home', 'about', 'contact', 'help', 'terms', 'privacy', 'refund', 'offers', 'service-details'].includes(activeTab)) && (
         <Footer
           activeTab={activeTab}
           onNavigate={(tab) => setActiveTab(tab as any)}

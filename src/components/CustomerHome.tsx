@@ -25,7 +25,7 @@ import {
 import PaymentModal from "./PaymentModal";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
-import { formatTime12Hour } from "../utils/formatTime";
+import { formatTime12Hour, isValidCustomerService } from "../utils/formatters";
 import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
@@ -413,38 +413,17 @@ export default function CustomerHome({
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
   );
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [viewDetailsModalService, setViewDetailsModalService] =
+    useState<Service | null>(null);
   const [services, setServices] = useState<Service[]>([]);
 
   useEffect(() => {
-    setIsInfoOpen(false);
+    setViewDetailsModalService(null);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [selectedCategory]);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const recentlyLaunchedScrollRef = useRef<HTMLDivElement>(null);
-
-  const [specCarouselActiveCatId, setSpecCarouselActiveCatId] =
-    useState<string>("");
-  const specCategoryScrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (allCategories.length > 0 && !specCarouselActiveCatId) {
-      setSpecCarouselActiveCatId(
-        selectedCategory ? selectedCategory.id : allCategories[0].id,
-      );
-    }
-  }, [allCategories, selectedCategory]);
-
-  const scrollSpecCategory = (direction: "left" | "right") => {
-    if (specCategoryScrollRef.current) {
-      const scrollAmount = 350;
-      specCategoryScrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
 
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
@@ -944,9 +923,10 @@ export default function CustomerHome({
       collection(db, "services"),
       (snap) => {
         if (!isMounted) return;
-        setAllServices(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
-        );
+        const validServices = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Service)
+          .filter(isValidCustomerService);
+        setAllServices(validServices);
       },
       (err) => {
         if (!isMounted) return;
@@ -997,9 +977,10 @@ export default function CustomerHome({
             where("categoryId", "==", selectedCategory.id),
           );
           const snap = await getDocs(q);
-          setServices(
-            snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Service),
-          );
+          const loadedServices = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }) as Service)
+            .filter(isValidCustomerService);
+          setServices(loadedServices);
         } catch (err) {
           handleFirestoreError(err, OperationType.LIST, path);
         }
@@ -1054,8 +1035,9 @@ export default function CustomerHome({
   }, [selectedCategory]);
 
   const mostRecentService = (() => {
-    if (!allServices || allServices.length === 0) return null;
-    return [...allServices].sort((a, b) => {
+    const valid = (allServices || []).filter(isValidCustomerService);
+    if (valid.length === 0) return null;
+    return [...valid].sort((a, b) => {
       const timeA = a.createdAt?.seconds || a.createdAt?._seconds || 0;
       const timeB = b.createdAt?.seconds || b.createdAt?._seconds || 0;
       return timeB - timeA;
@@ -1078,289 +1060,177 @@ export default function CustomerHome({
   };
 
   if (selectedCategory) {
+    const validCategoryServices = services.filter(isValidCustomerService);
+
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2">
         <button
           onClick={() => setSelectedCategory(null)}
-          className="flex items-center gap-2 text-slate-500 hover:text-blue-700 mb-6 font-semibold transition-all hover:translate-x-[-4px]"
+          className="flex items-center gap-1.5 text-slate-500 hover:text-blue-700 mb-4 font-semibold text-sm transition-all hover:translate-x-[-3px] cursor-pointer"
         >
-          <ChevronLeft size={20} /> Back to home
+          <ChevronLeft size={18} /> Back to home
         </button>
 
-        <div className="flex flex-col lg:flex-row justify-between items-start gap-8 mb-10 px-2">
-          <div className="flex-1">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider mb-3"
-            >
-              <Sparkles size={12} /> {selectedCategory.name}
-            </motion.div>
-            <h2 className="text-3.5xl md:text-4.5xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">
+        {/* Clean, Non-Repetitive Category Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 px-1">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              <Sparkles size={11} /> Verified Category
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">
               {selectedCategory.name}
             </h2>
+            {selectedCategory.description && (
+              <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5 max-w-2xl line-clamp-2">
+                {selectedCategory.description}
+              </p>
+            )}
           </div>
-          {selectedCategory.images && selectedCategory.images.length > 0 ? (
-            <div className="w-full lg:w-1/3 flex flex-col gap-5">
-              <ImageCarousel images={selectedCategory.images} />
-              {!isInfoOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setIsInfoOpen(true)}
-                  className="group w-full inline-flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-[#050ca6] hover:from-blue-800 hover:to-[#04098c] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-900/10 hover:shadow-blue-700/20 active:scale-[0.98] transition-all duration-300 select-none cursor-pointer border border-blue-600 hover:border-blue-700"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-[13px] animate-pulse">💡</span>{" "}
-                    Explore service details
-                  </span>
-                  <span className="text-[10px] text-blue-105 group-hover:text-white transition-colors">
-                    More Info ➔
-                  </span>
-                </button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl relative text-left overflow-hidden flex flex-col gap-4"
-                >
-                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full blur-2xl opacity-70 pointer-events-none" />
 
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg">
-                      <Sparkles size={14} />
-                    </span>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">
-                      Category Insights
-                    </h4>
-                  </div>
-
-                  <p className="text-slate-700 text-sm font-semibold leading-relaxed">
-                    {selectedCategory.description ||
-                      "Verified professional home services delivered with care."}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsInfoOpen(false)}
-                    className="self-end mt-2 px-4 py-2 bg-blue-750 hover:bg-blue-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md shadow-blue-500/10"
-                  >
-                    <span>Close Insights ✕</span>
-                  </button>
-                </motion.div>
-              )}
-            </div>
-          ) : selectedCategory.imageURL ? (
-            <div className="w-full lg:w-1/3 flex flex-col gap-5">
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="w-full aspect-video lg:aspect-[4/3] rounded-3xl overflow-hidden shadow-lg border border-slate-105 group cursor-pointer"
-              >
-                <img
-                  src={selectedCategory.imageURL}
-                  className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105 animate-in fade-in"
-                  alt={selectedCategory.name}
-                  referrerPolicy="no-referrer"
-                  loading="lazy"
-                />
-              </motion.div>
-              {!isInfoOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setIsInfoOpen(true)}
-                  className="group w-full inline-flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-[#050ca6] hover:from-blue-800 hover:to-[#04098c] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-900/10 hover:shadow-blue-700/20 active:scale-[0.98] transition-all duration-300 select-none cursor-pointer border border-blue-600 hover:border-blue-700"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-[13px] animate-pulse">💡</span>{" "}
-                    Explore service details
-                  </span>
-                  <span className="text-[10px] text-blue-105 group-hover:text-white transition-colors">
-                    More Info ➔
-                  </span>
-                </button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl relative text-left overflow-hidden flex flex-col gap-4"
-                >
-                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full blur-2xl opacity-70 pointer-events-none" />
-
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg">
-                      <Sparkles size={14} />
-                    </span>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">
-                      Category Insights
-                    </h4>
-                  </div>
-
-                  <p className="text-slate-700 text-sm font-semibold leading-relaxed">
-                    {selectedCategory.description ||
-                      "Verified professional home services delivered with care."}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsInfoOpen(false)}
-                    className="self-end mt-2 px-4 py-2 bg-blue-750 hover:bg-blue-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md shadow-blue-500/10"
-                  >
-                    <span>Close Insights ✕</span>
-                  </button>
-                </motion.div>
-              )}
-            </div>
-          ) : (
-            <div className="w-full lg:w-1/3 flex flex-col gap-5">
-              {!isInfoOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setIsInfoOpen(true)}
-                  className="group w-full inline-flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-[#050ca6] hover:from-blue-800 hover:to-[#04098c] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-900/10 hover:shadow-blue-700/20 active:scale-[0.98] transition-all duration-300 select-none cursor-pointer border border-blue-600 hover:border-blue-700"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-[13px] animate-pulse">💡</span>{" "}
-                    Explore service details
-                  </span>
-                  <span className="text-[10px] text-blue-105 group-hover:text-white transition-colors">
-                    More Info ➔
-                  </span>
-                </button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl relative text-left overflow-hidden flex flex-col gap-4"
-                >
-                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full blur-2xl opacity-70 pointer-events-none" />
-
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg">
-                      <Sparkles size={14} />
-                    </span>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">
-                      Category Insights
-                    </h4>
-                  </div>
-
-                  <p className="text-slate-700 text-sm font-semibold leading-relaxed">
-                    {selectedCategory.description ||
-                      "Verified professional home services delivered with care."}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsInfoOpen(false)}
-                    className="self-end mt-2 px-4 py-2 bg-blue-750 hover:bg-blue-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 select-none shadow-md shadow-blue-500/10"
-                  >
-                    <span>Close Insights ✕</span>
-                  </button>
-                </motion.div>
-              )}
+          {selectedCategory.imageURL && (
+            <div className="hidden sm:block w-24 h-24 rounded-2xl overflow-hidden border border-slate-100 shadow-sm shrink-0 bg-slate-50">
+              <img
+                src={selectedCategory.imageURL}
+                alt={selectedCategory.name}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+              />
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-2">
-          {services.map((service, idx) => (
+        {/* Urban Company-Style Compact Horizontal Row Layout for Service Items */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-1 mb-4">
+          {validCategoryServices.map((service, idx) => (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              whileHover={{ y: -6, scale: 1.03 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ delay: idx * 0.1 }}
+              transition={{ delay: idx * 0.05 }}
               key={service.id}
-              onClick={() => onServiceSelect(service.id)}
-              className="bg-white/70 backdrop-blur-md p-8 border border-white/60 rounded-3xl hover:border-blue-700 transition-all shadow-sm hover:shadow-xl group flex flex-col justify-between cursor-pointer"
+              className="bg-white border border-slate-200/80 hover:border-blue-600/70 rounded-2xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between gap-4 group"
             >
-              <div>
-                <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-900 group-hover:bg-blue-700 group-hover:text-white transition-all duration-300">
-                    <Zap size={22} strokeWidth={1.5} />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">
-                      Starting from
-                    </p>
-                    <p className="text-xl font-bold text-slate-900">
-                      ₹{service.basePrice}
-                    </p>
-                  </div>
-                </div>
-                <h3 className="text-xl font-bold mb-3 hover:text-slate-600 transition-colors">
-                  {service.name}
-                </h3>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="flex items-center text-amber-500">
-                    <Star size={12} fill="currentColor" />
-                    <span className="text-xs font-bold text-slate-900 ml-1">
-                      {service.rating || 4.8}
+              {/* Left Column (Text & Details) */}
+              <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+                <div>
+                  <h3
+                    onClick={() => onServiceSelect(service.id)}
+                    className="text-base sm:text-lg font-bold text-slate-900 hover:text-blue-700 transition-colors line-clamp-1 cursor-pointer leading-snug"
+                  >
+                    {service.name}
+                  </h3>
+
+                  {/* Rating badge & duration: subtle gray/amber */}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-100/70 text-amber-700 rounded-md text-[11px] font-bold">
+                      <Star size={11} fill="currentColor" className="text-amber-500" />
+                      <span>{service.rating || 4.8}</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      ({service.duration || "45-60 mins"})
                     </span>
                   </div>
-                  <span className="text-xs text-slate-400 font-medium tracking-wide">
-                    • {service.duration || "60 mins"}
-                  </span>
+
+                  {/* Price display with helper text */}
+                  <div className="mt-2.5 flex items-baseline gap-1.5">
+                    <span className="text-xs text-slate-400 font-semibold">Starting from</span>
+                    <span className="text-base sm:text-lg font-extrabold text-slate-900">
+                      ₹{service.basePrice}
+                    </span>
+                  </div>
+
+                  {/* 1-line key benefit bullet */}
+                  <p className="text-[11px] text-emerald-700 font-medium mt-1.5 flex items-center gap-1.5 line-clamp-1">
+                    <CheckCircle2 size={12} className="shrink-0 text-emerald-600" />
+                    <span>Free 30-day post-service warranty</span>
+                  </p>
                 </div>
-                {service.imageURL && (
-                  <div className="w-full h-32 sm:h-40 rounded-2xl overflow-hidden mb-4 sm:mb-6 bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner relative">
+
+                {/* View Details bottom sheet / modal trigger */}
+                <button
+                  type="button"
+                  onClick={() => setViewDetailsModalService(service)}
+                  className="mt-3 text-[11px] font-bold text-blue-700 hover:text-blue-800 self-start cursor-pointer inline-flex items-center gap-1 hover:underline select-none"
+                >
+                  View Details ▾
+                </button>
+              </div>
+
+              {/* Right Column (Visual & Action) */}
+              <div className="relative shrink-0 flex flex-col items-center">
+                {/* Compact rounded image thumbnail approx 84x84px */}
+                <div
+                  onClick={() => onServiceSelect(service.id)}
+                  className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-inner flex items-center justify-center cursor-pointer group-hover:scale-[1.02] transition-transform"
+                >
+                  {service.imageURL ? (
                     <img
                       src={service.imageURL}
                       alt={service.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                       loading="lazy"
                     />
-                  </div>
-                )}
-                <p className="text-slate-500 text-sm mb-8 leading-relaxed line-clamp-2 font-medium opacity-80">
-                  {service.description}
-                </p>
-              </div>
+                  ) : (
+                    <div className="w-full h-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs">
+                      {service.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex flex-col gap-3">
+                {/* Overlapping bottom-anchored sleek [+ ADD] pill button in brand blue */}
                 <button
+                  type="button"
                   onClick={() =>
                     profile ? setSelectedService(service) : onAuthRequired()
                   }
-                  className="w-full bg-blue-700 text-white py-3.5 rounded-xl font-bold text-sm hover:bg-blue-800 transition-all active:scale-95 shadow-lg shadow-blue-700/5"
+                  className="absolute -bottom-2.5 px-4 py-1.5 bg-[#050ca6] hover:bg-[#04098c] active:scale-95 text-white text-[11px] font-bold rounded-full shadow-md hover:shadow-lg transition-all duration-150 uppercase tracking-wider cursor-pointer border border-blue-500/20 flex items-center gap-1 whitespace-nowrap z-10"
                 >
-                  Book now
-                </button>
-                <button
-                  onClick={() => onServiceSelect(service.id)}
-                  className="w-full py-2 text-slate-400 text-xs font-bold uppercase tracking-widest hover:text-blue-700 transition-colors"
-                >
-                  View details
+                  <Plus size={12} strokeWidth={2.5} /> ADD
                 </button>
               </div>
             </motion.div>
           ))}
-          {services.length === 0 && (
-            <div className="col-span-full py-20 text-center text-slate-400 font-medium bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-100">
+
+          {validCategoryServices.length === 0 && (
+            <div className="col-span-full py-12 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               No services found in this category. We are working on it!
             </div>
           )}
         </div>
 
+        {/* Sleek Centered 'End of List' Notice directly after the last service card */}
+        {validCategoryServices.length > 0 && (
+          <div className="flex items-center justify-center gap-3 my-4 sm:my-5 px-4">
+            <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
+            <span className="text-xs text-slate-400 font-medium tracking-wide text-center flex items-center gap-2 select-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
+              You have reached the end of {selectedCategory.name} services
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
+            </span>
+            <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
+          </div>
+        )}
+
         {partners.length > 0 && (
-          <div className="mt-20">
-            <div className="flex justify-between items-end mb-8">
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <div className="flex justify-between items-end mb-3">
               <div>
-                <h3 className="text-2xl font-bold text-slate-900 mb-2">
+                <h3 className="text-lg font-bold text-slate-900 mb-0.5">
                   Featured Partners
                 </h3>
-                <p className="text-slate-500">
+                <p className="text-xs sm:text-sm text-slate-500">
                   Top-rated professionals specializing in{" "}
                   {selectedCategory.name}.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {partners.map((partner) => (
                 <div
                   key={partner.id}
-                  className="bg-slate-50 p-8 rounded-[40px] flex flex-col sm:flex-row gap-8 hover:bg-white border border-transparent hover:border-slate-200 transition-all group"
+                  className="bg-slate-50/80 p-5 rounded-2xl flex flex-col sm:flex-row gap-5 hover:bg-white border border-slate-100 hover:border-slate-200 transition-all group"
                 >
                   <div className="relative flex-shrink-0">
                     <img
@@ -1370,29 +1240,29 @@ export default function CustomerHome({
                           : LogoIcon
                       }
                       alt={partner.displayName}
-                      className="w-24 h-24 rounded-full object-cover bg-white border-2 border-[#22c55e]"
+                      className="w-16 h-16 rounded-full object-cover bg-white border-2 border-[#22c55e]"
                       referrerPolicy="no-referrer"
                       loading="lazy"
                     />
-                    <div className="absolute -bottom-2 -right-2 flex flex-col items-end gap-1">
+                    <div className="absolute -bottom-1 -right-1 flex flex-col items-end gap-1">
                       <div
-                        className={`p-1.5 bg-white rounded-full shadow-sm border border-slate-100 ${partner.isVerified ? "text-emerald-500" : "text-slate-300"}`}
+                        className={`p-1 bg-white rounded-full shadow-sm border border-slate-100 ${partner.isVerified ? "text-emerald-500" : "text-slate-300"}`}
                       >
                         {partner.isVerified ? (
                           <CheckCircle2
-                            size={16}
+                            size={14}
                             fill="currentColor"
                             className="text-white fill-emerald-500"
                           />
                         ) : (
-                          <div className="w-4 h-4 bg-slate-100 rounded-full" />
+                          <div className="w-3.5 h-3.5 bg-slate-100 rounded-full" />
                         )}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex-1">
-                    <div className="mb-2">
+                    <div className="mb-1">
                       <span
                         className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
                           partner.isVerified
@@ -1405,13 +1275,13 @@ export default function CustomerHome({
                           : "KYC Not Verified"}
                       </span>
                     </div>
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="text-xl font-bold text-slate-900">
+                    <div className="flex justify-between items-start mb-1.5">
+                      <h4 className="text-base font-bold text-slate-900">
                         {partner.displayName}
                       </h4>
-                      <div className="flex items-center gap-1 text-sm font-bold text-slate-900 border border-slate-200 px-3 py-1 rounded-full bg-white">
+                      <div className="flex items-center gap-1 text-xs font-bold text-slate-900 border border-slate-200 px-2.5 py-0.5 rounded-full bg-white">
                         <Star
-                          size={14}
+                          size={12}
                           fill="currentColor"
                           className="text-amber-400"
                         />{" "}
@@ -1419,25 +1289,25 @@ export default function CustomerHome({
                       </div>
                     </div>
                     {partner.bio && (
-                      <p className="text-slate-500 text-sm mb-4 line-clamp-2 italic">
+                      <p className="text-slate-500 text-xs mb-2.5 line-clamp-1 italic">
                         "{partner.bio}"
                       </p>
                     )}
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="flex flex-wrap gap-1.5 mb-2.5">
                       {partner.categories.slice(0, 3).map((catId) => {
                         const cat = categories.find((c) => c.id === catId);
                         return cat ? (
                           <span
                             key={catId}
-                            className="text-[10px] uppercase font-bold tracking-widest text-slate-400"
+                            className="text-[9px] uppercase font-bold tracking-widest text-slate-400"
                           >
                             #{cat.name}
                           </span>
                         ) : null;
                       })}
                     </div>
-                    <button className="text-sm font-bold text-slate-900 flex items-center gap-2 group-hover:gap-3 transition-all">
-                      View Profile <ArrowRight size={16} />
+                    <button className="text-xs font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1 transition-all cursor-pointer">
+                      View Profile <ArrowRight size={13} />
                     </button>
                   </div>
                 </div>
@@ -1445,146 +1315,6 @@ export default function CustomerHome({
             </div>
           </div>
         )}
-
-        {/* Global/Explore Services Carousel & Navigation */}
-        <div className="mt-16 border-t border-slate-100 pt-12 pb-4">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 pb-4 border-b border-slate-50">
-            <div>
-              <span className="text-[10px] sm:text-xs font-black uppercase text-blue-700 tracking-[0.25em] mb-2 flex items-center gap-2">
-                <Sparkles size={14} className="animate-pulse text-amber-500" />{" "}
-                Discover All Service Categories
-              </span>
-              <h3 className="text-2.5xl sm:text-3xl font-black text-slate-900 tracking-tight uppercase font-display">
-                Browse Alternative Specialties
-              </h3>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {/* Category Quick Filter Pills */}
-              <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-1.5 shrink-0 max-w-full">
-                {allCategories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSpecCarouselActiveCatId(cat.id)}
-                    type="button"
-                    className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
-                      specCarouselActiveCatId === cat.id
-                        ? "bg-blue-700 border-blue-700 text-white shadow-xl shadow-blue-700/15"
-                        : "bg-white border-slate-200 text-slate-400 hover:text-slate-950 hover:bg-slate-50"
-                    }`}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-
-              {/* Symmetrical Left/Right Arrows for Desk Desktop Browsing */}
-              <div className="hidden sm:flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => scrollSpecCategory("left")}
-                  className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-700 hover:border-blue-500 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-                  aria-label="Scroll left"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollSpecCategory("right")}
-                  className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-700 hover:border-blue-500 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-                  aria-label="Scroll right"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative">
-            <div
-              ref={specCategoryScrollRef}
-              className="flex gap-6 overflow-x-auto no-scrollbar pb-6 pt-2 scroll-smooth"
-            >
-              {allServices
-                .filter((s) => s.categoryId === specCarouselActiveCatId)
-                .map((srv) => (
-                  <motion.div
-                    key={srv.id}
-                    whileHover={{ y: -4 }}
-                    onClick={() => {
-                      if (onServiceSelect) onServiceSelect(srv.id);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="flex-shrink-0 w-76 sm:w-80 group cursor-pointer"
-                  >
-                    <div className="bg-white border border-slate-100 rounded-[32px] p-5 hover:border-blue-700 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-300 flex flex-col gap-5 shadow-sm">
-                      {/* Image container */}
-                      <div className="w-full h-40 rounded-2xl overflow-hidden relative bg-slate-50 border border-slate-100 shrink-0">
-                        {srv.imageURL ? (
-                          <img
-                            src={srv.imageURL}
-                            alt={srv.name}
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-indigo-150 to-blue-50 flex items-center justify-center">
-                            <span className="text-blue-700/60 font-black text-3xl italic tracking-tighter uppercase">
-                              {srv.name.slice(0, 2)}
-                            </span>
-                          </div>
-                        )}
-                        <span className="absolute bottom-3.5 right-3.5 px-3 py-1.5 bg-blue-700 text-white rounded-xl text-[9px] font-black italic tracking-widest uppercase shadow-md border border-white/20">
-                          ₹{srv.basePrice}
-                        </span>
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex flex-col justify-between flex-1 gap-4">
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-black text-slate-900 group-hover:text-blue-700 transition-colors uppercase tracking-tight line-clamp-1 font-display">
-                            {srv.name}
-                          </h4>
-                          <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2 font-medium">
-                            {srv.description}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-50 w-full min-w-0">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex items-center gap-0.5 text-amber-500 shrink-0">
-                              <Star size={11} fill="currentColor" />
-                              <span className="text-[10px] font-bold text-slate-800">
-                                {srv.rating || 4.8}
-                              </span>
-                            </div>
-                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">
-                              • {srv.duration || "60 mins"}
-                            </span>
-                          </div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-blue-700 group-hover:text-blue-800 transition-colors flex items-center gap-1">
-                            Book{" "}
-                            <ArrowRight
-                              size={10}
-                              className="group-hover:translate-x-0.5 transition-transform"
-                            />
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              {allServices.filter(
-                (s) => s.categoryId === specCarouselActiveCatId,
-              ).length === 0 && (
-                <div className="w-full py-12 text-center text-slate-400 font-medium bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-100">
-                  No additional services listed inside this category.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
         <AnimatePresence>
           {selectedService && (
@@ -1595,13 +1325,124 @@ export default function CustomerHome({
               onSuccess={() => setActiveTab("home")}
             />
           )}
+
+          {/* Urban Company-Style View Details Bottom Sheet / Modal */}
+          {viewDetailsModalService && (
+            <div 
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-28 sm:pb-0 bg-slate-900/60 backdrop-blur-xs"
+              onClick={() => setViewDetailsModalService(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 100 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 100 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col overflow-hidden relative"
+              >
+                {/* Fixed Top Header */}
+                <div className="flex items-start justify-between gap-4 p-5 sm:p-6 pb-4 border-b border-slate-100 shrink-0">
+                  <div className="flex-1">
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">
+                      {viewDetailsModalService.name}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-100 text-amber-700 rounded-md text-xs font-bold">
+                        <Star size={12} fill="currentColor" className="text-amber-500" />
+                        <span>{viewDetailsModalService.rating || 4.8}</span>
+                      </div>
+                      <span className="text-xs text-slate-400 font-medium">
+                        • {viewDetailsModalService.duration || "45-60 mins"}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewDetailsModalService(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Scrollable Content Body with smooth overscroll */}
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
+                  {viewDetailsModalService.imageURL && (
+                    <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shrink-0">
+                      <img
+                        src={viewDetailsModalService.imageURL}
+                        alt={viewDetailsModalService.name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Service Description
+                    </h4>
+                    <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                      {viewDetailsModalService.description || "Comprehensive service delivered by certified background-verified professionals."}
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/80 space-y-2.5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                      What's Included
+                    </h4>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                      <span>30-Day Post Service Guarantee</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                      <span>Standard spare parts & complete diagnostics</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                      <span>Post-service cleanup & doorstep testing</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sticky / Floating Bottom CTA Action Row - Always 100% visible and clickable */}
+                <div className="sticky bottom-0 z-30 bg-white/98 backdrop-blur-md px-5 py-3.5 sm:px-6 sm:py-4 border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center justify-between gap-4 shrink-0 rounded-b-none sm:rounded-b-3xl">
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Price
+                    </p>
+                    <p className="text-xl font-black text-slate-900 tracking-tight">
+                      ₹{viewDetailsModalService.basePrice}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const s = viewDetailsModalService;
+                      setViewDetailsModalService(null);
+                      if (profile) {
+                        setSelectedService(s);
+                      } else {
+                        onAuthRequired();
+                      }
+                    }}
+                    className="flex-1 max-w-[200px] py-3 bg-[#050ca6] hover:bg-[#04098c] active:scale-95 text-white text-xs font-bold rounded-xl shadow-md transition-all uppercase tracking-wider text-center cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    Book Now
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
         </AnimatePresence>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10 sm:space-y-20">
+    <div className="space-y-4 sm:space-y-8">
       {/* 1. Global PWA Install Banner */}
       {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
@@ -2308,10 +2149,10 @@ export default function CustomerHome({
         <motion.section
           layout="position"
           transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          className={`mb-12 animate-fade-in ${(activeBooking && !recentCardDismissed) || (mostRecentService && !spotlightDismissed) ? "mt-4" : "-mt-24 sm:-mt-28 md:-mt-32 relative z-30"}`}
+          className={`mb-6 animate-fade-in ${(activeBooking && !recentCardDismissed) || (mostRecentService && !spotlightDismissed) ? "mt-4" : "-mt-24 sm:-mt-28 md:-mt-32 relative z-30"}`}
           id="categories-grid"
         >
-          <div className="bg-white rounded-[40px] border border-slate-100/90 shadow-[0_24px_50px_-12px_rgba(15,23,42,0.03),0_8px_20px_-6px_rgba(15,23,42,0.01)] pt-3 sm:pt-6 md:pt-6 px-4 sm:px-8 md:px-10 pb-16 sm:pb-24 relative overflow-hidden group">
+          <div className="bg-white rounded-[40px] border border-slate-100/90 shadow-[0_24px_50px_-12px_rgba(15,23,42,0.03),0_8px_20px_-6px_rgba(15,23,42,0.01)] pt-3 sm:pt-6 md:pt-6 px-4 sm:px-8 md:px-10 pb-6 sm:pb-8 relative overflow-hidden group">
             {/* Ambient gradient backdrops */}
             <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none -translate-y-12 translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
             <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-sky-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none translate-y-12 -translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
@@ -2327,7 +2168,7 @@ export default function CustomerHome({
             </div>
 
             {/* Filter and Search Bar Row */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 sm:mb-10 pb-1 sm:pb-2 relative z-10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 sm:mb-5 pb-1 relative z-10">
               {/* Tab Navigation */}
               <div className="flex border-b border-slate-100/80 overflow-x-auto gap-4 sm:gap-5 no-scrollbar scroll-smooth w-full md:w-auto">
                 {(["All", "Home", "Professional", "Repair"] as const).map(
@@ -2382,7 +2223,7 @@ export default function CustomerHome({
             ) : (
               <motion.div
                 layout
-                className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-5 sm:gap-y-10 gap-x-2 sm:gap-x-4 items-center justify-items-center relative z-10 min-h-[140px]"
+                className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-4 sm:gap-y-6 gap-x-2 sm:gap-x-3 items-center justify-items-center relative z-10 min-h-[140px]"
               >
                 <AnimatePresence mode="popLayout">
                   {categories
@@ -2594,7 +2435,7 @@ export default function CustomerHome({
         </motion.section>
 
         {/* Seasonal Offers & Trending Highlights */}
-        <section className="mb-14 w-full" id="seasonal-deals">
+        <section className="mb-6 w-full" id="seasonal-deals">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Card 1: AC Cooling Promotion */}
             <motion.div
@@ -2905,7 +2746,7 @@ export default function CustomerHome({
 
         {/* Value Props / Trust */}
         <section
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-8 mb-12 sm:mb-20"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6 sm:mb-8"
           id="trust-value-props"
         >
           <motion.div
@@ -3004,10 +2845,10 @@ export default function CustomerHome({
 
         {/* Top Rated Services */}
         <section
-          className="mb-12 sm:mb-20 px-3 sm:px-4 w-full"
+          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full"
           id="categories-section"
         >
-          <div className="flex flex-row items-center justify-between mb-5 sm:mb-8 px-1">
+          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
             <div className="min-w-0">
               <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
                 Popular{" "}
@@ -3149,10 +2990,10 @@ export default function CustomerHome({
 
         {/* Services in Focus (Category Grouped) */}
         <section
-          className="mb-12 sm:mb-20 px-3 sm:px-4 w-full"
+          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full"
           id="services-in-focus"
         >
-          <div className="flex flex-row items-center justify-between mb-5 sm:mb-8 px-1">
+          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
             <div className="min-w-0">
               <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
                 Services in{" "}
@@ -3166,7 +3007,7 @@ export default function CustomerHome({
             </div>
           </div>
 
-          <div className="space-y-8 sm:space-y-12 lg:space-y-16">
+          <div className="space-y-4 sm:space-y-6">
             {(() => {
               const categoryImagesMap: Record<string, string> = {
                 "1": "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=800", // Cleaning
@@ -3580,10 +3421,10 @@ export default function CustomerHome({
 
         {/* Recently Launched */}
         <section
-          className="mb-12 sm:mb-20 px-3 sm:px-4 w-full overflow-hidden"
+          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full overflow-hidden"
           id="recently-launched-section"
         >
-          <div className="flex flex-row items-center justify-between mb-5 sm:mb-8 px-1">
+          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
             <div className="min-w-0">
               <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
                 Recently{" "}
