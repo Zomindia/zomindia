@@ -488,45 +488,11 @@ export default function PartnerTrackingMap({
 
   // Firestore real-time coordinate synchronization
   useEffect(() => {
-    if (!partnerId) return;
+    if (!partnerId && !bookingId) return;
     let isMounted = true;
+    const hasBookingLocationRef = { current: false };
 
-    const unsubPartner = onSnapshot(
-      doc(db, "partners", partnerId),
-      (snap) => {
-        if (!isMounted) return;
-        if (snap.exists()) {
-          const data = snap.data() as PartnerProfile;
-          if (data.lat && data.lng) {
-            setPartnerLocation((prev) => {
-              const h = typeof data.heading === "number" && !isNaN(data.heading) ? data.heading : prev?.heading ?? null;
-              if (prev && prev.lat === data.lat && prev.lng === data.lng && prev.heading === h) return prev;
-              return { lat: data.lat, lng: data.lng, heading: h };
-            });
-          }
-          setPartnerInfo(data);
-        }
-      },
-      (err) => {
-        if (!isMounted) return;
-        console.warn("[Tracking] Partner snapshot warning:", err?.message);
-      }
-    );
-
-    const unsubUser = onSnapshot(
-      doc(db, "users", partnerId),
-      (snap) => {
-        if (!isMounted) return;
-        if (snap.exists()) {
-          setUserInfo(snap.data() as UserProfile);
-        }
-      },
-      (err) => {
-        if (!isMounted) return;
-        console.warn("[Tracking] User snapshot warning:", err?.message);
-      }
-    );
-
+    // 1. Primary Live GPS Stream: If bookingId is provided, prioritize bookings/{bookingId}.partnerLocation
     let unsubBooking: (() => void) | undefined;
     if (bookingId) {
       unsubBooking = onSnapshot(
@@ -535,25 +501,33 @@ export default function PartnerTrackingMap({
           if (!isMounted) return;
           if (snap.exists()) {
             const data = snap.data();
+            const bLoc = data?.partnerLocation;
             if (
-              data?.partnerLocation &&
-              typeof data.partnerLocation.lat === "number" &&
-              typeof data.partnerLocation.lng === "number"
+              bLoc &&
+              typeof bLoc.lat === "number" &&
+              typeof bLoc.lng === "number"
             ) {
+              hasBookingLocationRef.current = true;
+              const headingVal =
+                typeof bLoc.heading === "number" && !isNaN(bLoc.heading)
+                  ? bLoc.heading
+                  : typeof data?.heading === "number" && !isNaN(data.heading)
+                  ? data.heading
+                  : null;
+
               setPartnerLocation((prev) => {
-                const h = typeof data.partnerLocation.heading === "number" && !isNaN(data.partnerLocation.heading)
-                  ? data.partnerLocation.heading
-                  : prev?.heading ?? null;
+                const h = headingVal ?? prev?.heading ?? null;
                 if (
                   prev &&
-                  prev.lat === data.partnerLocation.lat &&
-                  prev.lng === data.partnerLocation.lng &&
+                  prev.lat === bLoc.lat &&
+                  prev.lng === bLoc.lng &&
                   prev.heading === h
-                )
+                ) {
                   return prev;
+                }
                 return {
-                  lat: data.partnerLocation.lat,
-                  lng: data.partnerLocation.lng,
+                  lat: bLoc.lat,
+                  lng: bLoc.lng,
                   heading: h,
                 };
               });
@@ -567,11 +541,71 @@ export default function PartnerTrackingMap({
       );
     }
 
+    // 2. Secondary Stream / Partner Profile: Listen to partners/{partnerId}
+    let unsubPartner: (() => void) | undefined;
+    if (partnerId) {
+      unsubPartner = onSnapshot(
+        doc(db, "partners", partnerId),
+        (snap) => {
+          if (!isMounted) return;
+          if (snap.exists()) {
+            const data = snap.data() as PartnerProfile;
+            setPartnerInfo(data);
+
+            // Only fallback to partners/{partnerId} coordinates if booking coordinates are not yet present
+            if (
+              !hasBookingLocationRef.current &&
+              typeof data.lat === "number" &&
+              typeof data.lng === "number"
+            ) {
+              const h =
+                typeof data.heading === "number" && !isNaN(data.heading)
+                  ? data.heading
+                  : null;
+              setPartnerLocation((prev) => {
+                if (
+                  prev &&
+                  prev.lat === data.lat &&
+                  prev.lng === data.lng &&
+                  prev.heading === h
+                ) {
+                  return prev;
+                }
+                return { lat: data.lat, lng: data.lng, heading: h };
+              });
+            }
+          }
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("[Tracking] Partner snapshot warning:", err?.message);
+        }
+      );
+    }
+
+    // 3. User Info Stream (Profile Name, Photo)
+    let unsubUser: (() => void) | undefined;
+    if (partnerId) {
+      unsubUser = onSnapshot(
+        doc(db, "users", partnerId),
+        (snap) => {
+          if (!isMounted) return;
+          if (snap.exists()) {
+            setUserInfo(snap.data() as UserProfile);
+          }
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.warn("[Tracking] User snapshot warning:", err?.message);
+        }
+      );
+    }
+
     return () => {
       isMounted = false;
+      if (typeof unsubBooking === "function") unsubBooking();
       if (typeof unsubPartner === "function") unsubPartner();
       if (typeof unsubUser === "function") unsubUser();
-      if (typeof unsubBooking === "function") unsubBooking();
     };
   }, [partnerId, bookingId]);
 

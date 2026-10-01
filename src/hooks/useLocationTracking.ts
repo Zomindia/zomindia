@@ -3,13 +3,16 @@ import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking } from '../types';
 
+const ACTIVE_BOOKING_STATUSES = ['assigned', 'accepted', 'on_the_way', 'in_progress'];
+
 export function useLocationTracking(partnerProfileId: string | undefined, bookings: Booking[], availabilityStatus?: string) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const lastUpdateRef = useRef<number>(0);
-  const UPDATE_INTERVAL = 30000; // 30 seconds
-  const BACKGROUND_INTERVAL = 120000; // 2 minutes for background tracking
+  const TRIP_UPDATE_INTERVAL = 10000; // 10 seconds during ongoing trip / active job
+  const BACKGROUND_INTERVAL = 60000; // 60 seconds when available in background
 
-  const hasActiveJob = bookings.some(b => ['on_the_way', 'in_progress'].includes(b.status));
+  const activeBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
+  const hasActiveJob = activeBookings.length > 0;
   const isAvailable = availabilityStatus === 'Available';
   const isTrackingSupported = typeof window !== 'undefined' && 'geolocation' in navigator;
   const isTrackingActive = !!partnerProfileId && (hasActiveJob || isAvailable) && isTrackingSupported;
@@ -19,7 +22,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       return;
     }
 
-    console.log("Starting location tracking for partner:", partnerProfileId, "Active Job:", hasActiveJob, "Available:", isAvailable);
+    console.log("[Geo Sync] Starting location tracking for partner:", partnerProfileId, "Active Jobs:", activeBookings.length, "Available:", isAvailable);
     
     let watchId: number;
     let isRevertedToLowAccuracy = false;
@@ -28,9 +31,9 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       return navigator.geolocation.watchPosition(
         async (position) => {
           const now = Date.now();
-          const activeOnTheWay = bookings.filter(b => b.status === 'on_the_way');
-          const isOnTheWay = activeOnTheWay.length > 0;
-          const interval = isOnTheWay ? 10000 : (hasActiveJob ? UPDATE_INTERVAL : BACKGROUND_INTERVAL);
+          const currentActiveBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
+          const isOngoingTrip = currentActiveBookings.length > 0;
+          const interval = isOngoingTrip ? TRIP_UPDATE_INTERVAL : BACKGROUND_INTERVAL;
 
           if (now - lastUpdateRef.current < interval) {
             return;
@@ -40,8 +43,10 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
           const latNum = Number(latitude);
           const lngNum = Number(longitude);
           const headingVal = typeof heading === 'number' && !isNaN(heading) ? Number(heading) : null;
-          console.log(`Transmitted coordinates: lat=${latNum}, lng=${lngNum}, heading=${headingVal}`);
+          console.log(`[Geo Sync] Transmitted coordinates: lat=${latNum}, lng=${lngNum}, heading=${headingVal}`);
+          
           try {
+            // 1. Update partner's global coordinates in Firestore
             await updateDoc(doc(db, 'partners', partnerProfileId), {
               lat: latNum,
               lng: lngNum,
@@ -49,8 +54,8 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
               updatedAt: Timestamp.now()
             });
 
-            // Securely write coordinates to the active booking document (PRESERVES customer destination lat/lng)
-            for (const activeB of activeOnTheWay) {
+            // 2. Securely sync coordinates to all active bookings (assigned, accepted, on_the_way, in_progress)
+            for (const activeB of currentActiveBookings) {
               await updateDoc(doc(db, 'bookings', activeB.id), {
                 partnerLocation: {
                   lat: latNum,
@@ -59,20 +64,20 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
                 heading: headingVal,
                 updatedAt: Timestamp.now()
               });
-              console.log(`[Geo Sync] Synced location to active on-the-way booking ${activeB.id}`);
+              console.log(`[Geo Sync] Synced location to active booking ${activeB.id} (${activeB.status})`);
             }
 
             lastUpdateRef.current = now;
             setLastSyncedAt(new Date(now));
           } catch (err) {
-            console.error("Failed to update location:", err);
+            console.error("[Geo Sync] Failed to update location:", err);
           }
         },
         (error) => {
-          console.warn(`Location tracking watchPosition error code: ${error.code} (HighAccuracy: ${enableHigh})`, error.message);
+          console.warn(`[Geo Sync] watchPosition error code: ${error.code} (HighAccuracy: ${enableHigh})`, error.message);
           
           if (enableHigh && !isRevertedToLowAccuracy) {
-            console.warn("High accuracy watchPosition failed or timed out. Reverting to standard accuracy watchPosition...");
+            console.warn("[Geo Sync] High accuracy watchPosition failed or timed out. Reverting to standard accuracy...");
             isRevertedToLowAccuracy = true;
             if (watchId) navigator.geolocation.clearWatch(watchId);
             watchId = startWatching(false);
@@ -86,22 +91,11 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       );
     };
 
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((status) => {
-        if (status.state === 'denied') {
-          console.error("Location tracking disabled because geolocation permission is denied by user.");
-          return;
-        }
-        watchId = startWatching(true);
-      }).catch(() => {
-        watchId = startWatching(true);
-      });
-    } else {
-      watchId = startWatching(true);
-    }
+    // Directly initiate watchPosition with automatic standard accuracy fallback
+    watchId = startWatching(true);
 
     return () => {
-      console.log("Stopping location tracking");
+      console.log("[Geo Sync] Stopping location tracking");
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
       }
