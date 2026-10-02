@@ -241,7 +241,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                   approvalStatus: liveApproval,
                   gracePeriodEnd: liveGracePeriodEnd,
                   status: (pData.status || "active") as any,
-                  availabilityStatus: pData.availabilityStatus || prev?.availabilityStatus || "Offline",
+                  availabilityStatus: pData.availabilityStatus || uData?.availabilityStatus || prev?.availabilityStatus || "Available",
                   bio: pData.bio || prev?.bio || "",
                   categories: pData.categories || prev?.categories || [],
                   skills: pData.skills || prev?.skills || [],
@@ -268,7 +268,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                     approvalStatus: liveApproval,
                     gracePeriodEnd: liveGracePeriodEnd,
                     status: 'pending',
-                    availabilityStatus: 'Offline',
+                    availabilityStatus: pData.availabilityStatus || uData?.availabilityStatus || 'Available',
                     bio: pData.bio || '',
                     categories: pData.categories || [],
                     skills: pData.skills || [],
@@ -286,7 +286,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                   ...prev,
                   approvalStatus: liveApproval,
                   gracePeriodEnd: liveGracePeriodEnd,
-                  ...pData
+                  ...pData,
+                  availabilityStatus: pData.availabilityStatus || uData?.availabilityStatus || prev.availabilityStatus || 'Available'
                 };
               });
             }
@@ -449,11 +450,28 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const updateStatus = async (status: 'Available' | 'Busy' | 'Offline') => {
     if (!partner) return;
     try {
+      // 1. Update partners collection
       await updateDoc(doc(db, 'partners', partner.id), {
         availabilityStatus: status,
         isAvailable: status === 'Available',
         updatedAt: Timestamp.now()
       });
+
+      // 2. Also update users collection so user profile snapshots do not overwrite status
+      const activeUid = auth.currentUser?.uid || profile.uid;
+      if (activeUid) {
+        await updateDoc(doc(db, 'users', activeUid), {
+          availabilityStatus: status,
+          isAvailable: status === 'Available',
+          "partnerData.availabilityStatus": status,
+          "partnerData.isAvailable": status === 'Available',
+          updatedAt: Timestamp.now()
+        }).catch(console.error);
+      }
+
+      // Optimistically update local state immediately
+      setPartner(prev => prev ? { ...prev, availabilityStatus: status, isAvailable: status === 'Available' } : prev);
+
       setToastMessage(`Status updated to "${status}" successfully.`);
       setShowToast(true);
       setShowStatusModal(false);

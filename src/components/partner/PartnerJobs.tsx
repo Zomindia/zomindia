@@ -48,6 +48,8 @@ interface Props {
   isTrackingActive?: boolean;
 }
 
+const DEFAULT_INDORE = { lat: 22.7196, lng: 75.8577 };
+
 function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, address: string, lat?: number | null, lng?: number | null }) {
   const [coords, setCoords] = useState<{lat: number, lng: number} | null>(lat && lng ? { lat, lng } : null);
   const [localAddress, setLocalAddress] = useState(address);
@@ -57,53 +59,14 @@ function JobLocationMap({ bookingId, address, lat, lng }: { bookingId: string, a
   useEffect(() => {
     if (lat && lng) {
       setCoords({ lat, lng });
-      // If address looks like coordinates, try to reverse geocode it to get a real address
-      if (address.includes('Location detected') || address.includes('[') || (address.includes(',') && !isNaN(parseFloat(address.split(',')[0])))) {
-        const fetchAddressFromCoords = async () => {
-          let resolved = '';
-          try {
-            const res = await reverseGeocode(lat, lng);
-            resolved = res.fullAddress;
-          } catch (err) {
-            console.warn("Reverse geocode error in PartnerJobs useEffect:", err);
-          }
-
-          setLocalAddress(resolved || address);
-        };
-
-        fetchAddressFromCoords();
-      } else {
-        setLocalAddress(address);
-      }
+      setLocalAddress(address);
       return;
     }
 
-    const fetchCoordsByAddress = async () => {
-      let resolvedLoc: { lat: number, lng: number } | null = null;
-      let resolvedAddr = '';
-
-      // 1. Try Nominatim search first
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'zomindia-app-preview' } });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data[0]) {
-            resolvedLoc = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-            resolvedAddr = data[0].display_name;
-          }
-        }
-      } catch (err) {
-        console.warn("OSM address search failure:", err);
-      }
-
-      if (resolvedLoc) {
-        setCoords(resolvedLoc);
-        setLocalAddress(resolvedAddr || address);
-      }
-    };
-
-    fetchCoordsByAddress();
+    if (address) {
+      setLocalAddress(address);
+    }
+    setCoords(DEFAULT_INDORE);
   }, [address, lat, lng]);
 
   const handleMapClick = async (e: any) => {
@@ -617,52 +580,44 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     return () => clearInterval(interval);
   }, [activeCoordinatedCallBooking]);
 
-  const handleInitiateCall = async (booking: Booking) => {
-    const currentUid = auth.currentUser?.uid;
-    const targetUid = booking.customerUid;
-
-    if (!currentUid) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Authentication required to make calls.");
-      }
-      return;
-    }
-    if (!targetUid) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Recipient details are missing.");
-      }
-      return;
-    }
-
-    setIsCalling(true);
-
-    try {
-      const response = await fetch('/api/make-secure-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fromUserId: currentUid,
-          toUserId: targetUid,
-          recipientRole: 'customer'
-        })
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast("Call initiated! Please answer your phone to connect.");
-        }
-      } else {
-        if (typeof (window as any).__showToast === "function") {
-          (window as any).__showToast("Could not connect call. Please try again.");
+  useEffect(() => {
+    const handleOpenChatEvent = (e: any) => {
+      const bId = e.detail?.bookingId || e.detail?.id || (typeof e.detail === 'string' ? e.detail : null);
+      if (bId) {
+        const found = bookings.find(b => b.id === bId);
+        if (found) {
+          setActiveChat(found);
         }
       }
-    } catch (err: any) {
-      if (typeof (window as any).__showToast === "function") {
-        (window as any).__showToast("Could not connect call. Please try again.");
-      }
-    } finally {
-      setIsCalling(false);
+    };
+    window.addEventListener("open-booking-chat", handleOpenChatEvent);
+    window.addEventListener("open-chat", handleOpenChatEvent);
+    return () => {
+      window.removeEventListener("open-booking-chat", handleOpenChatEvent);
+      window.removeEventListener("open-chat", handleOpenChatEvent);
+    };
+  }, [bookings]);
+
+  const handleInitiateCall = (booking: Booking) => {
+    const customer = customers[booking.customerUid];
+    const customerPhone = 
+      (booking as any).customerPhone ||
+      (booking as any).phone ||
+      (booking as any).customerMobile ||
+      (booking as any).customerBookedPhone ||
+      customer?.phoneNumber ||
+      customer?.mobile;
+
+    const cleanNumber = customerPhone && String(customerPhone).replace(/[^0-9+]/g, '').length >= 10
+      ? String(customerPhone).trim()
+      : CORPORATE_LANDLINE_GATEWAY;
+
+    if (typeof (window as any).__showToast === "function") {
+      (window as any).__showToast(`Calling customer (${cleanNumber})...`);
     }
+
+    // Direct phone dialing: opens native dialer cleanly without failing network requests
+    window.open(`tel:${cleanNumber}`, '_self');
   };
 
   const handleAnswerCall = async (booking: Booking) => {
@@ -1501,6 +1456,17 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                    >
                      <Phone size={11} className="disabled:opacity-50 text-white" fill="currentColor" />
                      {isCalling ? "Connecting..." : "Call"}
+                   </button>
+                   <button
+                     type="button"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setActiveChat(booking);
+                     }}
+                     className="bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95 transition-all outline-none cursor-pointer z-10 relative"
+                   >
+                     <MessageSquare size={11} className="text-white" />
+                     Chat
                    </button>
                    {booking.status === 'arrived' && (
                      <button

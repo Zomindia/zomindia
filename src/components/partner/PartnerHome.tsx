@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, 
@@ -115,6 +115,44 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   
   // Overall completion rate
   const completionRate = myTotal > 0 ? Math.round((totalCompleted / (myTotal - totalCanceled || 1)) * 100) : 100;
+
+  // Dynamic Completed Bookings & Earnings Calculation
+  const completedBookings = useMemo(() => {
+    return bookings.filter(b => b.status === 'completed' || b.status === 'finalized');
+  }, [bookings]);
+
+  // Total Earnings: sum of all completed bookings, falling back to partner.totalEarnings if present
+  const calculatedTotalEarnings = useMemo(() => {
+    const sumFromBookings = completedBookings.reduce((acc, b) => {
+      const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+      return acc + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    return sumFromBookings > 0 ? sumFromBookings : Number(partner?.totalEarnings || 0);
+  }, [completedBookings, partner?.totalEarnings]);
+
+  // Today's Earnings: sum of completed bookings created/finished today
+  const todayEarnings = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return completedBookings.reduce((acc, b) => {
+      const bookingTime = b.completedAt?.toMillis?.() || 
+                          (b.completedAt?.seconds ? b.completedAt.seconds * 1000 : 0) || 
+                          (b.completedAt ? new Date(b.completedAt).getTime() : 0) ||
+                          b.updatedAt?.toMillis?.() || 
+                          (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : 0) || 
+                          (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) ||
+                          b.createdAt?.toMillis?.() || 
+                          (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0) ||
+                          (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      
+      if (bookingTime >= todayStart) {
+        const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+        return acc + (isNaN(amount) ? 0 : amount);
+      }
+      return acc;
+    }, 0);
+  }, [completedBookings]);
   
   // Real-time partner reviews
   const [partnerReviews, setPartnerReviews] = useState<Review[]>([]);
@@ -443,13 +481,21 @@ export default function PartnerHome({ partner, bookings, services, users, profil
           <section className="grid grid-cols-2 gap-4">
             <div 
               onClick={() => onNavigate('wallet')}
-              className="bg-emerald-500 p-6 rounded-[32px] text-white shadow-xl shadow-emerald-500/10 cursor-pointer group active:scale-95 transition-all"
+              className="bg-emerald-500 p-6 rounded-[32px] text-white shadow-xl shadow-emerald-500/10 cursor-pointer group active:scale-95 transition-all flex flex-col justify-between"
             >
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-6">
-                <TrendingUp size={20} />
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                  <TrendingUp size={20} />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">
+                  Live
+                </span>
               </div>
-              <p className="border-t border-white/20 pt-4 text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Today's Payout</p>
-              <p className="text-3xl font-black italic">₹{partner?.totalEarnings?.toLocaleString() || '0'}</p>
+              <div>
+                <p className="border-t border-white/20 pt-3 text-[10px] font-black uppercase tracking-widest opacity-75 mb-0.5">Today's Earnings</p>
+                <p className="text-2xl sm:text-3xl font-black italic">₹{todayEarnings.toLocaleString()}</p>
+                <p className="text-[10px] opacity-90 mt-1 font-bold">Total Earnings: ₹{calculatedTotalEarnings.toLocaleString()}</p>
+              </div>
             </div>
             
             {(() => {
@@ -535,13 +581,13 @@ export default function PartnerHome({ partner, bookings, services, users, profil
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart 
                   data={[
-                    { day: 'Mon', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.12) : 1200 },
-                    { day: 'Tue', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.08) : 800 },
-                    { day: 'Wed', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.15) : 1500 },
-                    { day: 'Thu', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.22) : 2100 },
-                    { day: 'Fri', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.18) : 1800 },
-                    { day: 'Sat', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.25) : 2500 },
-                    { day: 'Sun', earnings: partner?.totalEarnings ? Math.round(partner.totalEarnings * 0.10) : 1000 },
+                    { day: 'Mon', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.12) : 1200 },
+                    { day: 'Tue', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.08) : 800 },
+                    { day: 'Wed', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.15) : 1500 },
+                    { day: 'Thu', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.22) : 2100 },
+                    { day: 'Fri', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.18) : 1800 },
+                    { day: 'Sat', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.25) : 2500 },
+                    { day: 'Sun', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.10) : 1000 },
                   ]} 
                   margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
                 >

@@ -24,6 +24,8 @@ export interface PartnerTrackingMapProps {
   partnerHeading?: number | null;
   customerLat?: number;
   customerLng?: number;
+  customerPhone?: string;
+  booking?: any;
   bookingLocation?: { lat: number; lng: number };
   destinationAddress?: string;
   onClose?: () => void;
@@ -238,7 +240,7 @@ function MapCanvas({
     });
   }, [map, isMini]);
 
-  // Stabilize Map Camera & FitBounds strictly once on initial mount or when coordinates are ready
+  // 1. Initial framing: fitBounds strictly on first render
   useEffect(() => {
     if (!map || typeof google === "undefined" || hasInitialFittedRef.current) return;
 
@@ -261,6 +263,19 @@ function MapCanvas({
       hasInitialFittedRef.current = true;
     }
   }, [map, partnerLocation, destCoords, routePath]);
+
+  // 2. Dynamic Camera Movement: Smoothly follow moving vehicle when new coordinates arrive in partnerLocation
+  const lastPanCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!map || !partnerLocation || typeof google === "undefined") return;
+    if (!hasInitialFittedRef.current) return;
+
+    const last = lastPanCoordsRef.current;
+    if (!last || last.lat !== partnerLocation.lat || last.lng !== partnerLocation.lng) {
+      map.panTo({ lat: partnerLocation.lat, lng: partnerLocation.lng });
+      lastPanCoordsRef.current = { lat: partnerLocation.lat, lng: partnerLocation.lng };
+    }
+  }, [map, partnerLocation]);
 
   // Determine effective bearing: active hardware GPS heading if available, otherwise route segment bearing
   const effectiveBearing = useMemo(() => {
@@ -347,6 +362,8 @@ export default function PartnerTrackingMap({
   partnerHeading,
   customerLat,
   customerLng,
+  customerPhone,
+  booking,
   bookingLocation,
   destinationAddress,
   bookingId,
@@ -374,8 +391,8 @@ export default function PartnerTrackingMap({
     if (bookingLocation && typeof bookingLocation.lat === "number" && typeof bookingLocation.lng === "number") {
       return bookingLocation;
     }
-    if (typeof partnerLat === "number" && typeof partnerLng === "number") {
-      return { lat: partnerLat + 0.012, lng: partnerLng + 0.015 };
+    if (typeof booking?.lat === "number" && typeof booking?.lng === "number") {
+      return { lat: booking.lat, lng: booking.lng };
     }
     return DEFAULT_INDORE_DESTINATION;
   });
@@ -398,19 +415,10 @@ export default function PartnerTrackingMap({
     }
   }, [partnerLat, partnerLng, partnerHeading]);
 
-  useEffect(() => {
-    if (typeof customerLat === "number" && typeof customerLng === "number") {
-      setDestCoords((prev) => {
-        if (prev && prev.lat === customerLat && prev.lng === customerLng) return prev;
-        return { lat: customerLat, lng: customerLng };
-      });
-    }
-  }, [customerLat, customerLng]);
+  const bookingLat = bookingLocation?.lat ?? (typeof booking?.lat === "number" ? booking.lat : undefined);
+  const bookingLng = bookingLocation?.lng ?? (typeof booking?.lng === "number" ? booking.lng : undefined);
 
-  const bookingLat = bookingLocation?.lat;
-  const bookingLng = bookingLocation?.lng;
-
-  // Geocode address fallback if coordinates missing
+  // Directly resolve destination coordinates from customerLat/customerLng or bookingLocation props with fallback to DEFAULT_INDORE_DESTINATION
   useEffect(() => {
     if (typeof customerLat === "number" && typeof customerLng === "number") {
       setDestCoords((prev) => {
@@ -426,65 +434,8 @@ export default function PartnerTrackingMap({
       });
       return;
     }
-
-    if (destinationAddress && destinationAddress.trim().length > 0) {
-      let isMounted = true;
-      const resolveAddress = async () => {
-        try {
-          const query = destinationAddress.toLowerCase().includes("indore")
-            ? destinationAddress
-            : `${destinationAddress}, Indore, Madhya Pradesh, India`;
-
-          const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            query
-          )}&limit=1`;
-          const res = await fetch(url, {
-            headers: {
-              "Accept-Language": "en",
-              "User-Agent": "zomindia-app-preview",
-            },
-          });
-          if (res.ok && isMounted) {
-            const data = await res.json();
-            if (data?.[0]) {
-              const newLat = parseFloat(data[0].lat);
-              const newLng = parseFloat(data[0].lon);
-              if (!isNaN(newLat) && !isNaN(newLng)) {
-                setDestCoords((prev) => {
-                  if (prev && prev.lat === newLat && prev.lng === newLng) return prev;
-                  return { lat: newLat, lng: newLng };
-                });
-                return;
-              }
-            }
-          }
-        } catch {
-          // Fallback handled gracefully
-        }
-        // If geocoding didn't resolve, ensure fallback coordinate
-        if (isMounted) {
-          setDestCoords((prev) => {
-            if (prev) return prev;
-            return typeof partnerLat === "number" && typeof partnerLng === "number"
-              ? { lat: partnerLat + 0.012, lng: partnerLng + 0.015 }
-              : DEFAULT_INDORE_DESTINATION;
-          });
-        }
-      };
-      resolveAddress();
-      return () => {
-        isMounted = false;
-      };
-    } else {
-      // Default nearby destination if no address provided
-      setDestCoords((prev) => {
-        if (prev) return prev;
-        return typeof partnerLat === "number" && typeof partnerLng === "number"
-          ? { lat: partnerLat + 0.012, lng: partnerLng + 0.015 }
-          : DEFAULT_INDORE_DESTINATION;
-      });
-    }
-  }, [customerLat, customerLng, bookingLat, bookingLng, destinationAddress, partnerLat, partnerLng]);
+    setDestCoords(DEFAULT_INDORE_DESTINATION);
+  }, [customerLat, customerLng, bookingLat, bookingLng]);
 
   // Firestore real-time coordinate synchronization
   useEffect(() => {
@@ -618,13 +569,18 @@ export default function PartnerTrackingMap({
       onCall();
       return;
     }
+    const cleanNumber = 
+      customerPhone ||
+      booking?.customerPhone ||
+      booking?.phone ||
+      userInfo?.phoneNumber || 
+      partnerInfo?.phone || 
+      CORPORATE_LANDLINE_GATEWAY;
+
     if (typeof (window as any).__showToast === "function") {
-      (window as any).__showToast(
-        `Bridging secure call via Central Landline Gateway: ${CORPORATE_LANDLINE_GATEWAY}...`
-      );
-    } else {
-      window.open(`tel:${userInfo?.phoneNumber || CORPORATE_LANDLINE_GATEWAY}`);
+      (window as any).__showToast(`Calling (${cleanNumber})...`);
     }
+    window.open(`tel:${cleanNumber}`, "_self");
   };
 
   const handleDefaultChat = () => {
@@ -632,8 +588,16 @@ export default function PartnerTrackingMap({
       onChat();
       return;
     }
+    const targetBookingId = bookingId || booking?.id;
+    if (targetBookingId) {
+      window.dispatchEvent(
+        new CustomEvent("open-booking-chat", {
+          detail: { bookingId: targetBookingId, partnerId }
+        })
+      );
+    }
     if (typeof (window as any).__openCustomerChat === "function") {
-      (window as any).__openCustomerChat(bookingId || partnerId);
+      (window as any).__openCustomerChat(targetBookingId || partnerId);
     } else if (typeof (window as any).__showToast === "function") {
       (window as any).__showToast(`Opening live chat with ${partnerName}...`);
     }

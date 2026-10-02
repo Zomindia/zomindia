@@ -203,6 +203,13 @@ async function startServer() {
   // API Routes
   app.use("/api", serverApiRouter);
 
+  app.post("/api/make-secure-call", async (req, res) => {
+    return res.status(200).json({ 
+      success: true, 
+      message: "Direct phone dialing initiated via gateway/client handler" 
+    });
+  });
+
   app.post("/api/send-push-notification", async (req, res) => {
     try {
       const { userId, title, message } = req.body;
