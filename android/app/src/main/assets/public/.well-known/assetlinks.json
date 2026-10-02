@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zomindia.twa",
+      "sha256_cert_fingerprints": [
+        "F7:74:C1:25:69:60:DF:AE:B9:94:6A:70:84:31:32:8E:55:7D:5F:A9:8A:20:19:CC:50:84:8C:84:71:A9:AB:21"
+      ]
+    }
+  }
+]

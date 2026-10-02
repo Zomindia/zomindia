@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Zomindia</string>
+    <string name="title_activity_main">Zomindia</string>
+    <string name="package_name">com.zomindia.app</string>
+    <string name="custom_url_scheme">com.zomindia.app</string>
+</resources>

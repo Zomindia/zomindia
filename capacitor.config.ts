@@ -1,8 +1,8 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.zomindia.app',
-  appName: 'zomindia',
+  appName: 'Zomindia',
   webDir: 'dist',
   server: {
     androidScheme: 'https'

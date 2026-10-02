@@ -1,0 +1,8 @@
+{
+	"appId": "com.zomindia.app",
+	"appName": "Zomindia",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	}
+}
