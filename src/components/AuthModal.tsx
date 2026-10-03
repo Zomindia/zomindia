@@ -3,6 +3,7 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   signInWithRedirect,
+  signInWithPopup,
   getRedirectResult,
   GoogleAuthProvider,
   ConfirmationResult,
@@ -104,13 +105,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       isMounted = false;
     };
   }, [isOpen]);
-
-  useEffect(() => {
-    // Cleanly initialize persistent reCAPTCHA on mount
-    getOrCreateRecaptchaVerifier().catch((e) => {
-      console.warn("[AuthModal] Persistent reCAPTCHA init notice:", e);
-    });
-  }, []);
 
   useEffect(() => {
     let interval: any;
@@ -672,15 +666,51 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   };
 
-  // Google Sign In using signInWithRedirect
+  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithRedirect(auth, provider);
-      // Browser redirects to Google OAuth
+
+      // Determine if running inside an iframe (e.g. AI Studio development preview)
+      let isInsideIframe = false;
+      try {
+        isInsideIframe = window.self !== window.top;
+      } catch (e) {
+        // Cross-origin restriction indicates app is embedded in an iframe
+        isInsideIframe = true;
+      }
+
+      if (isInsideIframe) {
+        console.info('[AuthModal] Running inside iframe (AI Studio Preview) - using signInWithPopup for Google Auth');
+        const userCredential = await signInWithPopup(auth, provider);
+        if (userCredential && userCredential.user) {
+          const u = userCredential.user;
+          setVerifiedUid(u.uid);
+          setDisplayName(u.displayName || '');
+          setEmail(u.email || '');
+
+          const pDoc = await getDoc(doc(db, 'users', u.uid));
+          const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
+
+          if (!hasStoredPhone) {
+            setView('google-phone-setup');
+          } else {
+            setView('success-transition');
+            setTimeout(() => {
+              onSuccess();
+              onClose();
+              resetForm();
+            }, 1200);
+          }
+        }
+      } else {
+        console.info('[AuthModal] Running in top-level window / TWA - using signInWithRedirect for Google Auth');
+        await signInWithRedirect(auth, provider);
+        // Browser redirects to Google OAuth; getRedirectResult resolves upon returning
+      }
     } catch (err: any) {
       console.error("Google authentication error:", err);
       setError(getFriendlyAuthErrorMessage(err));

@@ -228,6 +228,12 @@ export function getFriendlyAuthErrorMessage(error: any): string {
   if (code.includes('invalid-phone-number')) {
     return 'Invalid mobile number format. Please provide a valid 10-digit number.';
   }
+  if (code.includes('popup-closed-by-user')) {
+    return 'Sign-in popup was closed before completing verification. Please try again.';
+  }
+  if (code.includes('popup-blocked')) {
+    return 'Sign-in popup was blocked by your browser. Please allow popups for this site and try again.';
+  }
   if (code.includes('network-request-failed')) {
     return 'Network connection issue detected. Please check your internet connection.';
   }

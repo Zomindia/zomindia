@@ -42,7 +42,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult, getOrCreateRecaptchaVerifier } from './services/authService';
+import { getRedirectAuthResult } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -633,12 +633,7 @@ export default function App() {
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
 
-    // 1. Initialize persistent reCAPTCHA cleanly on mount
-    getOrCreateRecaptchaVerifier().catch((err) => {
-      console.warn('[reCAPTCHA] Persistent container mount init notice:', err);
-    });
-
-    // 2. Call getRedirectAuthResult inside the main auth/app initialization useEffect so the user is authenticated upon returning to the app
+    // 1. Call getRedirectAuthResult inside the main auth/app initialization useEffect so the user is authenticated upon returning to the app
     getRedirectAuthResult()
       .then(async (userCredential) => {
         if (!isMounted || !userCredential || !userCredential.user) return;
