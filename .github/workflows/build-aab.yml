@@ -1,51 +1,46 @@
-name: Build Signed Android App Bundle (AAB)
+name: Build Android App Bundle (AAB)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Plugin Dependencies
-        run: npm install
-
-      - name: Set up JDK 21
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
-          cache: 'gradle'
 
-      - name: Decode Keystore File
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Web Dependencies
+        run: npm ci || npm install
+
+      - name: Build Web App & Sync Capacitor
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+          npm run build
+          npx cap sync android
 
-      - name: Grant execute permission for gradlew
+      - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
 
-      - name: Build and Sign Release AAB
+      - name: Build Release AAB
         run: |
           cd android
-          ./gradlew bundleRelease \
-            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
-            -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
-            -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
-            -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}"
+          ./gradlew bundleRelease --stacktrace
 
-      - name: Upload Signed AAB Artifact
+      - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-signed
+          name: zomindia-release-aab
           path: android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7

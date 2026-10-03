@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  signInWithRedirect,
-  signInWithPopup,
-  getRedirectResult,
-  GoogleAuthProvider,
   ConfirmationResult,
   updateProfile,
 } from 'firebase/auth';
-import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
@@ -36,12 +33,6 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  initialView?: AuthView;
-  initialData?: {
-    uid?: string;
-    displayName?: string;
-    email?: string;
-  };
 }
 
 // Support phone & Google-based sign-in for maximum conversion and security.
@@ -53,8 +44,32 @@ type AuthView =
   | 'google-phone-setup'
   | 'success-transition';
 
-export default function AuthModal({ isOpen, onClose, onSuccess, initialView, initialData }: Props) {
-  const [view, setView] = useState<AuthView>(initialView || 'login-selection');
+const getFriendlyAuthErrorMessage = (err: any): string => {
+  if (!err) return 'An unexpected error occurred. Please try again.';
+  switch (err.code) {
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized for Firebase Phone Authentication. Please add this domain to Authorized Domains in the Firebase Console.';
+    case 'auth/too-many-requests':
+      return 'Too many SMS requests. Please wait a few minutes and try again.';
+    case 'auth/invalid-phone-number':
+      return 'Invalid mobile number format. Please enter a valid 10-digit Indian phone number.';
+    case 'auth/quota-exceeded':
+      return 'SMS quota exceeded for this Firebase project. Please try again later.';
+    case 'auth/captcha-check-failed':
+      return 'reCAPTCHA verification failed. Please check your network and try again.';
+    case 'auth/invalid-verification-code':
+      return 'The 6-digit verification code entered is invalid. Please check and try again.';
+    case 'auth/code-expired':
+      return 'This verification code has expired. Please request a new OTP code.';
+    case 'auth/user-disabled':
+      return 'This user account has been disabled. Please contact support.';
+    default:
+      return err.message || 'Failed to send verification code. Please try again.';
+  }
+};
+
+export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
+  const [view, setView] = useState<AuthView>('login-selection');
   const [phoneNumber, setPhoneNumber] = useState('');
   
   // OTP states: single unified 6-digit string feeding native WebOTP & single input
@@ -62,15 +77,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   const otpInputRef = useRef<HTMLInputElement | null>(null);
   
   // Registration data
-  const [displayName, setDisplayName] = useState(initialData?.displayName || '');
-  const [email, setEmail] = useState(initialData?.email || '');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
 
   // Status & states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timer, setTimer] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [verifiedUid, setVerifiedUid] = useState<string | null>(initialData?.uid || null);
+  const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
   const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
 
   // Zomato-Style Onboarding verification and interactive conflict resolution state
@@ -107,6 +122,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   }, [isOpen]);
 
   useEffect(() => {
+    return () => {
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (e) {
+          console.warn("Recaptcha cleanup on unmount failed:", e);
+        }
+        window.recaptchaVerifier = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let interval: any;
     if (timer > 0) {
       interval = setInterval(() => setTimer(t => t - 1), 1000);
@@ -133,14 +161,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
   // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
-    setView(initialView || 'login-selection');
+    setView('login-selection');
     setPhoneNumber('');
     setOtpCode('');
-    setDisplayName(initialData?.displayName || '');
-    setEmail(initialData?.email || '');
+    setDisplayName('');
+    setEmail('');
     setError(null);
     setConfirmationResult(null);
-    setVerifiedUid(initialData?.uid || null);
+    setVerifiedUid(null);
     setIsOnboardingVerification(false);
     setShouldMergeConflictOnSuccess(false);
     setConflictUid(null);
@@ -151,93 +179,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     if (isOpen) {
       resetForm();
     }
-  }, [isOpen, initialView, initialData]);
+  }, [isOpen]);
 
-  // Check for any pending Google redirect results upon returning to the app
-  useEffect(() => {
-    let isSubscribed = true;
-    const inspectRedirect = async () => {
-      try {
-        const userCredential = await getRedirectResult(auth);
-        if (!isSubscribed || !userCredential || !userCredential.user) return;
-        const u = userCredential.user;
-        setVerifiedUid(u.uid);
-        setDisplayName(u.displayName || '');
-        setEmail(u.email || '');
-
-        const pDoc = await getDoc(doc(db, 'users', u.uid));
-        const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
-
-        if (!hasStoredPhone) {
-          setView('google-phone-setup');
-        } else {
-          setView('success-transition');
-          setTimeout(() => {
-            if (isSubscribed) {
-              onSuccess();
-              onClose();
-              resetForm();
-            }
-          }, 1200);
-        }
-      } catch (err: any) {
-        console.warn('[AuthModal] Google redirect result notice:', err);
-      }
-    };
-
-    inspectRedirect();
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, []);
-
-  // Standardized RecaptchaVerifier initialization with cleanup and single persistent container
+  // Optimized RecaptchaVerifier factory: reuses instance cleanly across sends/resends
   const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
-    const containerId = 'recaptcha-container';
-    
-    // Ensure the container ID matches a single persistent element and remove duplicate container elements
-    const duplicateContainers = document.querySelectorAll(`[id="${containerId}"]`);
-    if (duplicateContainers.length > 1) {
-      duplicateContainers.forEach((el, index) => {
-        if (index > 0) el.remove();
+    if (!window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {}
       });
+      await window.recaptchaVerifier.render();
     }
-
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      document.body.appendChild(container);
-    }
-
-    // Safety checks: clear/destroy any existing instance before initializing a new one
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {
-        console.warn('[AuthModal] Error clearing recaptchaVerifier:', e);
-      }
-      window.recaptchaVerifier = null;
-    }
-    container.innerHTML = '';
-
-    const verifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-      callback: () => {},
-      'expired-callback': () => {
-        if (window.recaptchaVerifier) {
-          try {
-            window.recaptchaVerifier.clear();
-          } catch (_) {}
-          window.recaptchaVerifier = null;
-        }
-      },
-    });
-
-    await verifier.render();
-    window.recaptchaVerifier = verifier;
-    return verifier;
+    return window.recaptchaVerifier;
   };
 
   // Handle Phone Number submission to request OTP
@@ -666,54 +619,39 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   };
 
-  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app
+  // Google Sign In & Dynamic Firestore Profile Sync
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+      
+      const pDoc = await getDoc(doc(db, 'users', user.uid));
+      const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
 
-      // Determine if running inside an iframe (e.g. AI Studio development preview)
-      let isInsideIframe = false;
-      try {
-        isInsideIframe = window.self !== window.top;
-      } catch (e) {
-        // Cross-origin restriction indicates app is embedded in an iframe
-        isInsideIframe = true;
-      }
+      // Keep user references in modal state for registration check
+      setVerifiedUid(user.uid);
+      setDisplayName(user.displayName || pDoc.data()?.displayName || '');
+      setEmail(user.email || pDoc.data()?.email || '');
 
-      if (isInsideIframe) {
-        console.info('[AuthModal] Running inside iframe (AI Studio Preview) - using signInWithPopup for Google Auth');
-        const userCredential = await signInWithPopup(auth, provider);
-        if (userCredential && userCredential.user) {
-          const u = userCredential.user;
-          setVerifiedUid(u.uid);
-          setDisplayName(u.displayName || '');
-          setEmail(u.email || '');
-
-          const pDoc = await getDoc(doc(db, 'users', u.uid));
-          const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
-
-          if (!hasStoredPhone) {
-            setView('google-phone-setup');
-          } else {
-            setView('success-transition');
-            setTimeout(() => {
-              onSuccess();
-              onClose();
-              resetForm();
-            }, 1200);
-          }
-        }
+      if (!hasStoredPhone) {
+        // If they don't have a phone, seamlessly transition to setup step
+        setView('google-phone-setup');
       } else {
-        console.info('[AuthModal] Running in top-level window / TWA - using signInWithRedirect for Google Auth');
-        await signInWithRedirect(auth, provider);
-        // Browser redirects to Google OAuth; getRedirectResult resolves upon returning
+        // Already registered with a phone number, proceed seamlessly
+        setView('success-transition');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+          resetForm();
+        }, 1500);
       }
     } catch (err: any) {
       console.error("Google authentication error:", err);
-      setError(getFriendlyAuthErrorMessage(err));
+      setError(err.message || 'Google authentication unsuccessful');
+    } finally {
       setLoading(false);
     }
   };
@@ -806,6 +744,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         // Disabled backdrop click dismissal to prevent accidental screen close on keyboard mistouches (e.g. typing login info/search)
         onClick={undefined}
       />
+      
+      {/* Permanent static container for Firebase Phone Auth invisible reCAPTCHA */}
+      <div id="recaptcha-container"></div>
 
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 16 }}

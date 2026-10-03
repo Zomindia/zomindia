@@ -42,7 +42,6 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -239,8 +238,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalInitialView, setAuthModalInitialView] = useState<'login-selection' | 'phone-entry' | 'otp-entry' | 'profile-setup' | 'google-phone-setup' | 'success-transition'>('login-selection');
-  const [authModalInitialData, setAuthModalInitialData] = useState<{ uid?: string; displayName?: string; email?: string } | undefined>(undefined);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => {
     const urlTab = getTabFromUrl();
@@ -625,46 +622,12 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [user?.uid, user?.emailVerified]);
 
-  // Main Auth & App Initialization Effect
   useEffect(() => {
     let isMounted = true;
     seedDatabase();
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
-
-    // 1. Call getRedirectAuthResult inside the main auth/app initialization useEffect so the user is authenticated upon returning to the app
-    getRedirectAuthResult()
-      .then(async (userCredential) => {
-        if (!isMounted || !userCredential || !userCredential.user) return;
-        const u = userCredential.user;
-        setUser(u);
-        console.info('[Auth] Google Sign-In redirect resolved user upon return:', u.uid);
-
-        // Check if user has registered a phone number in Firestore
-        const userDocRef = doc(db, 'users', u.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        const userData = userDocSnap.data();
-
-        const hasStoredPhone = Boolean(
-          userDocSnap.exists() &&
-          userData?.phoneNumber &&
-          userData.phoneNumber.toString().trim().length >= 10
-        );
-
-        if (!hasStoredPhone) {
-          setAuthModalInitialView('google-phone-setup');
-          setAuthModalInitialData({
-            uid: u.uid,
-            displayName: u.displayName || '',
-            email: u.email || '',
-          });
-          setIsAuthModalOpen(true);
-        }
-      })
-      .catch((err) => {
-        console.warn('[Auth] getRedirectAuthResult notice:', err);
-      });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (!isMounted) return;
@@ -2315,12 +2278,8 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       <AuthModal
         isOpen={isAuthModalOpen}
-        initialView={authModalInitialView}
-        initialData={authModalInitialData}
         onClose={() => {
           setIsAuthModalOpen(false);
-          setAuthModalInitialView('login-selection');
-          setAuthModalInitialData(undefined);
           try {
             sessionStorage.removeItem("zomini_pending_booking_action");
           } catch (e) {}
@@ -2331,8 +2290,6 @@ If you have any billing questions, or if your refund is delayed, please email us
             setUser({ ...auth.currentUser } as any);
           }
           setIsAuthModalOpen(false);
-          setAuthModalInitialView('login-selection');
-          setAuthModalInitialData(undefined);
 
           // Zomini post-login restoration
           try {
