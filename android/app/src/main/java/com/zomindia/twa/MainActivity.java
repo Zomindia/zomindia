@@ -1,4 +1,4 @@
-package com.zomindia.app;
+package com.zomindia.twa;
 
 import com.getcapacitor.BridgeActivity;
 

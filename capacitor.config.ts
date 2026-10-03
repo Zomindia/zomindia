@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.zomindia.app',
+  appId: 'com.zomindia.twa',
   appName: 'Zomindia',
   webDir: 'dist',
   server: {

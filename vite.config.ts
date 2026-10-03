@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
           enabled: false
         },
         manifest: {
-          id: "com.zomindia.app",
+          id: "com.zomindia.twa",
           name: "Zomindia",
           short_name: "Zomindia",
           description: "India's premium home service marketplace. Trusted experts for cleaning, repairs, and beauty at home in Indore.",
