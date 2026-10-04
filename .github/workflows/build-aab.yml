@@ -38,6 +38,44 @@ jobs:
           cd android
           ./gradlew bundleRelease --stacktrace
 
+      - name: Sign Release AAB with Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Decoding release keystore from secrets.KEYSTORE_BASE64..."
+            echo "$KEYSTORE_BASE64" | base64 -d > android/release.keystore
+
+            AAB_FILE=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+            if [ -z "$AAB_FILE" ]; then
+              echo "Error: No AAB file found in android/app/build/outputs/bundle/release"
+              exit 1
+            fi
+
+            echo "Signing $AAB_FILE..."
+            ALIAS="${KEY_ALIAS:-${{ secrets.ALIAS }}}"
+            STORE_PASS="${KEYSTORE_PASSWORD:-${{ secrets.KEY_STORE_PASSWORD }}}"
+            KEY_PASS="${KEY_PASSWORD:-$STORE_PASS}"
+
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore android/release.keystore \
+              -storepass "$STORE_PASS" \
+              -keypass "$KEY_PASS" \
+              "$AAB_FILE" \
+              "$ALIAS"
+
+            echo "Verifying AAB signature..."
+            jarsigner -verify "$AAB_FILE"
+
+            rm -f android/release.keystore
+            echo "Release AAB successfully signed."
+          else
+            echo "Warning: secrets.KEYSTORE_BASE64 is not set. AAB remains unsigned."
+          fi
+
       - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
