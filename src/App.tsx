@@ -2431,7 +2431,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       {/* Main Content */}
       {renderPartnerNotificationBanner()}
-      <main className="pb-24 md:pb-0 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
+      <main className="pb-24 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

@@ -62,8 +62,11 @@ import {
   Tv,
   Brush,
   Hammer,
+  RotateCcw,
+  PhoneCall,
 } from "lucide-react";
 
+import logoIconFile from "../assets/images/logo-icon.png";
 import heroImage from "../assets/images/regenerated_image_1781639290171.jpg";
 
 interface Props {
@@ -78,6 +81,33 @@ interface PartnerWithInfo extends PartnerProfile {
   displayName: string;
   photoURL?: string;
 }
+
+const CONSOLIDATED_OFFERS = [
+  {
+    id: "summer20",
+    tag: "Cooling Deals",
+    title: "Cool Summer 20% OFF",
+    desc: "Complete AC sanitization, jet wash & repair at doorstep in Indore",
+    code: "SUMMER20",
+    discount: "20% OFF",
+  },
+  {
+    id: "clean15",
+    tag: "Spotless Home",
+    title: "Deep House Cleaning 15% OFF",
+    desc: "Certified professional team with mechanized sanitization equipment",
+    code: "CLEAN15",
+    discount: "15% OFF",
+  },
+  {
+    id: "fixit250",
+    tag: "Appliance Care",
+    title: "Guaranteed Flat ₹250 Off",
+    desc: "Fix washing machines, refrigerators, microwaves & RO water purifiers",
+    code: "FIXIT250",
+    discount: "FLAT ₹250",
+  },
+];
 
 const SAMPLE_CATEGORIES = [
   {
@@ -423,7 +453,14 @@ export default function CustomerHome({
   }, [selectedCategory]);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const recentlyLaunchedScrollRef = useRef<HTMLDivElement>(null);
+  const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentOfferIndex((prev) => (prev + 1) % CONSOLIDATED_OFFERS.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
@@ -436,86 +473,108 @@ export default function CustomerHome({
     }
   }, [initialCategoryId, allCategories]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoriesSearchQuery, setCategoriesSearchQuery] = useState("");
   const [categoryTypeTab, setCategoryTypeTab] = useState<
     "All" | "Home" | "Professional" | "Repair"
   >("All");
-  const [currentPlaceholder, setCurrentPlaceholder] = useState(
-    "AC repair, ro service, washing machine repair...",
+  const INDORE_TYPEWRITER_SERVICES = useMemo(
+    () => [
+      "Search 'Split AC Service'...",
+      "Search 'RO Water Purifier Repair'...",
+      "Search 'Front Load Washing Machine'...",
+      "Search 'Refrigerator Gas Refilling'...",
+      "Search 'Doorstep TV Repair'...",
+    ],
+    [],
   );
 
+  const [currentPlaceholder, setCurrentPlaceholder] = useState(
+    "Search 'Split AC Service'...",
+  );
+
+  const [isScrolled, setIsScrolled] = useState(false);
+
   useEffect(() => {
-    const servicesList = [
-      "AC Deep Cleaning",
-      "TV Wall Mounting & Screen Fix",
-      "Kitchen Exhaust & Chimney Clean",
-      "Professional Fan Repair & Fixing",
-      "RO Water Purifier Service",
-      "Geyser Installation & Setup",
-      "Microwave Heater Repairing",
-      "Washing Machine Maintenance",
-      "Refrigerator Gas Refilling",
-      "Ceiling Fan Install & Wiring",
-      "Drilling & Wall Hanging Service",
-      "Home Fuse Switch Repairing",
-    ];
+    const handleScroll = () => {
+      const scrolled = window.scrollY > 60;
+      setIsScrolled((prev) => (prev !== scrolled ? scrolled : prev));
+    };
 
-    // Create a randomized copy and cycle through randomly
-    const shuffled = [...servicesList].sort(() => Math.random() - 0.5);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
+  useEffect(() => {
     let isMounted = true;
     let serviceIndex = 0;
     let charIndex = 0;
     let isDeleting = false;
-    let typingSpeed = 100;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const tick = () => {
       if (!isMounted) return;
 
-      const currentService = shuffled[serviceIndex % shuffled.length];
-      const prefix = "";
+      const currentService =
+        INDORE_TYPEWRITER_SERVICES[
+          serviceIndex % INDORE_TYPEWRITER_SERVICES.length
+        ];
 
       if (isDeleting) {
-        // Deleting character by character
-        setCurrentPlaceholder(
-          prefix + currentService.substring(0, charIndex - 1),
-        );
+        setCurrentPlaceholder(currentService.substring(0, charIndex - 1));
         charIndex--;
-        typingSpeed = 30; // Faster deletion
       } else {
-        // Typing character by character
-        setCurrentPlaceholder(
-          prefix + currentService.substring(0, charIndex + 1),
-        );
+        setCurrentPlaceholder(currentService.substring(0, charIndex + 1));
         charIndex++;
-        typingSpeed = 80; // Standard speed
       }
 
-      // Check state transitions
+      let delay = isDeleting ? 25 : 65;
+
       if (!isDeleting && charIndex === currentService.length) {
-        // Entire phrase is typed out - pause before starting deletion
-        typingSpeed = 1800; // Stay visible for 1.8s
+        delay = 1900;
         isDeleting = true;
       } else if (isDeleting && charIndex === 0) {
-        // Fully erased - move to next random service
         isDeleting = false;
         serviceIndex++;
-        typingSpeed = 400; // Small delay before typing next string
+        delay = 350;
       }
 
-      setTimeout(tick, typingSpeed);
+      timeoutId = setTimeout(tick, delay);
     };
 
-    // Begin typing sequence
-    const timerId = setTimeout(tick, 500);
+    timeoutId = setTimeout(tick, 450);
     return () => {
       isMounted = false;
-      clearTimeout(timerId);
+      clearTimeout(timeoutId);
     };
-  }, []);
+  }, [INDORE_TYPEWRITER_SERVICES]);
 
   const [partners, setPartners] = useState<PartnerWithInfo[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [activeOfferIndex, setActiveOfferIndex] = useState<number>(0);
+  const [isOfferPaused, setIsOfferPaused] = useState<boolean>(false);
+
+  const consolidatedOffers = useMemo(() => {
+    const dynamic = promotions.map((p) => ({
+      id: p.id,
+      tag: p.discountType === "percent" ? `${p.discountValue}% OFF` : `₹${p.discountValue} OFF`,
+      title: p.name,
+      desc: p.description,
+      code: p.code,
+      discount: p.discountType === "percent" ? `${p.discountValue}% OFF` : `₹${p.discountValue} OFF`,
+    }));
+
+    return dynamic.length > 0 ? [...dynamic, ...CONSOLIDATED_OFFERS] : CONSOLIDATED_OFFERS;
+  }, [promotions]);
+
+  useEffect(() => {
+    if (isOfferPaused || consolidatedOffers.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveOfferIndex((prev) => (prev + 1) % consolidatedOffers.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [isOfferPaused, consolidatedOffers.length]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({});
@@ -1049,16 +1108,6 @@ export default function CustomerHome({
       ? allCategories.find((c) => c.id === mostRecentService.categoryId)
       : null;
 
-  const scrollRecentlyLaunched = (direction: "left" | "right") => {
-    if (recentlyLaunchedScrollRef.current) {
-      const scrollAmount = 370;
-      recentlyLaunchedScrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
-
   if (selectedCategory) {
     const validCategoryServices = services.filter(isValidCustomerService);
 
@@ -1442,7 +1491,7 @@ export default function CustomerHome({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-8 pb-28 sm:pb-16 overflow-x-hidden">
       {/* 1. Global PWA Install Banner */}
       {(showPwaInstall || showIosSafariInstall) && (
         <motion.div
@@ -1501,7 +1550,7 @@ export default function CustomerHome({
       )}
 
       {profile?.role === "partner" && (
-        <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 sticky top-20 z-[40]">
+        <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 relative z-[20]">
           <div className="p-1.5 bg-amber-500 rounded-lg text-white">
             <ShieldCheck size={16} />
           </div>
@@ -1514,162 +1563,203 @@ export default function CustomerHome({
         </div>
       )}
 
-      {/* Hero Section */}
-      <section className={`relative transition-all duration-500 ease-in-out ${activeBooking && !recentCardDismissed ? 'min-h-[400px] md:min-h-[500px] py-10 md:py-12' : 'min-h-[320px] md:min-h-[380px] py-8 md:py-10'} flex items-center justify-center bg-blue-700 ${searchQuery.trim().length > 0 ? 'z-[50] overflow-visible' : 'z-10 overflow-hidden'}`}>
-        <div className="absolute inset-0 z-0">
-          <img
-            src={heroImage}
-            className="w-full h-full object-cover opacity-40 mix-blend-multiply"
-            alt="Cleaner working"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-900/60 via-blue-900/40 to-slate-900/90" />
-        </div>
+      {/* Dynamic Sticky Search Bar with Typewriter Effect & Scroll-Triggered Logo */}
+      <div 
+        className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 py-2.5 px-3 sm:px-6"
+      >
+        <div className="w-full max-w-4xl mx-auto relative flex items-center gap-2 sm:gap-3">
+          {/* Conditional Small Zomindia Brand Logo Icon (Visible only when scrolled) */}
+          <AnimatePresence>
+            {isScrolled && (
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, scale: 0.85, width: 0 }}
+                animate={{ opacity: 1, scale: 1, width: "auto" }}
+                exit={{ opacity: 0, scale: 0.85, width: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                className="shrink-0 flex items-center justify-center cursor-pointer active:scale-95 transition-transform overflow-hidden"
+                title="Back to top"
+                aria-label="Back to top"
+              >
+                <img
+                  src={logoIconFile}
+                  alt="Zomindia"
+                  className="h-9 w-9 min-w-[36px] rounded-xl object-contain cursor-pointer"
+                />
+              </motion.button>
+            )}
+          </AnimatePresence>
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
-          {activeBooking && !recentCardDismissed ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center text-left">
-              {/* Left Column: Welcome Message and Search Input */}
-              <div className="lg:col-span-6 space-y-6">
-                <motion.h1
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="text-4xl md:text-5xl font-bold text-white tracking-tight font-display drop-shadow-lg"
-                >
-                  Quality home services, on demand
-                </motion.h1>
-                <motion.p
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-base text-blue-50 font-medium drop-shadow-md"
-                >
-                  Trusted experts for cleaning, repairs, and beauty at home.
-                </motion.p>
+          {/* Search Input Container */}
+          <div className="relative flex-1 min-w-0">
+            <div 
+              className="relative flex items-center bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-3 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 p-1.5 sm:p-2"
+              onTouchStartCapture={(e) => e.stopPropagation()} 
+              onMouseDownCapture={(e) => e.stopPropagation()}
+            >
+              <div className="pl-2 sm:pl-3 pr-1.5 sm:pr-2 text-slate-400 focus-within:text-blue-600 flex items-center shrink-0">
+                <Search size={18} className="stroke-[2.2]" />
+              </div>
 
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="relative w-full shadow-2xl rounded-[24px]"
-                >
-                  <div className="relative flex items-center bg-white rounded-[24px] p-2 border border-white/20 backdrop-blur-sm" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
-                    <input
-                      type="text"
-                      inputMode="text"
-                      enterKeyHint="search"
-                      placeholder={currentPlaceholder}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full px-5 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base placeholder:text-slate-400 placeholder:font-medium"
-                    />
-                    {searchQuery.trim().length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery("")}
-                        className="p-2.5 mr-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer"
-                        aria-label="Clear search"
-                      >
-                        <X size={18} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-xl transition-all shadow-lg active:scale-95 shrink-0 flex items-center justify-center w-12 h-12 cursor-pointer"
-                      aria-label="Search"
-                    >
-                      <Search size={20} />
-                    </button>
-                  </div>
-                  {/* Search Results Dropdown - High Elevation & App-like Styling */}
-                  <AnimatePresence>
-                    {searchQuery.trim().length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.18 }}
-                        className="absolute left-0 right-0 top-full mt-3 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left"
-                      >
-                        {filteredSearchResults.length > 0 ? (
-                          <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
-                            {filteredSearchResults.map((service) => {
-                              const category = allCategories.find((c) => c.id === service.categoryId);
-                              return (
-                                <div
-                                  key={service.id}
-                                  onClick={() => {
-                                    onServiceSelect(service.id);
-                                    setSearchQuery("");
-                                  }}
-                                  className="group flex items-center justify-between gap-3 p-3 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
-                                      <img
-                                        src={service.imageURL || '/pwa-192x192.png'}
-                                        alt={service.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) => {
-                                          (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-700 leading-tight">
-                                        {service.name}
-                                      </h4>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        {category && (
-                                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[140px]">
-                                            {category.name}
-                                          </span>
-                                        )}
-                                        <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
-                                          ★ 4.8
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
+              <input
+                type="text"
+                inputMode="text"
+                enterKeyHint="search"
+                placeholder={currentPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full py-1.5 sm:py-2 px-1 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 truncate"
+              />
 
-                                  <div className="flex items-center gap-2 shrink-0 pl-2">
-                                    <div className="text-right">
-                                      <span className="block text-[9px] font-medium text-slate-400 leading-none">Starting</span>
-                                      <span className="text-sm font-extrabold text-[#002e6e]">₹{service.basePrice}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="bg-[#002e6e] group-hover:bg-[#00baf2] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
-                                    >
-                                      Book
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="p-6 text-center">
-                            <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
-                            <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                              {['AC Service', 'RO Purifier', 'Washing Machine', 'Fridge'].map((chip) => (
-                                <button
-                                  key={chip}
-                                  type="button"
-                                  onClick={() => setSearchQuery(chip)}
-                                  className="text-xs font-medium bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 px-2.5 py-1 rounded-full transition-colors"
-                                >
-                                  {chip}
-                                </button>
-                              ))}
+              {searchQuery.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer mr-0.5 sm:mr-1"
+                  aria-label="Clear search"
+                >
+                  <X size={15} />
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="bg-blue-700 hover:bg-blue-800 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-blue-700/20 active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                aria-label="Search"
+              >
+                <span>Search</span>
+              </button>
+            </div>
+
+          {/* Search Results Dropdown - High Elevation & App-like Styling */}
+          <AnimatePresence>
+            {searchQuery.trim().length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ duration: 0.18 }}
+                className="absolute left-0 right-0 top-full mt-2 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left"
+              >
+                {filteredSearchResults.length > 0 ? (
+                  <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
+                    {filteredSearchResults.map((service) => {
+                      const category = allCategories.find((c) => c.id === service.categoryId);
+                      return (
+                        <div
+                          key={service.id}
+                          onClick={() => {
+                            onServiceSelect(service.id);
+                            setSearchQuery("");
+                          }}
+                          className="group flex items-center justify-between gap-3 p-3 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
+                              <img
+                                src={service.imageURL || '/pwa-192x192.png'}
+                                alt={service.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
+                                }}
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-700 leading-tight">
+                                {service.name}
+                              </h4>
+                              <div className="flex items-center gap-2 mt-1">
+                                {category && (
+                                  <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                                    {category.name}
+                                  </span>
+                                )}
+                                <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
+                                  ★ 4.8
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
+
+                          <div className="flex items-center gap-2 shrink-0 pl-2">
+                            <div className="text-right">
+                              <span className="block text-[9px] font-medium text-slate-400 leading-none">Starting</span>
+                              <span className="text-sm font-extrabold text-[#002e6e]">₹{service.basePrice}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="bg-[#002e6e] group-hover:bg-[#00baf2] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                            >
+                              Book
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center">
+                    <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
+                    <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                      {['AC Service', 'RO Purifier', 'Washing Machine', 'Refrigerator', 'TV Repair'].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setSearchQuery(chip)}
+                          className="text-xs font-medium bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 px-2.5 py-1 rounded-full transition-colors"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* Compact Hero Section */}
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2 pb-1 sm:pt-3 sm:pb-2">
+        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 shadow-sm border border-blue-700/30 py-3 px-4">
+          <div className="absolute inset-0 z-0 pointer-events-none">
+            <img
+              src={heroImage}
+              className="w-full h-full object-cover opacity-20 mix-blend-overlay"
+              alt="Quality home services"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-950/85 via-blue-900/70 to-slate-950/80" />
+          </div>
+
+          <div className="relative z-10">
+          {activeBooking && !recentCardDismissed ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6 items-center text-left">
+              {/* Left Column: Compact Welcome Message & Badges */}
+              <div className="lg:col-span-7 space-y-1.5 sm:space-y-2">
+                <h1 className="text-base sm:text-2xl font-bold text-white leading-tight font-display tracking-tight">
+                  Quality home services, on demand
+                </h1>
+                <p className="text-xs text-blue-100/90 font-medium hidden sm:block truncate">
+                  Trusted doorstep experts for cleaning, repairs, and appliances in Indore.
+                </p>
+
+                <div className="text-xs text-blue-100 flex flex-wrap items-center gap-1.5 sm:gap-2.5 py-0.5">
+                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                    <ShieldCheck size={12} className="text-emerald-400 shrink-0" /> Verified Pros
+                  </span>
+                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                    <Zap size={12} className="text-amber-400 shrink-0" /> Upfront Pricing
+                  </span>
+                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                    <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" /> 4.8★ Rated
+                  </span>
+                </div>
               </div>
 
               {/* Right Column: Sleek, compact main booking details card */}
@@ -1871,306 +1961,67 @@ export default function CustomerHome({
               </div>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto text-center">
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight font-display drop-shadow-lg"
-              >
-                Quality home services, on demand
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-lg md:text-xl text-blue-50 mb-8 font-medium drop-shadow-md max-w-2xl mx-auto"
-              >
-                Trusted experts for cleaning, repairs, and beauty at home.
-              </motion.p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4 text-center sm:text-left">
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-2xl font-bold text-white leading-tight font-display tracking-tight">
+                  Quality home services, on demand
+                </h1>
+                <p className="text-xs sm:text-sm text-blue-100/90 font-medium mt-0.5 hidden xs:block truncate">
+                  Trusted doorstep experts for cleaning, repairs, and appliances in Indore.
+                </p>
+              </div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="relative max-w-3xl mx-auto mb-10"
-              >
-                <div className="relative flex items-center bg-white rounded-[24px] shadow-2xl p-2 border border-white/20 backdrop-blur-sm" onTouchStartCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}>
-                  <input
-                    type="text"
-                    inputMode="text"
-                    enterKeyHint="search"
-                    placeholder={currentPlaceholder}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-5 py-4 bg-transparent focus:outline-none text-slate-800 font-bold text-base sm:text-lg placeholder:text-slate-400 placeholder:font-medium"
-                  />
-                  {searchQuery.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="p-2.5 mr-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer"
-                      aria-label="Clear search"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-xl transition-all shadow-lg shadow-blue-700/20 active:scale-95 shrink-0 flex items-center justify-center w-12 h-12 cursor-pointer"
-                    aria-label="Search"
-                  >
-                    <Search size={20} />
-                  </button>
-                </div>
-                {/* Search Results Dropdown - High Elevation & App-like Styling */}
-                <AnimatePresence>
-                  {searchQuery.trim().length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ duration: 0.18 }}
-                      className="absolute left-0 right-0 top-full mt-3 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left"
-                    >
-                      {filteredSearchResults.length > 0 ? (
-                        <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
-                          {filteredSearchResults.map((service) => {
-                            const category = allCategories.find((c) => c.id === service.categoryId);
-                            return (
-                              <div
-                                key={service.id}
-                                onClick={() => {
-                                  onServiceSelect(service.id);
-                                  setSearchQuery("");
-                                }}
-                                className="group flex items-center justify-between gap-3 p-3 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
-                              >
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                  <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
-                                    <img
-                                      src={service.imageURL || '/pwa-192x192.png'}
-                                      alt={service.name}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                      referrerPolicy="no-referrer"
-                                      onError={(e) => {
-                                        (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-700 leading-tight">
-                                      {service.name}
-                                    </h4>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      {category && (
-                                        <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[140px]">
-                                          {category.name}
-                                        </span>
-                                      )}
-                                      <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
-                                        ★ 4.8
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0 pl-2">
-                                  <div className="text-right">
-                                    <span className="block text-[9px] font-medium text-slate-400 leading-none">Starting</span>
-                                    <span className="text-sm font-extrabold text-[#002e6e]">₹{service.basePrice}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="bg-[#002e6e] group-hover:bg-[#00baf2] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
-                                  >
-                                    Book
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="p-6 text-center">
-                          <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
-                          <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                            {['AC Service', 'RO Purifier', 'Washing Machine', 'Fridge'].map((chip) => (
-                              <button
-                                key={chip}
-                                type="button"
-                                onClick={() => setSearchQuery(chip)}
-                                className="text-xs font-medium bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 px-2.5 py-1 rounded-full transition-colors"
-                              >
-                                {chip}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+              {/* Streamlined 3 trust badges in a clean wrapping container without clipping */}
+              <div className="text-xs text-blue-100 flex flex-wrap items-center justify-center sm:justify-end gap-1.5 sm:gap-2.5 py-0.5 shrink-0">
+                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                  <ShieldCheck size={12} className="text-emerald-400 shrink-0" /> Verified Pros
+                </span>
+                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                  <Zap size={12} className="text-amber-400 shrink-0" /> Upfront Pricing
+                </span>
+                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
+                  <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" /> 4.8★ Rated
+                </span>
+              </div>
             </div>
           )}
+        </div>
         </div>
       </section>
 
       {/* Main Container */}
       <motion.div
         layout="position"
-        initial={{ opacity: 0, y: 25 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 relative z-20"
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 pt-1 pb-4 sm:pt-2 sm:pb-6 relative z-20"
       >
-        {/* Top Feature / Spotlight Spot wrapper */}
-        {mostRecentService && !spotlightDismissed ? (
-          <motion.div
-            layout="position"
-            initial={{ opacity: 0, y: 25 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-            className="-mt-24 sm:-mt-28 md:-mt-32 mb-12 relative z-30"
-            id="top-spot-container"
-          >
-            <motion.div
-              layout
-              className="grid grid-cols-1 gap-6 items-stretch"
-            >
-              <AnimatePresence mode="popLayout" initial={false}>
-                {/* Admin Launch Spotlight Banner */}
-                {mostRecentService && !spotlightDismissed && (
-                  <motion.div
-                    key={`spotlight-${mostRecentService.id}`}
-                    layout
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.4 }}
-                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                    onClick={() => onServiceSelect(mostRecentService.id)}
-                    className="bg-white text-slate-900 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] cursor-pointer flex flex-col justify-between gap-3 sm:gap-5 group overflow-hidden relative border border-slate-205 hover:border-blue-500/40 hover:shadow-2xl hover:shadow-blue-900/5 transition-all duration-300 w-full shadow-xl"
-                  >
-                    {/* Close/Skip Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSpotlightDismissed(true);
-                      }}
-                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer absolute top-3 right-3 sm:top-5 sm:right-5 z-20 hover:scale-105 active:scale-95 border border-slate-200 shadow-sm"
-                      title="Skip recently added service"
-                    >
-                      <X size={14} className="sm:w-4 sm:h-4" />
-                    </button>
-
-                    {/* Decorative Glowing Backdrop Orbits */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[60px] pointer-events-none group-hover:bg-blue-500/10 group-hover:scale-110 transition-all duration-500" />
-                    <div className="absolute -bottom-8 -left-8 w-40 h-40 bg-indigo-500/5 rounded-full blur-[40px] pointer-events-none group-hover:bg-indigo-500/10 transition-all duration-500" />
-
-                    <div className="space-y-3 sm:space-y-4 relative z-10">
-                      {/* Header Row */}
-                      <div className="flex items-center justify-between gap-2 sm:gap-4 w-full pr-7 sm:pr-9">
-                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                          {mostRecentService.imageURL ? (
-                            <div className="w-10 h-10 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden bg-slate-100 border border-slate-205 shrink-0 shadow-sm animate-in fade-in">
-                              <img
-                                src={mostRecentService.imageURL}
-                                alt={mostRecentService.name}
-                                className="w-full h-full object-cover opacity-100 group-hover:scale-105 transition-transform duration-500"
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                              />
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 font-black text-white flex items-center justify-center text-xs sm:text-sm shrink-0 shadow-md">
-                              {mostRecentService.name.charAt(0)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="flex h-1 w-1 sm:h-1.5 sm:w-1.5 relative">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-1 w-1 sm:h-1.5 sm:w-1.5 bg-blue-600" />
-                              </span>
-                              <span className="text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.1em] sm:tracking-[0.18em] text-blue-700 font-mono">
-                                Recently Added Service
-                              </span>
-                            </div>
-                            <h4 className="text-sm sm:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-blue-700 transition-colors duration-200 truncate pr-1 sm:pr-4">
-                              {mostRecentService.name}
-                            </h4>
-                          </div>
-                        </div>
-
-                        {/* Launch pricing badge */}
-                        <div className="text-right shrink-0 pl-1">
-                          <span className="text-[7px] sm:text-[8px] text-slate-550 uppercase font-black tracking-widest block mb-0.5">
-                            Launches @
-                          </span>
-                          <span className="text-xs sm:text-base font-black text-emerald-805">
-                            ₹{mostRecentService.basePrice}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer Row */}
-                    <div className="flex flex-row items-center justify-between pt-2.5 sm:pt-4 border-t border-slate-200 relative z-10 gap-2">
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        {recentServiceCategory && (
-                          <span className="text-[8px] sm:text-[9px] bg-blue-50/80 border border-blue-200/50 text-blue-700 font-extrabold uppercase px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl tracking-wider font-mono">
-                            {recentServiceCategory.name}
-                          </span>
-                        )}
-                        {mostRecentService.duration && (
-                          <span className="text-[8px] sm:text-[9px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md sm:rounded-lg border border-slate-200 font-mono">
-                            ⏱️ {mostRecentService.duration}
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="flex items-center gap-1.5 text-[9px] sm:text-[11px] font-black uppercase tracking-widest text-[#050ca6] select-none pr-1 transition-colors group-hover:text-amber-600">
-                        Tap to Book{" "}
-                        <ArrowRight
-                          size={12}
-                          className="text-[#050ca6] transition-all group-hover:translate-x-1 group-hover:text-amber-600"
-                        />
-                      </span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </motion.div>
-        ) : null}
-
         {/* Categories Grid */}
         <motion.section
           layout="position"
-          transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          className={`mb-6 animate-fade-in ${(activeBooking && !recentCardDismissed) || (mostRecentService && !spotlightDismissed) ? "mt-4" : "-mt-24 sm:-mt-28 md:-mt-32 relative z-30"}`}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-6 animate-fade-in mt-1 sm:mt-2 relative z-20"
           id="categories-grid"
         >
-          <div className="bg-white rounded-[40px] border border-slate-100/90 shadow-[0_24px_50px_-12px_rgba(15,23,42,0.03),0_8px_20px_-6px_rgba(15,23,42,0.01)] pt-3 sm:pt-6 md:pt-6 px-4 sm:px-8 md:px-10 pb-6 sm:pb-8 relative overflow-hidden group">
+          <div className="bg-white rounded-[28px] sm:rounded-[36px] border border-slate-100/90 shadow-xs pt-3 sm:pt-5 px-3.5 sm:px-8 pb-5 sm:pb-7 relative overflow-hidden group">
             {/* Ambient gradient backdrops */}
             <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none -translate-y-12 translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
             <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-sky-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none translate-y-12 -translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
 
             {/* Section Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-100 relative z-10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 mb-2.5 sm:mb-4 pb-2 sm:pb-3 border-b border-slate-100 relative z-10">
               <div>
-                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight uppercase">
+                <h3 className="text-base sm:text-xl font-black text-slate-900 tracking-tight uppercase">
                   Explore{" "}
                   <span className="text-blue-700 font-black">Services</span>
                 </h3>
               </div>
             </div>
 
-            {/* Filter and Search Bar Row */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 sm:mb-5 pb-1 relative z-10">
-              {/* Tab Navigation */}
-              <div className="flex border-b border-slate-100/80 overflow-x-auto gap-4 sm:gap-5 no-scrollbar scroll-smooth w-full md:w-auto">
+            {/* Category Tabs: ALL, HOME, PROFESSIONAL, REPAIR */}
+            <div className="mb-4 sm:mb-5 pb-1 relative z-10">
+              <div className="overflow-x-auto no-scrollbar whitespace-nowrap flex gap-2 py-1 w-full border-b border-slate-100/80">
                 {(["All", "Home", "Professional", "Repair"] as const).map(
                   (tab) => {
                     const isActive = categoryTypeTab === tab;
@@ -2179,40 +2030,16 @@ export default function CustomerHome({
                         key={tab}
                         type="button"
                         onClick={() => setCategoryTypeTab(tab)}
-                        className={`px-3 md:px-4 py-3 sm:py-3.5 font-bold text-[11px] sm:text-xs select-none cursor-pointer tracking-wider uppercase transition-all border-b-2 whitespace-nowrap active:scale-95 duration-200 ${
+                        className={`px-3.5 sm:px-4 py-2 rounded-xl font-bold text-[11px] sm:text-xs select-none cursor-pointer tracking-wider uppercase transition-all whitespace-nowrap active:scale-95 duration-200 ${
                           isActive
-                            ? "border-blue-700 text-blue-700 font-black"
-                            : "border-transparent text-slate-400 hover:text-slate-600"
+                            ? "bg-blue-700 text-white shadow-xs font-black"
+                            : "bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/60"
                         }`}
                       >
                         {tab}
                       </button>
                     );
                   },
-                )}
-              </div>
-
-              {/* Local Category & Service Search */}
-              <div className="relative w-full md:w-64 shrink-0 transition-all duration-300 focus-within:md:w-72">
-                <Search
-                  size={14}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="text"
-                  placeholder="Search categories..."
-                  value={categoriesSearchQuery}
-                  onChange={(e) => setCategoriesSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 md:py-2.5 bg-slate-50 border border-slate-100/90 rounded-full text-xs font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-medium focus:outline-none focus:ring-4 focus:ring-blue-700/5 focus:border-blue-700 focus:bg-white transition-all shadow-inner"
-                />
-                {categoriesSearchQuery && (
-                  <button
-                    onClick={() => setCategoriesSearchQuery("")}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                    aria-label="Clear filter"
-                  >
-                    <X size={12} className="stroke-[3]" />
-                  </button>
                 )}
               </div>
             </div>
@@ -2223,7 +2050,7 @@ export default function CustomerHome({
             ) : (
               <motion.div
                 layout
-                className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-4 sm:gap-y-6 gap-x-2 sm:gap-x-3 items-center justify-items-center relative z-10 min-h-[140px]"
+                className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3.5 items-start justify-items-center relative z-10 min-h-[140px]"
               >
                 <AnimatePresence mode="popLayout">
                   {categories
@@ -2231,25 +2058,6 @@ export default function CustomerHome({
                       if (categoryTypeTab !== "All") {
                         const type = getCategoryType(cat.name);
                         if (type !== categoryTypeTab) return false;
-                      }
-                      if (categoriesSearchQuery.trim() !== "") {
-                        const queryStr = categoriesSearchQuery
-                          .toLowerCase()
-                          .trim();
-                        const catMatches = cat.name
-                          .toLowerCase()
-                          .includes(queryStr);
-                        if (catMatches) return true;
-
-                        const servicesInCat = allServices.filter(
-                          (s) => s.categoryId === cat.id,
-                        );
-                        return servicesInCat.some(
-                          (s) =>
-                            s.name.toLowerCase().includes(queryStr) ||
-                            (s.description &&
-                              s.description.toLowerCase().includes(queryStr)),
-                        );
                       }
                       return true;
                     })
@@ -2278,8 +2086,8 @@ export default function CustomerHome({
                             layout: { duration: 0.3 },
                           }}
                           whileHover={{ 
-                            scale: 1.08,
-                            y: -6,
+                            scale: 1.05,
+                            y: -4,
                             transition: { type: "spring", stiffness: 400, damping: 15 }
                           }}
                           whileTap={{ scale: 0.95 }}
@@ -2290,11 +2098,11 @@ export default function CustomerHome({
                               block: "start",
                             });
                           }}
-                          className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none relative"
+                          className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none relative p-0.5"
                         >
                           {/* The Inner Card Container */}
                           <div
-                            className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border ${theme.borderClass} ${theme.bgClass} group-hover:border-transparent ${theme.shadowClass} relative overflow-hidden`}
+                            className={`w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 min-h-[48px] min-w-[48px] bg-white rounded-2xl sm:rounded-[24px] flex items-center justify-center transition-all duration-300 mb-1.5 shadow-xs border ${theme.borderClass} ${theme.bgClass} group-hover:border-blue-500 group-hover:shadow-md ${theme.shadowClass} relative overflow-hidden`}
                           >
                             {/* Interactive Colorful Glow Backing */}
                             <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -2305,14 +2113,14 @@ export default function CustomerHome({
 
                             {theme.badgeText && (
                               <div
-                                className={`absolute top-1.5 sm:top-2 right-1.5 sm:right-2 px-1.5 py-0.5 rounded-full text-[6px] sm:text-[7px] font-black uppercase tracking-wider border z-20 ${theme.badgeColor || "bg-blue-50 text-blue-600 border-blue-100"}`}
+                                className={`absolute top-1 sm:top-1.5 right-1 sm:right-1.5 px-1 py-0.5 rounded-full text-[6px] sm:text-[7px] font-black uppercase tracking-wider border z-20 ${theme.badgeColor || "bg-blue-50 text-blue-600 border-blue-100"}`}
                               >
                                 {theme.badgeText}
                               </div>
                             )}
 
                             {/* Sub-container representing circle backdrop */}
-                            <div className="w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10 p-1.5 sm:p-2 sm:overflow-hidden">
+                            <div className="w-11 h-11 sm:w-13 sm:h-13 md:w-16 md:h-16 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10 p-1 sm:p-1.5 overflow-hidden">
                               {hasValidIconURL ? (
                                 <motion.img
                                   whileHover={{ scale: 1.12, rotate: 4 }}
@@ -2340,8 +2148,8 @@ export default function CustomerHome({
                                   className={`${theme.iconColor} group-hover:${theme.activeIconColor}`}
                                 >
                                   <Icon
-                                    size={30}
-                                    className="sm:size-[34px] md:size-[40px] stroke-[1.5] transition-colors duration-300"
+                                    size={24}
+                                    className="sm:size-[28px] md:size-[32px] stroke-[1.6] transition-colors duration-300"
                                   />
                                 </motion.div>
                               )}
@@ -2349,7 +2157,7 @@ export default function CustomerHome({
                           </div>
                           {/* Text block label */}
                           <span
-                            className={`text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 ${theme.textHoverColor} tracking-tight transition-colors duration-300 mt-1 text-center leading-tight max-w-[80px] sm:max-w-[95px] md:max-w-[110px] line-clamp-2 select-none`}
+                            className={`text-[11px] leading-tight text-center line-clamp-2 font-extrabold text-slate-800 ${theme.textHoverColor} tracking-tight transition-colors duration-200 mt-0.5 select-none w-full px-0.5`}
                           >
                             {cat.name}
                           </span>
@@ -2364,21 +2172,6 @@ export default function CustomerHome({
                     const type = getCategoryType(cat.name);
                     if (type !== categoryTypeTab) return false;
                   }
-                  if (categoriesSearchQuery.trim() !== "") {
-                    const queryStr = categoriesSearchQuery.toLowerCase().trim();
-                    const catMatches = cat.name.toLowerCase().includes(queryStr);
-                    if (catMatches) return true;
-
-                    const servicesInCat = allServices.filter(
-                      (s) => s.categoryId === cat.id,
-                    );
-                    return servicesInCat.some(
-                      (s) =>
-                        s.name.toLowerCase().includes(queryStr) ||
-                        (s.description &&
-                          s.description.toLowerCase().includes(queryStr)),
-                    );
-                  }
                   return true;
                 }).length === 0 && (
                   <div className="col-span-full py-12 text-center w-full bg-slate-50/50 rounded-3xl border border-dashed border-slate-200/60 p-6 flex flex-col items-center justify-center">
@@ -2386,493 +2179,193 @@ export default function CustomerHome({
                       No Services Found
                     </span>
                     <p className="text-xs text-slate-500 mt-1">
-                      Try adjusting your category filter or search keywords.
+                      Try selecting another category tab above.
                     </p>
                   </div>
                 )}
 
-                {categoriesSearchQuery.trim() === "" && (
-                  <motion.button
-                    layout
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ 
-                      scale: 1.08,
-                      y: -6,
-                      transition: { type: "spring", stiffness: 400, damping: 15 }
-                    }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none"
-                    onClick={() => {
-                      const detailsSec =
-                        document.getElementById("categories-grid");
-                      if (detailsSec) {
-                        window.scrollTo({
-                          top:
-                            detailsSec.offsetTop + detailsSec.offsetHeight + 100,
-                          behavior: "smooth",
-                        });
-                      }
-                    }}
-                  >
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-[24px] sm:rounded-[30px] flex items-center justify-center transition-all duration-300 mb-2 sm:mb-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)] border border-slate-100/80 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)] relative overflow-hidden">
-                      <div className="w-12 h-12 sm:w-15 sm:h-15 md:w-18 md:h-18 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10">
-                        <div className="flex gap-1 items-center justify-center">
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
-                        </div>
+                <motion.button
+                  layout
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ 
+                    scale: 1.05,
+                    y: -4,
+                    transition: { type: "spring", stiffness: 400, damping: 15 }
+                  }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex flex-col items-center group transition-all w-full cursor-pointer focus:outline-none relative p-0.5"
+                  onClick={() => {
+                    const detailsSec =
+                      document.getElementById("categories-grid");
+                    if (detailsSec) {
+                      window.scrollTo({
+                        top:
+                          detailsSec.offsetTop + detailsSec.offsetHeight + 100,
+                        behavior: "smooth",
+                      });
+                    }
+                  }}
+                >
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 min-h-[48px] min-w-[48px] bg-white rounded-2xl sm:rounded-[24px] flex items-center justify-center transition-all duration-300 mb-1.5 shadow-xs border border-slate-100/80 group-hover:bg-slate-500/[0.03] group-hover:border-slate-300 group-hover:shadow-md relative overflow-hidden">
+                    <div className="w-11 h-11 sm:w-13 sm:h-13 md:w-16 md:h-16 rounded-full bg-slate-50/60 group-hover:bg-white flex items-center justify-center transition-all duration-300 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.01)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] relative z-10">
+                      <div className="flex gap-1 items-center justify-center">
+                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
+                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-300 group-hover:scale-125 group-hover:bg-blue-600" />
                       </div>
                     </div>
-                    <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-700 group-hover:text-blue-700 tracking-tight transition-colors duration-300 mt-1 text-center leading-tight select-none">
-                      More
-                    </span>
-                  </motion.button>
-                )}
+                  </div>
+                  <span className="text-[11px] leading-tight text-center font-extrabold text-slate-700 group-hover:text-blue-700 tracking-tight transition-colors duration-300 mt-0.5 select-none w-full px-0.5">
+                    More
+                  </span>
+                </motion.button>
               </motion.div>
             )}
           </div>
         </motion.section>
 
-        {/* Seasonal Offers & Trending Highlights */}
-        <section className="mb-6 w-full" id="seasonal-deals">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Card 1: AC Cooling Promotion */}
-            <motion.div
-              whileHover={{ y: -6, scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => {
-                navigator.clipboard.writeText("SUMMER20");
-                setCopiedCode("SUMMER20");
-                (window as any).__showCopyToast?.("SUMMER20");
-                setTimeout(() => setCopiedCode(null), 2000);
-              }}
-              className="bg-gradient-to-br from-cyan-500/10 via-blue-500/[0.04] to-transparent rounded-[32px] p-6 sm:p-8 border border-cyan-100/70 hover:border-cyan-200 shadow-[0_8px_30px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgba(6,182,212,0.08)] flex items-center justify-between relative overflow-hidden group cursor-pointer transition-all duration-300"
-            >
-              <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-cyan-100/20 -skew-x-12 translate-x-12 group-hover:translate-x-4 transition-transform duration-700" />
-              {/* Interactive Radial glow */}
-              <div className="absolute -right-20 -bottom-20 w-48 h-48 rounded-full bg-cyan-400/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        {/* Consolidated Offers Auto-Slider Banner (Single card with indicator dots) */}
+        <section
+          className="mb-8 w-full max-w-6xl mx-auto"
+          id="offers-slider"
+          onMouseEnter={() => setIsOfferPaused(true)}
+          onMouseLeave={() => setIsOfferPaused(false)}
+        >
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white">
+            <AnimatePresence mode="wait">
+              {(() => {
+                const currentOffer = consolidatedOffers[activeOfferIndex] || consolidatedOffers[0];
+                if (!currentOffer) return null;
 
-              <div className="relative z-10 flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-cyan-100 text-cyan-800 border border-cyan-200/50">
-                    Cooling deals
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    AC Maintenance
-                  </span>
-                </div>
-                <h4 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight mb-1">
-                  Cool Summer{" "}
-                  <span className="text-cyan-600 font-extrabold uppercase italic">
-                    20% OFF
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 font-medium mb-4">
-                  Complete sanitization & troubleshooting
-                </p>
-                <div
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm transition-colors duration-300 border ${
-                    copiedCode === "SUMMER20"
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-white/90 border-slate-100 text-slate-800 group-hover:bg-cyan-600 group-hover:text-white group-hover:border-transparent"
-                  }`}
-                >
-                  {copiedCode === "SUMMER20" ? (
-                    <>
-                      <Check size={11} className="stroke-[2.5]" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={10} className="stroke-[2.5]" />
-                      <span>Code: SUMMER20</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="relative z-10 w-20 h-20 text-cyan-600/80 group-hover:text-cyan-600 transition-colors duration-300 transform group-hover:scale-110 group-hover:rotate-6 transition-transform duration-500 shrink-0 select-none">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-full h-full"
-                >
-                  <rect x="2" y="6" width="20" height="12" rx="2" />
-                  <path d="M6 10h12" />
-                  <path d="M6 14h12" />
-                </svg>
-              </div>
-            </motion.div>
-
-            {/* Card 2: Home Cleaning Promotion */}
-            <motion.div
-              whileHover={{ y: -6, scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => {
-                navigator.clipboard.writeText("CLEAN15");
-                setCopiedCode("CLEAN15");
-                (window as any).__showCopyToast?.("CLEAN15");
-                setTimeout(() => setCopiedCode(null), 2000);
-              }}
-              className="bg-gradient-to-br from-rose-500/10 via-pink-500/[0.04] to-transparent rounded-[32px] p-6 sm:p-8 border border-rose-100/70 hover:border-rose-200 shadow-[0_8px_30px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgba(244,63,94,0.08)] flex items-center justify-between relative overflow-hidden group cursor-pointer transition-all duration-300"
-            >
-              <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-rose-100/20 -skew-x-12 translate-x-12 group-hover:translate-x-4 transition-transform duration-700" />
-              {/* Interactive Radial glow */}
-              <div className="absolute -right-20 -bottom-20 w-48 h-48 rounded-full bg-rose-400/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-              <div className="relative z-10 flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200/50">
-                    Spotless Home
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    Full Cleaning
-                  </span>
-                </div>
-                <h4 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight mb-1">
-                  Deep House{" "}
-                  <span className="text-rose-600 font-extrabold uppercase italic">
-                    15% OFF
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 font-medium mb-4">
-                  Certified professional team & premium supplies
-                </p>
-                <div
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm transition-colors duration-300 border ${
-                    copiedCode === "CLEAN15"
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-white/90 border-slate-100 text-slate-800 group-hover:bg-rose-600 group-hover:text-white group-hover:border-transparent"
-                  }`}
-                >
-                  {copiedCode === "CLEAN15" ? (
-                    <>
-                      <Check size={11} className="stroke-[2.5]" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={10} className="stroke-[2.5]" />
-                      <span>Code: CLEAN15</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="relative z-10 w-20 h-20 text-rose-500/80 group-hover:text-rose-500 transition-colors duration-300 transform group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-500 shrink-0 select-none">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-full h-full"
-                >
-                  <path d="m14 2 2-2 6 6-2 2Z" />
-                  <path d="M12 4H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9Z" />
-                  <path d="M18 14h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z" />
-                  <path d="M2 17h20v2H2Z" />
-                </svg>
-              </div>
-            </motion.div>
-
-            {/* Card 3: Appliance Care Promotion */}
-            <motion.div
-              whileHover={{ y: -6, scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => {
-                navigator.clipboard.writeText("FIXIT250");
-                setCopiedCode("FIXIT250");
-                (window as any).__showCopyToast?.("FIXIT250");
-                setTimeout(() => setCopiedCode(null), 2000);
-              }}
-              className="bg-gradient-to-br from-amber-500/10 via-yellow-500/[0.04] to-transparent rounded-[32px] p-6 sm:p-8 border border-amber-100/70 hover:border-amber-200 shadow-[0_8px_30px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgba(245,158,11,0.08)] md:col-span-2 lg:col-span-1 flex items-center justify-between relative overflow-hidden group cursor-pointer transition-all duration-300"
-            >
-              <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-amber-100/20 -skew-x-12 translate-x-12 group-hover:translate-x-4 transition-transform duration-700" />
-              {/* Interactive Radial glow */}
-              <div className="absolute -right-20 -bottom-20 w-48 h-48 rounded-full bg-amber-400/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-              <div className="relative z-10 flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200/50">
-                    Express Care
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    Appliance Repair
-                  </span>
-                </div>
-                <h4 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight mb-1">
-                  Guaranteed{" "}
-                  <span className="text-amber-600 font-extrabold uppercase italic">
-                    Flat ₹250 Off
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 font-medium mb-4">
-                  Fix washing machines, refrigerators & microwaves
-                </p>
-                <div
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm transition-colors duration-300 border ${
-                    copiedCode === "FIXIT250"
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-white/90 border-slate-100 text-slate-800 group-hover:bg-amber-600 group-hover:text-white group-hover:border-transparent"
-                  }`}
-                >
-                  {copiedCode === "FIXIT250" ? (
-                    <>
-                      <Check size={11} className="stroke-[2.5]" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={10} className="stroke-[2.5]" />
-                      <span>Code: FIXIT250</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="relative z-10 w-20 h-20 text-amber-500/80 group-hover:text-amber-500 transition-colors duration-300 transform group-hover:scale-110 group-hover:rotate-12 transition-transform duration-500 shrink-0 select-none">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-full h-full"
-                >
-                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-                </svg>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Promotions Carousel/Grid */}
-        {promotions.length > 0 && (
-          <section className="mb-12 sm:mb-20 w-full" id="promotions-section">
-            <div className="flex justify-between items-end mb-5 sm:mb-8 px-2">
-              <div>
-                <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-1 tracking-tight uppercase italic md:not-italic">
-                  Latest offers
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                  Exclusive offers for premium home care
-                </p>
-              </div>
-              <button
-                onClick={() => setActiveTab("offers")}
-                className="text-xs sm:text-sm font-black uppercase tracking-wider text-blue-700 bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-              >
-                See all
-              </button>
-            </div>
-            <div className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar pb-6 px-2 scroll-smooth">
-              {promotions.map((promo, idx) => {
                 return (
                   <motion.div
-                    whileHover={{ scale: 1.02, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
-                    whileTap={{ scale: 0.98 }}
-                    key={promo.id}
+                    key={currentOffer.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.35, ease: "easeInOut" }}
                     onClick={() => {
-                      navigator.clipboard.writeText(promo.code);
-                      setCopiedCode(promo.code);
-                      (window as any).__showCopyToast?.(promo.code);
+                      navigator.clipboard.writeText(currentOffer.code);
+                      setCopiedCode(currentOffer.code);
+                      (window as any).__showCopyToast?.(currentOffer.code);
                       setTimeout(() => setCopiedCode(null), 2000);
                     }}
-                    className="flex-shrink-0 w-[290px] bg-white border border-slate-150/85 rounded-[24px] p-5 text-slate-800 relative overflow-hidden group shadow-sm cursor-pointer text-left"
-                    style={{ transition: 'all 0.3s ease-in-out' }}
+                    className="p-5 sm:p-7 md:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6 cursor-pointer group relative overflow-hidden"
                   >
-                    {/* Image Background or Thumbnail if present */}
-                    {promo.imageUrl && (
-                      <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 group-hover:opacity-20 transition-opacity duration-300 pointer-events-none">
-                        <img
-                          src={promo.imageUrl}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
-                      </div>
-                    )}
+                    {/* Background glows */}
+                    <div className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full bg-blue-500/15 blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+                    <div className="absolute top-0 right-1/4 w-32 h-32 rounded-full bg-amber-400/10 blur-2xl pointer-events-none" />
 
-                    <div className="relative z-10 flex flex-col h-full justify-between gap-4 text-left">
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider select-none">
-                            {promo.discountType === "percent"
-                              ? `${promo.discountValue}% OFF`
-                              : `₹${promo.discountValue} OFF`}
-                          </span>
-                          <div className="bg-slate-100 hover:bg-slate-200 border border-slate-200/50 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold uppercase text-slate-600 transition-colors">
-                            <Zap size={10} className="text-[#22c55e]" fill="currentColor" />
-                            {promo.code}
-                          </div>
-                        </div>
-                        
-                        <h3 className="text-base font-extrabold text-slate-900 mb-1 leading-tight tracking-tight">
-                          {promo.name}
-                        </h3>
-                        <p className="text-slate-500 text-[11px] line-clamp-2 font-medium leading-normal">
-                          {promo.description}
-                        </p>
+                    <div className="relative z-10 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-white/15 text-white border border-white/20 backdrop-blur-xs">
+                          {currentOffer.tag}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-amber-300 uppercase tracking-widest bg-amber-400/10">
+                          {currentOffer.discount}
+                        </span>
                       </div>
 
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#0a2540] group-hover:text-[#22c55e] transition-colors flex items-center gap-1">
-                          {copiedCode === promo.code ? (
-                            <span className="text-[#22c55e] font-bold">Code Copied!</span>
+                      <h4 className="text-lg sm:text-2xl font-black text-white tracking-tight leading-tight mb-1.5">
+                        {currentOffer.title}
+                      </h4>
+                      <p className="text-xs sm:text-sm text-slate-300 font-medium line-clamp-2 max-w-xl mb-3.5 leading-relaxed">
+                        {currentOffer.desc}
+                      </p>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-sm transition-all duration-300 border ${
+                            copiedCode === currentOffer.code
+                              ? "bg-emerald-500 text-white border-emerald-400"
+                              : "bg-white text-slate-900 border-white group-hover:bg-blue-600 group-hover:text-white group-hover:border-transparent"
+                          }`}
+                        >
+                          {copiedCode === currentOffer.code ? (
+                            <>
+                              <Check size={12} className="stroke-[3]" />
+                              <span>Code Copied!</span>
+                            </>
                           ) : (
-                            <>Claim Discount <ArrowRight size={12} className="stroke-[3]" /></>
+                            <>
+                              <Copy size={12} className="stroke-[2.5]" />
+                              <span>Code: {currentOffer.code}</span>
+                            </>
                           )}
+                        </button>
+                        <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                          Tap to copy & use at checkout
                         </span>
                       </div>
                     </div>
+
+                    {/* Decorative Visual / Badge */}
+                    <div className="relative z-10 hidden sm:flex flex-col items-center justify-center shrink-0 w-24 h-24 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs p-3 text-center">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Offer</span>
+                      <span className="text-xl font-black text-amber-400 tracking-tight">{currentOffer.discount}</span>
+                      <span className="text-[8px] font-semibold text-slate-300 uppercase tracking-widest mt-0.5">Indore Only</span>
+                    </div>
                   </motion.div>
                 );
-              })}
-            </div>
-          </section>
-        )}
+              })()}
+            </AnimatePresence>
 
-        {/* Value Props / Trust */}
-        <section
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6 sm:mb-8"
-          id="trust-value-props"
-        >
-          <motion.div
-            whileHover={{ y: -6, scale: 1.01 }}
-            className="bg-white p-6 sm:p-8 rounded-[24px] sm:rounded-[32px] border border-slate-100/95 shadow-sm hover:shadow-md hover:border-blue-100/80 hover:shadow-[0_12px_24px_rgba(29,78,216,0.03)] flex items-start gap-4 sm:gap-5 group transition-all duration-300 cursor-default"
-          >
-            <div className="w-12 h-12 bg-blue-500/10 text-blue-700 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-blue-500 group-hover:text-white transition-all duration-500 shadow-sm">
-              <motion.div
-                animate={{ rotate: [0, 5, -5, 0] }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 4,
-                  ease: "easeInOut",
-                }}
-              >
-                <ShieldCheck size={24} className="stroke-[2.25]" />
-              </motion.div>
-            </div>
-            <div className="min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-[0.12em] text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md inline-block mb-1.5 prose-sm">
-                Secure Care
-              </span>
-              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base mb-1 tracking-tight">
-                Verified Experts
-              </h4>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
-                Every professional on zomindia is background-checked and vetted
-                for quality.
-              </p>
-            </div>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -6, scale: 1.01 }}
-            className="bg-white p-6 sm:p-8 rounded-[24px] sm:rounded-[32px] border border-slate-100/95 shadow-sm hover:shadow-md hover:border-emerald-100/80 hover:shadow-[0_12px_24px_rgba(16,185,129,0.03)] flex items-start gap-4 sm:gap-5 group transition-all duration-300 cursor-default"
-          >
-            <div className="w-12 h-12 bg-emerald-500/10 text-emerald-700 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-500 shadow-sm">
-              <motion.div
-                animate={{ scale: [1, 1.08, 1] }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 3,
-                  ease: "easeInOut",
-                }}
-              >
-                <Clock size={24} className="stroke-[2.25]" />
-              </motion.div>
-            </div>
-            <div className="min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-[0.12em] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md inline-block mb-1.5 prose-sm">
-                Punctual
-              </span>
-              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base mb-1 tracking-tight">
-                On-time Every time
-              </h4>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
-                We value your time. Our partners are trained to be punctual for
-                every booking.
-              </p>
-            </div>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -6, scale: 1.01 }}
-            className="bg-white p-6 sm:p-8 rounded-[24px] sm:rounded-[32px] border border-slate-100/95 shadow-sm hover:shadow-md hover:border-amber-100/85 hover:shadow-[0_12px_24px_rgba(245,158,11,0.03)] flex items-start gap-4 sm:gap-5 group transition-all duration-300 cursor-default sm:col-span-2 lg:col-span-1"
-          >
-            <div className="w-12 h-12 bg-amber-500/10 text-amber-700 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-amber-500 group-hover:text-white transition-all duration-500 shadow-sm">
-              <motion.div
-                animate={{ y: [0, -3, 0] }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 2.5,
-                  ease: "easeInOut",
-                }}
-              >
-                <Star
-                  size={24}
-                  className="stroke-[2.25] fill-amber-500/10 group-hover:fill-white/20"
-                />
-              </motion.div>
-            </div>
-            <div className="min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-[0.12em] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md inline-block mb-1.5 prose-sm">
-                Satisfaction
-              </span>
-              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base mb-1 tracking-tight">
-                Quality Guaranteed
-              </h4>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
-                Not satisfied with the service? We will rework it for free or
-                refund your payment.
-              </p>
-            </div>
-          </motion.div>
+            {/* Slider Dots Indicator */}
+            {consolidatedOffers.length > 1 && (
+              <div className="relative z-10 flex items-center justify-center gap-1.5 pb-3">
+                {consolidatedOffers.map((offer, idx) => (
+                  <button
+                    key={offer.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveOfferIndex(idx);
+                    }}
+                    className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
+                      activeOfferIndex === idx
+                        ? "w-6 bg-blue-500"
+                        : "w-2 bg-white/30 hover:bg-white/60"
+                    }`}
+                    aria-label={`Go to offer ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* Top Rated Services */}
+        {/* Most Booked in Indore (Top 4 Services with Clear Pricing & Direct Book) */}
         <section
-          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full"
-          id="categories-section"
+          className="mb-8 w-full max-w-6xl mx-auto"
+          id="most-booked-section"
         >
-          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
+          <div className="flex flex-row items-center justify-between mb-4 px-1">
             <div className="min-w-0">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
-                Popular{" "}
-                <span className="text-blue-600 bg-blue-50/50 px-2 sm:px-2.5 py-0.5 rounded-xl">
-                  Services
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                  Indore Verified
                 </span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Rated</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
+                Most Booked in Indore
               </h3>
-              <p className="text-slate-400 font-medium text-[10px] sm:text-xs mt-0.5 sm:mt-1 truncate">
-                Hand-picked services based on user satisfaction and premium
-                reliability
-              </p>
             </div>
             <button
+              type="button"
               onClick={() => {
                 const el = document.getElementById("categories-grid");
                 el?.scrollIntoView({ behavior: "smooth" });
               }}
-              className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50/50 hover:bg-blue-100/85 px-2.5 py-1.5 rounded-lg sm:rounded-xl transition-all select-none shrink-0 cursor-pointer"
+              className="text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
             >
               See all
             </button>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 px-1">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             {allServices.length === 0 ? (
               <SkeletonServiceCardGrid count={4} />
             ) : (
@@ -2882,105 +2375,68 @@ export default function CustomerHome({
                 .map((service, idx) => (
                   <motion.div
                     key={service.id}
-                    initial={{ opacity: 0, y: 16 }}
+                    initial={{ opacity: 0, y: 15 }}
                     whileInView={{ opacity: 1, y: 0 }}
-                    whileHover={{ y: -6, scale: 1.03 }}
+                    viewport={{ once: true }}
+                    whileHover={{ y: -4, scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 240,
-                      damping: 18,
-                      delay: idx * 0.04,
-                    }}
+                    transition={{ duration: 0.2, delay: idx * 0.04 }}
+                    className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-3 sm:p-4 hover:border-blue-300 hover:shadow-lg transition-all duration-300 flex flex-col justify-between text-left group shadow-xs cursor-pointer"
                     onClick={() => onServiceSelect(service.id)}
-                    className="bg-white/70 backdrop-blur-md rounded-[20px] sm:rounded-[28px] border border-slate-100 p-3 sm:p-5 hover:border-blue-100 transition-all duration-300 cursor-pointer group shadow-sm hover:shadow-[0_20px_40px_-10px_rgba(37,99,235,0.06)] flex flex-col justify-between text-left relative overflow-hidden h-full"
                   >
-                    {/* Hover Accent Light */}
-                    <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-blue-500 to-indigo-600 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
-
                     <div className="flex flex-col w-full min-w-0">
                       {/* Image Box */}
-                      <div className="w-full aspect-[4/3] sm:aspect-square rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-4 bg-slate-50 border border-slate-100 relative shadow-sm">
+                      <div className="w-full aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-3 bg-slate-100 relative shadow-inner">
                         <img
                           src={
                             service.imageURL ||
                             "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=400"
                           }
                           alt={service.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           referrerPolicy="no-referrer"
                           loading="lazy"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
-
-                        {/* Floating Badges */}
-                        <div className="absolute top-2 left-2 bg-blue-100/95 text-blue-800 backdrop-blur-md px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-xl text-[7px] sm:text-[8px] font-black uppercase tracking-wider shadow-sm border border-blue-200/50 flex items-center gap-1">
-                          <motion.div
-                            animate={{
-                              scale: [1, 1.2, 1],
-                              rotate: [0, 10, -10, 0],
-                            }}
-                            transition={{
-                              repeat: Infinity,
-                              duration: 3,
-                              ease: "easeInOut",
-                            }}
-                          >
-                            <Sparkles
-                              size={8}
-                              className="text-yellow-400 fill-yellow-400"
-                            />
-                          </motion.div>
-                          <span className="truncate">Popular</span>
+                        <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs px-2 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black text-slate-800 shadow-xs flex items-center gap-1 border border-slate-200/50">
+                          <Star size={9} className="text-amber-500 fill-amber-500" />
+                          <span>{service.rating || "4.8"}</span>
                         </div>
                       </div>
 
-                      {/* Meta section */}
-                      <div className="flex items-center gap-1.5 mb-1 sm:mb-2 w-full min-w-0">
-                        <div className="px-1.5 py-0.5 bg-amber-500/10 text-amber-700 rounded-lg flex items-center gap-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-wider border border-amber-500/15">
-                          <Star
-                            size={8}
-                            fill="currentColor"
-                            className="stroke-[2.5]"
-                          />{" "}
-                          {service.rating}
-                        </div>
-                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-black uppercase tracking-widest truncate">
-                          {
-                            allCategories.find((c) => c.id === service.categoryId)
-                              ?.name
-                          }
-                        </span>
-                      </div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mb-0.5">
+                        {allCategories.find((c) => c.id === service.categoryId)?.name || "Home Service"}
+                      </span>
 
-                      <h4 className="font-extrabold text-slate-900 mb-0.5 sm:mb-1 tracking-tight text-xs sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
+                      <h4 className="font-black text-slate-900 text-xs sm:text-base line-clamp-1 group-hover:text-blue-700 transition-colors">
                         {service.name}
                       </h4>
 
-                      <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 leading-tight sm:leading-relaxed font-semibold mt-0.5 mb-2 sm:mb-3">
+                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 mb-2.5 font-medium leading-relaxed">
                         {service.description}
                       </p>
                     </div>
 
                     {/* Actions & Price */}
-                    <div className="mt-2.5 pt-2.5 sm:mt-4 sm:pt-4 border-t border-slate-100 flex items-center justify-between gap-2 w-full min-w-0">
-                      <div className="min-w-0">
-                        <p className="text-[7.5px] sm:text-[8.5px] text-slate-450 font-black uppercase tracking-wider mb-0.5 leading-none">
-                          Price
-                        </p>
-                        <p className="font-black text-xs sm:text-base text-slate-900 tracking-tight truncate">
-                          ₹{service.basePrice}
-                        </p>
-                      </div>
-                      <div className="h-7.5 sm:h-9 hover:bg-blue-600 hover:text-white bg-slate-50 border border-slate-100 hover:border-transparent text-slate-600 transition-all select-none rounded-lg sm:rounded-xl flex items-center justify-center px-2.5 sm:px-3 gap-1 shadow-sm shrink-0">
-                        <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest">
-                          Book
+                    <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
+                      <div>
+                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-0.5">
+                          Starts at
                         </span>
-                        <ArrowRight
-                          size={10}
-                          className="sm:size-3 transition-transform group-hover:translate-x-0.5"
-                        />
+                        <span className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
+                          ₹{service.basePrice}
+                        </span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onServiceSelect(service.id);
+                        }}
+                        className="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Book</span>
+                        <ArrowRight size={12} className="stroke-[3]" />
+                      </button>
                     </div>
                   </motion.div>
                 ))
@@ -2988,607 +2444,73 @@ export default function CustomerHome({
           </div>
         </section>
 
-        {/* Services in Focus (Category Grouped) */}
-        <section
-          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full"
-          id="services-in-focus"
-        >
-          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
-            <div className="min-w-0">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
-                Services in{" "}
-                <span className="text-blue-600 bg-blue-50/50 px-2 sm:px-2.5 py-0.5 rounded-xl">
-                  Focus
-                </span>
-              </h3>
-              <p className="text-slate-400 font-medium text-[10px] sm:text-xs mt-0.5 sm:mt-1 truncate">
-                Premium offerings with exceptional track records
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4 sm:space-y-6">
-            {(() => {
-              const categoryImagesMap: Record<string, string> = {
-                "1": "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=800", // Cleaning
-                "Cleaning & Pest Control":
-                  "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=800",
-                cleaning_pest_control:
-                  "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=800",
-                "2": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800", // Repairs
-                "Carpentry & Repairs":
-                  "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800",
-                carpentry_repairs:
-                  "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800",
-                "3": "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=800", // Appliance
-                "AC & Appliance Repair":
-                  "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=800",
-                ac_appliance_repair:
-                  "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=800",
-                "4": "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=800", // Painting
-                "Home Painting & Decorating":
-                  "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=800",
-                home_painting_decorating:
-                  "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=800",
-                "5": "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800", // Beauty
-                "Beauty & Saloon":
-                  "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800",
-                beauty_saloon:
-                  "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800",
-                "6": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800", // Appliance Repair
-                "Appliance Repair":
-                  "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=800",
-                "Phone Repair":
-                  "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=800",
-              };
-
-              const getServiceThumbnail = (
-                name: string,
-                categoryName: string,
-              ): string => {
-                const nm = name.toLowerCase();
-                const cn = categoryName.toLowerCase();
-
-                if (
-                  nm.includes("ac") ||
-                  nm.includes("air conditioner") ||
-                  nm.includes("split") ||
-                  nm.includes("filter") ||
-                  nm.includes("gas")
-                ) {
-                  return "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("deep clean") ||
-                  nm.includes("sofa") ||
-                  nm.includes("home clean") ||
-                  nm.includes("bathroom") ||
-                  nm.includes("kitchen") ||
-                  nm.includes("cleaning")
-                ) {
-                  return "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("pest") ||
-                  nm.includes("saniti") ||
-                  nm.includes("bug") ||
-                  nm.includes("termite") ||
-                  nm.includes("insect")
-                ) {
-                  return "https://images.unsplash.com/photo-1604147706283-d7119b5b822c?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("plumb") ||
-                  nm.includes("leak") ||
-                  nm.includes("pipe") ||
-                  nm.includes("water") ||
-                  nm.includes("tap") ||
-                  nm.includes("basin") ||
-                  nm.includes("sink")
-                ) {
-                  return "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("electric") ||
-                  nm.includes("switch") ||
-                  nm.includes("wiring") ||
-                  nm.includes("short") ||
-                  nm.includes("fan") ||
-                  nm.includes("light")
-                ) {
-                  return "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("carpenter") ||
-                  nm.includes("wood") ||
-                  nm.includes("door") ||
-                  nm.includes("hinge") ||
-                  nm.includes("furniture")
-                ) {
-                  return "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("paint") ||
-                  nm.includes("wall") ||
-                  nm.includes("waterproofing") ||
-                  nm.includes("texture")
-                ) {
-                  return "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("massage") ||
-                  nm.includes("spa") ||
-                  nm.includes("salon") ||
-                  nm.includes("groom") ||
-                  nm.includes("hair") ||
-                  nm.includes("facial")
-                ) {
-                  return "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  nm.includes("fridge") ||
-                  nm.includes("refrigerator") ||
-                  nm.includes("microwave") ||
-                  nm.includes("oven") ||
-                  nm.includes("washing") ||
-                  nm.includes("geyser") ||
-                  nm.includes("appliance")
-                ) {
-                  return "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=300";
-                }
-
-                // Default fallbacks by category name
-                if (cn.includes("clean") || cn.includes("pest")) {
-                  return "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  cn.includes("ac") ||
-                  cn.includes("appliance") ||
-                  cn.includes("repair")
-                ) {
-                  return "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=300";
-                }
-                if (cn.includes("paint")) {
-                  return "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=300";
-                }
-                if (
-                  cn.includes("electric") ||
-                  cn.includes("plumb") ||
-                  cn.includes("carpenter") ||
-                  cn.includes("repair")
-                ) {
-                  return "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=300";
-                }
-
-                return "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=300";
-              };
-
-              const categoriesWithServices = allCategories.filter((cat) =>
-                allServices.some((s) => s.categoryId === cat.id),
-              );
-
-              return categoriesWithServices.map((category, catIdx) => {
-                const categoryServices = allServices.filter(
-                  (s) => s.categoryId === category.id,
-                );
-                if (categoryServices.length === 0) return null;
-
-                const catImg =
-                  category.imageURL ||
-                  categoryImagesMap[category.id] ||
-                  categoryImagesMap[category.name] ||
-                  "https://images.unsplash.com/photo-1581578731548-c64695ce6958?auto=format&fit=crop&q=80&w=600";
-                const minPrice =
-                  categoryServices.length > 0
-                    ? Math.min(...categoryServices.map((s) => s.basePrice))
-                    : 199;
-
-                return (
-                  <div
-                    key={category.id}
-                    className={`grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 lg:gap-8 items-stretch p-3.5 sm:p-5 lg:p-6 rounded-[24px] sm:rounded-[36px] lg:rounded-[44px] transition-all duration-300 ${
-                      catIdx === 0
-                        ? "bg-[#fafbff] border-2 border-indigo-100/90 shadow-[0_20px_50px_rgba(79,70,229,0.04)]"
-                        : "bg-slate-50/40 border border-slate-100/85"
-                    }`}
-                  >
-                    {/* Left: Big Category Image Card */}
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      viewport={{ once: true }}
-                      whileHover={{ scale: 1.002 }}
-                      onClick={() => {
-                        setSelectedCategory(category);
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className={`lg:col-span-1 rounded-[20px] sm:rounded-[28px] lg:rounded-[36px] overflow-hidden relative shadow-md min-h-[220px] sm:min-h-[280px] lg:min-h-full flex flex-col justify-between p-6 sm:p-7 lg:p-8 group cursor-pointer select-none text-left duration-300 ${
-                        catIdx === 0
-                          ? "border border-indigo-100 bg-indigo-50/20"
-                          : "border border-blue-150 bg-blue-50/50"
-                      }`}
-                    >
-                      <img
-                        src={catImg}
-                        alt={category.name}
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-20 mix-blend-multiply"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                      {/* Secure an premium gradient overlay for flawless contrast and readability */}
-                      <div className={`absolute inset-0 bg-gradient-to-t pointer-events-none ${
-                        catIdx === 0
-                          ? "from-indigo-100/95 via-indigo-50/90 to-transparent"
-                          : "from-blue-50/95 via-blue-100/90 to-transparent"
-                      }`} />
-
-                      <div className="relative z-10 w-full flex flex-col h-full justify-between gap-6 sm:gap-8">
-                        {/* Top Badge Row */}
-                        <div className="flex items-center justify-between gap-2">
-                          {catIdx === 0 ? (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 border border-indigo-500/25 text-white rounded-xl text-[9px] sm:text-[11px] font-semibold font-display uppercase tracking-widest shadow-lg shadow-indigo-500/20">
-                              <Sparkles
-                                size={11}
-                                className="animate-pulse text-yellow-300"
-                              />{" "}
-                              FEATURED
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1 bg-blue-600 border border-blue-500/25 text-white rounded-lg sm:rounded-xl text-[8px] sm:text-[10px] font-extrabold uppercase tracking-wider sm:tracking-widest shadow-lg shadow-blue-500/25">
-                              <Sparkles
-                                size={10}
-                                className="animate-pulse text-yellow-300 hidden sm:block"
-                              />
-                              <Sparkles
-                                size={8}
-                                className="animate-pulse text-yellow-300 sm:hidden"
-                              />{" "}
-                              Featured
-                            </span>
-                          )}
-
-                          <span className={`text-[8px] sm:text-[9.5px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-xl border whitespace-nowrap ${
-                            catIdx === 0
-                              ? "text-indigo-800 bg-indigo-100/80 border-indigo-200"
-                              : "text-[#050ca6] bg-blue-105/90 border-blue-200"
-                          }`}>
-                            Starts ₹{minPrice}
-                          </span>
-                        </div>
-
-                        {/* Text & Content Block */}
-                        <div className="space-y-3 sm:space-y-4">
-                          <div>
-                            <span className={`text-[8.5px] font-bold uppercase tracking-widest block mb-1.5 ${
-                              catIdx === 0 ? "text-indigo-700/90 font-display" : "text-blue-750"
-                            }`}>
-                              ★ TOP RATED CATEGORY
-                            </span>
-                            <h4 className={`font-bold tracking-tight uppercase ${
-                              catIdx === 0
-                                ? "text-2xl sm:text-3.5xl lg:text-4xl text-indigo-950 font-display leading-none"
-                                : "text-xl sm:text-2.5xl lg:text-3xl font-black italic text-[#050ca6]"
-                            }`}>
-                              {category.name}
-                            </h4>
-                            <p className={`line-clamp-3 leading-relaxed mt-2 sm:mt-3 ${
-                              catIdx === 0
-                                ? "text-slate-600 text-xs sm:text-[13px] font-normal font-sans"
-                                : "text-[10px] sm:text-[11px] text-slate-700 font-bold"
-                            }`}>
-                              {category.description ||
-                                `Verified professional ${category.name.toLowerCase()} services customized for your daily comfort.`}
-                            </p>
-                          </div>
-
-                          <div className={`space-y-1.5 pt-2 border-t ${
-                            catIdx === 0 ? "border-indigo-200/60" : "border-t border-blue-100/80"
-                          }`}>
-                            <div className={`flex items-center gap-1.5 font-sans leading-none ${
-                              catIdx === 0 ? "text-[10px] sm:text-xs text-slate-600 font-normal" : "text-[9px] text-slate-700 font-bold"
-                            }`}>
-                              <span className={catIdx === 0 ? "text-emerald-500 text-sm font-bold" : "text-emerald-600 text-xs"}>
-                                ✓
-                              </span>{" "}
-                              Background-verified professionals
-                            </div>
-                            <div className={`flex items-center gap-1.5 font-sans leading-none ${
-                              catIdx === 0 ? "text-[10px] sm:text-xs text-slate-600 font-normal" : "text-[9px] text-slate-700 font-bold"
-                            }`}>
-                              <span className={catIdx === 0 ? "text-emerald-500 text-sm font-bold" : "text-emerald-600 text-xs"}>
-                                ✓
-                              </span>{" "}
-                              Multi-point safety protocols applied
-                            </div>
-                          </div>
-
-                          <div className={`pt-3 flex items-center justify-between gap-3 sm:gap-4 border-t ${
-                            catIdx === 0 ? "border-indigo-200/60" : "border-blue-100/80"
-                          }`}>
-                            <div className={`flex items-center gap-1.5 text-slate-700 min-w-0 ${
-                              catIdx === 0 ? "text-[10px] sm:text-xs font-medium font-sans" : "text-[9px] sm:text-[10px] font-bold"
-                            }`}>
-                              <CheckCircle2
-                                size={11}
-                                className="text-emerald-600 fill-emerald-100 shrink-0"
-                              />{" "}
-                              <span className="truncate">Free 7-Day Cover</span>
-                            </div>
-                            <div className={`text-[9.5px] sm:text-[11px] font-medium font-display uppercase tracking-widest flex items-center gap-1 transition-colors duration-300 shrink-0 ${
-                              catIdx === 0
-                                ? "text-indigo-700 group-hover:text-indigo-900"
-                                : "text-blue-750 group-hover:text-blue-900"
-                            }`}>
-                              Explore{" "}
-                              <ArrowRight
-                                size={11}
-                                className="sm:size-3.5 group-hover:translate-x-1.5 transition-transform duration-300"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-
-                    {/* Right: Dynamic Services List underneath this category */}
-                    <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4 lg:gap-5">
-                      {categoryServices.map((service, sIdx) => (
-                        <motion.div
-                          key={service.id}
-                          initial={{ opacity: 0, y: 15 }}
-                          whileInView={{ opacity: 1, y: 0 }}
-                          viewport={{ once: true }}
-                          whileHover={{ y: -4, scale: 1.03 }}
-                          whileTap={{ scale: 0.98 }}
-                          transition={{ delay: sIdx * 0.05 }}
-                          onClick={() => onServiceSelect(service.id)}
-                          className="bg-white p-3.5 sm:p-4.5 rounded-[22px] sm:rounded-[26px] border border-slate-100 hover:border-blue-500/30 hover:shadow-[0_12px_24px_rgba(37,99,235,0.03)] transition-all duration-300 cursor-pointer flex flex-row items-stretch gap-3 sm:gap-4 group h-full text-left relative overflow-hidden"
-                        >
-                          {/* Left: Beautiful Service Thumbnail with hover scaling effect */}
-                          <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-[16px] sm:rounded-[20px] overflow-hidden shrink-0 bg-slate-50 border border-slate-100 relative shadow-sm">
-                            <img
-                              src={
-                                service.imageURL ||
-                                getServiceThumbnail(service.name, category.name)
-                              }
-                              alt={service.name}
-                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                              referrerPolicy="no-referrer"
-                              loading="lazy"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/25 via-transparent to-transparent pointer-events-none" />
-                            <div className="absolute bottom-1 right-1 bg-emerald-500 text-white font-black text-[7px] sm:text-[8px] uppercase tracking-wider px-1 px-[3px] py-0.5 rounded-md shadow-xs">
-                              Pro
-                            </div>
-                          </div>
-
-                          {/* Right: Rich Service Info */}
-                          <div className="flex-1 min-w-0 flex flex-col justify-between h-full">
-                            <div>
-                              <div className="flex justify-between items-start gap-1 w-full min-w-0">
-                                <h5 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1 text-xs sm:text-base pr-1.5 min-w-0">
-                                  {service.name}
-                                </h5>
-                                <span className="font-black text-xs sm:text-sm text-slate-950 shrink-0">
-                                  ₹{service.basePrice}
-                                </span>
-                              </div>
-                              <p className="text-[10px] sm:text-[11.5px] text-slate-450 font-semibold line-clamp-2 leading-tight sm:leading-relaxed mt-0.5 mb-2">
-                                {service.description}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center justify-between pt-1 sm:pt-2 border-t border-slate-50 w-full min-w-0">
-                              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
-                                <div className="flex items-center gap-0.5 text-[10px] sm:text-xs font-black text-amber-500 shrink-0">
-                                  <motion.div
-                                    animate={{ scale: [1, 1.15, 1] }}
-                                    transition={{
-                                      repeat: Infinity,
-                                      duration: 3,
-                                      ease: "easeInOut",
-                                    }}
-                                    className="shrink-0"
-                                  >
-                                    <Star size={10} fill="currentColor" />
-                                  </motion.div>
-                                  <span className="text-[9.5px] sm:text-[11.5px] font-black">
-                                    {service.rating || 4.8}
-                                  </span>
-                                </div>
-                                <span className="text-[8.5px] sm:text-[9.5px] text-slate-400 font-black uppercase tracking-widest leading-none truncate">
-                                  • {service.duration || "60 mins"}
-                                </span>
-                              </div>
-                              <span className="text-[9.5px] sm:text-xs font-black text-blue-700 uppercase tracking-wider flex items-center justify-center gap-0.5 group-hover:gap-1.5 transition-all duration-300 shrink-0">
-                                Book{" "}
-                                <ArrowRight
-                                  size={10}
-                                  className="sm:size-3.5 transition-transform group-hover:translate-x-0.5"
-                                />
-                              </span>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
+        {/* Clean Single-Row Trust Guarantee Banner & Support Action */}
+        <section className="mb-12 w-full max-w-6xl mx-auto" id="trust-guarantee-banner">
+          <div className="bg-slate-50/90 border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+              {/* 3 Guarantees in a clean row */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 flex-1">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                    <ShieldCheck size={20} className="stroke-[2.2]" />
                   </div>
-                );
-              });
-            })()}
-          </div>
-        </section>
-
-        {/* Recently Launched */}
-        <section
-          className="mb-6 sm:mb-8 px-3 sm:px-4 w-full overflow-hidden"
-          id="recently-launched-section"
-        >
-          <div className="flex flex-row items-center justify-between mb-3 sm:mb-4 px-1">
-            <div className="min-w-0">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase italic md:not-italic truncate">
-                Recently{" "}
-                <span className="text-blue-600 bg-blue-50/50 px-2 sm:px-2.5 py-0.5 rounded-xl">
-                  Launched
-                </span>
-              </h3>
-              <p className="text-slate-400 font-medium text-[10px] sm:text-xs mt-0.5 sm:mt-1 truncate">
-                New additions to our service portfolio, added in admin
-              </p>
-            </div>
-            {/* Symmetrical Navigation Controls */}
-            <div className="hidden sm:flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => scrollRecentlyLaunched("left")}
-                className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-700 hover:border-blue-500 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-                aria-label="Scroll left"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollRecentlyLaunched("right")}
-                className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-700 hover:border-blue-500 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-                aria-label="Scroll right"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          </div>
-
-          <div
-            ref={recentlyLaunchedScrollRef}
-            className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar pb-6 px-1 scroll-smooth"
-          >
-            {(() => {
-              const getMs = (item: any) => {
-                if (!item) return 0;
-                if (item.createdAt) {
-                  if (typeof item.createdAt.toMillis === "function") {
-                    return item.createdAt.toMillis();
-                  }
-                  if (item.createdAt.seconds) {
-                    return item.createdAt.seconds * 1000;
-                  }
-                  if (item.createdAt instanceof Date) {
-                    return item.createdAt.getTime();
-                  }
-                  return new Date(item.createdAt).getTime() || 0;
-                }
-                return 0;
-              };
-
-              const sorted = [...allServices].sort((a, b) => {
-                const aMs = getMs(a);
-                const bMs = getMs(b);
-                if (aMs !== bMs) {
-                  return bMs - aMs; // newest first
-                }
-                return b.id.localeCompare(a.id);
-              });
-
-              // Take up to 8 of the absolute newest service offerings
-              const recentServices = sorted.slice(0, 8);
-
-              return recentServices.map((service, idx) => (
-                <motion.div
-                  key={service.id}
-                  initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                  whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  whileHover={{ y: -8, scale: 1.03, transition: { duration: 0.2 } }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 240,
-                    damping: 20,
-                    delay: idx * 0.05,
-                  }}
-                  onClick={() => onServiceSelect(service.id)}
-                  className="flex-shrink-0 w-[220px] sm:w-[260px] bg-white border border-slate-100 rounded-[28px] p-5 hover:border-blue-200/80 hover:shadow-[0_24px_48px_-12px_rgba(37,99,235,0.08)] transition-all duration-300 cursor-pointer group flex flex-col justify-between h-[250px] sm:h-[285px] text-left relative overflow-hidden"
-                >
-                  {/* Dynamic Ambient Card Glow on Hover */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/0 rounded-full blur-2xl pointer-events-none group-hover:bg-blue-500/[0.03] transition-colors duration-500" />
-
-                  <div className="relative z-10">
-                    {/* Image Frame */}
-                    <div className="aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden mb-3 bg-slate-50 border border-slate-100 relative shadow-sm">
-                      <img
-                        src={
-                          service.imageURL ||
-                          "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=400"
-                        }
-                        alt={service.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent pointer-events-none" />
-
-                      {/* Glowing Badge */}
-                      <div className="absolute top-2.5 left-2.5 bg-rose-500 text-white font-extrabold px-2.5 py-1 rounded-xl text-[8px] sm:text-[9px] uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-rose-500/20 select-none">
-                        <motion.div
-                          animate={{
-                            scale: [1, 1.2, 1],
-                            rotate: [0, 15, -15, 0],
-                          }}
-                          transition={{
-                            repeat: Infinity,
-                            duration: 2,
-                            ease: "easeInOut",
-                          }}
-                        >
-                          <Zap size={9.5} className="fill-white text-white" />
-                        </motion.div>
-                        <span>New</span>
-                      </div>
-                    </div>
-
-                    <h4 className="font-extrabold text-slate-900 text-sm sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
-                      {service.name}
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                      100% Police Verified Experts
                     </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Background checked & ID certified</p>
                   </div>
+                </div>
 
-                  {/* Pricing & Booking Anchor */}
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100/85 relative z-10">
-                    <div>
-                      <p className="text-[7.5px] sm:text-[8px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">
-                        Starting from
-                      </p>
-                      <p className="font-black text-sm sm:text-lg text-slate-900 tracking-tight">
-                        ₹{service.basePrice}
-                      </p>
-                    </div>
-                    <div className="h-8 sm:h-9 w-8 sm:w-9 rounded-xl bg-slate-50 border border-slate-150 group-hover:bg-blue-600 group-hover:text-white group-hover:border-transparent flex items-center justify-center transition-all duration-300 shadow-sm">
-                      <ArrowRight
-                        size={13}
-                        className="transition-transform group-hover:translate-x-0.5"
-                      />
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={20} className="stroke-[2.2]" />
                   </div>
-                </motion.div>
-              ));
-            })()}
-            {allServices.length < 8 && (
-              <div className="flex-shrink-0 w-[220px] sm:w-[260px] h-[250px] sm:h-[285px] bg-slate-50 border border-dashed border-slate-200 rounded-[28px] flex flex-col items-center justify-center p-6 text-center text-slate-400 group transition-all duration-300 hover:bg-slate-100/50">
-                <motion.div
-                  animate={{ y: [0, -4, 0] }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 3,
-                    ease: "easeInOut",
-                  }}
-                >
-                  <Plus size={28} className="mb-3 text-slate-350" />
-                </motion.div>
-                <p className="text-[10px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-widest">
-                  More coming soon
-                </p>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                      Transparent Upfront Pricing
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Standard rate card, no surprise bills</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <RotateCcw size={20} className="stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                      7-Day Free Rework Warranty
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">100% satisfaction or full rework</p>
+                  </div>
+                </div>
               </div>
-            )}
+
+              {/* Subtle 1-tap "Need help booking? Call Support" quick action link for elderly users */}
+              <div className="pt-3 lg:pt-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-slate-200 flex items-center justify-center lg:justify-end shrink-0">
+                <a
+                  href="tel:+919630234563"
+                  className="inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-blue-700 font-bold transition-all shadow-xs group"
+                >
+                  <span className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
+                    <PhoneCall size={15} className="stroke-[2.5]" />
+                  </span>
+                  <div className="text-left">
+                    <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider leading-none mb-0.5">
+                      Senior & Quick Help
+                    </span>
+                    <span className="text-xs font-black text-slate-900 group-hover:text-blue-700">
+                      Need help booking? Call Support
+                    </span>
+                  </div>
+                </a>
+              </div>
+            </div>
           </div>
         </section>
+
+
 
         {/* Why Choose Us */}
         <section className="mb-20 px-2 lg:px-4">

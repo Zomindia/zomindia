@@ -177,7 +177,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [addressTag, setAddressTag] = useState<'Home' | 'Work' | 'Other'>('Home');
   const [showMapHelper, setShowMapHelper] = useState(false);
 
-  const initialRawAddress = savedState?.address || profile?.address || profile?.customerData?.address || '';
+  const cachedSelectedLocation = typeof window !== 'undefined' ? (localStorage.getItem('zomindia_selected_location') || '') : '';
+  const initialRawAddress = savedState?.address || profile?.address || profile?.customerData?.address || cachedSelectedLocation || '';
   const initialAddress = (!initialRawAddress || isBroadIndoreName(initialRawAddress))
     ? findNearestIndoreLocality(
         Number(savedState?.location?.lat || 22.7196),
