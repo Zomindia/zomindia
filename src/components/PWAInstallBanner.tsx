@@ -114,11 +114,11 @@ export function PWAInstallBanner() {
             <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
               <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/90 shadow-sm flex items-center justify-center overflow-hidden">
                 <img
-                  src={LogoIcon || '/logo-192.png'}
+                  src={LogoIcon || '/pwa-192x192.png'}
                   alt="Zomindia"
                   className="w-full h-full object-contain select-none"
                   onError={(e) => {
-                    (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                    (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
                   }}
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm border border-white">

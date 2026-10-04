@@ -59,15 +59,15 @@ export default function NotificationSystem({ onNavigate }: Props) {
       navigator.serviceWorker.ready.then((registration) => {
         registration.showNotification(title, {
           body: options.body,
-          icon: options.icon || '/logo-192.png',
-          badge: '/logo-192.png',
+          icon: options.icon || '/pwa-192x192.png',
+          badge: '/pwa-192x192.png',
           tag: options.tag
         });
       }).catch(() => {
         try {
           new Notification(title, {
             body: options.body,
-            icon: options.icon || '/logo-192.png',
+            icon: options.icon || '/pwa-192x192.png',
             tag: options.tag
           });
         } catch (e) {
@@ -78,7 +78,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
       try {
         new Notification(title, {
           body: options.body,
-          icon: options.icon || '/logo-192.png',
+          icon: options.icon || '/pwa-192x192.png',
           tag: options.tag
         });
       } catch (e) {
@@ -127,7 +127,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
           entirelyNew.forEach((notif: any) => {
             triggerSingleOSNotification(notif.title || 'New Notification', {
               body: notif.message,
-              icon: '/logo-192.png',
+              icon: '/pwa-192x192.png',
               tag: `notif-${notif.id}`
             });
           });

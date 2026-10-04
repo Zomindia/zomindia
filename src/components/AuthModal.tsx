@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
   RecaptchaVerifier,
   signInWithPhoneNumber,
+  signInWithRedirect,
+  signInWithPopup,
+  getRedirectResult,
+  GoogleAuthProvider,
   ConfirmationResult,
   updateProfile,
 } from 'firebase/auth';
+import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
@@ -33,6 +36,12 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialView?: AuthView;
+  initialData?: {
+    uid?: string;
+    displayName?: string;
+    email?: string;
+  };
 }
 
 // Support phone & Google-based sign-in for maximum conversion and security.
@@ -44,32 +53,8 @@ type AuthView =
   | 'google-phone-setup'
   | 'success-transition';
 
-const getFriendlyAuthErrorMessage = (err: any): string => {
-  if (!err) return 'An unexpected error occurred. Please try again.';
-  switch (err.code) {
-    case 'auth/unauthorized-domain':
-      return 'This domain is not authorized for Firebase Phone Authentication. Please add this domain to Authorized Domains in the Firebase Console.';
-    case 'auth/too-many-requests':
-      return 'Too many SMS requests. Please wait a few minutes and try again.';
-    case 'auth/invalid-phone-number':
-      return 'Invalid mobile number format. Please enter a valid 10-digit Indian phone number.';
-    case 'auth/quota-exceeded':
-      return 'SMS quota exceeded for this Firebase project. Please try again later.';
-    case 'auth/captcha-check-failed':
-      return 'reCAPTCHA verification failed. Please check your network and try again.';
-    case 'auth/invalid-verification-code':
-      return 'The 6-digit verification code entered is invalid. Please check and try again.';
-    case 'auth/code-expired':
-      return 'This verification code has expired. Please request a new OTP code.';
-    case 'auth/user-disabled':
-      return 'This user account has been disabled. Please contact support.';
-    default:
-      return err.message || 'Failed to send verification code. Please try again.';
-  }
-};
-
-export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
-  const [view, setView] = useState<AuthView>('login-selection');
+export default function AuthModal({ isOpen, onClose, onSuccess, initialView, initialData }: Props) {
+  const [view, setView] = useState<AuthView>(initialView || 'login-selection');
   const [phoneNumber, setPhoneNumber] = useState('');
   
   // OTP states: single unified 6-digit string feeding native WebOTP & single input
@@ -77,15 +62,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const otpInputRef = useRef<HTMLInputElement | null>(null);
   
   // Registration data
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState(initialData?.displayName || '');
+  const [email, setEmail] = useState(initialData?.email || '');
 
   // Status & states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timer, setTimer] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
+  const [verifiedUid, setVerifiedUid] = useState<string | null>(initialData?.uid || null);
   const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
 
   // Zomato-Style Onboarding verification and interactive conflict resolution state
@@ -122,19 +107,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   }, [isOpen]);
 
   useEffect(() => {
-    return () => {
-      if (window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (e) {
-          console.warn("Recaptcha cleanup on unmount failed:", e);
-        }
-        window.recaptchaVerifier = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     let interval: any;
     if (timer > 0) {
       interval = setInterval(() => setTimer(t => t - 1), 1000);
@@ -161,14 +133,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
   // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
-    setView('login-selection');
+    setView(initialView || 'login-selection');
     setPhoneNumber('');
     setOtpCode('');
-    setDisplayName('');
-    setEmail('');
+    setDisplayName(initialData?.displayName || '');
+    setEmail(initialData?.email || '');
     setError(null);
     setConfirmationResult(null);
-    setVerifiedUid(null);
+    setVerifiedUid(initialData?.uid || null);
     setIsOnboardingVerification(false);
     setShouldMergeConflictOnSuccess(false);
     setConflictUid(null);
@@ -179,18 +151,93 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     if (isOpen) {
       resetForm();
     }
-  }, [isOpen]);
+  }, [isOpen, initialView, initialData]);
 
-  // Optimized RecaptchaVerifier factory: reuses instance cleanly across sends/resends
+  // Check for any pending Google redirect results upon returning to the app
+  useEffect(() => {
+    let isSubscribed = true;
+    const inspectRedirect = async () => {
+      try {
+        const userCredential = await getRedirectResult(auth);
+        if (!isSubscribed || !userCredential || !userCredential.user) return;
+        const u = userCredential.user;
+        setVerifiedUid(u.uid);
+        setDisplayName(u.displayName || '');
+        setEmail(u.email || '');
+
+        const pDoc = await getDoc(doc(db, 'users', u.uid));
+        const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
+
+        if (!hasStoredPhone) {
+          setView('google-phone-setup');
+        } else {
+          setView('success-transition');
+          setTimeout(() => {
+            if (isSubscribed) {
+              onSuccess();
+              onClose();
+              resetForm();
+            }
+          }, 1200);
+        }
+      } catch (err: any) {
+        console.warn('[AuthModal] Google redirect result notice:', err);
+      }
+    };
+
+    inspectRedirect();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
+
+  // Standardized RecaptchaVerifier initialization with cleanup and single persistent container
   const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {}
+    const containerId = 'recaptcha-container';
+    
+    // Ensure the container ID matches a single persistent element and remove duplicate container elements
+    const duplicateContainers = document.querySelectorAll(`[id="${containerId}"]`);
+    if (duplicateContainers.length > 1) {
+      duplicateContainers.forEach((el, index) => {
+        if (index > 0) el.remove();
       });
-      await window.recaptchaVerifier.render();
     }
-    return window.recaptchaVerifier;
+
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      document.body.appendChild(container);
+    }
+
+    // Safety checks: clear/destroy any existing instance before initializing a new one
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (e) {
+        console.warn('[AuthModal] Error clearing recaptchaVerifier:', e);
+      }
+      window.recaptchaVerifier = null;
+    }
+    container.innerHTML = '';
+
+    const verifier = new RecaptchaVerifier(auth, containerId, {
+      size: 'invisible',
+      callback: () => {},
+      'expired-callback': () => {
+        if (window.recaptchaVerifier) {
+          try {
+            window.recaptchaVerifier.clear();
+          } catch (_) {}
+          window.recaptchaVerifier = null;
+        }
+      },
+    });
+
+    await verifier.render();
+    window.recaptchaVerifier = verifier;
+    return verifier;
   };
 
   // Handle Phone Number submission to request OTP
@@ -619,39 +666,54 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  // Google Sign In & Dynamic Firestore Profile Sync
+  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
-    const provider = new GoogleAuthProvider();
     try {
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-      
-      const pDoc = await getDoc(doc(db, 'users', user.uid));
-      const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
 
-      // Keep user references in modal state for registration check
-      setVerifiedUid(user.uid);
-      setDisplayName(user.displayName || pDoc.data()?.displayName || '');
-      setEmail(user.email || pDoc.data()?.email || '');
+      // Determine if running inside an iframe (e.g. AI Studio development preview)
+      let isInsideIframe = false;
+      try {
+        isInsideIframe = window.self !== window.top;
+      } catch (e) {
+        // Cross-origin restriction indicates app is embedded in an iframe
+        isInsideIframe = true;
+      }
 
-      if (!hasStoredPhone) {
-        // If they don't have a phone, seamlessly transition to setup step
-        setView('google-phone-setup');
+      if (isInsideIframe) {
+        console.info('[AuthModal] Running inside iframe (AI Studio Preview) - using signInWithPopup for Google Auth');
+        const userCredential = await signInWithPopup(auth, provider);
+        if (userCredential && userCredential.user) {
+          const u = userCredential.user;
+          setVerifiedUid(u.uid);
+          setDisplayName(u.displayName || '');
+          setEmail(u.email || '');
+
+          const pDoc = await getDoc(doc(db, 'users', u.uid));
+          const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
+
+          if (!hasStoredPhone) {
+            setView('google-phone-setup');
+          } else {
+            setView('success-transition');
+            setTimeout(() => {
+              onSuccess();
+              onClose();
+              resetForm();
+            }, 1200);
+          }
+        }
       } else {
-        // Already registered with a phone number, proceed seamlessly
-        setView('success-transition');
-        setTimeout(() => {
-          onSuccess();
-          onClose();
-          resetForm();
-        }, 1500);
+        console.info('[AuthModal] Running in top-level window / TWA - using signInWithRedirect for Google Auth');
+        await signInWithRedirect(auth, provider);
+        // Browser redirects to Google OAuth; getRedirectResult resolves upon returning
       }
     } catch (err: any) {
       console.error("Google authentication error:", err);
-      setError(err.message || 'Google authentication unsuccessful');
-    } finally {
+      setError(getFriendlyAuthErrorMessage(err));
       setLoading(false);
     }
   };
@@ -677,11 +739,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  // Setup mobile number for Google Signed-In Users with strict verification OTP barrier and transactional pre-write checks
+  // Setup mobile number for Google Signed-In Users: directly save profile in Firestore without requiring a second phone OTP
   const handleGooglePhoneRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName.trim()) {
-      setError('Name is required');
+      setError('Full Name is required');
       return;
     }
     const cleanPhone = phoneNumber.replace(/\D/g, '');
@@ -698,35 +760,68 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
     setLoading(true);
     setError(null);
-    setConflictUid(null);
-    setShowConflictOptions(false);
-    setShouldMergeConflictOnSuccess(false);
 
     try {
       const formattedPhone = `+91${cleanPhone}`;
+      const userEmail = (email || auth.currentUser?.email || '').trim();
+      const isSarthakEmail = userEmail.toLowerCase() === 'sarthakwebtech@gmail.com';
+      const userRef = doc(db, 'users', activeUid);
+      const userSnap = await getDoc(userRef);
 
-      // CROSS-VALIDATION Conflict Check BEFORE dispatching OTP
-      const phoneQ1 = query(collection(db, "users"), where("phoneNumber", "==", formattedPhone));
-      const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPhone));
-      const [snap1, snap2] = await Promise.all([getDocs(phoneQ1), getDocs(phoneQ2)]);
+      const existingData = userSnap.exists() ? userSnap.data() : null;
 
-      let existingUserDoc: any = null;
-      if (!snap1.empty) existingUserDoc = snap1.docs[0];
-      else if (!snap2.empty) existingUserDoc = snap2.docs[0];
+      // Ensure user gets the welcome credit (₹100) or retains existing balance
+      const walletBalance = existingData?.walletBalance !== undefined 
+        ? existingData.walletBalance 
+        : walletJoiningBonus;
 
-      if (existingUserDoc && existingUserDoc.id !== activeUid) {
-        // Enforce Zomato-Style Conflict Options
-        setConflictUid(existingUserDoc.id);
-        setShowConflictOptions(true);
-        setLoading(false);
-        return;
+      const profilePayload: any = {
+        uid: activeUid,
+        displayName: displayName.trim(),
+        fullName: displayName.trim(),
+        email: userEmail,
+        phoneNumber: formattedPhone,
+        mobile: formattedPhone,
+        walletBalance: walletBalance,
+        onboardingComplete: true,
+        isPartner: existingData?.isPartner ?? false,
+        updatedAt: Timestamp.now()
+      };
+
+      if (!existingData) {
+        profilePayload.role = isSarthakEmail ? 'admin' : 'customer';
+        profilePayload.createdAt = Timestamp.now();
+        profilePayload.referralCode = `ZOM${activeUid.slice(-6).toUpperCase()}`;
+        profilePayload.notificationPreferences = {
+          bookingUpdates: true,
+          promotionalMessages: true
+        };
       }
 
-      // No conflict, send the OTP!
-      await sendOnboardingOTP(formattedPhone);
+      if (isSarthakEmail) {
+        profilePayload.role = 'admin';
+        profilePayload.adminSubRole = 'head';
+      }
+
+      // Directly save/merge user profile in Firestore
+      await setDoc(userRef, profilePayload, { merge: true });
+
+      // Update Firebase Auth profile display name if available
+      if (auth.currentUser) {
+        try {
+          await updateProfile(auth.currentUser, { displayName: displayName.trim() });
+        } catch (profileErr) {
+          console.warn('[AuthModal] Could not update auth display name:', profileErr);
+        }
+      }
+
+      // Immediately call onSuccess and close modal so user seamlessly lands on dashboard with ₹100 credit
+      onSuccess();
+      onClose();
+      resetForm();
     } catch (err: any) {
-      console.error("Conflict checking or SMS dispatch failed:", err);
-      setError(err.message || 'SMS dispatch failed. Please check connection.');
+      console.error("[AuthModal] Failed to save Google user profile:", err);
+      setError(err?.message || 'Failed to save profile. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -744,9 +839,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         // Disabled backdrop click dismissal to prevent accidental screen close on keyboard mistouches (e.g. typing login info/search)
         onClick={undefined}
       />
-      
-      {/* Permanent static container for Firebase Phone Auth invisible reCAPTCHA */}
-      <div id="recaptcha-container"></div>
 
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 16 }}
@@ -927,91 +1019,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
               </motion.div>
             )}            {/* VIEW: Google Phone Setup (For missing mobile number in Google login) */}
             {view === 'google-phone-setup' && (
-              showConflictOptions ? (
-                <motion.div
-                  key="conflict-resolution"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.05 }}
-                  className="space-y-6 text-center"
-                >
-                  <div className="mx-auto w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 border border-amber-100 animate-pulse">
-                    <AlertCircle size={32} />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-extrabold text-neutral-900">
-                      Conflict Detected ⚠️
-                    </h3>
-                    <p className="text-sm text-amber-600 font-semibold px-4">
-                      This verified number is already linked to another account.
-                    </p>
-                    <p className="text-xs text-neutral-500 px-6 leading-relaxed">
-                      You can either merge all history, bookings, and wallet balance into your current active Google session, or switch and login directly using this mobile number.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 px-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setLoading(true);
-                        setError(null);
-                        try {
-                          setShouldMergeConflictOnSuccess(true);
-                          const cleanPhone = phoneNumber.replace(/\D/g, '');
-                          const formattedPhone = `+91${cleanPhone}`;
-                          await sendOnboardingOTP(formattedPhone);
-                        } catch (err: any) {
-                          setError(err.message || "Failed to send OTP");
-                          setShouldMergeConflictOnSuccess(false);
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      disabled={loading}
-                      className="w-full bg-[#050CA6] text-white py-3.5 px-4 rounded-2xl font-bold hover:bg-[#040980] transition-all text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                    >
-                      {loading ? <BrandedButtonSpinner className="w-4 h-4" /> : "Continue & Link to This Account"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setLoading(true);
-                        try {
-                          setView('phone-entry');
-                        } catch (err) {
-                          console.error(err);
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3.5 px-4 rounded-2xl font-bold transition-all text-xs cursor-pointer"
-                    >
-                      Switch Account
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowConflictOptions(false);
-                        setConflictUid(null);
-                        setShouldMergeConflictOnSuccess(false);
-                      }}
-                      className="w-full text-neutral-500 hover:text-neutral-700 text-xs font-semibold hover:underline cursor-pointer"
-                    >
-                      Go Back
-                    </button>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="google-phone-setup"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="space-y-6"
-                >
+              <motion.div
+                key="google-phone-setup"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
                   <div>
                     <button 
                       type="button"
@@ -1109,7 +1123,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
                     </button>
                   </form>
                 </motion.div>
-              )
             )}
 
             {/* VIEW 2: OTP Entry state (Clean verification blocks) */}

@@ -31,7 +31,7 @@ import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "..
 import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
-import LogoIcon from "../assets/images/logo-icon.png";
+import { LogoIcon } from "./BrandLogo";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
 

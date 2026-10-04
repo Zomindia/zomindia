@@ -1607,12 +1607,12 @@ export default function CustomerHome({
                                   <div className="flex items-center gap-3 min-w-0 flex-1">
                                     <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
                                       <img
-                                        src={service.imageURL || '/logo-192.png'}
+                                        src={service.imageURL || '/pwa-192x192.png'}
                                         alt={service.name}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                         referrerPolicy="no-referrer"
                                         onError={(e) => {
-                                          (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                                          (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
                                         }}
                                       />
                                     </div>
@@ -1948,12 +1948,12 @@ export default function CustomerHome({
                                 <div className="flex items-center gap-3 min-w-0 flex-1">
                                   <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
                                     <img
-                                      src={service.imageURL || '/logo-192.png'}
+                                      src={service.imageURL || '/pwa-192x192.png'}
                                       alt={service.name}
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                       referrerPolicy="no-referrer"
                                       onError={(e) => {
-                                        (e.target as HTMLElement).setAttribute('src', '/logo-192.png');
+                                        (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
                                       }}
                                     />
                                   </div>

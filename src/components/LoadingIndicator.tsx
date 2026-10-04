@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Shield } from 'lucide-react';
-import logoIcon from '../assets/images/logo-icon.png';
+import { LogoIcon } from './BrandLogo';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 
@@ -173,7 +173,7 @@ export function LoadingScreen({
         >
           <div className="absolute inset-0.5 rounded-[22px] border border-amber-500/25 pointer-events-none" />
           <img 
-            src={logoIcon} 
+            src={LogoIcon} 
             alt="zomindia brand" 
             className="w-[68px] h-[68px] object-contain select-none animate-pulse"
             referrerPolicy="no-referrer"
@@ -217,7 +217,7 @@ export function LoadingScreen({
             className="absolute w-10 h-10 rounded-xl bg-white border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
           >
             <img 
-              src={logoIcon} 
+              src={LogoIcon} 
               alt="zomindia mini" 
               className="w-full h-full object-contain select-none"
               referrerPolicy="no-referrer"
@@ -286,7 +286,7 @@ export function BrandedButtonSpinner({
   return (
     <div className={`relative ${className} flex items-center justify-center shrink-0`}>
       <img
-        src={logoIcon}
+        src={LogoIcon}
         alt="loading..."
         className="w-full h-full object-contain select-none z-0 animate-spin"
         referrerPolicy="no-referrer"
