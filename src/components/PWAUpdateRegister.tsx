@@ -1,21 +1,48 @@
-import React from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
+import React, { useState, useEffect, useRef } from 'react';
+import { registerSW } from 'virtual:pwa-register';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, RefreshCw, X } from 'lucide-react';
 
 export function PWAUpdateRegister() {
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    offlineReady: [offlineReady, setOfflineReady],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegistered(r) {
-      console.log('SW Registered:', r);
-    },
-    onRegisterError(error) {
-      console.error('SW registration error:', error);
+  const [needRefresh, setNeedRefresh] = useState(false);
+  const [_offlineReady, setOfflineReady] = useState(false);
+  const updateSWRef = useRef<((reloadPage?: boolean) => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    // 1. Listen for custom pwa-update-available event dispatched from main.tsx or sw listener
+    const handleUpdateAvailable = () => {
+      console.log('[PWAUpdateRegister] Custom pwa-update-available event received.');
+      setNeedRefresh(true);
+    };
+
+    window.addEventListener('pwa-update-available', handleUpdateAvailable);
+
+    // 2. Initialize vanilla virtual:pwa-register without React dispatcher conflicts
+    try {
+      updateSWRef.current = registerSW({
+        onNeedRefresh() {
+          console.log('[PWAUpdateRegister] onNeedRefresh triggered from service worker.');
+          setNeedRefresh(true);
+        },
+        onOfflineReady() {
+          console.log('[PWAUpdateRegister] onOfflineReady triggered.');
+          setOfflineReady(true);
+        },
+        onRegistered(r) {
+          console.log('[PWAUpdateRegister] Service Worker registered:', r?.scope);
+        },
+        onRegisterError(error) {
+          console.error('[PWAUpdateRegister] Service Worker registration error:', error);
+        }
+      });
+    } catch (e) {
+      console.warn('[PWAUpdateRegister] Failed to register SW via virtual:pwa-register:', e);
     }
-  });
+
+    return () => {
+      window.removeEventListener('pwa-update-available', handleUpdateAvailable);
+    };
+  }, []);
 
   const closeRefreshBanner = () => {
     setNeedRefresh(false);
@@ -23,13 +50,15 @@ export function PWAUpdateRegister() {
 
   const handleUpdateClick = async () => {
     try {
-      // 1. Ask vite-plugin-pwa helper to update
-      await updateServiceWorker(true);
+      if (updateSWRef.current) {
+        await updateSWRef.current(true);
+        return;
+      }
     } catch (err) {
-      console.warn('[PWA] vite-plugin-pwa update call error, using fallback:', err);
+      console.warn('[PWA] updateSW call error, attempting manual worker update:', err);
     }
 
-    // 2. Direct fallback logic: search registrations and post message to skip waiting
+    // Direct fallback logic: search registrations and post message to skip waiting
     if ('serviceWorker' in navigator) {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
