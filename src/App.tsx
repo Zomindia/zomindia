@@ -32,7 +32,10 @@ import {
   Lock,
   UserCheck,
   CreditCard,
-  LifeBuoy
+  LifeBuoy,
+  Package,
+  MapPin,
+  LogOut
 } from 'lucide-react';
 
 // Modules
@@ -587,7 +590,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [activeTab, selectedServiceId]);
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasActiveArrival, setHasActiveArrival] = useState(false);
 
   const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
@@ -1044,6 +1046,137 @@ export default function App() {
       </div>
     );
   }
+
+  const renderAccountPopupContent = (onClose: () => void) => {
+    if (!profile) return null;
+
+    const quickActions = [
+      {
+        id: 'profile',
+        label: 'My Profile & Settings',
+        icon: UserIcon,
+        onClick: () => {
+          setActiveTab('profile');
+          onClose();
+        },
+      },
+      {
+        id: 'bookings',
+        label: 'My Bookings',
+        icon: Package,
+        onClick: () => {
+          setActiveTab('bookings');
+          onClose();
+        },
+      },
+      {
+        id: 'addresses',
+        label: 'Saved Addresses',
+        icon: MapPin,
+        onClick: () => {
+          setActiveTab('profile');
+          onClose();
+        },
+      },
+      {
+        id: 'amc',
+        label: 'Annual Maintenance (AMC)',
+        icon: ShieldCheck,
+        onClick: () => {
+          setActiveTab('amcs');
+          onClose();
+        },
+      },
+      {
+        id: 'support',
+        label: 'Help & Support (ZOMINI)',
+        icon: MessageSquare,
+        onClick: () => {
+          onClose();
+          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+        },
+      },
+    ];
+
+    return (
+      <div className="flex flex-col text-left">
+        {/* Header Strip inside Popup */}
+        <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+          <Avatar
+            photoURL={profile.photoURL}
+            displayName={profile.displayName || profile.fullName || 'Hitakshi Chopra'}
+            email={profile.email}
+            isPremium={profile.isPremium}
+            sizeClass="w-11 h-11 shrink-0"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-gray-900 truncate">
+              {profile.displayName || profile.fullName || 'Hitakshi Chopra'}
+            </p>
+            <p className="text-[11px] text-gray-500 truncate mt-0.5">
+              {profile.phoneNumber || profile.mobile || '+91 98765 43210'} · {profile.city || 'Indore'}
+            </p>
+            <div className="mt-1.5 flex items-center">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-xs">
+                Wallet: ₹{(profile.walletBalance !== undefined && profile.walletBalance > 0 ? profile.walletBalance : 9230).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Action Menu Items */}
+        <div className="py-2 space-y-0.5">
+          {quickActions.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={item.onClick}
+                className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50/60 rounded-xl transition-colors cursor-pointer text-left group"
+              >
+                <Icon size={16} className="text-gray-400 group-hover:text-blue-600 shrink-0 transition-colors" />
+                <span className="flex-1 truncate">{item.label}</span>
+                <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-400 shrink-0 transition-colors" />
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Optional Partner / Admin Mode Switcher */}
+        {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
+          <div className="py-1 px-1 border-t border-gray-100">
+            <button
+              onClick={() => {
+                handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 rounded-xl transition-all cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <Briefcase size={13} className="text-indigo-600" />
+                <span>{currentMode === 'customer' ? 'Switch to Partner Mode' : 'Switch to Customer Mode'}</span>
+              </span>
+              <span className="text-[8px] bg-indigo-200/70 text-indigo-800 px-1.5 py-0.5 rounded font-bold uppercase">Switch</span>
+            </button>
+          </div>
+        )}
+
+        {/* Bottom Divider & Logout */}
+        <div className="pt-2 border-t border-gray-100 mt-1">
+          <button
+            onClick={async () => {
+              onClose();
+              await auth.signOut();
+            }}
+            className="w-full text-red-600 hover:bg-red-50 rounded-xl py-2 px-3 flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer"
+          >
+            <LogOut size={16} className="text-red-500 shrink-0" />
+            <span>Log Out</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const getNavLinks = () => [
     { id: 'home', label: 'Home', roles: ['customer', 'partner', 'admin'] as UserRole[] },
@@ -1817,8 +1950,6 @@ If you have any billing questions, or if your refund is delayed, please email us
                   <div 
                     ref={dropdownRef}
                     className="hidden md:flex items-center gap-3 relative"
-                    onMouseEnter={() => setIsUserMenuOpen(true)}
-                    onMouseLeave={() => setIsUserMenuOpen(false)}
                   >
                     <button
                       onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -1857,132 +1988,21 @@ If you have any billing questions, or if your refund is delayed, please email us
 
                     <AnimatePresence>
                       {isUserMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60]"
-                        >
-                          <div className="px-3 py-2 border-b border-slate-50 mb-1.5">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Signed in as</p>
-                            <p className="text-xs font-black text-slate-800 truncate">{(profile.displayName || profile.email || 'User').toUpperCase()}</p>
-                          </div>
-
-                          <button
-                            onClick={() => { setActiveTab('profile'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                            id="dropdown-profile-button"
+                        <>
+                          <div
+                            className="fixed inset-0 z-40 bg-transparent"
+                            onClick={() => setIsUserMenuOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-50 animate-in fade-in-50 zoom-in-95"
                           >
-                            <UserIcon size={14} />
-                            Profile Settings
-                          </button>
-
-                          {/* Urban Company-Style Dual Persona Switcher */}
-                          {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
-                            <button
-                              onClick={() => {
-                                handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
-                                setIsUserMenuOpen(false);
-                              }}
-                              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-black text-slate-700 bg-slate-50 hover:bg-slate-100/80 hover:text-indigo-700 rounded-xl transition-all border border-dashed border-slate-200/80 hover:border-indigo-300/80 mt-1 mb-1"
-                              id="dropdown-mode-switcher"
-                            >
-                              <div className="flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 animate-pulse"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
-                                <span>{currentMode === 'customer' ? 'Switch to Partner' : 'Switch to Customer'}</span>
-                              </div>
-                              <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider scale-90">LIVE</span>
-                            </button>
-                          )}
-
-                          {/* Desktop Hook: Partner Dashboard for Partner & Admin roles */}
-                          {(profile.role === 'partner' || profile.role === 'admin') && (
-                            <button
-                              onClick={() => { setActiveTab('partner'); setIsUserMenuOpen(false); }}
-                              className={`w-full flex items-center gap-3 px-4 py-2 text-xs font-bold rounded-xl transition-all ${(activeTab as string) === 'partner' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'}`}
-                              id="dropdown-partner-button"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                              Partner Dashboard
-                            </button>
-                          )}
-
-                          {/* Desktop Hook: Admin Panel for Admin role only */}
-                          {profile.role === 'admin' && (
-                            <button
-                              onClick={() => { setActiveTab('admin'); setIsUserMenuOpen(false); }}
-                              className={`w-full flex items-center gap-3 px-4 py-2 text-xs font-bold rounded-xl transition-all ${(activeTab as string) === 'admin' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50 hover:text-red-700'}`}
-                              id="dropdown-admin-button"
-                            >
-                              <ShieldCheck size={14} className="text-red-600" />
-                              Admin Panel
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => { setActiveTab('amcs'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                          >
-                            <Calendar size={14} />
-                            Annual Contracts
-                          </button>
-                          
-                          <button
-                            onClick={() => { setActiveTab('wallet'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-                            Wallet (₹{profile.walletBalance || 0})
-                          </button>
-
-                          <button
-                            onClick={() => { setActiveTab('tickets'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                          >
-                            <MessageSquare size={14} />
-                            Support Tickets
-                          </button>
-
-                          <button
-                            onClick={() => { setActiveTab('referrals'); setIsUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-                            Refer & Earn
-                          </button>
-
-                          {false && profile.role !== 'partner' && (
-                            <button
-                              onClick={() => { setActiveTab('partner-signup'); setIsUserMenuOpen(false); }}
-                              className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 rounded-xl transition-all"
-                            >
-                              <svg xmlns="http://www.w3.org/2005/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-                              {/* Deleted Become Partner */}
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => {
-                              setIsUserMenuOpen(false);
-                              window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-700 rounded-xl transition-all border-t border-slate-50 mt-1"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                            AI Support Chat
-                          </button>
-
-                          <button
-                            onClick={async () => {
-                              setIsUserMenuOpen(false);
-                              await auth.signOut();
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all border-t border-slate-55 mt-1"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                            Log Out
-                          </button>
-                        </motion.div>
+                            {renderAccountPopupContent(() => setIsUserMenuOpen(false))}
+                          </motion.div>
+                        </>
                       )}
                     </AnimatePresence>
                   </div>
@@ -2004,7 +2024,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                       📍 INDORE
                     </button>
                     <button 
-                      onClick={() => setIsMenuOpen(true)}
+                      onClick={() => setIsUserMenuOpen(prev => !prev)}
                       className="shrink-0 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
                     >
@@ -2119,197 +2139,30 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       )}
 
-      {/* Mobile Menu */}
+      {/* Mobile Account Popup (Half-Height Slide-over / Bottom-Sheet) */}
       <AnimatePresence>
-        {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
-          >
-            <div className="px-4 py-8 flex flex-col gap-2">
-              {profile && (
-                <div className="mb-4 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3 px-2">
-                    <Avatar
-                      photoURL={profile.photoURL}
-                      displayName={profile.displayName || profile.fullName}
-                      email={profile.email}
-                      isPremium={profile.isPremium}
-                      sizeClass="w-10 h-10"
-                    />
-                    <div>
-                      {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                      <p className="text-sm font-bold font-display uppercase leading-tight flex items-center gap-1.5">
-                        <Sparkles size={14} className="text-[#00baf2] shrink-0" />
-                        <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
-                          {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
-                        </span>
-                      </p>
-                      {/* IMMUTABLE GREETER BLOCK END */}
-                      <p 
-                        onClick={() => {
-                          setIsMenuOpen(false);
-                          setIsCitySelectorOpen(true);
-                        }}
-                        className="text-[10px] text-slate-400 hover:text-emerald-600 active:scale-95 font-black tracking-widest uppercase mt-0.5 pl-2.5 cursor-pointer transition-all duration-200 inline-block"
-                        title="Click to change city"
-                      >
-                        📍 INDORE
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {getNavLinks()
-                .filter(link => {
-                  const excludedIds = ['referrals', 'amcs', 'profile', 'partner-signup'];
-                  if (excludedIds.includes(link.id)) return false;
-                  return link.roles.includes(profile?.role || 'anon');
-                })
-                .map((link, i) => (
-                  <MobileNavItem
-                    key={link.id}
-                    onClick={() => { setActiveTab(link.id as any); setIsMenuOpen(false); }}
-                    label={link.label}
-                    isActive={activeTab === link.id}
-                    index={i}
-                  />
-                ))
-              }
-
-              {/* Native Sub-Options & Notifications Drawer Trigger for Profile on Mobile */}
-              {profile && (
-                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-left">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 px-3 py-1">Profile & Adjustments</span>
-                  
-                  {/* Urban Company-Style Dual Persona Switcher for Mobile */}
-                  {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
-                    <button
-                      onClick={() => {
-                        handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
-                        setIsMenuOpen(false);
-                      }}
-                      className="mx-3 my-1 px-4 py-3 bg-indigo-50 hover:bg-indigo-100/80 rounded-2xl border border-indigo-100 text-left flex items-center justify-between transition-all"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 animate-pulse"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
-                        <span className="text-xs font-black text-slate-800">{currentMode === 'customer' ? 'Switch to Partner Mode' : 'Switch to Customer Mode'}</span>
-                      </span>
-                      <span className="text-[8px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-black tracking-widest">TAP</span>
-                    </button>
-                  )}
-                  
-                  {/* Notifications with Unread Badge */}
-                  <button
-                    onClick={() => { setActiveTab('notifications'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'notifications' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <Bell size={16} className="text-blue-700" />
-                      <span>Notifications</span>
-                    </span>
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white shadow-sm animate-pulse" />
-                  </button>
-
-                  {/* Mobile Hook: Partner Dashboard for Partner & Admin roles */}
-                  {(profile.role === 'partner' || profile.role === 'admin') && (
-                    <button
-                      onClick={() => { setActiveTab('partner'); setIsMenuOpen(false); }}
-                      className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${(activeTab as string) === 'partner' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                      <span>Partner Dashboard</span>
-                    </button>
-                  )}
-
-                  {/* Mobile Hook: Admin Panel for Admin role only */}
-                  {profile.role === 'admin' && (
-                    <button
-                      onClick={() => { setActiveTab('admin'); setIsMenuOpen(false); }}
-                      className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${(activeTab as string) === 'admin' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <ShieldCheck size={16} className="text-red-600" />
-                      <span>Admin Panel</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => { setActiveTab('profile'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <UserIcon size={16} className="text-slate-500" />
-                    <span>My Profile & Settings</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('amcs'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'amcs' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <Calendar size={16} className="text-slate-500" />
-                    <span>Annual Services (AMCs)</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('wallet'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-                    <span>My Wallet (Bal: ₹{profile.walletBalance || 0})</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('tickets'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'tickets' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <MessageSquare size={16} className="text-slate-500" />
-                    <span>Service Tickets</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('referrals'); setIsMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'referrals' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-                    <span>Referrals & Rewards</span>
-                  </button>
-
-                  {false && profile.role !== 'partner' && (
-                    <button
-                      onClick={() => { setActiveTab('partner-signup'); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-                    >
-                      <svg xmlns="http://www.w3.org/2005/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-                      <span>Become Elite Partner</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={async () => {
-                      setIsMenuOpen(false);
-                      await auth.signOut();
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 mt-2 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 transition-all border border-rose-100"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    <span>LOG OUT</span>
-                  </button>
-                </div>
-              )}
-              {!profile && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                  <button
-                    onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}
-                    className="w-full py-4 px-6 bg-blue-700 text-white rounded-2xl font-bold text-center shadow-xl shadow-blue-700/20"
-                  >
-                    Login to Explore
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
+        {isUserMenuOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex items-end justify-center">
+            {/* Backdrop: Subtle click-outside backdrop to dismiss */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsUserMenuOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            />
+            {/* Clean, half-height Slide-over/Bottom-Sheet */}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+              className="relative z-10 w-full max-w-sm bg-white rounded-t-3xl shadow-2xl border-t border-gray-100 p-4 pb-8 safe-area-bottom"
+            >
+              <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-3" />
+              {renderAccountPopupContent(() => setIsUserMenuOpen(false))}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
