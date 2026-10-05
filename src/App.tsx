@@ -32,15 +32,13 @@ import {
   Lock,
   UserCheck,
   CreditCard,
-  LifeBuoy,
-  Package,
-  MapPin,
-  LogOut
+  LifeBuoy
 } from 'lucide-react';
 
 // Modules
 import CustomerHome from './components/CustomerHome';
 import Avatar from './components/Avatar';
+import AccountPopup from './components/AccountPopup';
 import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
@@ -74,6 +72,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 
 import ElitePartnerModal from './components/ElitePartnerModal';
 
+import { GOOGLE_MAPS_API_KEY } from './lib/maps-config';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 
 import { LogoHorizontal } from './components/BrandLogo';
@@ -96,32 +95,7 @@ const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, c
   );
 };
 
-const MobileNavItem = ({ onClick, label, isActive, index }: { onClick: () => void, label: string, isActive: boolean, index: number, key?: any }) => (
-  <motion.button
-    initial={{ opacity: 0, x: -10 }}
-    animate={{ opacity: 1, x: 0 }}
-    whileHover={{ scale: 1.02, x: 5 }}
-    whileTap={{ scale: 0.98 }}
-    transition={{ 
-      delay: index * 0.05, 
-      type: "spring", 
-      stiffness: 300, 
-      damping: 20 
-    }}
-    onClick={onClick}
-    className={`w-full text-left py-4 px-6 rounded-2xl font-bold flex items-center justify-between group transition-all cursor-pointer ${isActive ? 'bg-blue-700 text-white shadow-xl shadow-blue-700/10' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-700'}`}
-  >
-    <span className="tracking-tight">{label}</span>
-    <ChevronRight size={16} className={`transition-transform ${isActive ? 'translate-x-0' : '-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0'}`} />
-  </motion.button>
-);
-
-const API_KEY =
-  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
-  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
-  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
-  '';
-const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+const API_KEY = GOOGLE_MAPS_API_KEY;
 const GOOGLE_MAPS_LIBRARIES: ('places' | 'marker' | 'geometry')[] = ['places', 'marker', 'geometry'];
 
 function isVersionHigher(newVer: string, oldVer: string): boolean {
@@ -276,7 +250,8 @@ export default function App() {
       null
     );
   });
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isAccountPopupOpen, setIsAccountPopupOpen] = useState(false);
+  const [profileSubSection, setProfileSubSection] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const urlParams = new URLSearchParams(window.location.search);
@@ -371,7 +346,7 @@ export default function App() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsUserMenuOpen(false);
+        setIsAccountPopupOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -482,6 +457,8 @@ export default function App() {
     setActiveTabState(tab);
     if (tab === 'home') {
       setSelectedCategoryId(bIdOrCategoryId);
+    } else if (tab === 'profile') {
+      setProfileSubSection(bIdOrCategoryId);
     } else {
       setTargetBookingId(bIdOrCategoryId);
     }
@@ -989,42 +966,6 @@ export default function App() {
     }, 200);
   };
 
-  if (!hasValidKey) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-slate-200 border border-slate-100">
-          <Logo size={32} />
-          <h2 className="text-2xl font-black text-slate-900 mt-8 mb-4 tracking-tighter italic">API Key Required</h2>
-          <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-            To enable location services and visual address selection, please add your Google Maps API key.
-          </p>
-
-          <div className="space-y-4 mb-8">
-            <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">1</div>
-              <p className="text-xs text-slate-600">Get an API key from the <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener" className="text-slate-900 font-bold underline">Google Cloud Console</a></p>
-            </div>
-            <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">2</div>
-              <p className="text-xs text-slate-600">Open <strong>Settings</strong> (⚙️ icon) → <strong>Secrets</strong></p>
-            </div>
-            <div className="flex gap-4">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold shrink-0">3</div>
-              <p className="text-xs text-slate-600">Add <code>GOOGLE_MAPS_PLATFORM_KEY</code> and paste your key</p>
-            </div>
-          </div>
-
-          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
-            <div className="w-2 h-2 rounded-full bg-amber-400 mt-1" />
-            <p className="text-[10px] font-bold text-amber-800 uppercase tracking-widest leading-normal">
-              The app will rebuild automatically once the key is added.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return <LoadingScreen message="Connecting to secure zomindia console..." />;
   }
@@ -1046,137 +987,6 @@ export default function App() {
       </div>
     );
   }
-
-  const renderAccountPopupContent = (onClose: () => void) => {
-    if (!profile) return null;
-
-    const quickActions = [
-      {
-        id: 'profile',
-        label: 'My Profile & Settings',
-        icon: UserIcon,
-        onClick: () => {
-          setActiveTab('profile');
-          onClose();
-        },
-      },
-      {
-        id: 'bookings',
-        label: 'My Bookings',
-        icon: Package,
-        onClick: () => {
-          setActiveTab('bookings');
-          onClose();
-        },
-      },
-      {
-        id: 'addresses',
-        label: 'Saved Addresses',
-        icon: MapPin,
-        onClick: () => {
-          setActiveTab('profile');
-          onClose();
-        },
-      },
-      {
-        id: 'amc',
-        label: 'Annual Maintenance (AMC)',
-        icon: ShieldCheck,
-        onClick: () => {
-          setActiveTab('amcs');
-          onClose();
-        },
-      },
-      {
-        id: 'support',
-        label: 'Help & Support (ZOMINI)',
-        icon: MessageSquare,
-        onClick: () => {
-          onClose();
-          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-        },
-      },
-    ];
-
-    return (
-      <div className="flex flex-col text-left">
-        {/* Header Strip inside Popup */}
-        <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
-          <Avatar
-            photoURL={profile.photoURL}
-            displayName={profile.displayName || profile.fullName || 'Hitakshi Chopra'}
-            email={profile.email}
-            isPremium={profile.isPremium}
-            sizeClass="w-11 h-11 shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-gray-900 truncate">
-              {profile.displayName || profile.fullName || 'Hitakshi Chopra'}
-            </p>
-            <p className="text-[11px] text-gray-500 truncate mt-0.5">
-              {profile.phoneNumber || profile.mobile || '+91 98765 43210'} · {profile.city || 'Indore'}
-            </p>
-            <div className="mt-1.5 flex items-center">
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-xs">
-                Wallet: ₹{(profile.walletBalance !== undefined && profile.walletBalance > 0 ? profile.walletBalance : 9230).toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Action Menu Items */}
-        <div className="py-2 space-y-0.5">
-          {quickActions.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={item.onClick}
-                className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50/60 rounded-xl transition-colors cursor-pointer text-left group"
-              >
-                <Icon size={16} className="text-gray-400 group-hover:text-blue-600 shrink-0 transition-colors" />
-                <span className="flex-1 truncate">{item.label}</span>
-                <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-400 shrink-0 transition-colors" />
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Optional Partner / Admin Mode Switcher */}
-        {(profile.role === 'partner' || profile.role === 'admin' || profile.partnerId) && (
-          <div className="py-1 px-1 border-t border-gray-100">
-            <button
-              onClick={() => {
-                handleSwitchMode(currentMode === 'customer' ? 'partner' : 'customer');
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 rounded-xl transition-all cursor-pointer"
-            >
-              <span className="flex items-center gap-1.5">
-                <Briefcase size={13} className="text-indigo-600" />
-                <span>{currentMode === 'customer' ? 'Switch to Partner Mode' : 'Switch to Customer Mode'}</span>
-              </span>
-              <span className="text-[8px] bg-indigo-200/70 text-indigo-800 px-1.5 py-0.5 rounded font-bold uppercase">Switch</span>
-            </button>
-          </div>
-        )}
-
-        {/* Bottom Divider & Logout */}
-        <div className="pt-2 border-t border-gray-100 mt-1">
-          <button
-            onClick={async () => {
-              onClose();
-              await auth.signOut();
-            }}
-            className="w-full text-red-600 hover:bg-red-50 rounded-xl py-2 px-3 flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <LogOut size={16} className="text-red-500 shrink-0" />
-            <span>Log Out</span>
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   const getNavLinks = () => [
     { id: 'home', label: 'Home', roles: ['customer', 'partner', 'admin'] as UserRole[] },
@@ -1747,6 +1557,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             onUpdate={(updated) => setProfile(updated)}
             setActiveTab={setActiveTab}
             setIsPartnerModalOpen={setIsPartnerModalOpen}
+            initialSubSection={profileSubSection as any}
           />
         </motion.div>
       );
@@ -1952,9 +1763,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                     className="hidden md:flex items-center gap-3 relative"
                   >
                     <button
-                      onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                      onClick={() => setIsAccountPopupOpen(prev => !prev)}
                       className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
                       id="nav-green-greeting"
+                      aria-expanded={isAccountPopupOpen}
+                      aria-haspopup="true"
                     >
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
@@ -1986,25 +1799,26 @@ If you have any billing questions, or if your refund is delayed, please email us
                       />
                     </button>
 
-                    <AnimatePresence>
-                      {isUserMenuOpen && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-40 bg-transparent"
-                            onClick={() => setIsUserMenuOpen(false)}
-                          />
-                          <motion.div
-                            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-50 animate-in fade-in-50 zoom-in-95"
-                          >
-                            {renderAccountPopupContent(() => setIsUserMenuOpen(false))}
-                          </motion.div>
-                        </>
-                      )}
-                    </AnimatePresence>
+                    <AccountPopup
+                      isOpen={isAccountPopupOpen}
+                      mode="desktop"
+                      onClose={() => setIsAccountPopupOpen(false)}
+                      profile={profile}
+                      currentMode={currentMode}
+                      onSwitchMode={handleSwitchMode}
+                      onNavigate={(tab, subTab) => {
+                        setActiveTab(tab, subTab);
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenAiSupport={() => {
+                        setIsAccountPopupOpen(false);
+                        window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+                      }}
+                      onLogout={async () => {
+                        setIsAccountPopupOpen(false);
+                        await auth.signOut();
+                      }}
+                    />
                   </div>
 
                   {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
@@ -2024,9 +1838,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                       📍 INDORE
                     </button>
                     <button 
-                      onClick={() => setIsUserMenuOpen(prev => !prev)}
+                      onClick={() => setIsAccountPopupOpen(prev => !prev)}
                       className="shrink-0 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
+                      aria-label="Open account menu"
+                      aria-expanded={isAccountPopupOpen}
                     >
                       <Avatar
                         photoURL={profile.photoURL}
@@ -2139,32 +1955,27 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       )}
 
-      {/* Mobile Account Popup (Half-Height Slide-over / Bottom-Sheet) */}
-      <AnimatePresence>
-        {isUserMenuOpen && (
-          <div className="md:hidden fixed inset-0 z-50 flex items-end justify-center">
-            {/* Backdrop: Subtle click-outside backdrop to dismiss */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsUserMenuOpen(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-xs"
-            />
-            {/* Clean, half-height Slide-over/Bottom-Sheet */}
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-              className="relative z-10 w-full max-w-sm bg-white rounded-t-3xl shadow-2xl border-t border-gray-100 p-4 pb-8 safe-area-bottom"
-            >
-              <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-3" />
-              {renderAccountPopupContent(() => setIsUserMenuOpen(false))}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Mobile Account Bottom-Sheet / Slide-Over */}
+      <AccountPopup
+        isOpen={isAccountPopupOpen}
+        mode="mobile"
+        onClose={() => setIsAccountPopupOpen(false)}
+        profile={profile}
+        currentMode={currentMode}
+        onSwitchMode={handleSwitchMode}
+        onNavigate={(tab, subTab) => {
+          setActiveTab(tab, subTab);
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenAiSupport={() => {
+          setIsAccountPopupOpen(false);
+          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+        }}
+        onLogout={async () => {
+          setIsAccountPopupOpen(false);
+          await auth.signOut();
+        }}
+      />
 
       <AuthModal
         isOpen={isAuthModalOpen}
@@ -2284,7 +2095,7 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       {/* Main Content */}
       {renderPartnerNotificationBanner()}
-      <main className="pb-24 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
+      <main className="pb-24 md:pb-0 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

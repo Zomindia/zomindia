@@ -67,8 +67,9 @@ import {
 interface Props {
   profile: UserProfile;
   onUpdate: (updatedProfile: UserProfile) => void;
-  setActiveTab: (tab: any) => void;
+  setActiveTab: (tab: any, arg?: any) => void;
   setIsPartnerModalOpen?: (isOpen: boolean) => void;
+  initialSubSection?: SubSectionType | null;
 }
 
 type SubSectionType =
@@ -115,9 +116,30 @@ export default function ProfileSettings({
   onUpdate,
   setActiveTab,
   setIsPartnerModalOpen,
+  initialSubSection,
 }: Props) {
   // Navigation & Sub-views state
-  const [activeSub, setActiveSub] = useState<SubSectionType | null>(null);
+  const [activeSub, setActiveSub] = useState<SubSectionType | null>(
+    initialSubSection || null,
+  );
+
+  // Listen to open-profile-section custom events
+  useEffect(() => {
+    const handleProfileSection = (e: any) => {
+      if (e.detail?.section) {
+        setActiveSub(e.detail.section as SubSectionType);
+      }
+    };
+    window.addEventListener("open-profile-section", handleProfileSection);
+    return () =>
+      window.removeEventListener("open-profile-section", handleProfileSection);
+  }, []);
+
+  useEffect(() => {
+    if (initialSubSection) {
+      setActiveSub(initialSubSection);
+    }
+  }, [initialSubSection]);
   const [openFaq, setOpenFaq] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -2364,19 +2386,24 @@ export default function ProfileSettings({
                           const errorCallback = (
                             err: GeolocationPositionError,
                           ) => {
-                            alert(handleMapsError(err));
+                            console.warn("[Geolocation] Notice:", err?.message);
+                            if (!address) {
+                              setAddress("Vijay Nagar, Indore, Madhya Pradesh");
+                            }
                             setLoading(false);
                           };
 
                           navigator.geolocation.getCurrentPosition(
                             successCallback,
                             errorCallback,
-                            { enableHighAccuracy: true },
+                            { enableHighAccuracy: true, timeout: 8000 },
                           );
                         } else {
-                          alert(
-                            "Geolocation not supported on this browser context.",
-                          );
+                          console.warn("[Geolocation] Not supported in this environment");
+                          if (!address) {
+                            setAddress("Vijay Nagar, Indore, Madhya Pradesh");
+                          }
+                          setLoading(false);
                         }
                       }}
                       className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-white bg-[#050CA6] px-3 py-2 rounded-xl hover:bg-[#040980] transition-colors"
@@ -2398,6 +2425,40 @@ export default function ProfileSettings({
                         rows={3}
                         className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white p-4 rounded-2xl outline-none transition-all font-semibold text-xs text-neutral-900 resize-none"
                       />
+
+                      {/* Quick One-Tap Indore Area Chips */}
+                      <div className="space-y-1.5 pt-2.5">
+                        <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">
+                          Popular Indore Localities:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Vijay Nagar',
+                            'Palasia',
+                            'Scheme 54',
+                            'Bhanwarkua',
+                            'Mahalaxmi Nagar',
+                            'Saket',
+                            'Annapurna'
+                          ].map((loc) => {
+                            const isSelected = address.toLowerCase().includes(loc.toLowerCase());
+                            return (
+                              <button
+                                key={loc}
+                                type="button"
+                                onClick={() => setAddress(`${loc}, Indore, Madhya Pradesh`)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#050CA6] text-white font-bold shadow-xs'
+                                    : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
+                                }`}
+                              >
+                                {loc}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-150 flex items-start gap-3">

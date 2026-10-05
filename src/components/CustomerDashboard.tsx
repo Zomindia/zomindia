@@ -68,9 +68,9 @@ import {
   X,
   Bell,
 } from "lucide-react";
+import { GOOGLE_MAPS_API_KEY } from "../lib/maps-config";
 
-const API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as string) || "";
-const hasValidKey = Boolean(API_KEY) && API_KEY !== "YOUR_API_KEY";
+const API_KEY = GOOGLE_MAPS_API_KEY;
 
 interface ServiceThumbnailProps {
   service?: any;
