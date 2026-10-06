@@ -901,9 +901,18 @@ export default function ProfileSettings({
           }
         }
 
-        const freshAnchor = document.createElement("div");
-        freshAnchor.id = "profile-recaptcha-dynamic";
-        document.body.appendChild(freshAnchor);
+        if (recaptchaRef.current) {
+          try { recaptchaRef.current.clear(); } catch (_) {}
+          recaptchaRef.current = null;
+        }
+        let freshAnchor = document.getElementById("profile-recaptcha-dynamic");
+        if (!freshAnchor) {
+          freshAnchor = document.createElement("div");
+          freshAnchor.id = "profile-recaptcha-dynamic";
+          document.body.appendChild(freshAnchor);
+        } else {
+          freshAnchor.innerHTML = "";
+        }
 
         const verifier = new RecaptchaVerifier(
           auth,
@@ -912,7 +921,13 @@ export default function ProfileSettings({
             size: "invisible",
           },
         );
-        await verifier.render();
+        try {
+          await verifier.render();
+        } catch (renderErr: any) {
+          if (!renderErr?.message?.includes('already been rendered')) {
+            console.warn('[ProfileSettings] Recaptcha render notice:', renderErr);
+          }
+        }
         recaptchaRef.current = verifier;
 
         const formattedPhone = `+91${cleanPhone}`;
@@ -1138,24 +1153,19 @@ export default function ProfileSettings({
         recaptchaRef.current = null;
       }
 
-      const existingAnchor = document.getElementById(
-        "profile-recaptcha-dynamic",
-      );
-      if (existingAnchor) {
-        try {
-          existingAnchor.remove();
-        } catch (e) {
-          console.warn(
-            "Existing dynamic profile recaptcha anchor removal error bypassed:",
-            e,
-          );
-        }
+      if (recaptchaRef.current) {
+        try { recaptchaRef.current.clear(); } catch (_) {}
+        recaptchaRef.current = null;
       }
 
-      // Create fresh dynamic anchor
-      const freshAnchor = document.createElement("div");
-      freshAnchor.id = "profile-recaptcha-dynamic";
-      document.body.appendChild(freshAnchor);
+      let freshAnchor = document.getElementById("profile-recaptcha-dynamic");
+      if (!freshAnchor) {
+        freshAnchor = document.createElement("div");
+        freshAnchor.id = "profile-recaptcha-dynamic";
+        document.body.appendChild(freshAnchor);
+      } else {
+        freshAnchor.innerHTML = "";
+      }
 
       const verifier = new RecaptchaVerifier(
         auth,
@@ -1164,7 +1174,13 @@ export default function ProfileSettings({
           size: "invisible",
         },
       );
-      await verifier.render();
+      try {
+        await verifier.render();
+      } catch (renderErr: any) {
+        if (!renderErr?.message?.includes('already been rendered')) {
+          console.warn('[ProfileSettings] Recaptcha render notice:', renderErr);
+        }
+      }
       recaptchaRef.current = verifier;
 
       const formattedPhone = `+91${newPhone.replace(/\D/g, "")}`;

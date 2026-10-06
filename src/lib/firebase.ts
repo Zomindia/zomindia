@@ -14,7 +14,12 @@ import { getStorage } from 'firebase/storage';
 import { offlineSyncEngine } from './offlineQueue';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const resolvedConfig = {
+  ...firebaseConfig,
+  authDomain: (firebaseConfig as any).authDomain || "zomindia-807ce.firebaseapp.com",
+};
+
+const app = getApps().length === 0 ? initializeApp(resolvedConfig) : getApp();
 
 // Set log level to silent to prevent benign connection warning spam in sandboxed iframe environments
 try {

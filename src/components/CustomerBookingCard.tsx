@@ -213,7 +213,7 @@ function getShortLocality(address?: string): string {
   return meaningful[0] || "Indore, MP";
 }
 
-export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
+export function CustomerBookingCard({
   booking,
   service,
   partnerUser,
@@ -244,7 +244,7 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
   isReviewSubmitted = false,
   isReviewSubmitting = false,
   routingCallBookingId,
-}) => {
+}: CustomerBookingCardProps) {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [isFullscreenTrackingOpen, setIsFullscreenTrackingOpen] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
@@ -1097,4 +1097,6 @@ export const CustomerBookingCard = React.memo<CustomerBookingCardProps>(({
       </AnimatePresence>
     </motion.div>
   );
-});
+}
+
+export default CustomerBookingCard;

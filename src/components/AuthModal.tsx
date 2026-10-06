@@ -150,8 +150,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   useEffect(() => {
     if (isOpen) {
       resetForm();
+    } else {
+      clearRecaptchaInstance();
     }
   }, [isOpen, initialView, initialData]);
+
+  // Defensive cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearRecaptchaInstance();
+    };
+  }, []);
 
   // Check for any pending Google redirect results upon returning to the app
   useEffect(() => {
@@ -192,26 +201,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     };
   }, []);
 
-  // Standardized RecaptchaVerifier initialization with cleanup and single persistent container
-  const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
-    const containerId = 'recaptcha-container';
-    
-    // Ensure the container ID matches a single persistent element and remove duplicate container elements
-    const duplicateContainers = document.querySelectorAll(`[id="${containerId}"]`);
-    if (duplicateContainers.length > 1) {
-      duplicateContainers.forEach((el, index) => {
-        if (index > 0) el.remove();
-      });
-    }
-
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      document.body.appendChild(container);
-    }
-
-    // Safety checks: clear/destroy any existing instance before initializing a new one
+  // Safe helper to destroy previous recaptcha instance and clean DOM container
+  const clearRecaptchaInstance = () => {
     if (window.recaptchaVerifier) {
       try {
         window.recaptchaVerifier.clear();
@@ -220,22 +211,54 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       }
       window.recaptchaVerifier = null;
     }
-    container.innerHTML = '';
+    const container = document.getElementById('recaptcha-container');
+    if (container) {
+      container.innerHTML = '';
+    }
+  };
 
+  // Standardized RecaptchaVerifier initialization with lifecycle cleanup and single persistent container
+  const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
+    const containerId = 'recaptcha-container';
+    
+    // 1. Check if previous instance exists; safely clear it
+    clearRecaptchaInstance();
+
+    // 2. Clear DOM container
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      document.body.appendChild(container);
+    } else {
+      container.innerHTML = '';
+    }
+
+    // Remove any duplicate container elements
+    const duplicateContainers = document.querySelectorAll(`[id="${containerId}"]`);
+    if (duplicateContainers.length > 1) {
+      duplicateContainers.forEach((el, index) => {
+        if (index > 0) el.remove();
+      });
+    }
+
+    // 3. Initialize invisible verifier
     const verifier = new RecaptchaVerifier(auth, containerId, {
       size: 'invisible',
       callback: () => {},
       'expired-callback': () => {
-        if (window.recaptchaVerifier) {
-          try {
-            window.recaptchaVerifier.clear();
-          } catch (_) {}
-          window.recaptchaVerifier = null;
-        }
+        clearRecaptchaInstance();
       },
     });
 
-    await verifier.render();
+    try {
+      await verifier.render();
+    } catch (renderErr: any) {
+      if (!renderErr?.message?.includes('already been rendered')) {
+        console.warn('[AuthModal] Recaptcha render notice:', renderErr);
+      }
+    }
+
     window.recaptchaVerifier = verifier;
     return verifier;
   };
@@ -261,12 +284,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Phone Auth SMS dispatch failed:", err);
-      if (window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (_) {}
-        window.recaptchaVerifier = null;
-      }
+      clearRecaptchaInstance();
       setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
@@ -279,6 +297,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
     setLoading(true);
     setError(null);
+    clearRecaptchaInstance();
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     const formattedPhone = `+91${cleanPhone}`;
 
@@ -289,12 +308,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Resend OTP failed:", err);
-      if (window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (_) {}
-        window.recaptchaVerifier = null;
-      }
+      clearRecaptchaInstance();
       setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
@@ -666,7 +680,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   };
 
-  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app
+  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app / Android localhost
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
@@ -683,28 +697,55 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         isInsideIframe = true;
       }
 
+      // Android TWA / WebView / Localhost wrapper check
+      const isAndroidWrapper = 
+        window.location.hostname === 'localhost' ||
+        window.location.protocol === 'capacitor:' ||
+        Boolean((window as any).Capacitor?.isNativePlatform()) ||
+        (!isInsideIframe && /Android/i.test(navigator.userAgent));
+
+      if (isAndroidWrapper) {
+        console.info('[AuthModal] Running in Android WebView/TWA wrapper on localhost - initiating signInWithRedirect for Google Auth');
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       if (isInsideIframe) {
         console.info('[AuthModal] Running inside iframe (AI Studio Preview) - using signInWithPopup for Google Auth');
-        const userCredential = await signInWithPopup(auth, provider);
-        if (userCredential && userCredential.user) {
-          const u = userCredential.user;
-          setVerifiedUid(u.uid);
-          setDisplayName(u.displayName || '');
-          setEmail(u.email || '');
+        try {
+          const userCredential = await signInWithPopup(auth, provider);
+          if (userCredential && userCredential.user) {
+            const u = userCredential.user;
+            setVerifiedUid(u.uid);
+            setDisplayName(u.displayName || '');
+            setEmail(u.email || '');
 
-          const pDoc = await getDoc(doc(db, 'users', u.uid));
-          const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
+            const pDoc = await getDoc(doc(db, 'users', u.uid));
+            const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
 
-          if (!hasStoredPhone) {
-            setView('google-phone-setup');
-          } else {
-            setView('success-transition');
-            setTimeout(() => {
-              onSuccess();
-              onClose();
-              resetForm();
-            }, 1200);
+            if (!hasStoredPhone) {
+              setView('google-phone-setup');
+            } else {
+              setView('success-transition');
+              setTimeout(() => {
+                onSuccess();
+                onClose();
+                resetForm();
+              }, 1200);
+            }
           }
+        } catch (popupErr: any) {
+          const errCode = (popupErr?.code || popupErr?.message || '').toString();
+          if (
+            errCode.includes('unauthorized-domain') || 
+            errCode.includes('popup-blocked') || 
+            errCode.includes('operation-not-supported')
+          ) {
+            console.warn('[AuthModal] Popup auth unavailable, falling back to redirect:', popupErr);
+            await signInWithRedirect(auth, provider);
+            return;
+          }
+          throw popupErr;
         }
       } else {
         console.info('[AuthModal] Running in top-level window / TWA - using signInWithRedirect for Google Auth');
@@ -729,12 +770,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Onboarding OTP failed:", err);
-      if (window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (_) {}
-        window.recaptchaVerifier = null;
-      }
+      clearRecaptchaInstance();
       setError(getFriendlyAuthErrorMessage(err));
     }
   };

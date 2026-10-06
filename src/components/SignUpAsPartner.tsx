@@ -82,18 +82,30 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
     try {
       // Ensure recaptcha anchor exists
       const anchorId = "recaptcha-container-signup";
+      if (window.recaptchaVerifier) {
+        try { window.recaptchaVerifier.clear(); } catch (_) {}
+        window.recaptchaVerifier = null;
+      }
       let anchor = document.getElementById(anchorId);
       if (!anchor) {
         anchor = document.createElement("div");
         anchor.id = anchorId;
         document.body.appendChild(anchor);
+      } else {
+        anchor.innerHTML = '';
       }
       
       const verifier = new RecaptchaVerifier(auth, anchorId, {
         size: "invisible",
         callback: () => {}
       });
-      await verifier.render();
+      try {
+        await verifier.render();
+      } catch (renderErr: any) {
+        if (!renderErr?.message?.includes('already been rendered')) {
+          console.warn('[SignUpAsPartner] Recaptcha render notice:', renderErr);
+        }
+      }
       
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);

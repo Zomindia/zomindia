@@ -23,11 +23,40 @@ export async function getRedirectAuthResult(): Promise<UserCredential | null> {
 
 /**
  * Triggers Google Sign-In using popup window (standard desktop/web).
+ * Automatically falls back to redirection in Android WebView / TWA / localhost wrappers.
  */
 export async function signInWithGooglePopup(): Promise<UserCredential> {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  return await signInWithPopup(auth, provider);
+
+  const isAndroidWrapper =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+     window.location.protocol === 'capacitor:' ||
+     Boolean((window as any).Capacitor?.isNativePlatform()) ||
+     /Android/i.test(navigator.userAgent));
+
+  if (isAndroidWrapper) {
+    console.info('[AuthService] Running in Android WebView/TWA wrapper on localhost - using signInWithRedirect for Google Auth');
+    await signInWithRedirect(auth, provider);
+    return null as any;
+  }
+
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (err: any) {
+    const errCode = (err?.code || err?.message || '').toString();
+    if (
+      errCode.includes('unauthorized-domain') ||
+      errCode.includes('popup-blocked') ||
+      errCode.includes('operation-not-supported')
+    ) {
+      console.warn('[AuthService] Popup failed, falling back to redirect:', err);
+      await signInWithRedirect(auth, provider);
+      return null as any;
+    }
+    throw err;
+  }
 }
 
 /**
