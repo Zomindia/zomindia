@@ -3,13 +3,13 @@ import { doc, Timestamp, getDoc, setDoc } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
 import { 
   signInWithPhoneNumber, 
-  RecaptchaVerifier, 
   signInAnonymously, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   updateProfile,
   ConfirmationResult
 } from "firebase/auth";
+import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from "../lib/recaptcha";
 import { UserProfile } from "../types";
 import { motion } from "motion/react";
 import { 
@@ -68,6 +68,13 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
     }
   }, [profile]);
 
+  // Teardown recaptcha on unmount
+  useEffect(() => {
+    return () => {
+      clearRecaptchaInstance('recaptcha-container-signup');
+    };
+  }, []);
+
   const handleSendOTP = async () => {
     if (!phone.trim() || phone.length < 10) {
       setErrors({ phone: "Please enter a valid 10-digit mobile number." });
@@ -80,38 +87,11 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      // Ensure recaptcha anchor exists
-      const anchorId = "recaptcha-container-signup";
-      if (window.recaptchaVerifier) {
-        try { window.recaptchaVerifier.clear(); } catch (_) {}
-        window.recaptchaVerifier = null;
-      }
-      let anchor = document.getElementById(anchorId);
-      if (!anchor) {
-        anchor = document.createElement("div");
-        anchor.id = anchorId;
-        document.body.appendChild(anchor);
-      } else {
-        anchor.innerHTML = '';
-      }
-      
-      const verifier = new RecaptchaVerifier(auth, anchorId, {
-        size: "invisible",
-        callback: () => {}
-      });
-      try {
-        await verifier.render();
-      } catch (renderErr: any) {
-        if (!renderErr?.message?.includes('already been rendered')) {
-          console.warn('[SignUpAsPartner] Recaptcha render notice:', renderErr);
-        }
-      }
-      
+      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container-signup');
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setOtpSent(true);
       setOtpCode(""); // User will type it
-      console.log("Real OTP dispatched successfully via Firebase Phone Auth");
     } catch (err: any) {
       console.warn("Real OTP dispatch failed, falling back to simulated OTP flow:", err);
       setOtpSent(true);
@@ -198,18 +178,7 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
             userObj = credential.user;
           } else {
             // Attempt to trigger standard invisible phone auth under the hood
-            const anchorId = "recaptcha-container-signup-submit";
-            let anchor = document.getElementById(anchorId);
-            if (!anchor) {
-              anchor = document.createElement("div");
-              anchor.id = anchorId;
-              document.body.appendChild(anchor);
-            }
-            const verifier = new RecaptchaVerifier(auth, anchorId, {
-              size: "invisible",
-              callback: () => {}
-            });
-            await verifier.render();
+            const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container-signup');
             const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
             const credential = await result.confirm("123456");
             userObj = credential.user;
@@ -446,9 +415,10 @@ export default function SignUpAsPartner({ profile, onSuccess, isOpen = true, onC
                     </p>
                     <div className="flex gap-2">
                       <input
-                        type="text"
+                        type="tel"
                         inputMode="numeric"
                         autoComplete="one-time-code"
+                        pattern="[0-9]*"
                         maxLength={6}
                         placeholder="Enter 6-digit OTP"
                         value={otpCode}

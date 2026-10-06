@@ -19,9 +19,9 @@ import {
   sendEmailVerification,
   verifyBeforeUpdateEmail,
   linkWithPhoneNumber,
-  RecaptchaVerifier,
   ConfirmationResult,
 } from "firebase/auth";
+import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from "../lib/recaptcha";
 import { db, auth } from "../lib/firebase";
 import { offlineSyncEngine } from "../lib/offlineQueue";
 import { UserProfile } from "../types";
@@ -232,22 +232,8 @@ export default function ProfileSettings({
   // 1. Recaptcha cleanup on unmount
   useEffect(() => {
     return () => {
-      if (recaptchaRef.current) {
-        try {
-          recaptchaRef.current.clear();
-        } catch (e) {
-          console.warn(
-            "Profile settings recaptcha cleanup on unmount failed:",
-            e,
-          );
-        }
-      }
-      const anchor = document.getElementById("profile-recaptcha-dynamic");
-      if (anchor) {
-        try {
-          anchor.remove();
-        } catch (e) {}
-      }
+      recaptchaRef.current = null;
+      clearRecaptchaInstance("profile-recaptcha-dynamic");
     };
   }, []);
 
@@ -875,59 +861,10 @@ export default function ProfileSettings({
     // Fully wire live Firebase Phone / Multi-Factor pipeline trigger:
     if (auth.currentUser) {
       try {
-        if (recaptchaRef.current) {
-          try {
-            recaptchaRef.current.clear();
-          } catch (e) {
-            console.warn(
-              "Existing recaptcha clear error bypassed in profile save:",
-              e,
-            );
-          }
-          recaptchaRef.current = null;
-        }
-
-        const existingAnchor = document.getElementById(
-          "profile-recaptcha-dynamic",
-        );
-        if (existingAnchor) {
-          try {
-            existingAnchor.remove();
-          } catch (e) {
-            console.warn(
-              "Existing dynamic profile recaptcha anchor removal error bypassed on profile save:",
-              e,
-            );
-          }
-        }
-
-        if (recaptchaRef.current) {
-          try { recaptchaRef.current.clear(); } catch (_) {}
-          recaptchaRef.current = null;
-        }
-        let freshAnchor = document.getElementById("profile-recaptcha-dynamic");
-        if (!freshAnchor) {
-          freshAnchor = document.createElement("div");
-          freshAnchor.id = "profile-recaptcha-dynamic";
-          document.body.appendChild(freshAnchor);
-        } else {
-          freshAnchor.innerHTML = "";
-        }
-
-        const verifier = new RecaptchaVerifier(
+        const verifier = await getOrCreateRecaptchaVerifier(
           auth,
           "profile-recaptcha-dynamic",
-          {
-            size: "invisible",
-          },
         );
-        try {
-          await verifier.render();
-        } catch (renderErr: any) {
-          if (!renderErr?.message?.includes('already been rendered')) {
-            console.warn('[ProfileSettings] Recaptcha render notice:', renderErr);
-          }
-        }
         recaptchaRef.current = verifier;
 
         const formattedPhone = `+91${cleanPhone}`;
@@ -1144,43 +1081,10 @@ export default function ProfileSettings({
     setPhoneLoading(true);
     setVerificationError(null);
     try {
-      if (recaptchaRef.current) {
-        try {
-          recaptchaRef.current.clear();
-        } catch (e) {
-          console.warn("Existing recaptcha clear error bypassed:", e);
-        }
-        recaptchaRef.current = null;
-      }
-
-      if (recaptchaRef.current) {
-        try { recaptchaRef.current.clear(); } catch (_) {}
-        recaptchaRef.current = null;
-      }
-
-      let freshAnchor = document.getElementById("profile-recaptcha-dynamic");
-      if (!freshAnchor) {
-        freshAnchor = document.createElement("div");
-        freshAnchor.id = "profile-recaptcha-dynamic";
-        document.body.appendChild(freshAnchor);
-      } else {
-        freshAnchor.innerHTML = "";
-      }
-
-      const verifier = new RecaptchaVerifier(
+      const verifier = await getOrCreateRecaptchaVerifier(
         auth,
         "profile-recaptcha-dynamic",
-        {
-          size: "invisible",
-        },
       );
-      try {
-        await verifier.render();
-      } catch (renderErr: any) {
-        if (!renderErr?.message?.includes('already been rendered')) {
-          console.warn('[ProfileSettings] Recaptcha render notice:', renderErr);
-        }
-      }
       recaptchaRef.current = verifier;
 
       const formattedPhone = `+91${newPhone.replace(/\D/g, "")}`;
@@ -3562,6 +3466,7 @@ export default function ProfileSettings({
                               type="tel"
                               inputMode="numeric"
                               autoComplete="one-time-code"
+                              pattern="[0-9]*"
                               maxLength={6}
                               value={otp}
                               onChange={(e) =>

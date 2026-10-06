@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  RecaptchaVerifier,
   signInWithPhoneNumber,
   signInWithRedirect,
   signInWithPopup,
@@ -11,12 +10,12 @@ import {
 } from 'firebase/auth';
 import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
+import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from '../lib/recaptcha';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
 import { LogoIcon, LogoHorizontal } from './BrandLogo';
-import { useAutoOTP } from '../hooks/useAutoOTP';
 import { 
   X, 
   Smartphone, 
@@ -25,12 +24,6 @@ import {
   AlertCircle,
   ChevronLeft
 } from 'lucide-react';
-
-declare global {
-  interface Window {
-    recaptchaVerifier?: RecaptchaVerifier | null;
-  }
-}
 
 interface Props {
   isOpen: boolean;
@@ -114,22 +107,59 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     return () => clearInterval(interval);
   }, [timer]);
 
-  // Native WebOTP Auto-detection API with AbortController, auto-fill, and auto-submit
-  useAutoOTP({
-    length: 6,
-    enabled: view === 'otp-entry' && isOpen,
-    onOTP: (code) => {
-      setOtpCode(code);
-      if (otpInputRef.current) {
-        otpInputRef.current.value = code;
-        otpInputRef.current.focus();
+  // Native WebOTP API Auto-detection with AbortController, auto-populate, and auto-submit
+  useEffect(() => {
+    if (!isOpen || view !== 'otp-entry') return;
+
+    if (typeof window === 'undefined' || !navigator.credentials || !('get' in navigator.credentials)) {
+      return;
+    }
+
+    const ac = new AbortController();
+    let autoSubmitTimer: any = null;
+
+    navigator.credentials
+      .get({
+        otp: { transport: ['sms'] },
+        signal: ac.signal,
+      } as any)
+      .then((content: any) => {
+        if (content && content.code) {
+          const digits = String(content.code).replace(/\D/g, '').slice(0, 6);
+          if (digits.length === 6) {
+            console.log('[WebOTP] SMS arrived, auto-filling 6-digit OTP:', digits);
+            setOtpCode(digits);
+            if (otpInputRef.current) {
+              otpInputRef.current.value = digits;
+            }
+            autoSubmitTimer = setTimeout(() => {
+              if (!ac.signal.aborted) {
+                handleVerifyOTP(undefined, digits);
+              }
+            }, 300);
+          }
+        }
+      })
+      .catch((err: any) => {
+        if (
+          err?.name !== 'AbortError' &&
+          err?.name !== 'SecurityError' &&
+          !err?.message?.toLowerCase().includes('otp-credentials') &&
+          !err?.message?.toLowerCase().includes('not supported')
+        ) {
+          console.warn('[WebOTP] Notice:', err);
+        }
+      });
+
+    return () => {
+      if (autoSubmitTimer) {
+        clearTimeout(autoSubmitTimer);
       }
-    },
-    onAutoSubmit: (code) => {
-      handleVerifyOTP(undefined, code);
-    },
-    autoSubmitDelay: 400
-  });
+      try {
+        ac.abort();
+      } catch (_) {}
+    };
+  }, [isOpen, view]);
 
   // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
@@ -201,68 +231,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     };
   }, []);
 
-  // Safe helper to destroy previous recaptcha instance and clean DOM container
-  const clearRecaptchaInstance = () => {
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {
-        console.warn('[AuthModal] Error clearing recaptchaVerifier:', e);
-      }
-      window.recaptchaVerifier = null;
-    }
-    const container = document.getElementById('recaptcha-container');
-    if (container) {
-      container.innerHTML = '';
-    }
-  };
-
-  // Standardized RecaptchaVerifier initialization with lifecycle cleanup and single persistent container
-  const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
-    const containerId = 'recaptcha-container';
-    
-    // 1. Check if previous instance exists; safely clear it
-    clearRecaptchaInstance();
-
-    // 2. Clear DOM container
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      document.body.appendChild(container);
-    } else {
-      container.innerHTML = '';
-    }
-
-    // Remove any duplicate container elements
-    const duplicateContainers = document.querySelectorAll(`[id="${containerId}"]`);
-    if (duplicateContainers.length > 1) {
-      duplicateContainers.forEach((el, index) => {
-        if (index > 0) el.remove();
-      });
-    }
-
-    // 3. Initialize invisible verifier
-    const verifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-      callback: () => {},
-      'expired-callback': () => {
-        clearRecaptchaInstance();
-      },
-    });
-
-    try {
-      await verifier.render();
-    } catch (renderErr: any) {
-      if (!renderErr?.message?.includes('already been rendered')) {
-        console.warn('[AuthModal] Recaptcha render notice:', renderErr);
-      }
-    }
-
-    window.recaptchaVerifier = verifier;
-    return verifier;
-  };
-
   // Handle Phone Number submission to request OTP
   const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,14 +245,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      const verifier = await getOrCreateRecaptchaVerifier();
+      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setView('otp-entry');
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Phone Auth SMS dispatch failed:", err);
-      clearRecaptchaInstance();
+      clearRecaptchaInstance('recaptcha-container');
       setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
@@ -297,18 +265,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
     setLoading(true);
     setError(null);
-    clearRecaptchaInstance();
+    clearRecaptchaInstance('recaptcha-container');
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      const verifier = await getOrCreateRecaptchaVerifier();
+      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Resend OTP failed:", err);
-      clearRecaptchaInstance();
+      clearRecaptchaInstance('recaptcha-container');
       setError(getFriendlyAuthErrorMessage(err));
     } finally {
       setLoading(false);
@@ -762,7 +730,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA
   const sendOnboardingOTP = async (formattedPhone: string) => {
     try {
-      const verifier = await getOrCreateRecaptchaVerifier();
+      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setIsOnboardingVerification(true);
@@ -1196,6 +1164,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                       type="tel"
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      pattern="[0-9]*"
                       maxLength={6}
                       autoFocus
                       required
