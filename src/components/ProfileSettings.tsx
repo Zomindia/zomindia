@@ -123,16 +123,22 @@ export default function ProfileSettings({
     initialSubSection || null,
   );
 
-  // Listen to open-profile-section custom events
+  // Listen to open-profile-section & open-address-modal custom events
   useEffect(() => {
     const handleProfileSection = (e: any) => {
       if (e.detail?.section) {
         setActiveSub(e.detail.section as SubSectionType);
       }
     };
+    const handleAddressModal = () => {
+      setActiveSub("addresses");
+    };
     window.addEventListener("open-profile-section", handleProfileSection);
-    return () =>
+    window.addEventListener("open-address-modal", handleAddressModal);
+    return () => {
       window.removeEventListener("open-profile-section", handleProfileSection);
+      window.removeEventListener("open-address-modal", handleAddressModal);
+    };
   }, []);
 
   useEffect(() => {

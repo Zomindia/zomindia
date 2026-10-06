@@ -23,7 +23,7 @@ export const Logo = ({ size = 20, className = "" }: LogoProps) => {
       <img
         src="/logo-horizontal.png"
         alt="Zomindia"
-        className="h-8 sm:h-9 w-auto object-contain transition-all duration-300"
+        className="h-9 sm:h-10 w-auto object-contain -ml-1 scale-105 origin-left transition-all duration-300"
         referrerPolicy="no-referrer"
       />
     </div>

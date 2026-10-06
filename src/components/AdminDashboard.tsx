@@ -8201,6 +8201,119 @@ function PromoManager({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Hero Promo Banners (Slider Overrides) state
+  const [promoSubTab, setPromoSubTab] = useState<"coupons" | "hero_banners">("coupons");
+  const [heroBanners, setHeroBanners] = useState<any[]>([]);
+  const [isAddingHeroBanner, setIsAddingHeroBanner] = useState(false);
+  const [editingHeroBanner, setEditingHeroBanner] = useState<any | null>(null);
+  const [isSavingHeroBanner, setIsSavingHeroBanner] = useState(false);
+  const [heroBannerForm, setHeroBannerForm] = useState<any>({
+    title: "",
+    subtitle: "",
+    badge: "SPECIAL PROMO",
+    categoryId: categories[0]?.id || "",
+    imageURL: "",
+    gradient: "from-[#002e6e] via-[#050ca6] to-[#00baf2]",
+    active: true,
+  });
+
+  // Subscribe to Hero Promo Banners
+  useEffect(() => {
+    let isMounted = true;
+    try {
+      const unsub = onSnapshot(doc(db, "system_config", "promo_banners"), (snap) => {
+        if (!isMounted) return;
+        if (snap.exists()) {
+          const list = snap.data().banners || [];
+          setHeroBanners(Array.isArray(list) ? list : []);
+        } else {
+          setHeroBanners([]);
+        }
+      });
+      return () => {
+        isMounted = false;
+        unsub();
+      };
+    } catch (e) {
+      console.warn("Hero banners listener error:", e);
+    }
+  }, []);
+
+  const handleSaveHeroBanner = async () => {
+    if (!heroBannerForm.title?.trim() || !heroBannerForm.categoryId) {
+      setError("Please specify both a banner title and a target category.");
+      return;
+    }
+    try {
+      setIsSavingHeroBanner(true);
+      setError(null);
+      const targetCat = categories.find((c) => c.id === heroBannerForm.categoryId);
+      const bannerItem = {
+        id: editingHeroBanner?.id || `hero-${Date.now()}`,
+        title: heroBannerForm.title.trim(),
+        subtitle: heroBannerForm.subtitle?.trim() || "Trending in Indore • Doorstep in 45 Mins",
+        badge: heroBannerForm.badge?.trim() || "SPECIAL PROMO",
+        categoryId: heroBannerForm.categoryId,
+        categoryName: targetCat?.name || "Service",
+        imageURL: heroBannerForm.imageURL?.trim() || targetCat?.imageURL || targetCat?.iconURL || "",
+        gradient: heroBannerForm.gradient || "from-[#002e6e] via-[#050ca6] to-[#00baf2]",
+        active: heroBannerForm.active ?? true,
+        updatedAt: new Date().toISOString(),
+      };
+
+      let nextList = [...heroBanners];
+      if (editingHeroBanner) {
+        nextList = nextList.map((b) => (b.id === editingHeroBanner.id ? bannerItem : b));
+      } else {
+        nextList.unshift(bannerItem);
+      }
+
+      await setDoc(doc(db, "system_config", "promo_banners"), { banners: nextList }, { merge: true });
+      setHeroBanners(nextList);
+      setIsAddingHeroBanner(false);
+      setEditingHeroBanner(null);
+      setHeroBannerForm({
+        title: "",
+        subtitle: "",
+        badge: "SPECIAL PROMO",
+        categoryId: categories[0]?.id || "",
+        imageURL: "",
+        gradient: "from-[#002e6e] via-[#050ca6] to-[#00baf2]",
+        active: true,
+      });
+      setSuccess("Hero promo banner saved successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error("Error saving hero promo banner:", err);
+      setError(err?.message || "Failed to save promo banner.");
+    } finally {
+      setIsSavingHeroBanner(false);
+    }
+  };
+
+  const handleToggleHeroBanner = async (banner: any) => {
+    try {
+      const nextList = heroBanners.map((b) => (b.id === banner.id ? { ...b, active: !b.active } : b));
+      await setDoc(doc(db, "system_config", "promo_banners"), { banners: nextList }, { merge: true });
+      setHeroBanners(nextList);
+    } catch (err) {
+      console.error("Toggle hero banner error:", err);
+    }
+  };
+
+  const handleDeleteHeroBanner = async (bannerId: string) => {
+    if (!window.confirm("Are you sure you want to delete this custom promo banner?")) return;
+    try {
+      const nextList = heroBanners.filter((b) => b.id !== bannerId);
+      await setDoc(doc(db, "system_config", "promo_banners"), { banners: nextList }, { merge: true });
+      setHeroBanners(nextList);
+      setSuccess("Banner deleted.");
+      setTimeout(() => setSuccess(null), 2500);
+    } catch (err) {
+      console.error("Delete hero banner error:", err);
+    }
+  };
+
   const handleBroadcast = async (promo: Promotion) => {
     setIsBroadcasting(promo.id);
     try {
@@ -8354,16 +8467,337 @@ function PromoManager({
     );
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
-        <div>
-          <h3 className="text-xl font-bold text-slate-950">
-            {filter === "partner" ? "Partner Campaigns" : "Customer Campaigns"}
-          </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Manage, activate, and broadcast promotional campaigns.
-          </p>
+    <div className="space-y-6">
+      {/* Marketing Sub-Navigation: Coupons vs Hero Slider Promo Banners */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          type="button"
+          onClick={() => setPromoSubTab("coupons")}
+          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+            promoSubTab === "coupons"
+              ? "bg-[#002e6e] text-white shadow-xs"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          <Tag size={14} />
+          <span>Promo Codes & Coupons ({filteredPromotions.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setPromoSubTab("hero_banners")}
+          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+            promoSubTab === "hero_banners"
+              ? "bg-[#002e6e] text-white shadow-xs"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          <Sparkles size={14} />
+          <span>Hero Slider Banners ({heroBanners.length})</span>
+        </button>
+      </div>
+
+      {promoSubTab === "hero_banners" ? (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/70 p-6 rounded-3xl border border-slate-100">
+            <div>
+              <h3 className="text-xl font-bold text-slate-950 flex items-center gap-2">
+                <span>Hero Promo Slider Banners</span>
+                <span className="text-xs bg-blue-100 text-blue-800 font-extrabold px-2 py-0.5 rounded-full">
+                  Home Screen
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                Add custom promotional cards linked to any existing category. If no custom banners exist, the customer app cleanly defaults to the active Category Slider.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingHeroBanner(null);
+                setHeroBannerForm({
+                  title: "",
+                  subtitle: "",
+                  badge: "SPECIAL PROMO",
+                  categoryId: categories[0]?.id || "",
+                  imageURL: "",
+                  gradient: "from-[#002e6e] via-[#050ca6] to-[#00baf2]",
+                  active: true,
+                });
+                setIsAddingHeroBanner(!isAddingHeroBanner);
+              }}
+              className="bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold text-xs shrink-0 hover:bg-blue-800 transition-colors shadow-xs cursor-pointer"
+            >
+              {isAddingHeroBanner ? <X size={14} /> : <Plus size={14} />}
+              {isAddingHeroBanner ? "Cancel" : "Add Custom Banner"}
+            </button>
+          </div>
+
+          {(error || success) && (
+            <div
+              className={`p-4 rounded-2xl text-center font-bold text-sm ${error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
+            >
+              {error || success}
+            </div>
+          )}
+
+          {/* Form when adding or editing Hero Banner */}
+          <AnimatePresence>
+            {(isAddingHeroBanner || editingHeroBanner) && (
+              <motion.div
+                initial={{ opacity: 0, y: -15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="bg-white p-6 sm:p-8 border border-slate-200 rounded-[28px] shadow-sm max-w-3xl"
+              >
+                <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+                  <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">
+                    {editingHeroBanner ? "Edit Hero Promo Banner" : "New Hero Promo Banner"}
+                  </h4>
+                  <button
+                    onClick={() => {
+                      setIsAddingHeroBanner(false);
+                      setEditingHeroBanner(null);
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Banner Headline *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Summer AC Jet Clean Offer"
+                      value={heroBannerForm.title || ""}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, title: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Subtitle / Highlight Tag
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. FLAT 30% OFF • Doorstep in 45 Mins"
+                      value={heroBannerForm.subtitle || ""}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, subtitle: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Linked Category *
+                    </label>
+                    <select
+                      value={heroBannerForm.categoryId || ""}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, categoryId: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Badge Ribbon Text
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. SUMMER SPECIAL"
+                      value={heroBannerForm.badge || ""}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, badge: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-700 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Custom Banner Image URL (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://... (Leave empty to use category image)"
+                      value={heroBannerForm.imageURL || ""}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, imageURL: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-700 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Theme Gradient
+                    </label>
+                    <select
+                      value={heroBannerForm.gradient || "from-[#002e6e] via-[#050ca6] to-[#00baf2]"}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, gradient: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-700 outline-none"
+                    >
+                      <option value="from-[#002e6e] via-[#050ca6] to-[#00baf2]">Royal Navy & Cyan</option>
+                      <option value="from-[#0c4a6e] via-[#0284c7] to-[#38bdf8]">Ocean Azure</option>
+                      <option value="from-[#064e3b] via-[#059669] to-[#34d399]">Emerald Mint</option>
+                      <option value="from-[#4c1d95] via-[#7c3aed] to-[#a78bfa]">Imperial Violet</option>
+                      <option value="from-[#0f172a] via-[#1e3a8a] to-[#2563eb]">Midnight Cobalt</option>
+                      <option value="from-[#7c2d12] via-[#d97706] to-[#fbbf24]">Sunset Amber</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 md:col-span-2">
+                    <input
+                      type="checkbox"
+                      id="hero-banner-active-check"
+                      checked={heroBannerForm.active ?? true}
+                      onChange={(e) => setHeroBannerForm({ ...heroBannerForm, active: e.target.checked })}
+                      className="rounded text-blue-700 focus:ring-blue-700 h-4 w-4 cursor-pointer"
+                    />
+                    <label htmlFor="hero-banner-active-check" className="text-xs font-bold text-slate-700 cursor-pointer">
+                      Activate this banner on Home Slider immediately
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingHeroBanner(false);
+                      setEditingHeroBanner(null);
+                    }}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingHeroBanner}
+                    onClick={handleSaveHeroBanner}
+                    className="bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-blue-800 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSavingHeroBanner ? "Saving..." : editingHeroBanner ? "Update Banner" : "Save Banner"}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* List of Custom Hero Banners */}
+          {heroBanners.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {heroBanners.map((banner) => {
+                const targetCat = categories.find((c) => c.id === banner.categoryId);
+                return (
+                  <div
+                    key={banner.id}
+                    className="bg-white border border-slate-200 rounded-[24px] overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-md transition-shadow"
+                  >
+                    <div className={`p-4 bg-gradient-to-r ${banner.gradient || 'from-[#002e6e] to-[#00baf2]'} text-white relative min-h-[110px] flex flex-col justify-between`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-xs">
+                          {banner.badge || 'PROMO'}
+                        </span>
+                        <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${banner.active ? 'bg-emerald-400 text-slate-900' : 'bg-red-200 text-red-900'}`}>
+                          {banner.active ? 'Active' : 'Paused'}
+                        </span>
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm sm:text-base leading-tight mt-2 line-clamp-1">
+                          {banner.title}
+                        </h4>
+                        <p className="text-[10px] text-white/80 font-medium line-clamp-1 mt-0.5">
+                          {banner.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                      <div>
+                        <span className="block text-[9px] font-black uppercase text-slate-400 tracking-wider">Linked Category</span>
+                        <span className="text-xs font-bold text-slate-800">{targetCat?.name || banner.categoryName || 'Category'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingHeroBanner(banner);
+                            setHeroBannerForm({ ...banner });
+                            setIsAddingHeroBanner(false);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="Edit Banner"
+                        >
+                          <Settings size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleHeroBanner(banner)}
+                          className="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                          title={banner.active ? "Pause Banner" : "Activate Banner"}
+                        >
+                          {banner.active ? <XCircle size={15} /> : <CheckCircle2 size={15} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHeroBanner(banner.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                          title="Delete Banner"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-[28px] p-8 text-center max-w-2xl mx-auto">
+              <Sparkles size={32} className="text-blue-500 mx-auto mb-2 opacity-80" />
+              <h4 className="font-bold text-slate-800 text-sm">No Custom Hero Banners Added</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                The customer app is automatically displaying dynamic cards for active service categories (AC, RO, Fridge, Washing Machine, etc.). Add a custom banner above whenever you want a special promotional campaign!
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingHeroBanner(null);
+                  setHeroBannerForm({
+                    title: "",
+                    subtitle: "",
+                    badge: "SPECIAL PROMO",
+                    categoryId: categories[0]?.id || "",
+                    imageURL: "",
+                    gradient: "from-[#002e6e] via-[#050ca6] to-[#00baf2]",
+                    active: true,
+                  });
+                  setIsAddingHeroBanner(true);
+                }}
+                className="mt-4 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus size={14} /> Add First Custom Promo Banner
+              </button>
+            </div>
+          )}
         </div>
+      ) : (
+        <div className="space-y-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+            <div>
+              <h3 className="text-xl font-bold text-slate-950">
+                {filter === "partner" ? "Partner Campaigns" : "Customer Campaigns"}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Manage, activate, and broadcast promotional campaigns.
+              </p>
+            </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
             <Search
@@ -8906,6 +9340,8 @@ function PromoManager({
           );
         })}
       </div>
+      </div>
+      )}
     </div>
   );
 }

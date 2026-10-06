@@ -33,6 +33,7 @@ import { formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import ChatWindow from "./ChatWindow";
 import { ServiceCardSkeleton } from "./LoadingIndicator";
+import CategoryHeroSlider from "./CategoryHeroSlider";
 import PaymentModal from "./PaymentModal";
 import BookingModal from "./BookingModal";
 import AiSupportChat from "./AiSupportChat";
@@ -470,6 +471,7 @@ interface Props {
   onServiceSelect?: (serviceId: string) => void;
   initialExpandedBookingId?: string | null;
   setActiveTab?: (tab: string, arg?: string | null) => void;
+  onOpenProfileMenu?: () => void;
 }
 
 const BookingStatusTracker = ({ status }: { status: Booking["status"] }) => {
@@ -561,6 +563,7 @@ export default function CustomerDashboard({
   onServiceSelect,
   initialExpandedBookingId,
   setActiveTab,
+  onOpenProfileMenu,
 }: Props) {
   // Scroll state for sticky search bar (Zomato Pattern)
   const [isScrolled, setIsScrolled] = useState(false);
@@ -1857,13 +1860,13 @@ export default function CustomerDashboard({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-3 sm:py-6 lg:py-8">
+    <div className="max-w-7xl mx-auto px-4 pt-1.5 pb-8 sm:pt-2 sm:pb-12">
       {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
       <div 
         className={
           isScrolled
             ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
-            : "w-full max-w-7xl mx-auto py-2.5 px-4 sm:px-6 mb-6 transition-all"
+            : "w-full max-w-7xl mx-auto mt-2 mb-2 px-4 sm:px-6 transition-all"
         }
         style={{
           WebkitBackdropFilter: "blur(12px)",
@@ -1965,7 +1968,20 @@ export default function CustomerDashboard({
       </div>
 
       {/* Placeholder spacer when fixed to prevent layout jump */}
-      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0 mb-6" aria-hidden="true" />}
+      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0 mb-2" aria-hidden="true" />}
+
+      {/* Category-Driven Dynamic Hero Promo Slider */}
+      <CategoryHeroSlider
+        categories={allCategories}
+        services={allActiveServices}
+        onSelectCategory={(cat) => {
+          setActiveCategoryFilter(cat.id);
+          const target = document.getElementById("services-grid") || document.getElementById("categories-grid");
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }}
+      />
 
       {/* INCOMING SECURE CALL MODAL */}
       <AnimatePresence>
@@ -2153,12 +2169,24 @@ export default function CustomerDashboard({
       )}
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8 px-2 sm:px-0">
-        <div className="flex items-center gap-2 select-none">
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenProfileMenu) {
+              onOpenProfileMenu();
+            } else {
+              window.dispatchEvent(new CustomEvent('open-profile-menu'));
+            }
+          }}
+          className="flex items-center gap-2 select-none group cursor-pointer hover:opacity-80 active:scale-98 transition-all text-left"
+          title="Open Profile Menu"
+          aria-label="Open Profile Menu"
+        >
           <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-[0.15em]">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-400 group-hover:text-blue-600 uppercase tracking-[0.15em] transition-colors">
             Hey {(profile.displayName || "Vikas").split(" ")[0]}, what are you looking for today?
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Active High-Visibility Status Ticker - Deactivated and Merged into top console */}

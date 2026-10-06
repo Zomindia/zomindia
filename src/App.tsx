@@ -43,7 +43,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult } from './services/authService';
+import { getRedirectAuthResult, signOutUser } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -248,6 +248,24 @@ export default function App() {
     );
   });
   const [isAccountPopupOpen, setIsAccountPopupOpen] = useState(false);
+  const isProfileMenuOpen = isAccountPopupOpen;
+  const setIsProfileMenuOpen = setIsAccountPopupOpen;
+
+  // Listen for global profile drawer open/close/toggle events
+  useEffect(() => {
+    const handleOpen = () => setIsAccountPopupOpen(true);
+    const handleClose = () => setIsAccountPopupOpen(false);
+    const handleToggle = () => setIsAccountPopupOpen((prev) => !prev);
+
+    window.addEventListener('open-profile-menu', handleOpen);
+    window.addEventListener('close-profile-menu', handleClose);
+    window.addEventListener('toggle-profile-menu', handleToggle);
+    return () => {
+      window.removeEventListener('open-profile-menu', handleOpen);
+      window.removeEventListener('close-profile-menu', handleClose);
+      window.removeEventListener('toggle-profile-menu', handleToggle);
+    };
+  }, []);
   const [profileSubSection, setProfileSubSection] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -1510,7 +1528,13 @@ If you have any billing questions, or if your refund is delayed, please email us
           className="w-full bg-slate-50 min-h-screen text-slate-900"
           style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}
         >
-          <CustomerDashboard profile={profile} onServiceSelect={handleServiceSelect} initialExpandedBookingId={targetBookingId} setActiveTab={setActiveTab} />
+          <CustomerDashboard
+            profile={profile}
+            onServiceSelect={handleServiceSelect}
+            initialExpandedBookingId={targetBookingId}
+            setActiveTab={setActiveTab}
+            onOpenProfileMenu={() => setIsAccountPopupOpen(true)}
+          />
         </motion.div>
       );
     }
@@ -1674,7 +1698,14 @@ If you have any billing questions, or if your refund is delayed, please email us
         transition={{ duration: 0.2, ease: "easeInOut" }}
         className="w-full"
       >
-        <CustomerHome setActiveTab={setActiveTab} profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} onServiceSelect={handleServiceSelect} initialCategoryId={selectedCategoryId} />
+        <CustomerHome
+          setActiveTab={setActiveTab}
+          profile={profile}
+          onAuthRequired={() => setIsAuthModalOpen(true)}
+          onServiceSelect={handleServiceSelect}
+          initialCategoryId={selectedCategoryId}
+          onOpenProfileMenu={() => setIsAccountPopupOpen(true)}
+        />
       </motion.div>
     );
   };
@@ -1731,7 +1762,7 @@ If you have any billing questions, or if your refund is delayed, please email us
       {/* Navigation */}
       <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center">
+          <div className="flex justify-between h-14 sm:h-16 items-center">
             <div className="flex items-center gap-2">
               <motion.div
                 className="flex items-center cursor-pointer group relative px-2.5 py-1.5 rounded-2xl transition-all duration-300"
@@ -1827,7 +1858,13 @@ If you have any billing questions, or if your refund is delayed, please email us
                       }}
                       onLogout={async () => {
                         setIsAccountPopupOpen(false);
-                        await auth.signOut();
+                        try {
+                          sessionStorage.clear();
+                          localStorage.removeItem("zomindia_customer_auth");
+                          await signOutUser();
+                        } catch {
+                          await auth.signOut();
+                        }
                       }}
                     />
                   </div>
@@ -1984,7 +2021,13 @@ If you have any billing questions, or if your refund is delayed, please email us
         }}
         onLogout={async () => {
           setIsAccountPopupOpen(false);
-          await auth.signOut();
+          try {
+            sessionStorage.clear();
+            localStorage.removeItem("zomindia_customer_auth");
+            await signOutUser();
+          } catch {
+            await auth.signOut();
+          }
         }}
       />
 

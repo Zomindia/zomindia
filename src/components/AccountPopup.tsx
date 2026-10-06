@@ -25,7 +25,7 @@ export type AccountNavTab =
   | "partner"
   | "help";
 
-interface AccountPopupProps {
+export interface AccountPopupProps {
   isOpen: boolean;
   onClose: () => void;
   profile: UserProfile | null;
@@ -34,7 +34,13 @@ interface AccountPopupProps {
   onSwitchMode?: (mode: "customer" | "partner") => void;
   onNavigate: (tab: any, subTabOrArg?: string | null) => void;
   onOpenAiSupport: () => void;
-  onLogout: () => Promise<void>;
+  onLogout: () => Promise<void> | void;
+  onOpenWallet?: () => void;
+  onOpenProfileSettings?: () => void;
+  onOpenBookings?: () => void;
+  onOpenAddresses?: () => void;
+  onOpenAmc?: () => void;
+  onOpenZomini?: () => void;
 }
 
 export default function AccountPopup({
@@ -47,6 +53,12 @@ export default function AccountPopup({
   onNavigate,
   onOpenAiSupport,
   onLogout,
+  onOpenWallet,
+  onOpenProfileSettings,
+  onOpenBookings,
+  onOpenAddresses,
+  onOpenAmc,
+  onOpenZomini,
 }: AccountPopupProps) {
   // Close on Escape key press
   useEffect(() => {
@@ -77,8 +89,120 @@ export default function AccountPopup({
       ? Number(profile.walletBalance).toLocaleString("en-IN")
       : "9,230";
 
+  const handleWalletClick = () => {
+    if (onOpenWallet) {
+      onOpenWallet();
+    } else {
+      onNavigate("wallet");
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("open-wallet-modal", { detail: { open: true } }));
+      window.dispatchEvent(new CustomEvent("open-wallet-view", { detail: { open: true } }));
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleProfileSettingsClick = () => {
+    if (onOpenProfileSettings) {
+      onOpenProfileSettings();
+    } else {
+      onNavigate("profile");
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("open-profile-settings", { detail: { open: true } }));
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleBookingsClick = () => {
+    if (onOpenBookings) {
+      onOpenBookings();
+    } else {
+      onNavigate("bookings");
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("open-bookings-view", { detail: { open: true } }));
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleAddressesClick = () => {
+    if (onOpenAddresses) {
+      onOpenAddresses();
+    } else {
+      onNavigate("profile", "addresses");
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent("open-profile-section", {
+          detail: { section: "addresses" },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("open-address-modal", {
+          detail: { open: true },
+        })
+      );
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleAmcClick = () => {
+    if (onOpenAmc) {
+      onOpenAmc();
+    } else {
+      onNavigate("amcs");
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("open-amc-view", { detail: { open: true } }));
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleHelpSupportClick = () => {
+    if (onOpenZomini) {
+      onOpenZomini();
+    } else {
+      onOpenAiSupport();
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent("toggle-ai-chat", {
+          detail: { open: true },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("open-zomini", {
+          detail: { open: true },
+        })
+      );
+    } catch {
+      // safe fallback
+    }
+    onClose();
+  };
+
+  const handleLogoutClick = async () => {
+    onClose();
+    try {
+      await onLogout();
+    } catch (err) {
+      console.error("[AccountPopup] Logout error:", err);
+    }
+  };
+
   const renderContent = (isMobileSheet: boolean = false) => (
-    <div className="flex flex-col text-left">
+    <div className="flex flex-col text-left relative z-10 pointer-events-auto">
       {/* Header Strip inside Popup: User avatar + Name ("Hitakshi Chopra") + Phone/Indore tag in a clean, compact flex row */}
       <div className="flex items-center gap-3">
         <Avatar
@@ -103,22 +227,22 @@ export default function AccountPopup({
         </div>
 
         <button
+          type="button"
           onClick={onClose}
-          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-95 rounded-xl transition-all cursor-pointer shrink-0 relative z-10 pointer-events-auto"
           aria-label="Close account menu"
         >
           <X size={16} />
         </button>
       </div>
 
-      {/* Wallet badge: Mini pill showing Wallet: ₹9,230 with a subtle green tint */}
+      {/* 1. Wallet badge: Mini pill showing Wallet: ₹9,230 with a subtle green tint & VIEW button */}
       <button
-        onClick={() => {
-          onNavigate("wallet");
-          onClose();
-        }}
-        className="w-full mt-3 px-3 py-1.5 bg-emerald-50/90 hover:bg-emerald-100/80 border border-emerald-200/70 rounded-full flex items-center justify-between transition-all group cursor-pointer shadow-2xs"
+        type="button"
+        onClick={handleWalletClick}
+        className="w-full mt-3 px-3 py-2 bg-emerald-50/90 hover:bg-emerald-100/90 active:bg-emerald-200/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between transition-all group cursor-pointer relative z-10 pointer-events-auto shadow-2xs active:scale-[0.98]"
         title="View Wallet Balance"
+        id="account-popup-wallet-btn"
       >
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
@@ -129,19 +253,17 @@ export default function AccountPopup({
           </span>
         </div>
         <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-          View <ChevronRight size={12} />
+          VIEW <ChevronRight size={12} />
         </span>
       </button>
 
       {/* Quick Action Menu Items (Single column with subtle hover states, clean SVG icons, no giant blocks) */}
       <div className="mt-3 space-y-1">
-        {/* 1. 👤 My Profile & Settings */}
+        {/* 2. 👤 My Profile & Settings */}
         <button
-          onClick={() => {
-            onNavigate("profile");
-            onClose();
-          }}
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 transition-all group cursor-pointer text-left"
+          type="button"
+          onClick={handleProfileSettingsClick}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
           id="account-popup-profile-btn"
         >
           <div className="flex items-center gap-2.5">
@@ -156,13 +278,11 @@ export default function AccountPopup({
           />
         </button>
 
-        {/* 2. 📦 My Bookings */}
+        {/* 3. 📦 My Bookings */}
         <button
-          onClick={() => {
-            onNavigate("bookings");
-            onClose();
-          }}
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 transition-all group cursor-pointer text-left"
+          type="button"
+          onClick={handleBookingsClick}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
           id="account-popup-bookings-btn"
         >
           <div className="flex items-center gap-2.5">
@@ -177,18 +297,11 @@ export default function AccountPopup({
           />
         </button>
 
-        {/* 3. 📍 Saved Addresses */}
+        {/* 4. 📍 Saved Addresses */}
         <button
-          onClick={() => {
-            onNavigate("profile", "addresses");
-            window.dispatchEvent(
-              new CustomEvent("open-profile-section", {
-                detail: { section: "addresses" },
-              }),
-            );
-            onClose();
-          }}
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 transition-all group cursor-pointer text-left"
+          type="button"
+          onClick={handleAddressesClick}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
           id="account-popup-addresses-btn"
         >
           <div className="flex items-center gap-2.5">
@@ -203,13 +316,11 @@ export default function AccountPopup({
           />
         </button>
 
-        {/* 4. 🛡️ Annual Maintenance (AMC) */}
+        {/* 5. 🛡️ Annual Maintenance (AMC) */}
         <button
-          onClick={() => {
-            onNavigate("amcs");
-            onClose();
-          }}
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 transition-all group cursor-pointer text-left"
+          type="button"
+          onClick={handleAmcClick}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
           id="account-popup-amcs-btn"
         >
           <div className="flex items-center gap-2.5">
@@ -224,13 +335,11 @@ export default function AccountPopup({
           />
         </button>
 
-        {/* 5. 💬 Help & Support (ZOMINI) */}
+        {/* 6. 💬 Help & Support (ZOMINI) */}
         <button
-          onClick={() => {
-            onOpenAiSupport();
-            onClose();
-          }}
-          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 transition-all group cursor-pointer text-left"
+          type="button"
+          onClick={handleHelpSupportClick}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
           id="account-popup-support-btn"
         >
           <div className="flex items-center gap-2.5">
@@ -249,13 +358,14 @@ export default function AccountPopup({
           profile.role === "admin" ||
           profile.partnerId) && (
           <button
+            type="button"
             onClick={() => {
               onSwitchMode?.(
                 currentMode === "customer" ? "partner" : "customer",
               );
               onClose();
             }}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-black text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100/80 transition-all cursor-pointer text-left mt-1"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-black text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 active:bg-indigo-200/60 border border-indigo-100/80 transition-all cursor-pointer text-left relative z-10 pointer-events-auto mt-1 active:scale-[0.99]"
             id="account-popup-mode-switch-btn"
           >
             <div className="flex items-center gap-2.5">
@@ -277,11 +387,12 @@ export default function AccountPopup({
         {/* Admin Panel button if Admin */}
         {profile.role === "admin" && (
           <button
+            type="button"
             onClick={() => {
               onNavigate("admin");
               onClose();
             }}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-red-700 hover:bg-red-50 transition-all group cursor-pointer text-left"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-red-700 hover:bg-red-50 active:bg-red-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
             id="account-popup-admin-btn"
           >
             <div className="flex items-center gap-2.5">
@@ -298,15 +409,13 @@ export default function AccountPopup({
         )}
       </div>
 
-      {/* Bottom Divider & Logout: Red-tinted clean button: "Log Out" (text-red-600 hover:bg-red-50 rounded-xl py-2 px-3 flex items-center gap-2) */}
+      {/* Bottom Divider & Logout: Red-tinted clean button: "Log Out" */}
       <div className="my-2.5 border-t border-gray-100" />
 
       <button
-        onClick={async () => {
-          onClose();
-          await onLogout();
-        }}
-        className="w-full text-red-600 hover:bg-red-50 rounded-xl py-2 px-3 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer text-left"
+        type="button"
+        onClick={handleLogoutClick}
+        className="w-full text-red-600 hover:bg-red-50 active:bg-red-100 rounded-xl py-2.5 px-3 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
         id="account-popup-logout-btn"
       >
         <LogOut size={15} className="text-red-600 shrink-0" />
@@ -328,7 +437,7 @@ export default function AccountPopup({
         <div className={mode === "auto" ? "hidden md:block" : "block"}>
           {/* Subtle click-outside backdrop to dismiss */}
           <div
-            className="fixed inset-0 z-40 bg-black/5"
+            className="fixed inset-0 z-[80] bg-black/5"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -338,7 +447,7 @@ export default function AccountPopup({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-50 animate-in fade-in-50 zoom-in-95 text-left"
+            className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-[90] pointer-events-auto animate-in fade-in-50 zoom-in-95 text-left"
             role="menu"
             id="desktop-account-popup"
           >
@@ -357,7 +466,7 @@ export default function AccountPopup({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-[2px]"
             aria-hidden="true"
           />
 
@@ -367,7 +476,7 @@ export default function AccountPopup({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl border-t border-gray-100 p-4 pb-8 max-h-[85vh] overflow-y-auto text-left"
+            className="fixed inset-x-0 bottom-0 z-[100] bg-white rounded-t-3xl shadow-2xl border-t border-gray-100 p-4 pb-8 max-h-[85vh] overflow-y-auto pointer-events-auto text-left"
             role="dialog"
             aria-modal="true"
             id="mobile-account-sheet"

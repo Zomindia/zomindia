@@ -66,7 +66,7 @@ import {
   PhoneCall,
 } from "lucide-react";
 
-import heroImage from "../assets/images/regenerated_image_1781639290171.jpg";
+import CategoryHeroSlider from "./CategoryHeroSlider";
 
 interface Props {
   setActiveTab: (tab: any, arg?: any) => void;
@@ -74,6 +74,7 @@ interface Props {
   onAuthRequired: () => void;
   onServiceSelect: (id: string) => void;
   initialCategoryId?: string | null;
+  onOpenProfileMenu?: () => void;
 }
 
 interface PartnerWithInfo extends PartnerProfile {
@@ -385,6 +386,7 @@ export default function CustomerHome({
   onAuthRequired,
   onServiceSelect,
   initialCategoryId,
+  onOpenProfileMenu,
 }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
@@ -1438,7 +1440,7 @@ export default function CustomerHome({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-8 pb-28 sm:pb-16 w-full">
+    <div className="pb-28 sm:pb-16 w-full">
       {profile?.role === "partner" && (
         <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 relative z-[20]">
           <div className="p-1.5 bg-amber-500 rounded-lg text-white">
@@ -1458,7 +1460,7 @@ export default function CustomerHome({
         className={
           isScrolled 
             ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
-            : "w-full max-w-5xl mx-auto py-2.5 px-3 sm:px-6 transition-all"
+            : "w-full max-w-5xl mx-auto mt-2 mb-2 px-3 sm:px-6 transition-all"
         }
         style={{
           WebkitBackdropFilter: "blur(12px)",
@@ -1619,270 +1621,24 @@ export default function CustomerHome({
       {/* Placeholder spacer when fixed to prevent layout jump */}
       {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0" aria-hidden="true" />}
 
-      {/* Compact Hero Section */}
-      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2 pb-1 sm:pt-3 sm:pb-2">
-        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 shadow-sm border border-blue-700/30 py-3 px-4">
-          <div className="absolute inset-0 z-0 pointer-events-none">
-            <img
-              src={heroImage}
-              className="w-full h-full object-cover opacity-20 mix-blend-overlay"
-              alt="Quality home services"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-950/85 via-blue-900/70 to-slate-950/80" />
-          </div>
-
-          <div className="relative z-10">
-          {activeBooking && !recentCardDismissed ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6 items-center text-left">
-              {/* Left Column: Compact Welcome Message & Badges */}
-              <div className="lg:col-span-7 space-y-1.5 sm:space-y-2">
-                <h1 className="text-base sm:text-2xl font-bold text-white leading-tight font-display tracking-tight">
-                  Quality home services, on demand
-                </h1>
-                <p className="text-xs text-blue-100/90 font-medium hidden sm:block truncate">
-                  Trusted doorstep experts for cleaning, repairs, and appliances in Indore.
-                </p>
-
-                <div className="text-xs text-blue-100 flex flex-wrap items-center gap-1.5 sm:gap-2.5 py-0.5">
-                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                    <ShieldCheck size={12} className="text-emerald-400 shrink-0" /> Verified Pros
-                  </span>
-                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                    <Zap size={12} className="text-amber-400 shrink-0" /> Upfront Pricing
-                  </span>
-                  <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                    <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" /> 4.8★ Rated
-                  </span>
-                </div>
-              </div>
-
-              {/* Right Column: Sleek, compact main booking details card */}
-              <div className="lg:col-span-5 w-full flex items-center justify-center lg:justify-end">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 100,
-                    damping: 15,
-                  }}
-                  className="bg-white rounded-[24px] p-4 shadow-2xl border border-slate-100 relative flex flex-col gap-2.5 text-slate-800 transition-all duration-300 hover:shadow-blue-900/5 hover:border-slate-200/60 w-full max-w-[320px] text-left shrink-0 overflow-hidden"
-                >
-                  {/* Top-right close symbol with dynamic review feedback pop interception */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCloseCard();
-                    }}
-                    className="absolute top-3.5 right-3.5 p-1.5 bg-slate-50 hover:bg-slate-100/80 text-slate-400 hover:text-slate-600 rounded-full transition-all border border-slate-100 cursor-pointer z-20"
-                    title="Dismiss booking card"
-                  >
-                    <X size={12} strokeWidth={2.5} />
-                  </button>
-
-                  {/* Top Header Row with pulsator and Status Badge */}
-                  <div className="flex items-center justify-between pr-6">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        {!["completed", "finalized", "closed"].includes(activeBooking.status) && (
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                        )}
-                        <span className={`relative inline-flex rounded-full h-2 w-2 ${["completed", "finalized", "closed"].includes(activeBooking.status) ? "bg-emerald-500" : "bg-blue-600"}`}></span>
-                      </span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-                        #{activeBooking.id.slice(-6).toUpperCase()}
-                      </span>
-                    </div>
-
-                    {(() => {
-                      const isNotAssigned = ["pending", "pending_parts"].includes(activeBooking.status) || !activeBooking.partnerId;
-                      const isCompleted = ["completed", "finalized", "closed"].includes(activeBooking.status);
-                      
-                      let statusBadgeColor = "bg-blue-50 text-blue-700 border-blue-105";
-                      let statusText = activeBooking.status.replace("_", " ");
-                      
-                      if (isNotAssigned) {
-                        statusBadgeColor = "bg-amber-50 text-amber-700 border-amber-100";
-                        statusText = "Assigning Pro";
-                      } else if (isCompleted) {
-                        statusBadgeColor = "bg-emerald-50 text-emerald-700 border-emerald-100";
-                        statusText = "Completed";
-                      } else if (activeBooking.status === "on_the_way") {
-                        statusText = "Pro En-Route";
-                      } else if (activeBooking.status === "arrived") {
-                        statusBadgeColor = "bg-indigo-50 text-indigo-700 border-indigo-100";
-                        statusText = "Pro Arrived";
-                      } else if (activeBooking.status === "in_progress") {
-                        statusBadgeColor = "bg-blue-50 text-blue-700 border-blue-100";
-                        statusText = "In Progress";
-                      } else if (activeBooking.status === "payment_pending") {
-                        statusBadgeColor = "bg-orange-50 text-orange-700 border-orange-100 animate-pulse";
-                        statusText = "Pay Invoice";
-                      }
-                      
-                      return (
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusBadgeColor}`}>
-                          {statusText}
-                        </span>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Service Type Compact Display */}
-                  <div className="flex items-center gap-3 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-white border border-slate-100 flex items-center justify-center shrink-0 shadow-sm">
-                      {bookingService?.imageURL ? (
-                        <img
-                          src={bookingService.imageURL}
-                          alt={bookingService.name}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <Zap size={16} className="text-blue-600 animate-pulse" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="block text-[8px] font-black text-slate-450 uppercase tracking-widest leading-none mb-0.5">
-                        Active Service
-                      </span>
-                      <h4 className="text-xs font-black text-slate-950 leading-tight truncate uppercase italic tracking-tight">
-                        {bookingService?.name || "Home Maintenance"}
-                      </h4>
-                    </div>
-                  </div>
-
-                  {/* Service details fields (Time and Assigned Expert) */}
-                  <div className="space-y-1.5 text-[11px] text-slate-600 font-medium px-0.5">
-                    <div className="flex items-center gap-2">
-                      <Clock size={12} className="text-slate-400 shrink-0" />
-                      <span className="truncate text-slate-705 font-semibold">{formattedDate}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const statusStr = typeof activeBooking?.status === 'string' ? activeBooking.status.trim().toUpperCase() : "";
-                        if (statusStr === "ASSIGNED") {
-                          return (
-                            <>
-                              <div className="w-4.5 h-4.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] font-black text-emerald-700 shrink-0">
-                                {bookingPartner ? bookingPartner.name.charAt(0).toUpperCase() : "E"}
-                              </div>
-                              <span className="truncate text-emerald-700 font-bold animate-pulse">
-                                Expert Assigned & Preparing
-                              </span>
-                            </>
-                          );
-                        }
-                        if (statusStr === "PENDING_ACCEPTANCE" || statusStr === "SEARCHING") {
-                          return (
-                            <>
-                              <div className="w-4.5 h-4.5 rounded-full bg-amber-50 flex items-center justify-center text-[9px] font-black text-amber-700 shrink-0 border border-amber-100">
-                                ?
-                              </div>
-                              <span className="text-slate-500 italic">
-                                Matching Best Expert Pro...
-                              </span>
-                            </>
-                          );
-                        }
-                        
-                        if (bookingPartner) {
-                          return (
-                            <>
-                              <div className="w-4.5 h-4.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] font-black text-emerald-700 shrink-0">
-                                {bookingPartner.name.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="truncate text-slate-700">
-                                Pro Expert: <span className="text-emerald-600 font-bold">{bookingPartner.name}</span>
-                              </span>
-                            </>
-                          );
-                        }
-                        
-                        return (
-                          <>
-                            <div className="w-4.5 h-4.5 rounded-full bg-amber-50 flex items-center justify-center text-[9px] font-black text-amber-700 shrink-0 border border-amber-100">
-                              ?
-                            </div>
-                            <span className="text-slate-450 italic">
-                              Matching Expert Partner...
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Price Value and Track Action Footer */}
-                  <div className="flex items-center justify-between pt-2.5 mt-0.5 border-t border-slate-100">
-                    <div>
-                      <span className="block text-[8.5px] font-black text-slate-400 uppercase tracking-wider mb-0.5">
-                        Est. Price
-                      </span>
-                      <span className="text-base font-black text-slate-900 font-display italic">
-                        ₹{activeBooking.totalPrice}
-                      </span>
-                    </div>
-
-                    {activeBooking.status === "payment_pending" ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowPaymentModalForHome(activeBooking);
-                        }}
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-lg transition-all shadow-md active:scale-95 flex items-center gap-1.5 border-0 cursor-pointer animate-pulse"
-                      >
-                        Pay Invoice <ArrowRight size={11} strokeWidth={2.5} />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveTab("bookings", activeBooking.id);
-                        }}
-                        className="bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 flex items-center gap-1.5 border-0 cursor-pointer"
-                      >
-                        Track Job <ArrowRight size={11} strokeWidth={2.5} />
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4 text-center sm:text-left">
-              <div className="min-w-0">
-                <h1 className="text-base sm:text-2xl font-bold text-white leading-tight font-display tracking-tight">
-                  Quality home services, on demand
-                </h1>
-                <p className="text-xs sm:text-sm text-blue-100/90 font-medium mt-0.5 hidden xs:block truncate">
-                  Trusted doorstep experts for cleaning, repairs, and appliances in Indore.
-                </p>
-              </div>
-
-              {/* Streamlined 3 trust badges in a clean wrapping container without clipping */}
-              <div className="text-xs text-blue-100 flex flex-wrap items-center justify-center sm:justify-end gap-1.5 sm:gap-2.5 py-0.5 shrink-0">
-                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                  <ShieldCheck size={12} className="text-emerald-400 shrink-0" /> Verified Pros
-                </span>
-                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                  <Zap size={12} className="text-amber-400 shrink-0" /> Upfront Pricing
-                </span>
-                <span className="inline-flex items-center gap-1 shrink-0 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
-                  <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" /> 4.8★ Rated
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-        </div>
-      </section>
+      {/* Category-Driven Dynamic Hero Promo Slider */}
+      <CategoryHeroSlider
+        categories={categories.length > 0 ? categories : allCategories}
+        services={allServices}
+        onSelectCategory={(cat) => {
+          setSelectedCategory(cat);
+          const target = document.getElementById("categories-grid");
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }}
+        activeBooking={activeBooking && !recentCardDismissed ? activeBooking : null}
+        onTrackBooking={() => {
+          if (activeBooking) {
+            setActiveTab("bookings", activeBooking.id);
+          }
+        }}
+      />
 
       {/* Main Container */}
       <motion.div

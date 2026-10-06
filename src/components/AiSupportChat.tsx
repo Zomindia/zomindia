@@ -480,8 +480,16 @@ export default function AiSupportChat({
         setIsOpen((prev) => !prev);
       }
     };
+    const handleOpen = () => setIsOpen(true);
+
     window.addEventListener("toggle-ai-chat", handleToggle);
-    return () => window.removeEventListener("toggle-ai-chat", handleToggle);
+    window.addEventListener("toggle-zomini-chat", handleToggle);
+    window.addEventListener("open-zomini", handleOpen);
+    return () => {
+      window.removeEventListener("toggle-ai-chat", handleToggle);
+      window.removeEventListener("toggle-zomini-chat", handleToggle);
+      window.removeEventListener("open-zomini", handleOpen);
+    };
   }, []);
 
   // Sync or fetch bookings dynamically
