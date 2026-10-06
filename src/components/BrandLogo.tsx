@@ -1,13 +1,10 @@
 import React from 'react';
 
-import logoHorizontalFile from '../assets/images/logo-horizontal.png';
-import logoIconFile from '../assets/images/logo-icon.png';
-
-// Golden shield logo icon with clean 'Z' text
-export const LogoIcon = logoIconFile;
+// Square icon logo (512x512)
+export const LogoIcon = '/icon-512.png';
 
 // Horizontal full logo with text
-export const LogoHorizontal = logoHorizontalFile;
+export const LogoHorizontal = '/logo-horizontal.png';
 
 interface LogoProps {
   size?: number;
@@ -24,11 +21,12 @@ export const Logo = ({ size = 20, className = "" }: LogoProps) => {
       style={heightStyle}
     >
       <img
-        src={LogoHorizontal}
-        alt="ZOMINDIA LOGO"
-        className="h-full w-auto max-w-full object-contain transition-all duration-300"
+        src="/logo-horizontal.png"
+        alt="Zomindia"
+        className="h-8 sm:h-9 w-auto object-contain transition-all duration-300"
         referrerPolicy="no-referrer"
       />
     </div>
   );
 };
+

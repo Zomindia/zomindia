@@ -686,7 +686,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       {/* App Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
         <div className="flex flex-col shrink-0 select-none">
-          <img src={LogoHorizontal} alt="Zomindia brand" className="h-4.5 w-auto object-contain object-left" referrerPolicy="no-referrer" />
+          <img src="/logo-horizontal.png" alt="Zomindia" className="h-8 sm:h-9 w-auto object-contain object-left" referrerPolicy="no-referrer" />
           <span className="text-[7.5px] text-[#0a2540]/60 font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">

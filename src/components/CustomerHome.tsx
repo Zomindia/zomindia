@@ -66,7 +66,6 @@ import {
   PhoneCall,
 } from "lucide-react";
 
-import logoIconFile from "../assets/images/logo-icon.png";
 import heroImage from "../assets/images/regenerated_image_1781639290171.jpg";
 
 interface Props {
@@ -1477,9 +1476,9 @@ export default function CustomerHome({
               aria-label="Back to top"
             >
               <img
-                src={logoIconFile}
+                src="/icon-512.png"
                 alt="Zomindia"
-                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0 drop-shadow-xs"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
               />
             </button>
           )}

@@ -933,9 +933,9 @@ export default function AdminDashboard({
                 className="flex flex-col select-none"
               >
                 <img
-                  src={LogoHorizontal}
-                  alt="Zomindia brand"
-                  className="h-6 w-auto object-contain object-left"
+                  src="/logo-horizontal.png"
+                  alt="Zomindia"
+                  className="h-8 sm:h-9 w-auto object-contain object-left"
                   referrerPolicy="no-referrer"
                 />
                 <span className="text-[9px] font-black uppercase tracking-widest text-[#0a2540] mt-1 science-badge leading-none">

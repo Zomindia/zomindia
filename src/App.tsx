@@ -78,17 +78,14 @@ import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
 import { LogoHorizontal } from './components/BrandLogo';
 
 const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, className?: string, src?: string }) => {
-  const heightStyle = size && !className ? { height: size * 1.6 } : undefined;
-
   return (
     <div
       className={`relative flex items-center justify-start select-none ${className}`}
-      style={heightStyle}
     >
       <img
-        src={LogoHorizontal}
-        alt="ZOMINDIA LOGO"
-        className="h-full w-auto max-w-full object-contain transition-all duration-300"
+        src="/logo-horizontal.png"
+        alt="Zomindia"
+        className="h-8 sm:h-9 w-auto object-contain transition-all duration-300"
         referrerPolicy="no-referrer"
       />
     </div>

@@ -1884,9 +1884,9 @@ export default function CustomerDashboard({
               aria-label="Zomindia Home"
             >
               <img
-                src={LogoIcon}
+                src="/icon-512.png"
                 alt="Zomindia"
-                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0 drop-shadow-xs"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
               />
             </button>
           )}

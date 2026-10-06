@@ -41,10 +41,10 @@ export default function Footer({
           <div className="col-span-1 md:col-span-2 space-y-5">
             <div
               onClick={(e) => handleLinkClick(e, 'home')}
-              className="inline-block cursor-pointer"
+              className="inline-block cursor-pointer select-none"
               id="footer-logo-container"
             >
-              <Logo size={26} />
+              <img src="/logo-horizontal.png" alt="Zomindia" className="h-8 sm:h-9 w-auto object-contain" />
             </div>
 
             <p className="text-slate-500 text-sm max-w-md leading-relaxed font-medium">
