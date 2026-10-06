@@ -32,59 +32,8 @@ interface Props {
 }
 
 export default function PartnerHome({ partner, bookings, services, users, profile, onNavigate, application }: Props) {
-  const [showPwaInstall, setShowPwaInstall] = useState(false);
-  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
   const [showPendingPopup, setShowPendingPopup] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
-
-  useEffect(() => {
-    const checkPrompt = () => {
-      setShowPwaInstall(!!(window as any).deferredPrompt);
-    };
-    checkPrompt();
-    window.addEventListener('pwa-prompt-available', checkPrompt);
-    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
-
-    // Safari iOS detection
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
-    let isDismissed = false;
-    try {
-      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
-    } catch (err) {
-      console.warn('[PWA] Storage access denied', err);
-    }
-
-    if (isIOS && isSafari && !isStandalone && !isDismissed) {
-      setShowIosSafariInstall(true);
-    }
-
-    return () => {
-      window.removeEventListener('pwa-prompt-available', checkPrompt);
-      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
-    };
-  }, []);
-
-  const handleInstallPwa = async () => {
-    const promptEvent = (window as any).deferredPrompt;
-    if (!promptEvent) {
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-      return;
-    }
-    try {
-      await promptEvent.prompt();
-      const choiceResult = await promptEvent.userChoice;
-      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
-      if (choiceResult.outcome === 'accepted') {
-        (window as any).deferredPrompt = null;
-        setShowPwaInstall(false);
-      }
-    } catch (err) {
-      console.warn('[PWA] Error prompt:', err);
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-    }
-  };
 
   const activeJobs = bookings.filter(b => {
     const s = b.status?.toLowerCase();
@@ -241,63 +190,6 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
   return (
     <div className="p-6 space-y-8">
-      {/* 1. Global PWA Install Banner */}
-      {(showPwaInstall || showIosSafariInstall) && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a2540] text-white p-5 rounded-[24px] shadow-xl relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2 rounded-xl shrink-0">
-                <Sparkles className="w-4 h-4 text-cyan-300" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
-                  INSTALL PARTNER APP
-                </h4>
-                <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
-                  {showIosSafariInstall 
-                    ? "To install, tap Share [↑] and select 'Add to Home Screen'."
-                    : "Install the Zomindia Partner web-app directly on your home screen for job notifications and live navigation."}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
-              {!showIosSafariInstall && (
-                <button
-                  onClick={handleInstallPwa}
-                  className="flex-1 sm:flex-none justify-center bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
-                >
-                  <Zap className="w-3 h-3" />
-                  Install Now
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (showIosSafariInstall) {
-                    try {
-                      sessionStorage.setItem('pwa-safari-dismissed', 'true');
-                    } catch (err) {
-                      console.warn('[PWA] Storage access denied', err);
-                    }
-                    setShowIosSafariInstall(false);
-                  } else {
-                    setShowPwaInstall(false);
-                  }
-                }}
-                className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
       {/* Onboarding and Application State check */}
       {(!partner && profile?.approvalStatus !== 'pending') && (
         application ? (

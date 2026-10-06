@@ -8,7 +8,9 @@ export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com
 export function PWAInstallBanner() {
   const [showBanner, setShowBanner] = useState<boolean>(false);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
+  const [showIosInstructions, setShowIosInstructions] = useState<boolean>(false);
   const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '') && !(window as any).MSStream;
 
   useEffect(() => {
     const checkStandalone = (): boolean => {
@@ -51,7 +53,13 @@ export function PWAInstallBanner() {
   }, []);
 
   const handleInstall = async () => {
-    // Android devices directly launch the Google Play Store page
+    // iOS Safari Web shows clean step-by-step guidance
+    if (isIOS) {
+      setShowIosInstructions((prev) => !prev);
+      return;
+    }
+
+    // Android devices directly launch Google Play Store / TWA
     if (isAndroid) {
       window.open(PLAY_STORE_URL, '_blank', 'noopener,noreferrer');
       setShowBanner(false);
@@ -102,45 +110,61 @@ export function PWAInstallBanner() {
           transition={{ type: 'spring', damping: 25, stiffness: 280 }}
           className="fixed bottom-24 md:bottom-8 left-3 right-3 sm:left-auto sm:right-6 z-[60] max-w-sm w-full mx-auto sm:mx-0 pointer-events-auto"
         >
-          <div className="relative bg-white/95 backdrop-blur-md rounded-3xl p-3.5 border border-slate-200/90 shadow-[0_16px_36px_-6px_rgba(0,46,110,0.18)] flex items-center justify-between gap-3">
-            <button
-              onClick={handleDismiss}
-              className="absolute top-2.5 right-2.5 z-10 w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer border-0"
-              aria-label="Dismiss banner"
-            >
-              <X className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
+          <div className="relative bg-white/95 backdrop-blur-md rounded-3xl p-3.5 border border-slate-200/90 shadow-[0_16px_36px_-6px_rgba(0,46,110,0.18)] flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={handleDismiss}
+                className="absolute top-2.5 right-2.5 z-10 w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer border-0"
+                aria-label="Dismiss banner"
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
 
-            <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
-              <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/90 shadow-sm flex items-center justify-center overflow-hidden">
-                <img
-                  src={LogoIcon || '/pwa-192x192.png'}
-                  alt="Zomindia"
-                  className="w-full h-full object-contain select-none"
-                  onError={(e) => {
-                    (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
-                  }}
-                />
-                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm border border-white">
-                  <Zap className="w-2.5 h-2.5 fill-white" />
-                </span>
+              <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
+                <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-white p-1.5 border border-slate-200/90 shadow-sm flex items-center justify-center overflow-hidden">
+                  <img
+                    src={LogoIcon || '/pwa-192x192.png'}
+                    alt="Zomindia"
+                    className="w-full h-full object-contain select-none"
+                    onError={(e) => {
+                      (e.target as HTMLElement).setAttribute('src', '/pwa-192x192.png');
+                    }}
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm border border-white">
+                    <Zap className="w-2.5 h-2.5 fill-white" />
+                  </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-xs text-[#002e6e] truncate">Install Zomindia App</h4>
+                  <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                    {isIOS ? 'Add to Home Screen' : isAndroid ? 'Get it on Google Play' : '1-Click Fast Booking & Tracking'}
+                  </p>
+                </div>
               </div>
 
-              <div className="min-w-0 flex-1">
-                <h4 className="font-bold text-xs text-[#002e6e] truncate">Install Zomindia App</h4>
-                <p className="text-[10px] text-slate-500 truncate mt-0.5">
-                  {isAndroid ? 'Get it on Google Play' : '1-Click Fast Booking & Tracking'}
-                </p>
-              </div>
+              <button
+                onClick={handleInstall}
+                className="bg-[#002e6e] hover:bg-[#00baf2] text-white font-bold text-xs px-3.5 py-2 rounded-full shadow-md transition-colors flex items-center gap-1.5 cursor-pointer border-0 shrink-0"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isIOS ? 'Guide' : 'Install'}</span>
+              </button>
             </div>
 
-            <button
-              onClick={handleInstall}
-              className="bg-[#002e6e] hover:bg-[#00baf2] text-white font-bold text-xs px-3.5 py-2 rounded-full shadow-md transition-colors flex items-center gap-1.5 cursor-pointer border-0 shrink-0"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Install</span>
-            </button>
+            {/* iOS Safari 1-time step-by-step guidance */}
+            {isIOS && showIosInstructions && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="pt-2 border-t border-slate-100 text-[11px] text-slate-600 bg-blue-50/50 p-2.5 rounded-2xl"
+              >
+                <p className="font-semibold text-slate-800">
+                  Tap Share <span className="text-blue-600 font-bold">[↑]</span> in Safari &gt; Select <span className="text-blue-600 font-bold">"Add to Home Screen"</span>.
+                </p>
+              </motion.div>
+            )}
           </div>
         </motion.div>
       )}

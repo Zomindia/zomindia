@@ -65,15 +65,36 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Global Scrollbar Elimination (Startup-grade clean look) */
+/* Hide scrollbar for Chrome, Safari, WebView and Opera */
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+* {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
 @layer base {
-  html {
+  html, body {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
-    background-color: var(--canvas-bg);
-    overflow-x: hidden;
   }
   body {
     @apply antialiased text-slate-900 bg-[#f5f7fa] selection:bg-[#00baf2] selection:text-white leading-relaxed transition-colors duration-200;
-    overflow-x: hidden;
+  }
+  #root {
+    min-height: 100%;
+    width: 100%;
+    overflow: visible;
   }
   
   button, 
@@ -97,11 +118,13 @@
 
 @utility no-scrollbar {
   &::-webkit-scrollbar {
-    display: none;
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  cursor: grab;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 @layer utilities {

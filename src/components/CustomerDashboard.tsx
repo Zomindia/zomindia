@@ -562,9 +562,8 @@ export default function CustomerDashboard({
   initialExpandedBookingId,
   setActiveTab,
 }: Props) {
-  // PWA states
-  const [showPwaInstall, setShowPwaInstall] = useState(false);
-  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
+  // Scroll state for sticky search bar (Zomato Pattern)
+  const [isScrolled, setIsScrolled] = useState(false);
 
   // Booking and partner states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -636,55 +635,19 @@ export default function CustomerDashboard({
   const queriedPartnerIdsRef = useRef<Set<string>>(new Set());
   const queriedServiceIdsRef = useRef<Set<string>>(new Set());
 
-  // PWA prompt effect
+  // Track scroll position for dynamic sticky search bar (Zomato Pattern)
   useEffect(() => {
-    const checkPrompt = () => {
-      setShowPwaInstall(!!(window as any).deferredPrompt);
+    const handleScroll = () => {
+      const scrolled = window.scrollY > 30;
+      setIsScrolled((prev) => (prev !== scrolled ? scrolled : prev));
     };
-    checkPrompt();
-    window.addEventListener('pwa-prompt-available', checkPrompt);
-    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
 
-    // Safari iOS detection
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
-    let isDismissed = false;
-    try {
-      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
-    } catch (err) {
-      console.warn('[PWA] Storage access denied', err);
-    }
-
-    if (isIOS && isSafari && !isStandalone && !isDismissed) {
-      setShowIosSafariInstall(true);
-    }
-
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
-      window.removeEventListener('pwa-prompt-available', checkPrompt);
-      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
+      window.removeEventListener("scroll", handleScroll);
     };
   }, []);
-
-  const handleInstallPwa = async () => {
-    const promptEvent = (window as any).deferredPrompt;
-    if (!promptEvent) {
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-      return;
-    }
-    try {
-      await promptEvent.prompt();
-      const choiceResult = await promptEvent.userChoice;
-      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
-      if (choiceResult.outcome === 'accepted') {
-        (window as any).deferredPrompt = null;
-        setShowPwaInstall(false);
-      }
-    } catch (err) {
-      console.warn('[PWA] Error prompt:', err);
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-    }
-  };
 
   useEffect(() => {
     if (initialExpandedBookingId) {
@@ -1894,63 +1857,115 @@ export default function CustomerDashboard({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12">
-      {/* 1. Global PWA Install Banner */}
-      {(showPwaInstall || showIosSafariInstall) && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white border border-slate-200/80 text-slate-900 py-3 px-6 md:px-8 rounded-[28px] shadow-sm relative overflow-hidden mb-6"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-50 p-2 rounded-xl shrink-0 border border-blue-100">
-                <Sparkles className="w-4 h-4 text-blue-600" />
+    <div className="max-w-7xl mx-auto px-4 py-3 sm:py-6 lg:py-8">
+      {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
+      <div 
+        className={
+          isScrolled
+            ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
+            : "w-full max-w-7xl mx-auto py-2.5 px-4 sm:px-6 mb-6 transition-all"
+        }
+        style={{
+          WebkitBackdropFilter: "blur(12px)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <div className="max-w-7xl mx-auto flex items-center gap-2.5 w-full">
+          {/* ONLY when sticky/fixed, a prominent Zomindia brand icon appears on the left */}
+          {isScrolled && (
+            <button
+              type="button"
+              onClick={() => {
+                if (setActiveTab) setActiveTab('home');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="shrink-0 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+              title="Go to Home"
+              aria-label="Zomindia Home"
+            >
+              <img
+                src={LogoIcon}
+                alt="Zomindia"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0 drop-shadow-xs"
+              />
+            </button>
+          )}
+
+          {/* Search bar input - Flexes to fill available width */}
+          <div className="relative flex-1 min-w-0">
+            <div 
+              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-2xs transition-all duration-200 px-3"
+            >
+              <div className="text-slate-400 focus-within:text-blue-600 shrink-0 mr-2">
+                <Search size={16} className="stroke-[2.2]" />
               </div>
-              <div>
-                <h4 className="text-xs font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                  INSTALL ZOMINDIA WEB-APP
-                </h4>
-                <p className="text-xs text-slate-600 mt-0.5 font-normal leading-normal max-w-xl">
-                  {showIosSafariInstall 
-                    ? "To install, tap Share [↑] and select 'Add to Home Screen'."
-                    : "Install Zomindia directly on your home screen for quick offline access and service tracking."}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {!showIosSafariInstall && (
+              <input
+                type="text"
+                inputMode="search"
+                enterKeyHint="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search AC, RO, Fridge repair..."
+                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery ? "pr-20" : "pr-10"}`}
+              />
+              {searchQuery && (
                 <button
-                  onClick={handleInstallPwa}
-                  className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full shrink-0 cursor-pointer transition-all active:scale-90"
+                  aria-label="Clear search"
                 >
-                  <Zap className="w-3 h-3" />
-                  Install Now
+                  <X size={14} />
                 </button>
               )}
+
               <button
-                onClick={() => {
-                  if (showIosSafariInstall) {
-                    try {
-                      sessionStorage.setItem('pwa-safari-dismissed', 'true');
-                    } catch (err) {
-                      console.warn('[PWA] Storage access denied', err);
-                    }
-                    setShowIosSafariInstall(false);
-                  } else {
-                    setShowPwaInstall(false);
-                  }
-                }}
-                className="text-slate-500 hover:text-slate-800 text-xs font-medium py-2 px-3 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                aria-label="Search"
               >
-                Dismiss
+                <Search className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Quick Live Search Results Dropdown when typing */}
+            {searchQuery.trim().length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,46,110,0.25)] border border-slate-200/90 overflow-hidden z-[90] max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 text-left overscroll-contain">
+                {filteredServices.length > 0 ? (
+                  filteredServices.slice(0, 6).map((service) => (
+                    <div
+                      key={service.id}
+                      onClick={() => {
+                        if (onServiceSelect) onServiceSelect(service.id);
+                        setSearchQuery("");
+                      }}
+                      className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <ServiceThumbnail service={service} size="sm" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate">{service.name}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{service.description}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-black text-[#002e6e]">₹{service.basePrice}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                    No services found for "{searchQuery}"
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </motion.div>
-      )}
+        </div>
+      </div>
+
+      {/* Placeholder spacer when fixed to prevent layout jump */}
+      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0 mb-6" aria-hidden="true" />}
 
       {/* INCOMING SECURE CALL MODAL */}
       <AnimatePresence>

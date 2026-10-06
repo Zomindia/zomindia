@@ -1702,7 +1702,13 @@ If you have any billing questions, or if your refund is delayed, please email us
   if (isFullScreenView) {
     return (
       <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
-        <div className="min-h-screen">
+        <div 
+          className="min-h-screen"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain'
+          }}
+        >
           <NotificationSystem onNavigate={setActiveTab} />
           <Suspense fallback={<LoadingScreen message="Loading dashboard..." />}>
             {renderContent()}
@@ -1715,10 +1721,18 @@ If you have any billing questions, or if your refund is delayed, please email us
 
   return (
     <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
+      <div 
+        className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans" 
+        style={{ 
+          backgroundColor: '#f8fafc', 
+          color: '#0f172a',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehaviorY: 'auto'
+        }}
+      >
       <NotificationSystem onNavigate={setActiveTab} />
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
+      <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
             <div className="flex items-center gap-2">
@@ -2095,7 +2109,15 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       {/* Main Content */}
       {renderPartnerNotificationBanner()}
-      <main className="pb-24 md:pb-0 relative min-h-[500px] bg-slate-50 text-slate-900" style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}>
+      <main 
+        className="pb-24 md:pb-0 relative min-h-[500px] bg-slate-50 text-slate-900" 
+        style={{ 
+          backgroundColor: '#f8fafc', 
+          color: '#0f172a',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehaviorY: 'contain'
+        }}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

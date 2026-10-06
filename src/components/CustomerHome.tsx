@@ -387,58 +387,6 @@ export default function CustomerHome({
   onServiceSelect,
   initialCategoryId,
 }: Props) {
-  const [showPwaInstall, setShowPwaInstall] = useState(false);
-  const [showIosSafariInstall, setShowIosSafariInstall] = useState(false);
-
-  useEffect(() => {
-    const checkPrompt = () => {
-      setShowPwaInstall(!!(window as any).deferredPrompt);
-    };
-    checkPrompt();
-    window.addEventListener('pwa-prompt-available', checkPrompt);
-    window.addEventListener('pwa-prompt-dismissed', checkPrompt);
-
-    // Safari iOS detection
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isStandalone = ('standalone' in window.navigator) && (window.navigator as any).standalone;
-    let isDismissed = false;
-    try {
-      isDismissed = sessionStorage.getItem('pwa-safari-dismissed') === 'true';
-    } catch (err) {
-      console.warn('[PWA] Storage access denied', err);
-    }
-
-    if (isIOS && isSafari && !isStandalone && !isDismissed) {
-      setShowIosSafariInstall(true);
-    }
-
-    return () => {
-      window.removeEventListener('pwa-prompt-available', checkPrompt);
-      window.removeEventListener('pwa-prompt-dismissed', checkPrompt);
-    };
-  }, []);
-
-  const handleInstallPwa = async () => {
-    const promptEvent = (window as any).deferredPrompt;
-    if (!promptEvent) {
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-      return;
-    }
-    try {
-      await promptEvent.prompt();
-      const choiceResult = await promptEvent.userChoice;
-      console.log(`[PWA] Install choice: ${choiceResult.outcome}`);
-      if (choiceResult.outcome === 'accepted') {
-        (window as any).deferredPrompt = null;
-        setShowPwaInstall(false);
-      }
-    } catch (err) {
-      console.warn('[PWA] Error prompt:', err);
-      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
-    }
-  };
-
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
@@ -495,7 +443,7 @@ export default function CustomerHome({
 
   useEffect(() => {
     const handleScroll = () => {
-      const scrolled = window.scrollY > 60;
+      const scrolled = window.scrollY > 30;
       setIsScrolled((prev) => (prev !== scrolled ? scrolled : prev));
     };
 
@@ -1491,64 +1439,7 @@ export default function CustomerHome({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-8 pb-28 sm:pb-16 overflow-x-hidden">
-      {/* 1. Global PWA Install Banner */}
-      {(showPwaInstall || showIosSafariInstall) && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="bg-[#0a2540] text-white py-3 px-6 md:px-8 shadow-xl relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.15),transparent)] pointer-events-none" />
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-left">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2 rounded-xl shrink-0">
-                <Sparkles className="w-4 h-4 text-cyan-300" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold tracking-tight text-white flex items-center gap-2">
-                  INSTALL ZOMINDIA WEB-APP
-                </h4>
-                <p className="text-xs text-slate-300 mt-0.5 font-normal leading-normal max-w-xl">
-                  {showIosSafariInstall 
-                    ? "To install, tap Share [↑] and select 'Add to Home Screen'."
-                    : "Install Zomindia directly on your home screen for quick offline access and service tracking."}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {!showIosSafariInstall && (
-                <button
-                  onClick={handleInstallPwa}
-                  className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold py-2 px-4 rounded-xl transition duration-150 flex items-center gap-1 shadow-md cursor-pointer tracking-wide"
-                >
-                  <Zap className="w-3 h-3" />
-                  Install Now
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (showIosSafariInstall) {
-                    try {
-                      sessionStorage.setItem('pwa-safari-dismissed', 'true');
-                    } catch (err) {
-                      console.warn('[PWA] Storage access denied', err);
-                    }
-                    setShowIosSafariInstall(false);
-                  } else {
-                    setShowPwaInstall(false);
-                  }
-                }}
-                className="text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-xl hover:bg-white/10 transition cursor-pointer"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
+    <div className="space-y-4 sm:space-y-8 pb-28 sm:pb-16 w-full">
       {profile?.role === "partner" && (
         <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 relative z-[20]">
           <div className="p-1.5 bg-amber-500 rounded-lg text-white">
@@ -1563,42 +1454,44 @@ export default function CustomerHome({
         </div>
       )}
 
-      {/* Dynamic Sticky Search Bar with Typewriter Effect & Scroll-Triggered Logo */}
+      {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
       <div 
-        className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 py-2.5 px-3 sm:px-6"
+        className={
+          isScrolled 
+            ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
+            : "w-full max-w-5xl mx-auto py-2.5 px-3 sm:px-6 transition-all"
+        }
+        style={{
+          WebkitBackdropFilter: "blur(12px)",
+          backdropFilter: "blur(12px)",
+        }}
       >
-        <div className="w-full max-w-4xl mx-auto relative flex items-center gap-2 sm:gap-3">
-          {/* Conditional Small Zomindia Brand Logo Icon (Visible only when scrolled) */}
-          <AnimatePresence>
-            {isScrolled && (
-              <motion.button
-                type="button"
-                initial={{ opacity: 0, scale: 0.85, width: 0 }}
-                animate={{ opacity: 1, scale: 1, width: "auto" }}
-                exit={{ opacity: 0, scale: 0.85, width: 0 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                className="shrink-0 flex items-center justify-center cursor-pointer active:scale-95 transition-transform overflow-hidden"
-                title="Back to top"
-                aria-label="Back to top"
-              >
-                <img
-                  src={logoIconFile}
-                  alt="Zomindia"
-                  className="h-9 w-9 min-w-[36px] rounded-xl object-contain cursor-pointer"
-                />
-              </motion.button>
-            )}
-          </AnimatePresence>
+        <div className="w-full max-w-5xl mx-auto relative flex items-center gap-2.5">
+          {/* ONLY when sticky/fixed, a prominent Zomindia brand icon appears on the left */}
+          {isScrolled && (
+            <button
+              type="button"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="shrink-0 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+              title="Back to top"
+              aria-label="Back to top"
+            >
+              <img
+                src={logoIconFile}
+                alt="Zomindia"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0 drop-shadow-xs"
+              />
+            </button>
+          )}
 
-          {/* Search Input Container */}
+          {/* Search Input Container - Flexes to fill full width */}
           <div className="relative flex-1 min-w-0">
             <div 
-              className="relative flex items-center bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-3 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 p-1.5 sm:p-2"
+              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 px-3"
               onTouchStartCapture={(e) => e.stopPropagation()} 
               onMouseDownCapture={(e) => e.stopPropagation()}
             >
-              <div className="pl-2 sm:pl-3 pr-1.5 sm:pr-2 text-slate-400 focus-within:text-blue-600 flex items-center shrink-0">
+              <div className="text-slate-400 focus-within:text-blue-600 flex items-center shrink-0 mr-2">
                 <Search size={18} className="stroke-[2.2]" />
               </div>
 
@@ -1609,14 +1502,14 @@ export default function CustomerHome({
                 placeholder={currentPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full py-1.5 sm:py-2 px-1 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 truncate"
+                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery.trim().length > 0 ? "pr-20" : "pr-10"}`}
               />
 
               {searchQuery.trim().length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 shrink-0 cursor-pointer mr-0.5 sm:mr-1"
+                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X size={15} />
@@ -1624,11 +1517,11 @@ export default function CustomerHome({
               )}
 
               <button
-                type="button"
-                className="bg-blue-700 hover:bg-blue-800 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-blue-700/20 active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
                 aria-label="Search"
               >
-                <span>Search</span>
+                <Search className="w-4 h-4" />
               </button>
             </div>
 
@@ -1723,6 +1616,9 @@ export default function CustomerHome({
           </div>
         </div>
       </div>
+
+      {/* Placeholder spacer when fixed to prevent layout jump */}
+      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0" aria-hidden="true" />}
 
       {/* Compact Hero Section */}
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2 pb-1 sm:pt-3 sm:pb-2">

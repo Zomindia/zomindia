@@ -146,7 +146,6 @@ export default function OffersView({
     }
     return null;
   });
-  const [showIOSPrompt, setShowIOSPrompt] = useState(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
   const getElegantName = useCallback((name: string) => {
@@ -156,24 +155,6 @@ export default function OffersView({
       return 'Cool Summer Special';
     }
     return name;
-  }, []);
-
-  useEffect(() => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
-
-    if (isIOS && isSafari && !isStandalone) {
-      let dismissed = false;
-      try {
-        dismissed = sessionStorage.getItem('ios-pwa-prompt-dismissed') === 'true';
-      } catch (err) {
-        console.warn('[PWA] Storage access denied', err);
-      }
-      if (!dismissed) {
-        setShowIOSPrompt(true);
-      }
-    }
   }, []);
 
   useEffect(() => {
@@ -869,51 +850,6 @@ export default function OffersView({
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* Non-intrusive iOS Safari PWA Install Prompt */}
-      <AnimatePresence>
-        {showIOSPrompt && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="fixed bottom-4 left-3 right-3 md:left-auto md:right-6 md:w-84 bg-white border border-slate-200 text-slate-900 rounded-3xl p-4 shadow-2xl z-[150] flex flex-col gap-2.5"
-            id="ios-pwa-prompt"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white">
-                  <Smartphone size={16} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-slate-900">Add to Home Screen</h4>
-                  <p className="text-[10px] text-slate-400 font-medium">Zomindia Web App</p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowIOSPrompt(false);
-                  try {
-                    sessionStorage.setItem('ios-pwa-prompt-dismissed', 'true');
-                  } catch (err) {
-                    console.warn('[PWA] Storage access denied', err);
-                  }
-                }}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                title="Dismiss"
-                id="dismiss-ios-prompt"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Tap <span className="font-bold text-blue-600">Share [↑]</span> in Safari and choose <span className="font-bold text-blue-600">"Add to Home Screen"</span> for instant 1-tap booking access.
-            </p>
-          </motion.div>
         )}
       </AnimatePresence>
     </div>
