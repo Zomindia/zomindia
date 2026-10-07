@@ -5,7 +5,7 @@
  * Auth, or real-time database WebSocket connections.
  */
 
-const CACHE_NAME = 'zomindia-cache-v1';
+const CACHE_NAME = 'zomindia-cache-v3';
 const OFFLINE_URL = '/index.html';
 
 // Workbox manifest injection placeholder (required by vite-plugin-pwa in injectManifest strategy)
@@ -27,6 +27,7 @@ const PRECACHE_ASSETS = [
 
 // Installation: Open cache and add essential app shell assets safely
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
@@ -56,6 +57,28 @@ self.addEventListener('activate', (event) => {
             console.log('[PWA SW] Purging stale obsolete cache:', cacheName);
             return caches.delete(cacheName);
           }
+          // Inside current cache, purge any accidentally cached vite dev modules or node_modules
+          return caches.open(cacheName).then((cache) => {
+            return cache.keys().then((requests) => {
+              return Promise.all(
+                requests.map((req) => {
+                  const u = new URL(req.url);
+                  if (
+                    u.pathname.includes('/node_modules/') ||
+                    u.pathname.includes('/@') ||
+                    u.pathname.includes('/src/') ||
+                    u.pathname.includes('.vite') ||
+                    u.searchParams.has('v') ||
+                    u.searchParams.has('t') ||
+                    u.pathname.includes('chunk-')
+                  ) {
+                    return cache.delete(req);
+                  }
+                  return Promise.resolve();
+                })
+              );
+            });
+          });
         })
       );
     }).then(() => {
@@ -83,7 +106,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. CRITICAL GUARDRAIL: Never intercept or block Firebase services, APIs, Google identity, or WebSockets
+  // 2. CRITICAL GUARDRAIL: Never intercept or block Firebase services, APIs, Google identity, WebSockets, or Vite dev internals
+  const isViteOrDev = 
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.includes('/@') ||
+    url.pathname.includes('/src/') ||
+    url.pathname.includes('.vite') ||
+    url.pathname.includes('chunk-') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t') ||
+    url.searchParams.has('import') ||
+    url.searchParams.has('direct') ||
+    url.pathname.endsWith('.ts') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.jsx') ||
+    url.hostname.includes('run.app') ||
+    url.hostname.includes('localhost');
+
   const isFirebaseOrApi = 
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('firebase') ||
@@ -93,7 +132,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api/') ||
     request.url.includes('socket.io') ||
     request.url.includes('__vite_ping') ||
-    url.hostname.includes('localhost') && url.port === '3000' && !url.pathname.match(/\.(js|css|png|html|json)$/);
+    isViteOrDev;
 
   if (isFirebaseOrApi) {
     // Network-Only: Bypass service worker cache completely

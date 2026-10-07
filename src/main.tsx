@@ -87,43 +87,65 @@ initSecurityShield();
 console.log("[Zomindia Telecom] Whitelisting metadata registered for WebRTC and Masked calling gateway.");
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    // Record if there was already an active controller when the page loaded
-    const hadPreviousController = Boolean(navigator.serviceWorker.controller);
+  const isDevOrPreview = 
+    Boolean(import.meta.env.DEV) || 
+    window.location.hostname.includes('run.app') || 
+    window.location.hostname.includes('localhost');
 
-    navigator.serviceWorker.register('/sw.js')
-      .then((reg) => {
-        console.log('[PWA] Service Worker registered with scope:', reg.scope);
-
-        // Check for updates gracefully
-        reg.addEventListener('updatefound', () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.addEventListener('statechange', () => {
-              // If new worker is installed and we already had an active controller,
-              // notify the user/app or dispatch custom update event without forced immediate reload
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('[PWA] A new version is available.');
-                window.dispatchEvent(new CustomEvent('pwa-update-available'));
-              }
-            });
-          }
-        });
-      })
-      .catch((err) => {
-        console.warn('[PWA] Service Worker registration notice:', err);
-      });
-
-    // Guard controllerchange: Only reload if a PREVIOUS controller was already active before this session.
-    // This strictly prevents the initial install / first page load from reloading the page.
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (hadPreviousController && !refreshing) {
-        refreshing = true;
-        window.location.reload();
+  if (isDevOrPreview) {
+    // In dev / preview environments, unregister all service workers and wipe all caches
+    // to strictly prevent stale Vite pre-bundled chunks, duplicate React copies, and hook errors.
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const reg of registrations) {
+        reg.unregister();
       }
     });
-  });
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.delete(name);
+        });
+      });
+    }
+  } else {
+    window.addEventListener('load', () => {
+      // Record if there was already an active controller when the page loaded
+      const hadPreviousController = Boolean(navigator.serviceWorker.controller);
+
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => {
+          console.log('[PWA] Service Worker registered with scope:', reg.scope);
+
+          // Check for updates gracefully
+          reg.addEventListener('updatefound', () => {
+            const installingWorker = reg.installing;
+            if (installingWorker) {
+              installingWorker.addEventListener('statechange', () => {
+                // If new worker is installed and we already had an active controller,
+                // notify the user/app or dispatch custom update event without forced immediate reload
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('[PWA] A new version is available.');
+                  window.dispatchEvent(new CustomEvent('pwa-update-available'));
+                }
+              });
+            }
+          });
+        })
+        .catch((err) => {
+          console.warn('[PWA] Service Worker registration notice:', err);
+        });
+
+      // Guard controllerchange: Only reload if a PREVIOUS controller was already active before this session.
+      // This strictly prevents the initial install / first page load from reloading the page.
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadPreviousController && !refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    });
+  }
 }
 
 createRoot(document.getElementById('root')!).render(

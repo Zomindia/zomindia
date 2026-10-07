@@ -1,128 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Shield } from 'lucide-react';
+import React from 'react';
 import { LogoIcon } from './BrandLogo';
 
 /**
  * Premium full-screen loading overlay with modern radial ambient glow, 
  * rotating multi-layer rings, pulsing logo, and clean staggered loading subtitles.
+ * Engineered with pure CSS hardware acceleration for zero CPU churn, zero hook dependency,
+ * and reliable rendering during initial application boot.
  */
 export function LoadingScreen({ 
   message = "Initializing zomindia pro services..." 
 }: { 
   message?: string 
 }) {
-  const [phase, setPhase] = useState(0);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (phase === 0) {
-      // 1. Idle on Blue step: Pause for 0.5s
-      timer = setTimeout(() => setPhase(1), 500);
-    } else if (phase === 1) {
-      // 2. Jump from Blue to Green: 0.6s animation
-      timer = setTimeout(() => setPhase(2), 600);
-    } else if (phase === 2) {
-      // 3. Landed on Green: Pause for 0.5s
-      timer = setTimeout(() => setPhase(3), 500);
-    } else if (phase === 3) {
-      // 4. Jump from Green to Yellow: 0.6s animation
-      timer = setTimeout(() => setPhase(4), 600);
-    } else if (phase === 4) {
-      // 5. Landed on Yellow: Pause for 0.5s
-      timer = setTimeout(() => setPhase(5), 500);
-    } else if (phase === 5) {
-      // 6. Jump from Yellow to Red: 0.6s animation
-      timer = setTimeout(() => setPhase(6), 600);
-    } else if (phase === 6) {
-      // 7. Landed on Red: Pause for 0.5s before vanishing
-      timer = setTimeout(() => setPhase(7), 500);
-    } else if (phase === 7) {
-      // 8. Vanish in gold burst: 0.5s animation (Triumphant glow phase 1)
-      timer = setTimeout(() => setPhase(8), 500);
-    } else if (phase === 8) {
-      // 9. gone / reset stage: 0.5s animation (Triumphant glow phase 2)
-      timer = setTimeout(() => setPhase(0), 500);
-    }
-    return () => clearTimeout(timer);
-  }, [phase]);
-
-  const getJumperAnimation = () => {
-    switch (phase) {
-      case 0: // Idle on Blue
-        return { left: 38, bottom: 56, opacity: 1, scale: 1, rotate: 0 };
-      case 1: // Jump from Blue to Green
-        return {
-          left: [38, 108],
-          bottom: [56, 115, 96],
-          scale: [1, 1.25, 0.9, 1],
-          rotate: [0, 15, 0],
-          opacity: 1
-        };
-      case 2: // Landed on Green
-        return { left: 108, bottom: 96, opacity: 1, scale: 1, rotate: 0 };
-      case 3: // Jump from Green to Yellow
-        return {
-          left: [108, 178],
-          bottom: [96, 155, 136],
-          scale: [1, 1.25, 0.9, 1],
-          rotate: [0, 15, 0],
-          opacity: 1
-        };
-      case 4: // Landed on Yellow
-        return { left: 178, bottom: 136, opacity: 1, scale: 1, rotate: 0 };
-      case 5: // Jump from Yellow to Red
-        return {
-          left: [178, 248],
-          bottom: [136, 195, 176],
-          scale: [1, 1.25, 0.9, 1],
-          rotate: [0, 15, 0],
-          opacity: 1
-        };
-      case 6: // Landed on Red (Pause)
-        return { left: 248, bottom: 176, opacity: 1, scale: 1, rotate: 0 };
-      case 7: // Vanishing in gold light burst
-        return {
-          left: 248,
-          bottom: 176,
-          opacity: [1, 0],
-          scale: [1, 1.35, 0],
-          rotate: 0
-        };
-      case 8: // Gone, resetting
-        return { left: 38, bottom: 56, opacity: 0, scale: 0, rotate: 0 };
-      default:
-        return {};
-    }
-  };
-
-  const getJumperTransition = (): any => {
-    if (phase === 1 || phase === 3 || phase === 5) {
-      return {
-        duration: 0.6,
-        ease: "easeInOut",
-      };
-    }
-    if (phase === 7) {
-      return {
-        duration: 0.5,
-        ease: "easeOut",
-      };
-    }
-    if (phase === 0 || phase === 8) {
-      return { duration: 0.1, ease: "easeOut" };
-    }
-    return { duration: 0.15, ease: "linear" };
-  };
-
   const stairs = [
     { color: 'blue', left: 30, bottom: 40, pulse: "steadyPulseBlue 2s infinite ease-in-out", bg: "bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-300" },
     { color: 'green', left: 100, bottom: 80, pulse: "steadyPulseGreen 2s infinite ease-in-out", bg: "bg-gradient-to-b from-emerald-400 to-emerald-600 border border-emerald-300" },
     { color: 'yellow', left: 170, bottom: 120, pulse: "steadyPulseYellow 2s infinite ease-in-out", bg: "bg-gradient-to-b from-amber-400 to-amber-600 border border-amber-300" },
     { color: 'red', left: 240, bottom: 160, pulse: "steadyPulseRed 2s infinite ease-in-out", bg: "bg-gradient-to-b from-rose-400 to-rose-600 border border-rose-300" }
   ];
-
-  const isMainLogoGlowing = phase === 7 || phase === 8;
 
   return (
     <div className="fixed inset-0 min-h-screen bg-slate-50 flex flex-col items-center justify-center overflow-hidden z-[9999] select-none">
@@ -143,6 +38,103 @@ export function LoadingScreen({
           0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.4); }
           50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.85); }
         }
+        @keyframes stairJumperLoop {
+          0%, 10% {
+            left: 38px;
+            bottom: 56px;
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+          14% {
+            left: 73px;
+            bottom: 115px;
+            transform: scale(1.25) rotate(15deg);
+            opacity: 1;
+          }
+          22%, 32% {
+            left: 108px;
+            bottom: 96px;
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+          36% {
+            left: 143px;
+            bottom: 155px;
+            transform: scale(1.25) rotate(15deg);
+            opacity: 1;
+          }
+          44%, 54% {
+            left: 178px;
+            bottom: 136px;
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+          58% {
+            left: 213px;
+            bottom: 195px;
+            transform: scale(1.25) rotate(15deg);
+            opacity: 1;
+          }
+          66%, 76% {
+            left: 248px;
+            bottom: 176px;
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+          84% {
+            left: 248px;
+            bottom: 176px;
+            transform: scale(1.35) rotate(0deg);
+            opacity: 0;
+          }
+          88%, 96% {
+            left: 38px;
+            bottom: 56px;
+            transform: scale(0) rotate(0deg);
+            opacity: 0;
+          }
+          100% {
+            left: 38px;
+            bottom: 56px;
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+        }
+        @keyframes goldBurstLoop {
+          0%, 75% {
+            transform: scale(0.1);
+            opacity: 0;
+          }
+          76% {
+            transform: scale(0.2);
+            opacity: 1;
+          }
+          86% {
+            transform: scale(2.2);
+            opacity: 0;
+          }
+          87%, 100% {
+            transform: scale(0.1);
+            opacity: 0;
+          }
+        }
+        @keyframes topLogoPulse {
+          0%, 75% {
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.35), inset 0 0 10px rgba(255, 215, 0, 0.15);
+            border-color: #ffd700;
+            transform: scale(1);
+          }
+          80% {
+            box-shadow: 0 0 50px rgba(255, 215, 0, 0.95), inset 0 0 25px rgba(255, 215, 0, 0.6);
+            border-color: #fffbcf;
+            transform: scale(1.08);
+          }
+          90%, 100% {
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.35), inset 0 0 10px rgba(255, 215, 0, 0.15);
+            border-color: #ffd700;
+            transform: scale(1);
+          }
+        }
       `}</style>
 
       {/* Blurred Background Image - Rajwada Palace Indore */}
@@ -157,19 +149,9 @@ export function LoadingScreen({
       <div className="relative flex flex-col items-center justify-center font-sans text-center z-10 max-w-md w-full px-6">
         
         {/* Fixed gold-bordered brand logo at top center */}
-        <motion.div
-          animate={{
-            boxShadow: isMainLogoGlowing
-              ? "0 0 60px rgba(255, 215, 0, 1), inset 0 0 30px rgba(255, 215, 0, 0.7)"
-              : "0 0 15px rgba(255, 215, 0, 0.35), inset 0 0 10px rgba(255, 215, 0, 0.15)",
-            borderColor: isMainLogoGlowing ? "#fffbcf" : "#ffd700",
-            scale: isMainLogoGlowing ? [1, 1.15, 1.08] : 1
-          }}
-          transition={{
-            duration: isMainLogoGlowing ? 0.8 : 0.8,
-            ease: "easeInOut"
-          }}
-          className="w-24 h-24 rounded-3xl bg-white border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl"
+        <div
+          style={{ animation: 'topLogoPulse 4.8s infinite ease-in-out' }}
+          className="w-24 h-24 rounded-3xl bg-white border-2 flex items-center justify-center p-3 relative mb-8 shadow-2xl transition-transform"
         >
           <div className="absolute inset-0.5 rounded-[22px] border border-amber-500/25 pointer-events-none" />
           <img 
@@ -178,7 +160,7 @@ export function LoadingScreen({
             className="w-[68px] h-[68px] object-contain select-none animate-pulse"
             referrerPolicy="no-referrer"
           />
-        </motion.div>
+        </div>
 
         {/* Stair animation container */}
         <div className="relative w-[320px] h-[240px] flex items-center justify-center mb-6">
@@ -196,24 +178,21 @@ export function LoadingScreen({
             />
           ))}
 
-          {/* Gold splash burst when landing on Red step (phase 7) */}
-          {phase === 7 && (
-            <motion.div
-              initial={{ scale: 0.1, opacity: 1 }}
-              animate={{ scale: 2.2, opacity: 0 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-              className="absolute w-14 h-14 bg-amber-400 rounded-full blur-md pointer-events-none"
-              style={{
-                left: "241px", // Centered near the red step center (240 + 28 - 28)
-                bottom: "167px", // Centered on the red step top (160 + 7)
-              }}
-            />
-          )}
+          {/* Gold splash burst when landing on Red step */}
+          <div
+            style={{
+              left: "241px",
+              bottom: "167px",
+              animation: "goldBurstLoop 4.8s infinite ease-out"
+            }}
+            className="absolute w-14 h-14 bg-amber-400 rounded-full blur-md pointer-events-none"
+          />
 
           {/* Moving Element: Smaller Zomindia logo with gold glow */}
-          <motion.div
-            animate={getJumperAnimation()}
-            transition={getJumperTransition()}
+          <div
+            style={{
+              animation: "stairJumperLoop 4.8s infinite ease-in-out"
+            }}
             className="absolute w-10 h-10 rounded-xl bg-white border border-[#ffd700] flex items-center justify-center p-1.5 shadow-[0_0_15px_rgba(255,215,0,0.65)]"
           >
             <img 
@@ -222,13 +201,23 @@ export function LoadingScreen({
               className="w-full h-full object-contain select-none"
               referrerPolicy="no-referrer"
             />
-          </motion.div>
+          </div>
         </div>
 
         {/* Brand Shield & Info */}
         <div className="space-y-2 mt-4 text-center">
           <h2 className="text-slate-900 text-sm font-black uppercase tracking-[0.25em] flex items-center justify-center gap-2">
-            <Shield className="text-[#ffd700] w-4 h-4 fill-[#ffd700]/15" />
+            <svg 
+              className="text-[#ffd700] w-4 h-4 fill-[#ffd700]/15 shrink-0" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.8 17 5 19 5a1 1 0 0 1 1 1z" />
+            </svg>
             Zomindia Trust Shield
           </h2>
           <p className="text-slate-600 text-[9px] font-black uppercase tracking-[0.2em] min-h-[16px]">
@@ -241,7 +230,7 @@ export function LoadingScreen({
 }
 
 /**
- * A highly reusable, beautifully responsive inline spinner using multi-ring CSS-motion 
+ * A highly reusable, beautifully responsive inline spinner using multi-ring CSS
  * which scales seamlessly based on size props.
  */
 export function LoadingSpinner({ 
@@ -265,10 +254,8 @@ export function LoadingSpinner({
   return (
     <div className="flex items-center justify-center">
       <div className={`relative ${size === "xs" ? "w-4 h-4" : size === "sm" ? "w-6 h-6" : size === "md" ? "w-10 h-10" : "w-14 h-14"}`}>
-        <motion.div 
-          className={`absolute inset-0 rounded-full border-solid ${sizeClasses[size]} ${ringColorClasses}`}
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, ease: "linear", duration: 0.8 }}
+        <div 
+          className={`absolute inset-0 rounded-full border-solid animate-spin ${sizeClasses[size]} ${ringColorClasses}`}
         />
       </div>
     </div>
@@ -372,4 +359,3 @@ export function ServiceCardSkeleton() {
     </div>
   );
 }
-
