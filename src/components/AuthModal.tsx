@@ -8,7 +8,7 @@ import {
   ConfirmationResult,
   updateProfile,
 } from 'firebase/auth';
-import { getFriendlyAuthErrorMessage } from '../services/authService';
+import { getFriendlyAuthErrorMessage, loginWithGoogle } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from '../lib/recaptcha';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
@@ -648,78 +648,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   };
 
-  // Hybrid Google Sign In: popup in iframe (AI Studio preview), redirect in standalone / TWA mobile app / Android localhost
+  // Robust Google Sign In using centralized loginWithGoogle helper
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      const userCredential = await loginWithGoogle();
+      if (userCredential && userCredential.user) {
+        const u = userCredential.user;
+        setVerifiedUid(u.uid);
+        setDisplayName(u.displayName || '');
+        setEmail(u.email || '');
 
-      // Determine if running inside an iframe (e.g. AI Studio development preview)
-      let isInsideIframe = false;
-      try {
-        isInsideIframe = window.self !== window.top;
-      } catch (e) {
-        // Cross-origin restriction indicates app is embedded in an iframe
-        isInsideIframe = true;
-      }
+        const pDoc = await getDoc(doc(db, 'users', u.uid));
+        const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
 
-      // Android TWA / WebView / Localhost wrapper check
-      const isAndroidWrapper = 
-        window.location.hostname === 'localhost' ||
-        window.location.protocol === 'capacitor:' ||
-        Boolean((window as any).Capacitor?.isNativePlatform()) ||
-        (!isInsideIframe && /Android/i.test(navigator.userAgent));
-
-      if (isAndroidWrapper) {
-        console.info('[AuthModal] Running in Android WebView/TWA wrapper on localhost - initiating signInWithRedirect for Google Auth');
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
-      if (isInsideIframe) {
-        console.info('[AuthModal] Running inside iframe (AI Studio Preview) - using signInWithPopup for Google Auth');
-        try {
-          const userCredential = await signInWithPopup(auth, provider);
-          if (userCredential && userCredential.user) {
-            const u = userCredential.user;
-            setVerifiedUid(u.uid);
-            setDisplayName(u.displayName || '');
-            setEmail(u.email || '');
-
-            const pDoc = await getDoc(doc(db, 'users', u.uid));
-            const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
-
-            if (!hasStoredPhone) {
-              setView('google-phone-setup');
-            } else {
-              setView('success-transition');
-              setTimeout(() => {
-                onSuccess();
-                onClose();
-                resetForm();
-              }, 1200);
-            }
-          }
-        } catch (popupErr: any) {
-          const errCode = (popupErr?.code || popupErr?.message || '').toString();
-          if (
-            errCode.includes('unauthorized-domain') || 
-            errCode.includes('popup-blocked') || 
-            errCode.includes('operation-not-supported')
-          ) {
-            console.warn('[AuthModal] Popup auth unavailable, falling back to redirect:', popupErr);
-            await signInWithRedirect(auth, provider);
-            return;
-          }
-          throw popupErr;
+        if (!hasStoredPhone) {
+          setView('google-phone-setup');
+        } else {
+          setView('success-transition');
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+            resetForm();
+          }, 1200);
         }
-      } else {
-        console.info('[AuthModal] Running in top-level window / TWA - using signInWithRedirect for Google Auth');
-        await signInWithRedirect(auth, provider);
-        // Browser redirects to Google OAuth; getRedirectResult resolves upon returning
       }
+      // If userCredential is null, signInWithRedirect was initiated on mobile / standalone TWA
     } catch (err: any) {
       console.error("Google authentication error:", err);
       setError(getFriendlyAuthErrorMessage(err));

@@ -43,7 +43,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult, signOutUser } from './services/authService';
+import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -85,7 +85,7 @@ const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, c
       <img
         src="/logo-horizontal.png"
         alt="Zomindia"
-        className="h-8 sm:h-9 w-auto object-contain transition-all duration-300"
+        className="h-9 sm:h-10 w-auto object-contain -ml-1 scale-105 origin-left transition-all duration-300"
         referrerPolicy="no-referrer"
       />
     </div>
@@ -627,21 +627,48 @@ export default function App() {
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
 
-    // 1. Call getRedirectAuthResult inside the main auth/app initialization useEffect so the user is authenticated upon returning to the app
-    getRedirectAuthResult()
-      .then(async (userCredential) => {
-        if (!isMounted || !userCredential || !userCredential.user) return;
-        const u = userCredential.user;
+    // 1. Listen for Google OAuth Redirect Sign-In on App Mount
+    handleRedirectAuthResult()
+      .then(async (u) => {
+        if (!isMounted || !u) return;
         setUser(u);
         console.info('[Auth] Google Sign-In redirect resolved user upon return:', u.uid);
 
-        // Check if user has registered a phone number in Firestore
+        // Ensure user profile is fetched / synced in Firestore (users/{uid})
         const userDocRef = doc(db, 'users', u.uid);
         const userDocSnap = await getDoc(userDocRef);
-        const userData = userDocSnap.data();
+
+        if (!userDocSnap.exists()) {
+          // Provision initial user profile document in Firestore
+          const initialProfileData = {
+            uid: u.uid,
+            displayName: u.displayName || 'Service Customer',
+            fullName: u.displayName || 'Service Customer',
+            email: u.email || '',
+            photoURL: u.photoURL || '',
+            role: 'customer',
+            currentMode: 'customer',
+            walletBalance: 100, // ₹100 Welcome Bonus
+            city: 'Indore',
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          };
+          await setDoc(userDocRef, initialProfileData, { merge: true });
+        } else {
+          // Update last login and basic profile details
+          await updateDoc(userDocRef, {
+            lastLoginAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            ...(u.photoURL ? { photoURL: u.photoURL } : {}),
+            ...(u.email ? { email: u.email } : {}),
+          }).catch((e) => console.warn('[Auth] Non-fatal profile touch notice:', e));
+        }
+
+        const freshDoc = await getDoc(userDocRef);
+        const userData = freshDoc.data();
 
         const hasStoredPhone = Boolean(
-          userDocSnap.exists() &&
+          freshDoc.exists() &&
           userData?.phoneNumber &&
           userData.phoneNumber.toString().trim().length >= 10
         );
@@ -654,10 +681,12 @@ export default function App() {
             email: u.email || '',
           });
           setIsAuthModalOpen(true);
+        } else {
+          setToastMessage(`Welcome, ${userData?.displayName || u.displayName || 'Customer'}!`);
         }
       })
       .catch((err) => {
-        console.warn('[Auth] getRedirectAuthResult notice:', err);
+        console.error('Redirect sign-in error:', err);
       });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
@@ -1761,11 +1790,11 @@ If you have any billing questions, or if your refund is delayed, please email us
       <NotificationSystem onNavigate={setActiveTab} />
       {/* Navigation */}
       <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto pl-1.5 pr-2 sm:pl-3 sm:pr-3 lg:px-8">
           <div className="flex justify-between h-14 sm:h-16 items-center">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <motion.div
-                className="flex items-center cursor-pointer group relative px-2.5 py-1.5 rounded-2xl transition-all duration-300"
+                className="flex items-center cursor-pointer group relative pl-0 pr-1 py-1.5 rounded-2xl transition-all duration-300"
                 onClick={() => setActiveTab('home')}
                 id="nav-logo"
                 whileHover={{ scale: 1.02 }}
@@ -1777,14 +1806,14 @@ If you have any billing questions, or if your refund is delayed, please email us
                 
                 <Logo 
                   size={undefined} 
-                  className="h-9 sm:h-9 md:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
+                  className="h-9 sm:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
                 />
               </motion.div>
             </div>
 
             {renderNavigation()}
 
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
               {profile ? (
                 <>
                   {/* Desktop Only: Standalone Bell Icon */}
@@ -1870,18 +1899,18 @@ If you have any billing questions, or if your refund is delayed, please email us
                   </div>
 
                   {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
-                  <div className="flex md:hidden items-center gap-2 select-none">
+                  <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                    <span className="text-[10px] font-bold bg-sky-50/80 border border-sky-100 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-xs">
+                    <span className="text-[10px] font-bold bg-sky-50/80 border border-sky-100 px-2 py-1 rounded-xl flex items-center gap-1 shadow-xs">
                       <Sparkles size={11} className="text-[#00baf2] shrink-0" />
-                      <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
+                      <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[85px] xs:max-w-none">
                         {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
                       </span>
                     </span>
                     {/* IMMUTABLE GREETER BLOCK END */}
                     <button
                       onClick={() => setIsCitySelectorOpen(true)}
-                      className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-2 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all"
+                      className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-1.5 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all shrink-0"
                     >
                       📍 INDORE
                     </button>
@@ -1897,7 +1926,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                         displayName={profile.displayName || profile.fullName}
                         email={profile.email}
                         isPremium={profile.isPremium}
-                        sizeClass="w-10 h-10"
+                        sizeClass="w-9 h-9 sm:w-10 sm:h-10"
                       />
                     </button>
                   </div>
