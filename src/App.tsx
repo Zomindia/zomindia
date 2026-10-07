@@ -260,10 +260,20 @@ export default function App() {
     window.addEventListener('open-profile-menu', handleOpen);
     window.addEventListener('close-profile-menu', handleClose);
     window.addEventListener('toggle-profile-menu', handleToggle);
+    window.addEventListener('open-profile-drawer', handleOpen);
+    window.addEventListener('close-profile-drawer', handleClose);
+    window.addEventListener('toggle-profile-drawer', handleToggle);
+    window.addEventListener('open-account-popup', handleOpen);
+    window.addEventListener('toggle-account-popup', handleToggle);
     return () => {
       window.removeEventListener('open-profile-menu', handleOpen);
       window.removeEventListener('close-profile-menu', handleClose);
       window.removeEventListener('toggle-profile-menu', handleToggle);
+      window.removeEventListener('open-profile-drawer', handleOpen);
+      window.removeEventListener('close-profile-drawer', handleClose);
+      window.removeEventListener('toggle-profile-drawer', handleToggle);
+      window.removeEventListener('open-account-popup', handleOpen);
+      window.removeEventListener('toggle-account-popup', handleToggle);
     };
   }, []);
   const [profileSubSection, setProfileSubSection] = useState<string | null>(null);
@@ -1881,6 +1891,34 @@ If you have any billing questions, or if your refund is delayed, please email us
                         setActiveTab(tab, subTab);
                         setIsAccountPopupOpen(false);
                       }}
+                      onOpenWallet={() => {
+                        setActiveTab('wallet');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenProfileSettings={() => {
+                        setActiveTab('profile');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenBookings={() => {
+                        setActiveTab('bookings');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenOffers={() => {
+                        setActiveTab('offers');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenAddresses={() => {
+                        setActiveTab('profile', 'addresses');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenAmc={() => {
+                        setActiveTab('amcs');
+                        setIsAccountPopupOpen(false);
+                      }}
+                      onOpenZomini={() => {
+                        setIsAccountPopupOpen(false);
+                        window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+                      }}
                       onOpenAiSupport={() => {
                         setIsAccountPopupOpen(false);
                         window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
@@ -2043,6 +2081,34 @@ If you have any billing questions, or if your refund is delayed, please email us
         onNavigate={(tab, subTab) => {
           setActiveTab(tab, subTab);
           setIsAccountPopupOpen(false);
+        }}
+        onOpenWallet={() => {
+          setActiveTab('wallet');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenProfileSettings={() => {
+          setActiveTab('profile');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenBookings={() => {
+          setActiveTab('bookings');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenOffers={() => {
+          setActiveTab('offers');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenAddresses={() => {
+          setActiveTab('profile', 'addresses');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenAmc={() => {
+          setActiveTab('amcs');
+          setIsAccountPopupOpen(false);
+        }}
+        onOpenZomini={() => {
+          setIsAccountPopupOpen(false);
+          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
         }}
         onOpenAiSupport={() => {
           setIsAccountPopupOpen(false);

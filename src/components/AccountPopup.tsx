@@ -1,492 +1,357 @@
-import React, { useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import Avatar from "./Avatar";
-import { UserProfile } from "../types";
-import {
-  User,
-  Package,
-  MapPin,
-  ShieldCheck,
-  MessageSquare,
-  LogOut,
-  CreditCard,
-  ChevronRight,
-  X,
-  RefreshCw,
-  Shield,
-} from "lucide-react";
+import React, { useEffect } from 'react';
+import { 
+  X, 
+  User, 
+  Calendar, 
+  Tag, 
+  MapPin, 
+  ShieldCheck, 
+  MessageSquare, 
+  LogOut, 
+  ChevronRight, 
+  Wallet 
+} from 'lucide-react';
+import { auth } from '../services/firebase';
+import { UserProfile } from '../types';
 
 export type AccountNavTab =
-  | "profile"
-  | "bookings"
-  | "amcs"
-  | "wallet"
-  | "admin"
-  | "partner"
-  | "help";
+  | 'profile'
+  | 'bookings'
+  | 'amcs'
+  | 'wallet'
+  | 'admin'
+  | 'partner'
+  | 'offers'
+  | 'help';
 
 export interface AccountPopupProps {
   isOpen: boolean;
   onClose: () => void;
-  profile: UserProfile | null;
-  mode?: "auto" | "desktop" | "mobile";
-  currentMode?: "customer" | "partner";
-  onSwitchMode?: (mode: "customer" | "partner") => void;
-  onNavigate: (tab: any, subTabOrArg?: string | null) => void;
-  onOpenAiSupport: () => void;
-  onLogout: () => Promise<void> | void;
+  user?: any;
+  profile?: UserProfile | any | null;
+  mode?: 'auto' | 'desktop' | 'mobile';
+  currentMode?: 'customer' | 'partner';
+  onSwitchMode?: (mode: 'customer' | 'partner') => void;
+  onNavigate?: (tab: any, subTabOrArg?: string | null) => void;
+  onOpenSupport?: () => void;
+  onOpenAiSupport?: () => void;
+  onOpenZomini?: () => void;
+  onLogout?: () => Promise<void> | void;
   onOpenWallet?: () => void;
   onOpenProfileSettings?: () => void;
   onOpenBookings?: () => void;
+  onOpenOffers?: () => void;
   onOpenAddresses?: () => void;
   onOpenAmc?: () => void;
-  onOpenZomini?: () => void;
 }
 
-export default function AccountPopup({
+export const AccountPopup: React.FC<AccountPopupProps> = ({
   isOpen,
   onClose,
+  user,
   profile,
-  mode = "auto",
-  currentMode = "customer",
+  mode = 'auto',
+  currentMode,
   onSwitchMode,
-  onNavigate,
+  onNavigate = () => {},
+  onOpenSupport,
   onOpenAiSupport,
+  onOpenZomini,
   onLogout,
   onOpenWallet,
   onOpenProfileSettings,
   onOpenBookings,
+  onOpenOffers,
   onOpenAddresses,
   onOpenAmc,
-  onOpenZomini,
-}: AccountPopupProps) {
+}) => {
   // Close on Escape key press
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen || !profile) return null;
+  if (!isOpen) return null;
+
+  const currentUser = user || profile || {};
 
   const displayName =
-    profile.displayName && profile.displayName !== "User"
-      ? profile.displayName
-      : profile.fullName || "Hitakshi Chopra";
+    currentUser.displayName && currentUser.displayName !== 'User'
+      ? currentUser.displayName
+      : currentUser.fullName || 'कस्टमर';
 
-  const phone =
-    profile.phoneNumber || profile.mobile || "+91 96302 34563";
+  const phoneOrEmail =
+    currentUser.phoneNumber ||
+    currentUser.mobile ||
+    currentUser.email ||
+    '+91 97521 70789';
 
-  const locationTag = profile.city || "Indore";
+  const walletBalanceDisplay =
+    currentUser.walletBalance !== undefined && currentUser.walletBalance !== null
+      ? `₹${Number(currentUser.walletBalance).toLocaleString('en-IN')}`
+      : '₹0';
 
-  const walletDisplayBalance =
-    profile.walletBalance !== undefined && profile.walletBalance !== null
-      ? Number(profile.walletBalance).toLocaleString("en-IN")
-      : "9,230";
-
-  const handleWalletClick = () => {
-    if (onOpenWallet) {
+  const handleAction = (tab: string, subTab?: string | null) => {
+    if (tab === 'wallet' && onOpenWallet) {
       onOpenWallet();
-    } else {
-      onNavigate("wallet");
-    }
-    try {
-      window.dispatchEvent(new CustomEvent("open-wallet-modal", { detail: { open: true } }));
-      window.dispatchEvent(new CustomEvent("open-wallet-view", { detail: { open: true } }));
-    } catch {
-      // safe fallback
-    }
-    onClose();
-  };
-
-  const handleProfileSettingsClick = () => {
-    if (onOpenProfileSettings) {
+    } else if (tab === 'bookings' && onOpenBookings) {
+      onOpenBookings();
+    } else if (tab === 'offers' && onOpenOffers) {
+      onOpenOffers();
+    } else if (tab === 'amcs' && onOpenAmc) {
+      onOpenAmc();
+    } else if (tab === 'profile' && subTab === 'addresses' && onOpenAddresses) {
+      onOpenAddresses();
+    } else if (tab === 'profile' && onOpenProfileSettings) {
       onOpenProfileSettings();
     } else {
-      onNavigate("profile");
+      onNavigate(tab, subTab);
     }
+
     try {
-      window.dispatchEvent(new CustomEvent("open-profile-settings", { detail: { open: true } }));
+      if (tab === 'wallet') {
+        window.dispatchEvent(new CustomEvent('open-wallet-modal', { detail: { open: true } }));
+        window.dispatchEvent(new CustomEvent('open-wallet-view', { detail: { open: true } }));
+      } else if (tab === 'bookings') {
+        window.dispatchEvent(new CustomEvent('open-bookings-view', { detail: { open: true } }));
+      } else if (tab === 'offers') {
+        window.dispatchEvent(new CustomEvent('open-offers-view', { detail: { open: true } }));
+      } else if (tab === 'amcs') {
+        window.dispatchEvent(new CustomEvent('open-amc-view', { detail: { open: true } }));
+      } else if (tab === 'profile') {
+        window.dispatchEvent(new CustomEvent('open-profile-settings', { detail: { open: true } }));
+        if (subTab === 'addresses') {
+          window.dispatchEvent(new CustomEvent('open-profile-section', { detail: { section: 'addresses' } }));
+          window.dispatchEvent(new CustomEvent('open-address-modal', { detail: { open: true } }));
+        }
+      }
     } catch {
       // safe fallback
     }
+
     onClose();
   };
 
-  const handleBookingsClick = () => {
-    if (onOpenBookings) {
-      onOpenBookings();
-    } else {
-      onNavigate("bookings");
-    }
+  const handleLogout = async () => {
     try {
-      window.dispatchEvent(new CustomEvent("open-bookings-view", { detail: { open: true } }));
-    } catch {
-      // safe fallback
-    }
-    onClose();
-  };
-
-  const handleAddressesClick = () => {
-    if (onOpenAddresses) {
-      onOpenAddresses();
-    } else {
-      onNavigate("profile", "addresses");
-    }
-    try {
-      window.dispatchEvent(
-        new CustomEvent("open-profile-section", {
-          detail: { section: "addresses" },
-        })
-      );
-      window.dispatchEvent(
-        new CustomEvent("open-address-modal", {
-          detail: { open: true },
-        })
-      );
-    } catch {
-      // safe fallback
-    }
-    onClose();
-  };
-
-  const handleAmcClick = () => {
-    if (onOpenAmc) {
-      onOpenAmc();
-    } else {
-      onNavigate("amcs");
-    }
-    try {
-      window.dispatchEvent(new CustomEvent("open-amc-view", { detail: { open: true } }));
-    } catch {
-      // safe fallback
-    }
-    onClose();
-  };
-
-  const handleHelpSupportClick = () => {
-    if (onOpenZomini) {
-      onOpenZomini();
-    } else {
-      onOpenAiSupport();
-    }
-    try {
-      window.dispatchEvent(
-        new CustomEvent("toggle-ai-chat", {
-          detail: { open: true },
-        })
-      );
-      window.dispatchEvent(
-        new CustomEvent("open-zomini", {
-          detail: { open: true },
-        })
-      );
-    } catch {
-      // safe fallback
-    }
-    onClose();
-  };
-
-  const handleLogoutClick = async () => {
-    onClose();
-    try {
-      await onLogout();
+      if (onLogout) {
+        await onLogout();
+      } else {
+        await auth.signOut();
+        localStorage.clear();
+        sessionStorage.clear();
+        onClose();
+        window.location.reload();
+      }
     } catch (err) {
-      console.error("[AccountPopup] Logout error:", err);
+      console.error('Logout error:', err);
     }
   };
 
-  const renderContent = (isMobileSheet: boolean = false) => (
-    <div className="flex flex-col text-left relative z-10 pointer-events-auto">
-      {/* Header Strip inside Popup: User avatar + Name ("Hitakshi Chopra") + Phone/Indore tag in a clean, compact flex row */}
-      <div className="flex items-center gap-3">
-        <Avatar
-          photoURL={profile.photoURL}
-          displayName={displayName}
-          email={profile.email}
-          isPremium={profile.isPremium}
-          sizeClass="w-11 h-11 shrink-0"
-        />
+  const menuItems = [
+    {
+      id: 'wallet',
+      label: 'My Wallet / वॉलेट',
+      icon: Wallet,
+      badge: `${walletBalanceDisplay} Balance`,
+      action: () => handleAction('wallet')
+    },
+    {
+      id: 'bookings',
+      label: 'My Bookings / मेरी बुकिंग्स',
+      icon: Calendar,
+      action: () => handleAction('bookings')
+    },
+    {
+      id: 'profile',
+      label: 'Profile & Settings / प्रोफ़ाइल',
+      icon: User,
+      action: () => handleAction('profile')
+    },
+    {
+      id: 'offers',
+      label: 'Offers & Coupons / ऑफ़र्स',
+      icon: Tag,
+      action: () => handleAction('offers')
+    },
+    {
+      id: 'addresses',
+      label: 'Saved Addresses / पते',
+      icon: MapPin,
+      action: () => handleAction('profile', 'addresses')
+    },
+    {
+      id: 'amcs',
+      label: 'Annual Maintenance (AMC)',
+      icon: ShieldCheck,
+      action: () => handleAction('amcs')
+    },
+    {
+      id: 'support',
+      label: 'Help & Support (ZOMINI)',
+      icon: MessageSquare,
+      action: () => {
+        if (onOpenZomini) onOpenZomini();
+        else if (onOpenAiSupport) onOpenAiSupport();
+        else if (onOpenSupport) onOpenSupport();
+        else {
+          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
+          window.dispatchEvent(new CustomEvent('open-zomini', { detail: { open: true } }));
+        }
+        onClose();
+      }
+    }
+  ];
 
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight truncate leading-tight">
-            {displayName}
-          </h3>
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-0.5 truncate">
-            <span className="truncate">{phone}</span>
-            <span className="text-slate-300 shrink-0">•</span>
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px] shrink-0">
-              📍 {locationTag}
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-95 rounded-xl transition-all cursor-pointer shrink-0 relative z-10 pointer-events-auto"
-          aria-label="Close account menu"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* 1. Wallet badge: Mini pill showing Wallet: ₹9,230 with a subtle green tint & VIEW button */}
-      <button
-        type="button"
-        onClick={handleWalletClick}
-        className="w-full mt-3 px-3 py-2 bg-emerald-50/90 hover:bg-emerald-100/90 active:bg-emerald-200/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between transition-all group cursor-pointer relative z-10 pointer-events-auto shadow-2xs active:scale-[0.98]"
-        title="View Wallet Balance"
-        id="account-popup-wallet-btn"
-      >
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-            <CreditCard size={11} className="stroke-[2.5]" />
-          </div>
-          <span className="text-xs font-black text-emerald-800 tracking-tight">
-            Wallet: ₹{walletDisplayBalance}
-          </span>
-        </div>
-        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-          VIEW <ChevronRight size={12} />
-        </span>
-      </button>
-
-      {/* Quick Action Menu Items (Single column with subtle hover states, clean SVG icons, no giant blocks) */}
-      <div className="mt-3 space-y-1">
-        {/* 2. 👤 My Profile & Settings */}
-        <button
-          type="button"
-          onClick={handleProfileSettingsClick}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-          id="account-popup-profile-btn"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-              <User size={15} />
-            </div>
-            <span>My Profile & Settings</span>
-          </div>
-          <ChevronRight
-            size={14}
-            className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all"
-          />
-        </button>
-
-        {/* 3. 📦 My Bookings */}
-        <button
-          type="button"
-          onClick={handleBookingsClick}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-          id="account-popup-bookings-btn"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-              <Package size={15} />
-            </div>
-            <span>My Bookings</span>
-          </div>
-          <ChevronRight
-            size={14}
-            className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all"
-          />
-        </button>
-
-        {/* 4. 📍 Saved Addresses */}
-        <button
-          type="button"
-          onClick={handleAddressesClick}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-          id="account-popup-addresses-btn"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-              <MapPin size={15} />
-            </div>
-            <span>Saved Addresses</span>
-          </div>
-          <ChevronRight
-            size={14}
-            className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all"
-          />
-        </button>
-
-        {/* 5. 🛡️ Annual Maintenance (AMC) */}
-        <button
-          type="button"
-          onClick={handleAmcClick}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-          id="account-popup-amcs-btn"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-              <ShieldCheck size={15} />
-            </div>
-            <span>Annual Maintenance (AMC)</span>
-          </div>
-          <ChevronRight
-            size={14}
-            className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all"
-          />
-        </button>
-
-        {/* 6. 💬 Help & Support (ZOMINI) */}
-        <button
-          type="button"
-          onClick={handleHelpSupportClick}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-700 active:bg-slate-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-          id="account-popup-support-btn"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-              <MessageSquare size={15} />
-            </div>
-            <span>Help & Support (ZOMINI)</span>
-          </div>
-          <span className="text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
-            AI
-          </span>
-        </button>
-
-        {/* Dual Persona Switcher if Partner/Admin */}
-        {(profile.role === "partner" ||
-          profile.role === "admin" ||
-          profile.partnerId) && (
-          <button
-            type="button"
-            onClick={() => {
-              onSwitchMode?.(
-                currentMode === "customer" ? "partner" : "customer",
-              );
-              onClose();
-            }}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-black text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 active:bg-indigo-200/60 border border-indigo-100/80 transition-all cursor-pointer text-left relative z-10 pointer-events-auto mt-1 active:scale-[0.99]"
-            id="account-popup-mode-switch-btn"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                <RefreshCw size={13} />
-              </div>
-              <span className="truncate">
-                {currentMode === "customer"
-                  ? "Switch to Partner Mode"
-                  : "Switch to Customer Mode"}
-              </span>
-            </div>
-            <span className="text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider shrink-0">
-              LIVE
-            </span>
-          </button>
-        )}
-
-        {/* Admin Panel button if Admin */}
-        {profile.role === "admin" && (
-          <button
-            type="button"
-            onClick={() => {
-              onNavigate("admin");
-              onClose();
-            }}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-red-700 hover:bg-red-50 active:bg-red-100 transition-all group cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-            id="account-popup-admin-btn"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                <Shield size={15} />
-              </div>
-              <span>Admin Panel</span>
-            </div>
-            <ChevronRight
-              size={14}
-              className="text-red-300 group-hover:text-red-600 group-hover:translate-x-0.5 transition-all"
-            />
-          </button>
-        )}
-      </div>
-
-      {/* Bottom Divider & Logout: Red-tinted clean button: "Log Out" */}
-      <div className="my-2.5 border-t border-gray-100" />
-
-      <button
-        type="button"
-        onClick={handleLogoutClick}
-        className="w-full text-red-600 hover:bg-red-50 active:bg-red-100 rounded-xl py-2.5 px-3 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer text-left relative z-10 pointer-events-auto active:scale-[0.99]"
-        id="account-popup-logout-btn"
-      >
-        <LogOut size={15} className="text-red-600 shrink-0" />
-        <span>Log Out</span>
-      </button>
-
-      {/* Extra space on mobile bottom sheet for safe area */}
-      {isMobileSheet && <div className="h-2" />}
-    </div>
-  );
-
-  const showDesktop = mode === "auto" || mode === "desktop";
-  const showMobile = mode === "auto" || mode === "mobile";
+  const responsiveClass =
+    mode === 'desktop' ? 'hidden md:flex' :
+    mode === 'mobile' ? 'flex md:hidden' :
+    'flex';
 
   return (
-    <AnimatePresence>
-      {/* 1. Desktop & Tablet: Absolute dropdown anchored right below the [HI] avatar */}
-      {showDesktop && (
-        <div className={mode === "auto" ? "hidden md:block" : "block"}>
-          {/* Subtle click-outside backdrop to dismiss */}
-          <div
-            className="fixed inset-0 z-[80] bg-black/5"
-            onClick={onClose}
-            aria-hidden="true"
-          />
+    <div 
+      className={`fixed inset-0 z-[100] justify-end bg-black/50 backdrop-blur-sm animate-fade-in ${responsiveClass}`}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div 
+        className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto animate-slide-left relative z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div>
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-amber-50">
+            <div className="flex items-center space-x-3 min-w-0">
+              <div className="w-12 h-12 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-lg shadow shrink-0 overflow-hidden">
+                {currentUser?.photoURL ? (
+                  <img 
+                    src={currentUser.photoURL} 
+                    alt={displayName} 
+                    className="w-full h-full object-cover" 
+                  />
+                ) : displayName ? (
+                  displayName.slice(0, 2).toUpperCase()
+                ) : (
+                  'HI'
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold text-gray-800 text-base truncate">
+                  {displayName}
+                </h3>
+                <p className="text-xs text-gray-500 truncate">
+                  {phoneOrEmail}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                    📍 Indore (MP)
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button 
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-amber-100 text-gray-600 transition cursor-pointer shrink-0"
+              aria-label="Close Account Menu"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-[90] pointer-events-auto animate-in fade-in-50 zoom-in-95 text-left"
-            role="menu"
-            id="desktop-account-popup"
-          >
-            {renderContent(false)}
-          </motion.div>
+          {/* Quick Action Navigation Items */}
+          <div className="p-4 space-y-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.action}
+                  className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-amber-50/70 active:bg-amber-100/70 transition text-left group cursor-pointer border border-transparent hover:border-amber-200/50"
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="p-2 rounded-lg bg-gray-50 group-hover:bg-amber-100 text-gray-600 group-hover:text-amber-700 transition shrink-0">
+                      <Icon size={18} />
+                    </div>
+                    <span className="font-medium text-gray-700 group-hover:text-gray-900 text-sm truncate">
+                      {item.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 shrink-0 ml-2">
+                    {item.badge && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-semibold border border-amber-200">
+                        {item.badge}
+                      </span>
+                    )}
+                    <ChevronRight size={16} className="text-gray-400 group-hover:text-gray-600 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Optional Partner Mode Switch button if onSwitchMode is supplied */}
+            {onSwitchMode && (
+              <div className="pt-2 mt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = currentMode === 'partner' ? 'customer' : 'partner';
+                    onSwitchMode(nextMode);
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:bg-slate-200 transition text-left cursor-pointer border border-slate-200/60"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 rounded-lg bg-white text-slate-700 shadow-xs">
+                      <ShieldCheck size={18} className="text-blue-600" />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800 text-sm block">
+                        {currentMode === 'partner' ? 'Switch to Customer View' : 'Partner Portal / पार्टनर लॉगिन'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        {currentMode === 'partner' ? 'Return to Home Services' : 'Earn with ZOMINDIA • इंदौर'}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-400" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* 2. Mobile: Clean, half-height Slide-over / Bottom-Sheet */}
-      {showMobile && (
-        <div className={mode === "auto" ? "md:hidden" : "block"}>
-          {/* Backdrop: Subtle click-outside backdrop to dismiss */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-[2px]"
-            aria-hidden="true"
-          />
-
-          {/* Clean, half-height Slide-over / Bottom-Sheet */}
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed inset-x-0 bottom-0 z-[100] bg-white rounded-t-3xl shadow-2xl border-t border-gray-100 p-4 pb-8 max-h-[85vh] overflow-y-auto pointer-events-auto text-left"
-            role="dialog"
-            aria-modal="true"
-            id="mobile-account-sheet"
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50/60 space-y-3">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center space-x-2 p-3 text-red-600 font-medium hover:bg-red-50 active:bg-red-100 rounded-xl transition cursor-pointer border border-red-200 bg-white shadow-xs"
           >
-            {/* Top grab bar */}
-            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-3 shrink-0" />
-            {renderContent(true)}
-          </motion.div>
+            <LogOut size={18} className="shrink-0" />
+            <span className="text-sm font-semibold">लॉगआउट / Log Out</span>
+          </button>
+          
+          <div className="text-center">
+            <p className="text-[11px] font-medium text-gray-500">
+              ZOMINDIA Home Services • Indore (MP)
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              100% Verified Experts & Standard Pricing
+            </p>
+          </div>
         </div>
-      )}
-    </AnimatePresence>
+      </div>
+    </div>
   );
-}
+};
+
+export default AccountPopup;
