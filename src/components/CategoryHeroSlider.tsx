@@ -51,7 +51,6 @@ const CATEGORY_DEFAULT_BANNERS: Record<string, string> = {
   fridge: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1200&q=80',
   washing: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&w=1200&q=80',
   tv: 'https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=1200&q=80',
-  clean: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=80',
 };
 
 const getFallbackBanner = (name: string): string => {
@@ -61,8 +60,7 @@ const getFallbackBanner = (name: string): string => {
   if (lower.includes('fridge') || lower.includes('refrigerat')) return CATEGORY_DEFAULT_BANNERS.fridge;
   if (lower.includes('wash') || lower.includes('laundry')) return CATEGORY_DEFAULT_BANNERS.washing;
   if (lower.includes('tv') || lower.includes('televis')) return CATEGORY_DEFAULT_BANNERS.tv;
-  if (lower.includes('clean') || lower.includes('deep')) return CATEGORY_DEFAULT_BANNERS.clean;
-  return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=80';
+  return CATEGORY_DEFAULT_BANNERS.ac;
 };
 
 interface SlideItem {
@@ -71,7 +69,53 @@ interface SlideItem {
   mediaURL: string;
   isVideo: boolean;
   title: string;
+  subtitle?: string;
+  badge?: string;
+  promoCode?: string;
 }
+
+const DEFAULT_PROMO_CARDS: SlideItem[] = [
+  {
+    id: 'promo-ac',
+    category: { id: 'ac', name: 'AC Service & Repair', icon: 'Wind' },
+    mediaURL: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1200&q=80',
+    isVideo: false,
+    title: 'AC Jet Service & Repair',
+    subtitle: 'Deep anti-bacterial foam cleaning • 45 min doorstep',
+    badge: 'SUMMER SPECIAL • 20% OFF',
+    promoCode: 'SUMMER20',
+  },
+  {
+    id: 'promo-washing',
+    category: { id: 'washing', name: 'Washing Machine Repair', icon: 'RotateCcw' },
+    mediaURL: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&w=1200&q=80',
+    isVideo: false,
+    title: 'Washing Machine Checkup',
+    subtitle: 'Motor, drum & spin drainage repair • 30-day warranty',
+    badge: 'FLAT ₹99 OFF',
+    promoCode: 'ZOMFIRST99',
+  },
+  {
+    id: 'promo-ro',
+    category: { id: 'ro', name: 'RO Water Purifier', icon: 'Droplets' },
+    mediaURL: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=1200&q=80',
+    isVideo: false,
+    title: 'RO Water Purifier Service',
+    subtitle: 'Genuine membrane replacement & multi-stage TDS calibration',
+    badge: 'VERIFIED HOME SERVICES',
+    promoCode: 'PUREWATER',
+  },
+  {
+    id: 'promo-fridge',
+    category: { id: 'fridge', name: 'Refrigerator Repair', icon: 'Zap' },
+    mediaURL: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1200&q=80',
+    isVideo: false,
+    title: 'Refrigerator Maintenance',
+    subtitle: 'Cooling coil, thermostat & compressor diagnostics',
+    badge: 'INDORE CERTIFIED',
+    promoCode: 'COOLCARE',
+  },
+];
 
 export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
   categories,
@@ -117,7 +161,7 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
     }
   }, []);
 
-  // Compute slides: admin custom banners (if any) + active categories
+  // Compute slides: admin custom banners (if any) or curated promotional cards
   const slides = useMemo(() => {
     const items: SlideItem[] = [];
 
@@ -126,7 +170,7 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
       customBanners.forEach((banner, i) => {
         const matchedCat = categories.find(
           (c) => c.id === banner.categoryId || c.name.toLowerCase() === banner.categoryName?.toLowerCase()
-        ) || categories[0];
+        ) || categories[0] || { id: 'ac', name: 'AC Service & Repair', icon: 'Wind' };
 
         if (matchedCat) {
           const rawUrl = banner.videoURL || banner.imageURL || matchedCat.imageURL || getFallbackBanner(matchedCat.name);
@@ -137,35 +181,25 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
             mediaURL: rawUrl,
             isVideo: isVid,
             title: banner.title || matchedCat.name,
+            subtitle: banner.subtitle,
+            badge: banner.badge,
           });
         }
       });
+      return items;
     }
 
-    // 2. Default Active Categories
-    const activeCats = categories.length > 0 ? categories : [
-      { id: 'ac', name: 'AC Service & Repair', icon: 'Wind' },
-      { id: 'ro', name: 'RO Water Purifier', icon: 'Droplets' },
-      { id: 'fridge', name: 'Refrigerator Repair', icon: 'Zap' },
-      { id: 'washing', name: 'Washing Machine', icon: 'RotateCcw' },
-      { id: 'tv', name: 'TV Repair', icon: 'Tv' },
-    ];
-
-    activeCats.forEach((cat) => {
-      // Don't duplicate if already in custom items
-      if (items.some((it) => it.category.id === cat.id)) return;
-      const rawUrl = cat.imageURL || getFallbackBanner(cat.name);
-      const isVid = isVideoMedia(rawUrl);
-      items.push({
-        id: `cat-${cat.id}`,
-        category: cat,
-        mediaURL: rawUrl,
-        isVideo: isVid,
-        title: cat.name,
-      });
+    // 2. Default clean promotional cards synchronized with live categories
+    return DEFAULT_PROMO_CARDS.map((promo) => {
+      const liveCat = categories.find(
+        (c) => c.id.toLowerCase() === promo.category.id.toLowerCase() ||
+               c.name.toLowerCase().includes(promo.category.id.toLowerCase())
+      );
+      return {
+        ...promo,
+        category: liveCat || promo.category,
+      };
     });
-
-    return items;
   }, [categories, customBanners]);
 
   // Auto slide interval
@@ -266,34 +300,52 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
             className="w-full h-full relative"
           >
             {!isMediaFailed && currentSlide.mediaURL ? (
-              currentSlide.isVideo ? (
-                /* Native high-performance HTML5 video player for MP4/WebM */
-                <video
-                  key={currentSlide.mediaURL}
-                  src={currentSlide.mediaURL}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="w-full h-full object-cover pointer-events-none"
-                  onError={() => {
-                    setFailedMediaIds((prev) => ({ ...prev, [currentSlide.id]: true }));
-                  }}
-                />
-              ) : (
-                /* High-resolution image banner */
-                <img
-                  src={currentSlide.mediaURL}
-                  alt={currentSlide.title}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-                  referrerPolicy="no-referrer"
-                  loading="eager"
-                  onError={() => {
-                    setFailedMediaIds((prev) => ({ ...prev, [currentSlide.id]: true }));
-                  }}
-                />
-              )
+              <>
+                {currentSlide.isVideo ? (
+                  /* Native high-performance HTML5 video player for MP4/WebM */
+                  <video
+                    key={currentSlide.mediaURL}
+                    src={currentSlide.mediaURL}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="w-full h-full object-cover pointer-events-none"
+                    onError={() => {
+                      setFailedMediaIds((prev) => ({ ...prev, [currentSlide.id]: true }));
+                    }}
+                  />
+                ) : (
+                  /* High-resolution image banner */
+                  <img
+                    src={currentSlide.mediaURL}
+                    alt={currentSlide.title}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
+                    referrerPolicy="no-referrer"
+                    loading="eager"
+                    onError={() => {
+                      setFailedMediaIds((prev) => ({ ...prev, [currentSlide.id]: true }));
+                    }}
+                  />
+                )}
+                {/* Modern Promotional Card Text Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent flex flex-col justify-end p-4 sm:p-7 text-white pointer-events-none">
+                  {currentSlide.badge && (
+                    <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-1 rounded-full bg-blue-600/90 backdrop-blur-xs text-white text-[9px] sm:text-[11px] font-black uppercase tracking-wider mb-1.5 shadow-sm">
+                      {currentSlide.badge}
+                    </div>
+                  )}
+                  <h3 className="text-sm sm:text-2xl font-black tracking-tight leading-tight uppercase font-display drop-shadow-md">
+                    {currentSlide.title}
+                  </h3>
+                  {currentSlide.subtitle && (
+                    <p className="text-[11px] sm:text-sm text-slate-200 font-medium mt-0.5 line-clamp-1 drop-shadow-sm">
+                      {currentSlide.subtitle}
+                    </p>
+                  )}
+                </div>
+              </>
             ) : (
               /* Soft, elegant fallback gradient with subtle clean brand watermark */
               <div className="w-full h-full bg-gradient-to-r from-blue-50 via-indigo-50/70 to-sky-50 flex items-center justify-between p-6 sm:p-10">

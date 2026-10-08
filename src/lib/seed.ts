@@ -2,12 +2,14 @@ import { db, auth } from './firebase';
 import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
 
 const CATEGORIES = [
-  { name: 'Cleaning', icon: 'Sparkles', description: 'Deep cleaning, sofa & carpet' },
-  { name: 'Repairs', icon: 'Wrench', description: 'Plumbing, Electrician, Carpenter' },
-  { name: 'Appliance', icon: 'Smartphone', description: 'AC, TV, Refrigerator, RO' },
-  { name: 'Painting', icon: 'PaintBucket', description: 'Full house painting' },
-  { name: 'Beauty', icon: 'Sparkles', description: 'Salon at home for women' },
-  { name: 'Appliance Repair', icon: 'Smartphone', description: 'Repair services for electronics, home appliances, and gadgets' },
+  { name: 'AC Repair & Service', icon: 'Wind', description: 'Jet service, gas refill, installation' },
+  { name: 'Washing Machine', icon: 'RotateCcw', description: 'Drum repair, motor fix, spin issue' },
+  { name: 'RO Water Purifier', icon: 'Droplets', description: 'Filter change, membrane replacement' },
+  { name: 'Refrigerator', icon: 'Zap', description: 'Cooling check, gas charging' },
+  { name: 'TV Repair', icon: 'Tv', description: 'LED/LCD screen, motherboard, sound' },
+  { name: 'Electrician', icon: 'Plug', description: 'Wiring, switchboard, fuse repair' },
+  { name: 'Plumber', icon: 'Wrench', description: 'Pipe leak, tap fittings, motor pump' },
+  { name: 'Home Cleaning', icon: 'Sparkles', description: 'Deep bathroom & kitchen sanitization' },
   { name: 'Phone Repair', icon: 'Smartphone', description: 'Expert repair services for all smartphone brands' },
 ];
 

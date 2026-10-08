@@ -111,47 +111,52 @@ const CONSOLIDATED_OFFERS = [
 
 const SAMPLE_CATEGORIES = [
   {
-    id: "1",
-    name: "Cleaning",
-    icon: "Sparkles",
-    description: "Deep cleaning, sofa & carpet",
+    id: "ac",
+    name: "AC Repair & Service",
+    icon: "Wind",
+    description: "Jet service, gas refill, installation",
   },
   {
-    id: "2",
-    name: "Repairs",
+    id: "washing",
+    name: "Washing Machine",
+    icon: "RotateCcw",
+    description: "Drum repair, motor fix, spin issue",
+  },
+  {
+    id: "ro",
+    name: "RO Water Purifier",
+    icon: "Droplets",
+    description: "Filter change, membrane replacement",
+  },
+  {
+    id: "fridge",
+    name: "Refrigerator",
+    icon: "Zap",
+    description: "Cooling check, gas charging",
+  },
+  {
+    id: "tv",
+    name: "TV Repair",
+    icon: "Tv",
+    description: "LED/LCD screen, motherboard, sound",
+  },
+  {
+    id: "electrical",
+    name: "Electrician",
+    icon: "Plug",
+    description: "Wiring, switchboard, fuse repair",
+  },
+  {
+    id: "plumbing",
+    name: "Plumber",
     icon: "Wrench",
-    description: "Plumbing, Electrician, Carpenter",
+    description: "Pipe leak, tap fittings, motor pump",
   },
   {
-    id: "3",
-    name: "Appliance",
-    icon: "Smartphone",
-    description: "AC, TV, Refrigerator, RO",
-  },
-  {
-    id: "4",
-    name: "Painting",
-    icon: "PaintBucket",
-    description: "Full house painting",
-  },
-  {
-    id: "5",
-    name: "Beauty",
+    id: "cleaning",
+    name: "Home Cleaning",
     icon: "Sparkles",
-    description: "Salon at home for women",
-  },
-  {
-    id: "6",
-    name: "Appliance Repair",
-    icon: "Smartphone",
-    description:
-      "Repair services for electronics, home appliances, and gadgets",
-  },
-  {
-    id: "Phone Repair",
-    name: "Phone Repair",
-    icon: "Smartphone",
-    description: "Expert repair services for all smartphone brands",
+    description: "Deep bathroom & kitchen sanitization",
   },
 ];
 
@@ -2041,7 +2046,7 @@ export default function CustomerHome({
                         <img
                           src={
                             service.imageURL ||
-                            "https://images.unsplash.com/photo-1581578731548-c64695ce6954?auto=format&fit=crop&q=80&w=400"
+                            "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=400"
                           }
                           alt={service.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"

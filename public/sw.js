@@ -5,7 +5,7 @@
  * Auth, or real-time database WebSocket connections.
  */
 
-const CACHE_NAME = 'zomindia-cache-v3';
+const CACHE_NAME = 'zomindia-cache-v4-clean';
 const OFFLINE_URL = '/index.html';
 
 // Workbox manifest injection placeholder (required by vite-plugin-pwa in injectManifest strategy)

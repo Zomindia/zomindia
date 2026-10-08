@@ -38,7 +38,6 @@ import {
 // Modules
 import CustomerHome from './components/CustomerHome';
 import Avatar from './components/Avatar';
-import AccountPopup from './components/AccountPopup';
 import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
@@ -247,33 +246,21 @@ export default function App() {
       null
     );
   });
-  const [isAccountPopupOpen, setIsAccountPopupOpen] = useState(false);
-  const isProfileMenuOpen = isAccountPopupOpen;
-  const setIsProfileMenuOpen = setIsAccountPopupOpen;
 
-  // Listen for global profile drawer open/close/toggle events
+  // Listen for global profile drawer open/close/toggle events and navigate to profile tab directly
   useEffect(() => {
-    const handleOpen = () => setIsAccountPopupOpen(true);
-    const handleClose = () => setIsAccountPopupOpen(false);
-    const handleToggle = () => setIsAccountPopupOpen((prev) => !prev);
+    const handleOpenProfile = () => {
+      setActiveTab('profile');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
-    window.addEventListener('open-profile-menu', handleOpen);
-    window.addEventListener('close-profile-menu', handleClose);
-    window.addEventListener('toggle-profile-menu', handleToggle);
-    window.addEventListener('open-profile-drawer', handleOpen);
-    window.addEventListener('close-profile-drawer', handleClose);
-    window.addEventListener('toggle-profile-drawer', handleToggle);
-    window.addEventListener('open-account-popup', handleOpen);
-    window.addEventListener('toggle-account-popup', handleToggle);
+    window.addEventListener('open-profile-menu', handleOpenProfile);
+    window.addEventListener('open-profile-drawer', handleOpenProfile);
+    window.addEventListener('open-account-popup', handleOpenProfile);
     return () => {
-      window.removeEventListener('open-profile-menu', handleOpen);
-      window.removeEventListener('close-profile-menu', handleClose);
-      window.removeEventListener('toggle-profile-menu', handleToggle);
-      window.removeEventListener('open-profile-drawer', handleOpen);
-      window.removeEventListener('close-profile-drawer', handleClose);
-      window.removeEventListener('toggle-profile-drawer', handleToggle);
-      window.removeEventListener('open-account-popup', handleOpen);
-      window.removeEventListener('toggle-account-popup', handleToggle);
+      window.removeEventListener('open-profile-menu', handleOpenProfile);
+      window.removeEventListener('open-profile-drawer', handleOpenProfile);
+      window.removeEventListener('open-account-popup', handleOpenProfile);
     };
   }, []);
   const [profileSubSection, setProfileSubSection] = useState<string | null>(null);
@@ -363,21 +350,6 @@ export default function App() {
     const handleOpenPartnerModal = () => setIsPartnerModalOpen(true);
     window.addEventListener('open-partner-modal', handleOpenPartnerModal);
     return () => window.removeEventListener('open-partner-modal', handleOpenPartnerModal);
-  }, []);
-
-  // Dropdown reference and outside click handler
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsAccountPopupOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
   }, []);
 
   // Selection copying states
@@ -1572,7 +1544,10 @@ If you have any billing questions, or if your refund is delayed, please email us
             onServiceSelect={handleServiceSelect}
             initialExpandedBookingId={targetBookingId}
             setActiveTab={setActiveTab}
-            onOpenProfileMenu={() => setIsAccountPopupOpen(true)}
+            onOpenProfileMenu={() => {
+              setActiveTab('profile');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         </motion.div>
       );
@@ -1743,7 +1718,10 @@ If you have any billing questions, or if your refund is delayed, please email us
           onAuthRequired={() => setIsAuthModalOpen(true)}
           onServiceSelect={handleServiceSelect}
           initialCategoryId={selectedCategoryId}
-          onOpenProfileMenu={() => setIsAccountPopupOpen(true)}
+          onOpenProfileMenu={() => {
+            setActiveTab('profile');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       </motion.div>
     );
@@ -1838,17 +1816,15 @@ If you have any billing questions, or if your refund is delayed, please email us
                     <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white animate-pulse" />
                   </motion.button>
 
-                  {/* Desktop Only Trigger & Dropdown Menu */}
-                  <div 
-                    ref={dropdownRef}
-                    className="hidden md:flex items-center gap-3 relative"
-                  >
+                  {/* Desktop Only Trigger & Direct Profile Navigation */}
+                  <div className="hidden md:flex items-center gap-3 relative">
                     <button
-                      onClick={() => setIsAccountPopupOpen(prev => !prev)}
+                      onClick={() => {
+                        setActiveTab('profile');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
                       className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
                       id="nav-green-greeting"
-                      aria-expanded={isAccountPopupOpen}
-                      aria-haspopup="true"
                     >
                       <div className="flex flex-col text-right items-end">
                         {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
@@ -1879,64 +1855,9 @@ If you have any billing questions, or if your refund is delayed, please email us
                         sizeClass="w-10 h-10 hover:scale-105 active:scale-95 transition-all"
                       />
                     </button>
-
-                    <AccountPopup
-                      isOpen={isAccountPopupOpen}
-                      mode="desktop"
-                      onClose={() => setIsAccountPopupOpen(false)}
-                      profile={profile}
-                      currentMode={currentMode}
-                      onSwitchMode={handleSwitchMode}
-                      onNavigate={(tab, subTab) => {
-                        setActiveTab(tab, subTab);
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenWallet={() => {
-                        setActiveTab('wallet');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenProfileSettings={() => {
-                        setActiveTab('profile');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenBookings={() => {
-                        setActiveTab('bookings');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenOffers={() => {
-                        setActiveTab('offers');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenAddresses={() => {
-                        setActiveTab('profile', 'addresses');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenAmc={() => {
-                        setActiveTab('amcs');
-                        setIsAccountPopupOpen(false);
-                      }}
-                      onOpenZomini={() => {
-                        setIsAccountPopupOpen(false);
-                        window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-                      }}
-                      onOpenAiSupport={() => {
-                        setIsAccountPopupOpen(false);
-                        window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-                      }}
-                      onLogout={async () => {
-                        setIsAccountPopupOpen(false);
-                        try {
-                          sessionStorage.clear();
-                          localStorage.removeItem("zomindia_customer_auth");
-                          await signOutUser();
-                        } catch {
-                          await auth.signOut();
-                        }
-                      }}
-                    />
                   </div>
 
-                  {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar toggle trigger */}
+                  {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar direct profile trigger */}
                   <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
                     {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
                     <span className="text-[10px] font-bold bg-sky-50/80 border border-sky-100 px-2 py-1 rounded-xl flex items-center gap-1 shadow-xs">
@@ -1953,11 +1874,13 @@ If you have any billing questions, or if your refund is delayed, please email us
                       📍 INDORE
                     </button>
                     <button 
-                      onClick={() => setIsAccountPopupOpen(prev => !prev)}
+                      onClick={() => {
+                        setActiveTab('profile');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
                       className="shrink-0 active:scale-90 transition-all cursor-pointer"
                       id="mobile-avatar-drawer-trigger"
-                      aria-label="Open account menu"
-                      aria-expanded={isAccountPopupOpen}
+                      aria-label="Open profile"
                     >
                       <Avatar
                         photoURL={profile.photoURL}
@@ -2069,62 +1992,6 @@ If you have any billing questions, or if your refund is delayed, please email us
           </div>
         </div>
       )}
-
-      {/* Mobile Account Bottom-Sheet / Slide-Over */}
-      <AccountPopup
-        isOpen={isAccountPopupOpen}
-        mode="mobile"
-        onClose={() => setIsAccountPopupOpen(false)}
-        profile={profile}
-        currentMode={currentMode}
-        onSwitchMode={handleSwitchMode}
-        onNavigate={(tab, subTab) => {
-          setActiveTab(tab, subTab);
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenWallet={() => {
-          setActiveTab('wallet');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenProfileSettings={() => {
-          setActiveTab('profile');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenBookings={() => {
-          setActiveTab('bookings');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenOffers={() => {
-          setActiveTab('offers');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenAddresses={() => {
-          setActiveTab('profile', 'addresses');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenAmc={() => {
-          setActiveTab('amcs');
-          setIsAccountPopupOpen(false);
-        }}
-        onOpenZomini={() => {
-          setIsAccountPopupOpen(false);
-          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-        }}
-        onOpenAiSupport={() => {
-          setIsAccountPopupOpen(false);
-          window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } }));
-        }}
-        onLogout={async () => {
-          setIsAccountPopupOpen(false);
-          try {
-            sessionStorage.clear();
-            localStorage.removeItem("zomindia_customer_auth");
-            await signOutUser();
-          } catch {
-            await auth.signOut();
-          }
-        }}
-      />
 
       <AuthModal
         isOpen={isAuthModalOpen}
