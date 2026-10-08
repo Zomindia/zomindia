@@ -318,7 +318,7 @@ export default function UnassignedJobDispatcher({
         console.warn("Secret OTP write note:", e);
       }
 
-      // 2. Dispatch Meta Cloud / Gupshup WhatsApp Business API Notifications
+      // 2. Dispatch Meta WhatsApp Cloud API Notifications
       const customerPhone = (selectedBooking as any).customerPhone || (selectedBooking as any).customerData?.mobile || (selectedBooking as any).customerData?.phoneNumber;
       const customerName = (selectedBooking as any).customerName || (selectedBooking as any).customerData?.fullName || "Valued Customer";
 

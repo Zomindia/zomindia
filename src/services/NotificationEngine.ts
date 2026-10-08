@@ -25,7 +25,7 @@ export interface WhatsAppAlert {
   recipientName: string;
   templateName: string;
   status: 'sent' | 'delivered' | 'read' | 'failed';
-  gateway: 'Twilio' | 'Gupshup';
+  gateway: 'Meta WhatsApp Cloud API' | 'Sandbox Simulation';
   payload: any;
   messageText: string;
   timestamp: any;
@@ -122,7 +122,7 @@ export async function sendNotification(
 }
 
 /**
- * Triggers an automated WhatsApp/SMS notifications trace with simulated Gupshup/Twilio payload formatting.
+ * Triggers an automated WhatsApp notifications trace with Meta WhatsApp Cloud API payload formatting.
  */
 export async function dispatchAutomatedWhatsAppAlert(
   phone: string,
@@ -135,8 +135,7 @@ export async function dispatchAutomatedWhatsAppAlert(
   const recipientPhone = phone.startsWith('+91') ? phone : `+91${phone}`;
   let templateName = '';
   let messageText = '';
-  const isTwilio = Math.random() > 0.5; // Dynamically simulate either Twilio or Gupshup routing
-  const gateway = isTwilio ? 'Twilio' : 'Gupshup';
+  const gateway: 'Meta WhatsApp Cloud API' | 'Sandbox Simulation' = 'Meta WhatsApp Cloud API';
 
   switch (type) {
     case 'booking_received':
@@ -182,27 +181,14 @@ export async function dispatchAutomatedWhatsAppAlert(
       break;
   }
 
-  // Generate payload matching Twilio API / Gupshup API expected format
-  const payload = isTwilio 
-    ? {
-        from: "whatsapp:+14155238886",
-        to: `whatsapp:${recipientPhone}`,
-        body: messageText,
-        template: {
-          name: templateName,
-          language: "en_US"
-        }
-      }
-    : {
-        channel: "whatsapp",
-        source: "919013151515",
-        destination: recipientPhone,
-        message: {
-          type: "text",
-          text: messageText
-        },
-        src_id: "Gupshup_ZomIndia_SMS"
-      };
+  // Generate payload matching official Meta WhatsApp Cloud API format
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: recipientPhone.replace(/\D/g, ''),
+    type: "text",
+    text: { body: messageText }
+  };
 
   const alertLog: WhatsAppAlert = {
     id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

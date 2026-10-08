@@ -354,13 +354,10 @@ async function startServer() {
 
     const metaToken = process.env.META_WHATSAPP_TOKEN || process.env.WHATSAPP_BUSINESS_TOKEN;
     const metaPhoneId = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID;
-    const gupshupKey = process.env.GUPSHUP_API_KEY;
-    const gupshupSrc = process.env.GUPSHUP_WHATSAPP_SOURCE || (params && params.senderNumber ? `91${params.senderNumber.replace(/\D/g, '')}` : "919630234563");
 
     let dispatchSuccess = false;
     let gatewayUsed = "Sandbox Simulation";
     let metaResult = null;
-    let gupshupResult = null;
 
     if (metaToken && metaPhoneId) {
       try {
@@ -390,33 +387,6 @@ async function startServer() {
       }
     }
 
-    if (!dispatchSuccess && gupshupKey) {
-      try {
-        const waUrl = "https://api.gupshup.io/sm/api/v1/msg";
-        const form = new URLSearchParams();
-        form.append("channel", "whatsapp");
-        form.append("source", gupshupSrc);
-        form.append("destination", cleanPhone);
-        form.append("message", JSON.stringify({
-          type: "text",
-          text: messageText
-        }));
-
-        const waRes = await axios.post(waUrl, form, {
-          headers: {
-            apikey: gupshupKey,
-            "Content-Type": "application/x-www-form-urlencoded"
-          }
-        });
-        dispatchSuccess = true;
-        gatewayUsed = "Gupshup WhatsApp API";
-        gupshupResult = waRes.data;
-        console.log(`[Gupshup WhatsApp API] Delivered to ${cleanPhone}:`, waRes.data);
-      } catch (gupshupErr: any) {
-        console.warn("[Gupshup WhatsApp API Notice]: Production key pending. Running zero-break fallback.", gupshupErr.response?.data || gupshupErr.message);
-      }
-    }
-
     if (!dispatchSuccess) {
       console.log(`[WhatsApp Engine] Zero-break simulation dispatched for ${formattedPhone} | Type: ${type}`);
     }
@@ -430,8 +400,7 @@ async function startServer() {
       gateway: gatewayUsed,
       recipient: formattedPhone,
       messageText,
-      metaResult,
-      gupshupResult
+      metaResult
     };
   };
 

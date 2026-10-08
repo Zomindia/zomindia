@@ -247,7 +247,7 @@ export default function App() {
     );
   });
 
-  // Listen for global profile drawer open/close/toggle events and navigate to profile tab directly
+  // Listen for global profile navigation events and navigate to profile tab directly
   useEffect(() => {
     const handleOpenProfile = () => {
       setActiveTab('profile');
@@ -255,12 +255,8 @@ export default function App() {
     };
 
     window.addEventListener('open-profile-menu', handleOpenProfile);
-    window.addEventListener('open-profile-drawer', handleOpenProfile);
-    window.addEventListener('open-account-popup', handleOpenProfile);
     return () => {
       window.removeEventListener('open-profile-menu', handleOpenProfile);
-      window.removeEventListener('open-profile-drawer', handleOpenProfile);
-      window.removeEventListener('open-account-popup', handleOpenProfile);
     };
   }, []);
   const [profileSubSection, setProfileSubSection] = useState<string | null>(null);
@@ -1879,7 +1875,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       className="shrink-0 active:scale-90 transition-all cursor-pointer"
-                      id="mobile-avatar-drawer-trigger"
+                      id="mobile-avatar-profile-trigger"
                       aria-label="Open profile"
                     >
                       <Avatar
