@@ -48,6 +48,7 @@ import ChatWindow from "./ChatWindow";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import UnifiedKYCForm from "./partner/UnifiedKYCForm";
 import UnassignedJobDispatcher from "./UnassignedJobDispatcher";
+import AdminBanners from "./admin/AdminBanners";
 import {
   CORPORATE_LANDLINE_GATEWAY,
 } from "../lib/telephony";
@@ -126,6 +127,7 @@ type AdminTab =
   | "bookings"
   | "categories"
   | "services"
+  | "banners"
   | "partners"
   | "users"
   | "referrals"
@@ -838,6 +840,7 @@ export default function AdminDashboard({
           "amcs",
           "promotions",
           "partner-promotions",
+          "banners",
         ].includes(tabId);
       case "support":
         return [
@@ -853,6 +856,7 @@ export default function AdminDashboard({
           "overview",
           "categories",
           "services",
+          "banners",
           "promotions",
           "partner-promotions",
           "help-center",
@@ -880,6 +884,7 @@ export default function AdminDashboard({
       { id: "bookings", icon: FileText, label: "Bookings" },
       { id: "categories", icon: Tag, label: "Categories" },
       { id: "services", icon: Briefcase, label: "Services" },
+      { id: "banners", icon: ImageIcon, label: "Banners (Hero Sliders)" },
       { id: "earnings", icon: DollarSign, label: "Earnings" },
       { id: "partners", icon: ShieldCheck, label: "Partners" },
       { id: "users", icon: Users, label: "Customers" },
@@ -1990,6 +1995,10 @@ export default function AdminDashboard({
               {activeAdminTab === "services" &&
                 isAdminAuthorized("services") && (
                   <ServiceManager categories={categories} services={services} />
+                )}
+              {activeAdminTab === "banners" &&
+                isAdminAuthorized("banners") && (
+                  <AdminBanners categories={categories} services={services} />
                 )}
               {activeAdminTab === "earnings" &&
                 isAdminAuthorized("earnings") && (

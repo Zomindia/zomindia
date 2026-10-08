@@ -1,29 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
-import { Category, Service, Booking } from '../types';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { Category, Service, Booking, Banner, BannerTargetType } from '../types';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-
-export interface CustomPromoBanner {
-  id: string;
-  title?: string;
-  subtitle?: string;
-  badge?: string;
-  categoryId?: string;
-  categoryName?: string;
-  imageURL?: string;
-  videoURL?: string;
-  mediaType?: 'image' | 'video';
-  gradient?: string;
-  active: boolean;
-  order?: number;
-}
 
 interface CategoryHeroSliderProps {
   categories: Category[];
   services?: Service[];
-  onSelectCategory: (category: Category) => void;
+  onSelectCategory?: (category: Category) => void;
+  onSelectService?: (serviceId: string) => void;
+  onNavigateOffers?: () => void;
   activeBooking?: Booking | null;
   onTrackBooking?: () => void;
 }
@@ -65,13 +52,16 @@ const getFallbackBanner = (name: string): string => {
 
 interface SlideItem {
   id: string;
-  category: Category;
+  category?: Category;
   mediaURL: string;
   isVideo: boolean;
   title: string;
   subtitle?: string;
   badge?: string;
   promoCode?: string;
+  targetType: BannerTargetType;
+  categoryId?: string;
+  serviceId?: string;
 }
 
 const DEFAULT_PROMO_CARDS: SlideItem[] = [
@@ -84,6 +74,8 @@ const DEFAULT_PROMO_CARDS: SlideItem[] = [
     subtitle: 'Deep anti-bacterial foam cleaning • 45 min doorstep',
     badge: 'SUMMER SPECIAL • 20% OFF',
     promoCode: 'SUMMER20',
+    targetType: 'category',
+    categoryId: 'ac',
   },
   {
     id: 'promo-washing',
@@ -94,6 +86,8 @@ const DEFAULT_PROMO_CARDS: SlideItem[] = [
     subtitle: 'Motor, drum & spin drainage repair • 30-day warranty',
     badge: 'FLAT ₹99 OFF',
     promoCode: 'ZOMFIRST99',
+    targetType: 'category',
+    categoryId: 'washing',
   },
   {
     id: 'promo-ro',
@@ -104,6 +98,8 @@ const DEFAULT_PROMO_CARDS: SlideItem[] = [
     subtitle: 'Genuine membrane replacement & multi-stage TDS calibration',
     badge: 'VERIFIED HOME SERVICES',
     promoCode: 'PUREWATER',
+    targetType: 'category',
+    categoryId: 'ro',
   },
   {
     id: 'promo-fridge',
@@ -114,44 +110,77 @@ const DEFAULT_PROMO_CARDS: SlideItem[] = [
     subtitle: 'Cooling coil, thermostat & compressor diagnostics',
     badge: 'INDORE CERTIFIED',
     promoCode: 'COOLCARE',
+    targetType: 'category',
+    categoryId: 'fridge',
   },
 ];
 
 export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
   categories,
+  services,
   onSelectCategory,
+  onSelectService,
+  onNavigateOffers,
   activeBooking,
   onTrackBooking,
 }) => {
-  const [customBanners, setCustomBanners] = useState<CustomPromoBanner[]>([]);
+  const [firestoreBanners, setFirestoreBanners] = useState<Banner[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [failedMediaIds, setFailedMediaIds] = useState<Record<string, boolean>>({});
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  // Subscribe to Admin Promotional Banners in real-time
+  // Subscribe to Firestore 'banners' collection in real-time
   useEffect(() => {
     let isMounted = true;
     try {
+      const q = query(collection(db, 'banners'), orderBy('order', 'asc'));
       const unsub = onSnapshot(
-        doc(db, 'system_config', 'promo_banners'),
+        q,
         (snap) => {
           if (!isMounted) return;
-          if (snap.exists()) {
-            const data = snap.data();
-            const list = Array.isArray(data.banners) ? data.banners : [];
-            const activeOnly = list.filter((b: CustomPromoBanner) => b && b.active);
-            setCustomBanners(activeOnly);
-          } else {
-            setCustomBanners([]);
+          const list = snap.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              title: data.title || '',
+              subtitle: data.subtitle || '',
+              badge: data.badge || '',
+              imageURL: data.imageURL || data.imageUrl || '',
+              targetType: (data.targetType || 'category') as BannerTargetType,
+              categoryId: data.categoryId || '',
+              categoryName: data.categoryName || '',
+              serviceId: data.serviceId || '',
+              serviceName: data.serviceName || '',
+              order: typeof data.order === 'number' ? data.order : 0,
+              isActive: data.isActive !== undefined ? data.isActive : (data.active !== false),
+            } as Banner;
+          });
+
+          // Filter only active banners
+          const activeOnly = list.filter((b) => b && b.isActive !== false);
+          setFirestoreBanners(activeOnly);
+          try {
+            localStorage.setItem('zomindia_banners_client_cache', JSON.stringify(activeOnly));
+          } catch {
+            // ignore
           }
         },
         (err) => {
-          console.warn('promo_banners subscription notice:', err);
-          setCustomBanners([]);
+          console.warn('banners collection subscription notice:', err);
+          if (!isMounted) return;
+          try {
+            const cached = localStorage.getItem('zomindia_banners_client_cache');
+            if (cached) {
+              setFirestoreBanners(JSON.parse(cached));
+            }
+          } catch {
+            // ignore
+          }
         }
       );
+
       return () => {
         isMounted = false;
         unsub();
@@ -161,30 +190,32 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
     }
   }, []);
 
-  // Compute slides: admin custom banners (if any) or curated promotional cards
+  // Compute slides: live active Firestore banners or authentic fallback promotional cards
   const slides = useMemo(() => {
     const items: SlideItem[] = [];
 
-    // 1. Add active Admin Custom Promo Banners (if any exist)
-    if (customBanners.length > 0) {
-      customBanners.forEach((banner, i) => {
+    // 1. If active Firestore banners exist, map them with highest priority
+    if (firestoreBanners.length > 0) {
+      firestoreBanners.forEach((banner, i) => {
         const matchedCat = categories.find(
           (c) => c.id === banner.categoryId || c.name.toLowerCase() === banner.categoryName?.toLowerCase()
-        ) || categories[0] || { id: 'ac', name: 'AC Service & Repair', icon: 'Wind' };
+        ) || categories[0];
 
-        if (matchedCat) {
-          const rawUrl = banner.videoURL || banner.imageURL || matchedCat.imageURL || getFallbackBanner(matchedCat.name);
-          const isVid = isVideoMedia(rawUrl, banner.mediaType);
-          items.push({
-            id: `custom-${banner.id || i}`,
-            category: matchedCat,
-            mediaURL: rawUrl,
-            isVideo: isVid,
-            title: banner.title || matchedCat.name,
-            subtitle: banner.subtitle,
-            badge: banner.badge,
-          });
-        }
+        const rawUrl = banner.imageURL || (matchedCat ? matchedCat.imageURL : '') || getFallbackBanner(banner.title);
+        const isVid = isVideoMedia(rawUrl);
+
+        items.push({
+          id: banner.id || `banner-${i}`,
+          category: matchedCat,
+          mediaURL: rawUrl,
+          isVideo: isVid,
+          title: banner.title || (matchedCat?.name ?? 'Home Service'),
+          subtitle: banner.subtitle,
+          badge: banner.badge,
+          targetType: banner.targetType || 'category',
+          categoryId: banner.categoryId,
+          serviceId: banner.serviceId,
+        });
       });
       return items;
     }
@@ -192,22 +223,23 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
     // 2. Default clean promotional cards synchronized with live categories
     return DEFAULT_PROMO_CARDS.map((promo) => {
       const liveCat = categories.find(
-        (c) => c.id.toLowerCase() === promo.category.id.toLowerCase() ||
-               c.name.toLowerCase().includes(promo.category.id.toLowerCase())
+        (c) =>
+          c.id.toLowerCase() === promo.categoryId?.toLowerCase() ||
+          c.name.toLowerCase().includes(promo.categoryId?.toLowerCase() || '')
       );
       return {
         ...promo,
         category: liveCat || promo.category,
       };
     });
-  }, [categories, customBanners]);
+  }, [categories, firestoreBanners]);
 
   // Auto slide interval
   useEffect(() => {
     if (slides.length <= 1 || isPaused) return;
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % slides.length);
-    }, 5000);
+    }, 4500);
     return () => clearInterval(interval);
   }, [slides.length, isPaused]);
 
@@ -240,14 +272,45 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
 
   const handleSlideClick = (slide: SlideItem) => {
     if (!slide) return;
-    onSelectCategory(slide.category);
-    // Smooth scroll down to service list
-    setTimeout(() => {
-      const target = document.getElementById('categories-grid') || document.getElementById('services-grid');
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // 1. If linked to Offers
+    if (slide.targetType === 'offers') {
+      if (onNavigateOffers) {
+        onNavigateOffers();
+        return;
       }
-    }, 80);
+    }
+
+    // 2. If linked to Specific Service
+    if (slide.targetType === 'service' && slide.serviceId) {
+      if (onSelectService) {
+        onSelectService(slide.serviceId);
+        return;
+      }
+    }
+
+    // 3. If linked to Category
+    let targetCat: Category | undefined = slide.category;
+    if (!targetCat && slide.categoryId) {
+      targetCat = categories.find((c) => c.id === slide.categoryId);
+    }
+
+    if (targetCat && onSelectCategory) {
+      onSelectCategory(targetCat);
+      setTimeout(() => {
+        const target = document.getElementById('categories-grid') || document.getElementById('services-grid');
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 80);
+      return;
+    }
+
+    // Fallback scroll down to services
+    const target = document.getElementById('categories-grid') || document.getElementById('services-grid');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   if (!currentSlide) return null;
@@ -282,7 +345,7 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
 
       {/* Sleek App-Grade Banner Frame: Edge-to-Edge Modern Frame */}
       <div 
-        className="w-full aspect-[2.2/1] sm:aspect-[2.6/1] rounded-2xl overflow-hidden shadow-xs border border-slate-100 relative cursor-pointer group bg-gradient-to-r from-blue-50 to-indigo-50/80"
+        className="w-full aspect-[2.2/1] sm:aspect-[2.6/1] rounded-2xl overflow-hidden shadow-xs border border-slate-100 relative cursor-pointer group bg-gradient-to-r from-blue-50 to-indigo-50/80 active:scale-[0.99] transition-transform duration-200"
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
         onTouchStart={handleTouchStart}
@@ -329,6 +392,7 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
                     }}
                   />
                 )}
+
                 {/* Modern Promotional Card Text Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent flex flex-col justify-end p-4 sm:p-7 text-white pointer-events-none">
                   {currentSlide.badge && (
@@ -344,6 +408,14 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
                       {currentSlide.subtitle}
                     </p>
                   )}
+
+                  {/* Clean Visible "Book Now ➔" Button */}
+                  <div className="mt-2.5 sm:mt-3 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] sm:text-xs uppercase tracking-wider px-3 sm:px-4 py-1.5 rounded-xl shadow-md backdrop-blur-xs transition-all pointer-events-auto">
+                      <span>Book Now</span>
+                      <ArrowRight size={12} />
+                    </span>
+                  </div>
                 </div>
               </>
             ) : (
@@ -359,6 +431,12 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
                   <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
                     Doorstep service in 45 mins across Indore
                   </p>
+                  <div className="mt-3">
+                    <span className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-black text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-sm">
+                      <span>Book Now</span>
+                      <ArrowRight size={12} />
+                    </span>
+                  </div>
                 </div>
                 <div className="opacity-25 select-none pointer-events-none hidden xs:block">
                   <img src="/logo-horizontal.png" alt="Zomindia" className="h-8 sm:h-10 w-auto object-contain" />

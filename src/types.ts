@@ -136,6 +136,26 @@ export interface Service {
   updatedAt?: any;
 }
 
+export type BannerTargetType = 'category' | 'service' | 'offers' | 'custom';
+
+export interface Banner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  badge?: string; // e.g. "Flat ₹99 OFF" or "20% OFF"
+  imageURL: string;
+  targetType: BannerTargetType;
+  categoryId?: string;
+  categoryName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  order: number;
+  isActive: boolean;
+  active?: boolean; // backwards compatibility
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface WorkingHours {
   day: string; // 'Monday', 'Tuesday', etc.
   startTime: string; // '09:00'

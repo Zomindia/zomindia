@@ -428,6 +428,11 @@ service cloud.firestore {
       allow write: if isHeadAdmin();
     }
 
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /services/{serviceId} {
       allow read: if true;
       allow write: if isHeadAdmin();

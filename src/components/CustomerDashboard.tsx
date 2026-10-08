@@ -1981,6 +1981,12 @@ export default function CustomerDashboard({
             target.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         }}
+        onSelectService={(serviceId) => {
+          if (onServiceSelect) onServiceSelect(serviceId);
+        }}
+        onNavigateOffers={() => {
+          if (setActiveTab) setActiveTab("offers");
+        }}
       />
 
       {/* INCOMING SECURE CALL MODAL */}

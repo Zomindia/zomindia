@@ -1637,6 +1637,8 @@ export default function CustomerHome({
             target.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         }}
+        onSelectService={(serviceId) => onServiceSelect(serviceId)}
+        onNavigateOffers={() => setActiveTab("offers")}
         activeBooking={activeBooking && !recentCardDismissed ? activeBooking : null}
         onTrackBooking={() => {
           if (activeBooking) {

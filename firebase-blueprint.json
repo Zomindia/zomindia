@@ -54,6 +54,26 @@
       },
       "required": ["categoryId", "name", "basePrice"]
     },
+    "Banner": {
+      "title": "Banner",
+      "description": "Promotional hero banners displayed in customer app.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "badge": { "type": "string" },
+        "imageURL": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["category", "service", "offers", "custom"] },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "imageURL", "targetType", "order", "isActive"]
+    },
     "Partner": {
       "title": "Partner",
       "description": "Specific information for service partners.",
