@@ -1,80 +1,72 @@
-import { RecaptchaVerifier, Auth } from 'firebase/auth';
+import { Auth, RecaptchaVerifier } from 'firebase/auth';
 
-declare global {
-  interface Window {
-    recaptchaVerifier?: RecaptchaVerifier | null;
-  }
-}
+let recaptchaVerifierInstance: RecaptchaVerifier | null = null;
 
-/**
- * Safely clears and destroys any existing RecaptchaVerifier instance and wipes DOM containers.
- */
-export function clearRecaptchaInstance(containerId: string = 'recaptcha-container'): void {
-  if (typeof window !== 'undefined' && window.recaptchaVerifier) {
+export const clearRecaptchaInstance = (containerId: string = 'recaptcha-container') => {
+  if (recaptchaVerifierInstance) {
     try {
-      window.recaptchaVerifier.clear();
-    } catch (err) {
-      console.warn('[Recaptcha] Non-blocking instance clear notice:', err);
+      recaptchaVerifierInstance.clear();
+    } catch (e) {
+      console.warn('[reCAPTCHA] Error clearing instance:', e);
     }
-    window.recaptchaVerifier = null;
+    recaptchaVerifierInstance = null;
   }
-
   if (typeof document !== 'undefined') {
-    const container = document.getElementById(containerId);
-    if (container) {
-      container.innerHTML = '';
+    const el = document.getElementById(containerId) || document.getElementById('recaptcha-container');
+    if (el) {
+      el.innerHTML = '';
     }
-    // Also clean up any dynamic or duplicate containers across modules
     const dynamicContainers = document.querySelectorAll(
-      `[id="${containerId}"], #profile-recaptcha-dynamic, #recaptcha-container-signup`
+      `[id="${containerId}"], #recaptcha-container, #profile-recaptcha-dynamic, #recaptcha-container-signup`
     );
-    dynamicContainers.forEach((el, index) => {
+    dynamicContainers.forEach((elem, index) => {
       if (index > 0) {
-        el.remove();
+        elem.remove();
       } else {
-        el.innerHTML = '';
+        elem.innerHTML = '';
       }
     });
   }
-}
+  if (typeof window !== 'undefined' && (window as any).recaptchaVerifier) {
+    try {
+      (window as any).recaptchaVerifier.clear();
+    } catch (e) {}
+    (window as any).recaptchaVerifier = null;
+  }
+};
 
-/**
- * Initializes or retrieves an invisible RecaptchaVerifier with proper teardown safeguards.
- */
-export async function getOrCreateRecaptchaVerifier(
+export const getOrCreateRecaptchaVerifier = (
   auth: Auth,
   containerId: string = 'recaptcha-container',
   onExpired?: () => void
-): Promise<RecaptchaVerifier> {
-  // Clear any existing instance and container elements first
-  clearRecaptchaInstance(containerId);
-
-  let container = document.getElementById(containerId);
+): RecaptchaVerifier => {
+  let container = document.getElementById(containerId) || document.getElementById('recaptcha-container');
   if (!container) {
     container = document.createElement('div');
     container.id = containerId;
     document.body.appendChild(container);
-  } else {
-    container.innerHTML = '';
   }
 
-  const verifier = new RecaptchaVerifier(auth, containerId, {
+  // If already exists and element is intact, return existing instance
+  if (recaptchaVerifierInstance) {
+    return recaptchaVerifierInstance;
+  }
+
+  // Clean slate before instantiating
+  container.innerHTML = '';
+
+  recaptchaVerifierInstance = new RecaptchaVerifier(auth, container.id, {
     size: 'invisible',
-    callback: () => {},
+    callback: () => {
+      console.log('[reCAPTCHA] Solved');
+    },
     'expired-callback': () => {
+      console.warn('[reCAPTCHA] Expired, resetting...');
       clearRecaptchaInstance(containerId);
       if (onExpired) onExpired();
-    },
+    }
   });
 
-  try {
-    await verifier.render();
-  } catch (renderErr: any) {
-    if (!renderErr?.message?.includes('already been rendered')) {
-      console.warn('[Recaptcha] Render notice:', renderErr);
-    }
-  }
-
-  window.recaptchaVerifier = verifier;
-  return verifier;
-}
+  (window as any).recaptchaVerifier = recaptchaVerifierInstance;
+  return recaptchaVerifierInstance;
+};

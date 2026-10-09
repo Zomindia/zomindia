@@ -245,8 +245,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
-      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      let verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+      let result;
+      try {
+        result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      } catch (phoneErr: any) {
+        const errMsg = phoneErr?.message || '';
+        if (errMsg.includes('already been rendered') || errMsg.includes('already-rendered')) {
+          console.warn('[AuthModal] reCAPTCHA already rendered, clearing and retrying once...');
+          clearRecaptchaInstance('recaptcha-container');
+          verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+          result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+        } else {
+          throw phoneErr;
+        }
+      }
       setConfirmationResult(result);
       setView('otp-entry');
       setTimer(30);
@@ -270,8 +283,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     const formattedPhone = `+91${cleanPhone}`;
 
     try {
-      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
-      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      let verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+      let result;
+      try {
+        result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      } catch (phoneErr: any) {
+        const errMsg = phoneErr?.message || '';
+        if (errMsg.includes('already been rendered') || errMsg.includes('already-rendered')) {
+          console.warn('[AuthModal] reCAPTCHA already rendered on resend, clearing and retrying...');
+          clearRecaptchaInstance('recaptcha-container');
+          verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+          result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+        } else {
+          throw phoneErr;
+        }
+      }
       setConfirmationResult(result);
       setTimer(30);
     } catch (err: any) {
@@ -671,15 +697,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA
   const sendOnboardingOTP = async (formattedPhone: string) => {
     try {
-      const verifier = await getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
-      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      let verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+      let result;
+      try {
+        result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      } catch (phoneErr: any) {
+        const errMsg = phoneErr?.message || '';
+        if (errMsg.includes('already been rendered') || errMsg.includes('already-rendered')) {
+          console.warn('[AuthModal] reCAPTCHA already rendered on onboarding OTP, resetting...');
+          clearRecaptchaInstance('recaptcha-container');
+          verifier = getOrCreateRecaptchaVerifier(auth, 'recaptcha-container');
+          result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+        } else {
+          throw phoneErr;
+        }
+      }
       setConfirmationResult(result);
       setIsOnboardingVerification(true);
       setView('otp-entry');
       setTimer(30);
     } catch (err: any) {
       console.error("[AuthModal] Onboarding OTP failed:", err);
-      clearRecaptchaInstance();
+      clearRecaptchaInstance('recaptcha-container');
       setError(getFriendlyAuthErrorMessage(err));
     }
   };
