@@ -331,7 +331,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
           {/* Greetings */}
           <section>
-            <h2 className="text-2xl font-black text-slate-900 leading-tight">Welcome, {profile.displayName.split(' ')[0]}</h2>
+            <h2 className="text-2xl font-black text-slate-900 leading-tight">Welcome, {profile?.displayName?.split(' ')?.[0] || 'Partner'}</h2>
             <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">Partner ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase() || 'TEMP'}</p>
           </section>
 
@@ -632,7 +632,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                   <div className="min-w-0 flex-1">
                     <h4 className="font-extrabold italic text-sm leading-snug group-hover:underline truncate">{nextService?.name || 'Assigned Duty'}</h4>
                     <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider mt-1">
-                      Slot, {formatTime12Hour(nextUpcomingJob.scheduledAt)} · Client: {nextCustomer?.displayName.split(' ')[0] || 'Member'}
+                      Slot, {formatTime12Hour(nextUpcomingJob.scheduledAt)} · Client: {nextCustomer?.displayName?.split(' ')?.[0] || 'Member'}
                     </p>
                   </div>
                 </div>

@@ -48,10 +48,20 @@ class ErrorBoundary extends React.Component<Props, State> {
             </p>
             <div className="flex flex-col gap-3">
               <button 
-                onClick={() => this.setState({ hasError: false, error: null })}
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.reload();
+                  }
+                }}
                 className="w-full flex items-center justify-center gap-3 py-3.5 bg-[#002e6e] text-white rounded-2xl font-bold hover:bg-[#002252] transition-all shadow-lg active:scale-95 cursor-pointer"
               >
                 <RotateCcw size={18} />
+                Refresh App
+              </button>
+              <button 
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+              >
                 Try Again
               </button>
               <button 
@@ -61,7 +71,7 @@ class ErrorBoundary extends React.Component<Props, State> {
                     window.location.hash = '#home';
                   }
                 }}
-                className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+                className="w-full py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
               >
                 Return to Home
               </button>

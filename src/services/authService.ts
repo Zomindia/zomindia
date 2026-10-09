@@ -200,6 +200,53 @@ export function getFriendlyAuthErrorMessage(err: any): string {
 }
 
 /**
+ * Bulletproof User Profile Sanitizer & Safe Defaults:
+ * Guarantees that all array, number, and string fields have safe fallbacks to prevent
+ * any runtime exceptions (e.g. .map(), .split(), .slice()) on mobile or web login.
+ */
+export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserProfile {
+  const uid = raw?.uid || fallbackUser?.uid || '';
+  const email = (raw?.email || fallbackUser?.email || '').trim();
+  const phoneNumber = (raw?.phoneNumber || raw?.mobile || fallbackUser?.phoneNumber || '').trim();
+  const isMasterAdmin = email.toLowerCase() === 'sarthakwebtech@gmail.com';
+
+  const safeProfile = {
+    ...raw,
+    uid,
+    phoneNumber,
+    mobile: phoneNumber,
+    email,
+    displayName: raw?.displayName || fallbackUser?.displayName || (phoneNumber ? `Customer (${phoneNumber.slice(-4)})` : 'Customer'),
+    fullName: raw?.fullName || raw?.displayName || fallbackUser?.displayName || 'Customer',
+    role: isMasterAdmin ? 'admin' : (raw?.role || 'customer'),
+    adminSubRole: isMasterAdmin ? 'head' : (raw?.adminSubRole || undefined),
+    walletBalance: Number(raw?.walletBalance) || 0,
+    savedAddresses: Array.isArray(raw?.savedAddresses) ? raw.savedAddresses : [],
+    addresses: Array.isArray(raw?.addresses) ? raw.addresses : [],
+    bookings: Array.isArray(raw?.bookings) ? raw.bookings : [],
+    onboardingComplete: raw?.onboardingComplete !== undefined ? raw.onboardingComplete : true,
+    photoURL: raw?.photoURL || fallbackUser?.photoURL || '',
+    customerData: {
+      fullName: raw?.customerData?.fullName || raw?.displayName || fallbackUser?.displayName || 'Customer',
+      email: raw?.customerData?.email || email || '',
+      phoneNumber: raw?.customerData?.phoneNumber || phoneNumber || '',
+      mobile: raw?.customerData?.mobile || phoneNumber || '',
+      walletBalance: Number(raw?.customerData?.walletBalance) || Number(raw?.walletBalance) || 0,
+      address: raw?.customerData?.address || '',
+      gender: raw?.customerData?.gender || '',
+      languagePreference: raw?.customerData?.languagePreference || 'English',
+      houseType: raw?.customerData?.houseType || 'Apartment',
+      bhkSize: raw?.customerData?.bhkSize || '2 BHK',
+      preferredTimeSlot: raw?.customerData?.preferredTimeSlot || 'Anytime',
+      secondaryPhone: raw?.customerData?.secondaryPhone || '',
+      referralCode: raw?.customerData?.referralCode || (uid ? `ZOM${uid.slice(0, 6).toUpperCase()}` : '')
+    }
+  };
+
+  return safeProfile as UserProfile;
+}
+
+/**
  * Resolves the authenticated user's Firestore profile and establishes a real-time listener.
  * 
  * CRITICAL PERMISSIONS & PERSISTENCE SAFETY:
@@ -220,39 +267,21 @@ export function resolveAndSubscribeProfile(
   let unsubscribeSnapshot: (() => void) | null = null;
 
   // Immediate in-memory fallback profile so UI is instantly authenticated
-  const isAdminUser = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-  const fallbackProfile: UserProfile = {
+  const fallbackProfile = sanitizeUserProfile({
     uid: user.uid,
     phoneNumber: user.phoneNumber || '',
     mobile: user.phoneNumber || '',
-    role: isAdminUser ? 'admin' : 'customer',
-    walletBalance: 0,
-    displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
-    fullName: user.displayName || 'Customer',
     email: user.email || '',
     photoURL: user.photoURL || '',
+    displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
+    fullName: user.displayName || 'Customer',
+    walletBalance: 0,
+    savedAddresses: [],
+    addresses: [],
+    bookings: [],
     onboardingComplete: true,
-    createdAt: new Date().toISOString(),
-    customerData: {
-      fullName: user.displayName || 'Customer',
-      email: user.email || '',
-      phoneNumber: user.phoneNumber || '',
-      mobile: user.phoneNumber || '',
-      walletBalance: 0,
-      address: '',
-      gender: '',
-      languagePreference: 'English',
-      houseType: 'Apartment',
-      bhkSize: '2 BHK',
-      preferredTimeSlot: 'Anytime',
-      secondaryPhone: '',
-      referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`
-    }
-  } as UserProfile;
-
-  if (isAdminUser) {
-    fallbackProfile.adminSubRole = 'head';
-  }
+    createdAt: new Date().toISOString()
+  }, user);
 
   // Initial call with fallback profile so UI doesn't flicker or show login button
   onProfileUpdate(fallbackProfile);
@@ -341,7 +370,7 @@ export function resolveAndSubscribeProfile(
       } catch (writeErr: any) {
         console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
         // Even if write fails (e.g. offline or strict rule), use in-memory payload!
-        onProfileUpdate({ ...payload, uid: user.uid } as UserProfile);
+        onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
       }
 
       if (isUnsubscribed) return;
@@ -362,27 +391,27 @@ export function resolveAndSubscribeProfile(
                 (normalized as any).role = 'admin';
                 (normalized as any).adminSubRole = 'head';
               }
-              onProfileUpdate(normalized as UserProfile);
+              onProfileUpdate(sanitizeUserProfile(normalized, user));
             } else {
-              onProfileUpdate(payload as UserProfile);
+              onProfileUpdate(sanitizeUserProfile(payload, user));
             }
           },
           (snapshotErr: any) => {
             console.warn('[resolveAndSubscribeProfile] Snapshot listener notice/error:', snapshotErr?.message || snapshotErr);
             // DO NOT log out or reset currentUser! Fallback to authenticated profile:
-            onProfileUpdate(payload as UserProfile);
+            onProfileUpdate(sanitizeUserProfile(payload, user));
             if (onError) onError(snapshotErr);
           }
         );
       } catch (subErr: any) {
         console.warn('[resolveAndSubscribeProfile] Snapshot subscription error:', subErr?.message || subErr);
-        onProfileUpdate(payload as UserProfile);
+        onProfileUpdate(sanitizeUserProfile(payload, user));
         if (onError) onError(subErr);
       }
     } catch (fatalErr: any) {
       console.warn('[resolveAndSubscribeProfile] General resolution notice/error:', fatalErr?.message || fatalErr);
       // ALWAYS keep the user logged in with fallback profile!
-      onProfileUpdate(fallbackProfile);
+      onProfileUpdate(sanitizeUserProfile(fallbackProfile, user));
       if (onError) onError(fatalErr);
     }
   };

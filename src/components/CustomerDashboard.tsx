@@ -2190,7 +2190,7 @@ export default function CustomerDashboard({
         >
           <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse shrink-0" />
           <span className="text-[11px] sm:text-xs font-bold text-slate-400 group-hover:text-blue-600 uppercase tracking-[0.15em] transition-colors">
-            Hey {(profile.displayName || "Vikas").split(" ")[0]}, what are you looking for today?
+            Hey {(profile?.displayName || "Customer").split(" ")[0]}, what are you looking for today?
           </span>
         </button>
       </div>

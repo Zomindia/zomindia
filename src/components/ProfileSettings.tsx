@@ -2612,7 +2612,7 @@ export default function ProfileSettings({
                       </p>
                     ) : (
                       <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                        {alertsHistory.map((alert) => (
+                        {(alertsHistory || []).map((alert) => (
                           <div
                             key={alert.id}
                             className="p-3 bg-neutral-50 hover:bg-neutral-100/50 rounded-xl border border-neutral-100 flex flex-col gap-1 text-left"
@@ -2776,7 +2776,7 @@ export default function ProfileSettings({
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {activeBookings.map((booking) => {
+                      {(activeBookings || []).map((booking) => {
                         const service = servicesMap[booking.serviceId] || {
                           name: booking.serviceName || "Maintenance Job",
                         };
@@ -3088,18 +3088,18 @@ export default function ProfileSettings({
                     </div>
                   ) : (
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1 no-scrollbar">
-                      {historyBookings.map((booking) => {
+                      {(historyBookings || []).map((booking) => {
                         const service = servicesMap[booking.serviceId] || {
                           name: "Custom Maintenance Job",
                         };
 
                         let badgeBg =
                           "bg-neutral-150 text-neutral-600 border-neutral-200";
-                        let statusText = booking.status.replace("_", " ");
+                        let statusText = (booking?.status || 'completed').replace(/_/g, " ");
 
                         if (
                           ["completed", "finalized", "closed"].includes(
-                            booking.status,
+                            booking?.status || "",
                           )
                         ) {
                           badgeBg =

@@ -42,7 +42,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser, resolveAndSubscribeProfile } from './services/authService';
+import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser, resolveAndSubscribeProfile, sanitizeUserProfile } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -676,24 +676,23 @@ export default function App() {
 
       if (u) {
         // Immediate fallback in-memory profile to prevent ANY unauthenticated UI flash or Login button visibility
-        const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-        const instantProfile: UserProfile = {
+        const instantProfile = sanitizeUserProfile({
           uid: u.uid,
           phoneNumber: u.phoneNumber || '',
           mobile: u.phoneNumber || '',
-          role: isAdminUser ? 'admin' : 'customer',
+          role: u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
           walletBalance: 0,
           displayName: u.displayName || (u.phoneNumber ? `Customer (${u.phoneNumber.slice(-4)})` : 'Customer'),
           fullName: u.displayName || 'Customer',
           email: u.email || '',
           photoURL: u.photoURL || '',
+          savedAddresses: [],
+          addresses: [],
+          bookings: [],
           onboardingComplete: true,
           createdAt: new Date().toISOString()
-        } as UserProfile;
-        if (isAdminUser) {
-          instantProfile.adminSubRole = 'head';
-        }
-        setProfile((prev) => prev || instantProfile);
+        }, u);
+        setProfile((prev) => prev ? sanitizeUserProfile(prev, u) : instantProfile);
 
         // Real-time listener for partner applications
         unsubscribePartnerApp = onSnapshot(doc(db, 'partner_applications', u.uid), (snapApp) => {
@@ -721,7 +720,7 @@ export default function App() {
           u,
           (updatedProfile) => {
             if (!isMounted) return;
-            setProfile(updatedProfile);
+            setProfile(sanitizeUserProfile(updatedProfile, u));
             setLoading(false);
 
             // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
@@ -1428,19 +1427,23 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'profile') {
-      const activeProfile = profile || (user ? {
-        uid: user.uid,
-        phoneNumber: user.phoneNumber || '',
-        mobile: user.phoneNumber || '',
-        role: user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
+      const authUser = user || auth.currentUser;
+      const activeProfile = profile ? sanitizeUserProfile(profile, authUser) : (authUser ? sanitizeUserProfile({
+        uid: authUser.uid,
+        phoneNumber: authUser.phoneNumber || '',
+        mobile: authUser.phoneNumber || '',
+        role: authUser.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
         walletBalance: 0,
-        displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
-        fullName: user.displayName || 'Customer',
-        email: user.email || '',
-        photoURL: user.photoURL || '',
+        displayName: authUser.displayName || (authUser.phoneNumber ? `Customer (${authUser.phoneNumber.slice(-4)})` : 'Customer'),
+        fullName: authUser.displayName || 'Customer',
+        email: authUser.email || '',
+        photoURL: authUser.photoURL || '',
+        savedAddresses: [],
+        addresses: [],
+        bookings: [],
         onboardingComplete: true,
         createdAt: new Date().toISOString()
-      } as UserProfile : null);
+      }, authUser) : null);
 
       if (!activeProfile) {
         return (
@@ -1469,7 +1472,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         >
           <ProfileSettings
             profile={activeProfile}
-            onUpdate={(updated) => setProfile(updated)}
+            onUpdate={(updated) => setProfile(sanitizeUserProfile(updated, user))}
             setActiveTab={setActiveTab}
             setIsPartnerModalOpen={setIsPartnerModalOpen}
             initialSubSection={profileSubSection as any}
@@ -1479,19 +1482,23 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'wallet') {
-      const activeProfile = profile || (user ? {
-        uid: user.uid,
-        phoneNumber: user.phoneNumber || '',
-        mobile: user.phoneNumber || '',
-        role: user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
+      const authUser = user || auth.currentUser;
+      const activeProfile = profile ? sanitizeUserProfile(profile, authUser) : (authUser ? sanitizeUserProfile({
+        uid: authUser.uid,
+        phoneNumber: authUser.phoneNumber || '',
+        mobile: authUser.phoneNumber || '',
+        role: authUser.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
         walletBalance: 0,
-        displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
-        fullName: user.displayName || 'Customer',
-        email: user.email || '',
-        photoURL: user.photoURL || '',
+        displayName: authUser.displayName || (authUser.phoneNumber ? `Customer (${authUser.phoneNumber.slice(-4)})` : 'Customer'),
+        fullName: authUser.displayName || 'Customer',
+        email: authUser.email || '',
+        photoURL: authUser.photoURL || '',
+        savedAddresses: [],
+        addresses: [],
+        bookings: [],
         onboardingComplete: true,
         createdAt: new Date().toISOString()
-      } as UserProfile : null);
+      }, authUser) : null);
 
       if (!activeProfile) {
         return (
@@ -1510,7 +1517,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           </div>
         );
       }
-      return <WalletView profile={profile} setActiveTab={setActiveTab} />;
+      return <WalletView profile={activeProfile} setActiveTab={setActiveTab} />;
     }
 
     if (activeTab === 'tickets') {
@@ -1696,7 +1703,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             {renderNavigation()}
 
             <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-              {(profile || user) ? (
+              {(profile || user || auth.currentUser) ? (
                 <>
                   {/* Desktop Only: Standalone Bell Icon */}
                   <motion.button
@@ -1901,26 +1908,23 @@ If you have any billing questions, or if your refund is delayed, please email us
           window.dispatchEvent(new CustomEvent("auth-modal-closed"));
         }}
         onSuccess={() => {
-          if (auth.currentUser) {
-            const cur = auth.currentUser;
+          const cur = auth.currentUser;
+          if (cur) {
             setUser({ ...cur } as any);
-            const isAdminUser = cur.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-            const instantProfile: UserProfile = {
+            const instantProfile = sanitizeUserProfile({
               uid: cur.uid,
               phoneNumber: cur.phoneNumber || '',
               mobile: cur.phoneNumber || '',
-              role: isAdminUser ? 'admin' : 'customer',
-              walletBalance: 0,
               displayName: cur.displayName || (cur.phoneNumber ? `Customer (${cur.phoneNumber.slice(-4)})` : 'Customer'),
               fullName: cur.displayName || 'Customer',
               email: cur.email || '',
               photoURL: cur.photoURL || '',
+              savedAddresses: [],
+              addresses: [],
+              bookings: [],
               onboardingComplete: true,
               createdAt: new Date().toISOString()
-            } as UserProfile;
-            if (isAdminUser) {
-              instantProfile.adminSubRole = 'head';
-            }
+            }, cur);
             setProfile(instantProfile);
           }
           setIsAuthModalOpen(false);
@@ -1935,7 +1939,11 @@ If you have any billing questions, or if your refund is delayed, please email us
               setActiveTab(savedTab as any);
             } else {
               setActiveTab('home');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              try {
+                if (typeof window !== 'undefined') {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              } catch (e) {}
             }
             const shouldOpenChat = sessionStorage.getItem("zomini_chat_open") === "true";
             if (shouldOpenChat) {
@@ -1946,7 +1954,11 @@ If you have any billing questions, or if your refund is delayed, please email us
           } catch (e) {
             console.warn("[Zomini] Failed to restore chat state on login:", e);
             setActiveTab('home');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            try {
+              if (typeof window !== 'undefined') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            } catch (err) {}
           }
         }}
       />

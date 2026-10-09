@@ -324,7 +324,7 @@ export default function ReferralsView({ profile, onBack }: { profile: UserProfil
   ];
 
   const currentUserEntry = {
-    name: profile.displayName || profile.email.split('@')[0] + ' (You)',
+    name: profile?.displayName || (profile?.email ? profile.email.split('@')[0] : 'You') + ' (You)',
     count: completedCount,
     badge: `🎖️ ${currentTier.name}`,
     active: true
@@ -799,7 +799,7 @@ ${profile.displayName || 'Your Friend'}`;
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-bold text-slate-700 text-sm">
-                          {friend.displayName ? friend.displayName.slice(0, 1).toUpperCase() : friend.email.slice(0, 1).toUpperCase()}
+                          {friend.displayName ? friend.displayName.slice(0, 1).toUpperCase() : (friend.email ? friend.email.slice(0, 1).toUpperCase() : 'U')}
                         </div>
                         <div>
                           <p className="font-bold text-sm text-slate-800">{friend.displayName || 'zomindia User'}</p>

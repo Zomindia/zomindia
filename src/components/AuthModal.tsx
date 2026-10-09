@@ -604,6 +604,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,
           walletBalance: walletJoiningBonus, // Dynamic Onboarding welcome credit!
           onboardingComplete: true,
+          savedAddresses: [],
+          addresses: [],
+          bookings: [],
           notificationPreferences: {
             bookingUpdates: true,
             promotionalMessages: true
@@ -726,6 +729,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         mobile: formattedPhone,
         walletBalance: walletBalance,
         onboardingComplete: true,
+        savedAddresses: Array.isArray(existingData?.savedAddresses) ? existingData.savedAddresses : [],
+        addresses: Array.isArray(existingData?.addresses) ? existingData.addresses : [],
+        bookings: Array.isArray(existingData?.bookings) ? existingData.bookings : [],
         isPartner: existingData?.isPartner ?? false,
         updatedAt: Timestamp.now()
       };
