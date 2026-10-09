@@ -338,26 +338,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
             }
           }
 
-          const masterUid = conflictUid || activeUid;
-          const masterRef = doc(db, 'users', masterUid);
-
           if (shouldMergeConflictOnSuccess && conflictUid) {
-            const conflictSnap = await transaction.get(masterRef);
-            if (conflictSnap.exists()) {
-              const conflictData = conflictSnap.data();
-              if (conflictData.walletBalance !== undefined) {
-                walletVal += conflictData.walletBalance;
+            try {
+              const conflictRef = doc(db, 'users', conflictUid);
+              const conflictSnap = await transaction.get(conflictRef);
+              if (conflictSnap.exists()) {
+                const conflictData = conflictSnap.data();
+                if (conflictData.walletBalance !== undefined) {
+                  walletVal += conflictData.walletBalance;
+                }
+                existingData = {
+                  ...conflictData,
+                  ...existingData,
+                };
               }
-              existingData = {
-                ...conflictData,
-                ...existingData,
-              };
+            } catch (err) {
+              console.warn("Notice reading conflict doc:", err);
             }
           }
 
           const profilePayload = buildDualPersonaUserDoc({
             ...existingData,
-            uid: masterUid,
+            uid: activeUid, // ALWAYS strictly authenticated activeUid!
             displayName: displayName.trim(),
             fullName: displayName.trim(),
             email: email.trim(),
@@ -375,17 +377,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
             profilePayload.role = 'customer';
           }
 
-          transaction.set(masterRef, profilePayload, { merge: true });
-
-          // Write a small pointer to activeUid if they are different, preventing any split/ghost records
-          if (activeUid !== masterUid) {
-            transaction.set(activeUserRef, {
-              uid: activeUid,
-              mergedInto: masterUid,
-              onboardingComplete: false,
-              updatedAt: Timestamp.now()
-            }, { merge: true });
-          }
+          transaction.set(activeUserRef, profilePayload, { merge: true });
         });
 
         // Move any bookings/history in Firestore if needed (though resolvedUid ensures they access their bookings seamlessly)
@@ -555,11 +547,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       }
 
       if (existingUserDoc) {
-        // Enforce strict merge session cleanly into the existing account record to prevent database pollution
+        // Enforce strict merge session cleanly into the authenticated user record
         const existingData = existingUserDoc.data();
         const mergedPayload: any = buildDualPersonaUserDoc({
           ...existingData,
-          uid: existingUserDoc.id, // Keep the existing document ID as the master UID
+          uid: activeUid, // Strictly activeUid!
           displayName: displayName.trim(),
           fullName: displayName.trim(),
           email: email.trim(),
@@ -574,16 +566,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           mergedPayload.adminSubRole = 'head';
         }
 
-        // Update both the old profile location and write a small pointer to activeUid if they are different
-        await Promise.all([
-          setDoc(doc(db, 'users', existingUserDoc.id), mergedPayload, { merge: true }),
-          activeUid !== existingUserDoc.id ? setDoc(userRef, {
-            uid: activeUid,
-            mergedInto: existingUserDoc.id,
-            onboardingComplete: false,
-            updatedAt: Timestamp.now()
-          }, { merge: true }) : Promise.resolve()
-        ]);
+        await setDoc(userRef, mergedPayload, { merge: true });
       } else if (userSnap.exists()) {
         const existingData = userSnap.data();
         // Safe partial update of only user-controllable fields

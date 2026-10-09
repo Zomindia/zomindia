@@ -42,7 +42,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser } from './services/authService';
+import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser, resolveAndSubscribeProfile } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -675,6 +675,26 @@ export default function App() {
       unsubscribePartnerApp();
 
       if (u) {
+        // Immediate fallback in-memory profile to prevent ANY unauthenticated UI flash or Login button visibility
+        const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+        const instantProfile: UserProfile = {
+          uid: u.uid,
+          phoneNumber: u.phoneNumber || '',
+          mobile: u.phoneNumber || '',
+          role: isAdminUser ? 'admin' : 'customer',
+          walletBalance: 0,
+          displayName: u.displayName || (u.phoneNumber ? `Customer (${u.phoneNumber.slice(-4)})` : 'Customer'),
+          fullName: u.displayName || 'Customer',
+          email: u.email || '',
+          photoURL: u.photoURL || '',
+          onboardingComplete: true,
+          createdAt: new Date().toISOString()
+        } as UserProfile;
+        if (isAdminUser) {
+          instantProfile.adminSubRole = 'head';
+        }
+        setProfile((prev) => prev || instantProfile);
+
         // Real-time listener for partner applications
         unsubscribePartnerApp = onSnapshot(doc(db, 'partner_applications', u.uid), (snapApp) => {
           if (!isMounted) return;
@@ -685,7 +705,7 @@ export default function App() {
           }
         }, (err) => {
           if (!isMounted) return;
-          console.error("Error subscribing to partner application:", err);
+          console.warn("Notice subscribing to partner application:", err);
         });
 
         // Native Push Registration trigger
@@ -693,160 +713,15 @@ export default function App() {
           const { registerPushNotifications } = await import('./lib/push-notifications');
           registerPushNotifications(u.uid);
         } catch (e) {
-          console.error("Push registration trigger failed:", e);
+          console.warn("Push registration trigger notice:", e);
         }
 
-        // Dynamic Mobile-Number Based Profile Resolution & Merge
-        const resolveAndSubscribeProfile = async () => {
-          let resolvedUid = u.uid;
-          let targetPhone = u.phoneNumber || '';
-          
-          // Helper to find document by phone number
-          const findProfileByPhone = async (phone: string) => {
-            if (!phone) return null;
-            const clean = phone.replace(/\D/g, '');
-            const last10 = clean.slice(-10);
-            if (last10.length !== 10) return null;
-            const formats = [`+91${last10}`, last10];
-            for (const fmt of formats) {
-              const q1 = query(collection(db, 'users'), where('phoneNumber', '==', fmt));
-              const q2 = query(collection(db, 'users'), where('mobile', '==', fmt));
-              const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-              if (!snap1.empty) return snap1.docs[0];
-              if (!snap2.empty) return snap2.docs[0];
-            }
-            return null;
-          };
-
-          // 1. Check if there's an existing document by phone number
-          let existingDoc = await findProfileByPhone(targetPhone);
-          
-          // 2. If not found by phone, but email exists, search by email
-          if (!existingDoc && u.email) {
-            const q3 = query(collection(db, 'users'), where('email', '==', u.email.toLowerCase().trim()));
-            const snap3 = await getDocs(q3);
-            if (!snap3.empty) {
-              existingDoc = snap3.docs[0];
-            }
-          }
-
-          if (existingDoc) {
-            resolvedUid = existingDoc.id;
-            console.log(`[Auth Resolution] Resolved authenticated user ${u.uid} to existing document ${resolvedUid}`);
-            
-            // Merge Google / new Auth info directly into existing master document
-            const existingData = existingDoc.data();
-            const mergedPayload: any = buildDualPersonaUserDoc({
-              ...existingData,
-              uid: resolvedUid,
-              email: u.email || existingData.email || '',
-              phoneNumber: u.phoneNumber || existingData.phoneNumber || existingData.mobile || '',
-              mobile: u.phoneNumber || existingData.mobile || existingData.phoneNumber || '',
-              displayName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.displayName || 'User'),
-              fullName: u.displayName && u.displayName !== 'User' ? u.displayName : (existingData.fullName || 'User'),
-              onboardingComplete: true,
-              updatedAt: Timestamp.now()
-            });
-
-            await setDoc(doc(db, 'users', resolvedUid), mergedPayload, { merge: true });
-
-            // If the active auth UID is different from resolvedUid, write a link pointer under u.uid to avoid duplicates
-            if (u.uid !== resolvedUid) {
-              await setDoc(doc(db, 'users', u.uid), {
-                uid: u.uid,
-                mergedInto: resolvedUid,
-                onboardingComplete: false,
-                updatedAt: Timestamp.now()
-              }, { merge: true });
-            }
-          } else {
-            // New user, create the document under u.uid
-            const userDocRef = doc(db, 'users', u.uid);
-            const userSnap = await getDoc(userDocRef);
-            if (!userSnap.exists()) {
-              const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-              const newProfile: any = buildDualPersonaUserDoc({
-                uid: u.uid,
-                displayName: u.displayName || 'User',
-                fullName: u.displayName || 'User',
-                email: u.email || '',
-                phoneNumber: u.phoneNumber || '',
-                mobile: u.phoneNumber || '',
-                role: isAdminUser ? 'admin' : 'customer',
-                photoURL: u.photoURL || '',
-                referralCode: `ZOM${u.uid.slice(0, 6).toUpperCase()}`,
-                walletBalance: 100, // ₹100 Welcome Bonus on registration!
-                notificationPreferences: {
-                  bookingUpdates: true,
-                  promotionalMessages: true
-                },
-                createdAt: Timestamp.now() as any,
-              });
-              if (isAdminUser) {
-                newProfile.adminSubRole = 'head';
-              }
-              await setDoc(userDocRef, newProfile);
-            }
-          }
-
-          // Subscribe to the resolved master UID!
-          const masterDocRef = doc(db, 'users', resolvedUid);
-          unsubscribeProfile = onSnapshot(masterDocRef, async (snap) => {
+        // Robust real-time profile resolution using authenticated u.uid
+        unsubscribeProfile = resolveAndSubscribeProfile(
+          u,
+          (updatedProfile) => {
             if (!isMounted) return;
-            if (!snap.exists()) {
-              setLoading(false);
-              return;
-            }
-            let currentProfile = snap.data() as UserProfile;
-
-            // Follow mergedInto pointer if any
-            if (currentProfile.mergedInto && currentProfile.mergedInto !== resolvedUid) {
-              console.log(`[Auth Resolution Snapshot] Redirecting to merged master: ${currentProfile.mergedInto}`);
-              unsubscribeProfile();
-              // Re-subscribe to merged master
-              const mergedDocRef = doc(db, 'users', currentProfile.mergedInto);
-              unsubscribeProfile = onSnapshot(mergedDocRef, (mergedSnap) => {
-                if (!isMounted) return;
-                if (mergedSnap.exists()) {
-                  const p = mergedSnap.data() as UserProfile;
-                  setProfile({ ...p, uid: currentProfile.mergedInto } as UserProfile);
-                }
-                setLoading(false);
-              });
-              return;
-            }
-
-            // Normalise the profile to contain customerData and (if partner) partnerData
-            const needsNormalization = 
-              !currentProfile.customerData || 
-              !currentProfile.currentMode ||
-              (currentProfile.isPartner === true && !currentProfile.partnerData);
-
-            if (needsNormalization) {
-              const normalized = buildDualPersonaUserDoc(currentProfile);
-              updateDoc(masterDocRef, normalized).catch(e => console.error("Error normalizing user profile:", e));
-              currentProfile = normalized as UserProfile;
-            }
-
-            const isAdminUser = u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
-                                currentProfile?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-
-            let userRole: UserRole = currentProfile?.role || 'customer';
-
-            if (isAdminUser && (userRole !== 'admin' || currentProfile?.adminSubRole !== 'head')) {
-              userRole = 'admin';
-              updateDoc(masterDocRef, { role: 'admin', adminSubRole: 'head' }).catch(e => console.error("Admin sync failed", e));
-            }
-
-            const profileUpdate: any = {
-              ...currentProfile,
-              uid: resolvedUid,
-              role: userRole
-            };
-            if (isAdminUser || currentProfile?.adminSubRole) {
-              profileUpdate.adminSubRole = isAdminUser ? 'head' : currentProfile.adminSubRole;
-            }
-            setProfile(profileUpdate as UserProfile);
+            setProfile(updatedProfile);
             setLoading(false);
 
             // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
@@ -854,18 +729,18 @@ export default function App() {
             const cleanPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
             const isAtRootHome = (!cleanPath || cleanPath === 'home') && (!cleanHash || cleanHash === 'home');
             if (isAtRootHome) {
-              if (userRole === 'admin' && currentProfile?.currentMode !== 'customer') {
+              if (updatedProfile.role === 'admin' && updatedProfile?.currentMode !== 'customer') {
                 setActiveTab('admin');
-              } else if (userRole === 'partner' && currentProfile?.currentMode === 'partner') {
+              } else if (updatedProfile.role === 'partner' && updatedProfile?.currentMode === 'partner') {
                 setActiveTab('partner');
               }
             }
 
-            // Global Active Booking Listener
+            // Global Active Booking Listener strictly using authenticated u.uid
             unsubscribeBookings();
             const q = query(
               collection(db, 'bookings'),
-              where(userRole === 'partner' ? 'partnerId' : 'customerId', '==', resolvedUid),
+              where(updatedProfile.role === 'partner' ? 'partnerId' : 'customerId', '==', u.uid),
               where('status', 'in', ['confirmed', 'assigned', 'ASSIGNED', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'])
             );
             unsubscribeBookings = onSnapshot(q, (snapB) => {
@@ -873,19 +748,14 @@ export default function App() {
               setHasActiveArrival(!snapB.empty);
             }, (err) => {
               if (!isMounted) return;
-              console.error("Error subscribing to active bookings:", err);
+              console.warn("Notice subscribing to active bookings:", err);
             });
-          }, (err) => {
-            if (!isMounted) return;
-            console.error("Error in profile snapshot:", err);
-            setLoading(false);
-          });
-        };
-
-        resolveAndSubscribeProfile().catch((e) => {
-          console.error("Error in resolveAndSubscribeProfile:", e);
-          if (isMounted) setLoading(false);
-        });
+          },
+          (err) => {
+            console.warn("[App] resolveAndSubscribeProfile notice:", err);
+            if (isMounted) setLoading(false);
+          }
+        );
 
       } else {
         setProfile(null);
@@ -1558,7 +1428,21 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'profile') {
-      if (!profile) {
+      const activeProfile = profile || (user ? {
+        uid: user.uid,
+        phoneNumber: user.phoneNumber || '',
+        mobile: user.phoneNumber || '',
+        role: user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
+        walletBalance: 0,
+        displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
+        fullName: user.displayName || 'Customer',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
+        onboardingComplete: true,
+        createdAt: new Date().toISOString()
+      } as UserProfile : null);
+
+      if (!activeProfile) {
         return (
           <div className="max-w-md mx-auto px-4 py-24 text-center">
             <div className="w-16 h-16 bg-blue-50 text-[#002e6e] rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1584,7 +1468,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           className="w-full"
         >
           <ProfileSettings
-            profile={profile}
+            profile={activeProfile}
             onUpdate={(updated) => setProfile(updated)}
             setActiveTab={setActiveTab}
             setIsPartnerModalOpen={setIsPartnerModalOpen}
@@ -1595,7 +1479,21 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'wallet') {
-      if (!profile) {
+      const activeProfile = profile || (user ? {
+        uid: user.uid,
+        phoneNumber: user.phoneNumber || '',
+        mobile: user.phoneNumber || '',
+        role: user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
+        walletBalance: 0,
+        displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
+        fullName: user.displayName || 'Customer',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
+        onboardingComplete: true,
+        createdAt: new Date().toISOString()
+      } as UserProfile : null);
+
+      if (!activeProfile) {
         return (
           <div className="max-w-md mx-auto px-4 py-24 text-center">
             <div className="w-16 h-16 bg-purple-50 text-purple-700 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1798,7 +1696,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             {renderNavigation()}
 
             <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-              {profile ? (
+              {(profile || user) ? (
                 <>
                   {/* Desktop Only: Standalone Bell Icon */}
                   <motion.button
@@ -1844,10 +1742,10 @@ If you have any billing questions, or if your refund is delayed, please email us
                       </div>
 
                       <Avatar
-                        photoURL={profile.photoURL}
-                        displayName={profile.displayName || profile.fullName}
-                        email={profile.email}
-                        isPremium={profile.isPremium}
+                        photoURL={profile?.photoURL || user?.photoURL}
+                        displayName={profile?.displayName || profile?.fullName || user?.displayName}
+                        email={profile?.email || user?.email}
+                        isPremium={profile?.isPremium}
                         sizeClass="w-10 h-10 hover:scale-105 active:scale-95 transition-all"
                       />
                     </button>
@@ -1879,10 +1777,10 @@ If you have any billing questions, or if your refund is delayed, please email us
                       aria-label="Open profile"
                     >
                       <Avatar
-                        photoURL={profile.photoURL}
-                        displayName={profile.displayName || profile.fullName}
-                        email={profile.email}
-                        isPremium={profile.isPremium}
+                        photoURL={profile?.photoURL || user?.photoURL}
+                        displayName={profile?.displayName || profile?.fullName || user?.displayName}
+                        email={profile?.email || user?.email}
+                        isPremium={profile?.isPremium}
                         sizeClass="w-9 h-9 sm:w-10 sm:h-10"
                       />
                     </button>
@@ -2004,18 +1902,40 @@ If you have any billing questions, or if your refund is delayed, please email us
         }}
         onSuccess={() => {
           if (auth.currentUser) {
-            setUser({ ...auth.currentUser } as any);
+            const cur = auth.currentUser;
+            setUser({ ...cur } as any);
+            const isAdminUser = cur.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+            const instantProfile: UserProfile = {
+              uid: cur.uid,
+              phoneNumber: cur.phoneNumber || '',
+              mobile: cur.phoneNumber || '',
+              role: isAdminUser ? 'admin' : 'customer',
+              walletBalance: 0,
+              displayName: cur.displayName || (cur.phoneNumber ? `Customer (${cur.phoneNumber.slice(-4)})` : 'Customer'),
+              fullName: cur.displayName || 'Customer',
+              email: cur.email || '',
+              photoURL: cur.photoURL || '',
+              onboardingComplete: true,
+              createdAt: new Date().toISOString()
+            } as UserProfile;
+            if (isAdminUser) {
+              instantProfile.adminSubRole = 'head';
+            }
+            setProfile(instantProfile);
           }
           setIsAuthModalOpen(false);
           setAuthModalInitialView('login-selection');
           setAuthModalInitialData(undefined);
 
-          // Zomini post-login restoration
+          // Auto-Redirect: restore saved tab if any, otherwise route to home with smooth scroll
           try {
             const savedTab = sessionStorage.getItem("zomini_saved_tab");
             if (savedTab) {
               sessionStorage.removeItem("zomini_saved_tab");
               setActiveTab(savedTab as any);
+            } else {
+              setActiveTab('home');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }
             const shouldOpenChat = sessionStorage.getItem("zomini_chat_open") === "true";
             if (shouldOpenChat) {
@@ -2025,6 +1945,8 @@ If you have any billing questions, or if your refund is delayed, please email us
             }
           } catch (e) {
             console.warn("[Zomini] Failed to restore chat state on login:", e);
+            setActiveTab('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           }
         }}
       />

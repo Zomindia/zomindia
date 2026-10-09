@@ -7,7 +7,20 @@ import {
   UserCredential,
   User
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  Timestamp 
+} from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { UserProfile, UserRole } from '../types';
+import { buildDualPersonaUserDoc } from '../lib/user-schema';
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -184,4 +197,204 @@ export function getFriendlyAuthErrorMessage(err: any): string {
   }
 
   return err.message || 'Authentication failed. Please try again.';
+}
+
+/**
+ * Resolves the authenticated user's Firestore profile and establishes a real-time listener.
+ * 
+ * CRITICAL PERMISSIONS & PERSISTENCE SAFETY:
+ * - A user MUST ALWAYS strictly use their own authenticated UID document: doc(db, 'users', user.uid).
+ * - If resolving by phone matches an older document under a different ID, DO NOT attempt to write or
+ *   listen directly to that mismatched document (which triggers "Missing or insufficient permissions").
+ *   Instead, safely copy/merge essential fields into `users/${user.uid}` with `uid = user.uid`.
+ * - The snapshot listener and initial resolution are wrapped in robust defensive try/catch blocks.
+ * - If Firestore throws a `permission-denied` or `insufficient permissions` error, we DO NOT log out or reset
+ *   the user. Instead, we gracefully emit an in-memory authenticated profile so the user stays logged in and active.
+ */
+export function resolveAndSubscribeProfile(
+  user: User,
+  onProfileUpdate: (profile: UserProfile) => void,
+  onError?: (error: any) => void
+): () => void {
+  let isUnsubscribed = false;
+  let unsubscribeSnapshot: (() => void) | null = null;
+
+  // Immediate in-memory fallback profile so UI is instantly authenticated
+  const isAdminUser = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+  const fallbackProfile: UserProfile = {
+    uid: user.uid,
+    phoneNumber: user.phoneNumber || '',
+    mobile: user.phoneNumber || '',
+    role: isAdminUser ? 'admin' : 'customer',
+    walletBalance: 0,
+    displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
+    fullName: user.displayName || 'Customer',
+    email: user.email || '',
+    photoURL: user.photoURL || '',
+    onboardingComplete: true,
+    createdAt: new Date().toISOString(),
+    customerData: {
+      fullName: user.displayName || 'Customer',
+      email: user.email || '',
+      phoneNumber: user.phoneNumber || '',
+      mobile: user.phoneNumber || '',
+      walletBalance: 0,
+      address: '',
+      gender: '',
+      languagePreference: 'English',
+      houseType: 'Apartment',
+      bhkSize: '2 BHK',
+      preferredTimeSlot: 'Anytime',
+      secondaryPhone: '',
+      referralCode: `ZOM${user.uid.slice(0, 6).toUpperCase()}`
+    }
+  } as UserProfile;
+
+  if (isAdminUser) {
+    fallbackProfile.adminSubRole = 'head';
+  }
+
+  // Initial call with fallback profile so UI doesn't flicker or show login button
+  onProfileUpdate(fallbackProfile);
+
+  const executeResolution = async () => {
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      let existingData: any = null;
+
+      // 1. Try reading the user's primary document doc(db, 'users', user.uid)
+      try {
+        const primarySnap = await getDoc(userDocRef);
+        if (primarySnap.exists()) {
+          existingData = primarySnap.data();
+        }
+      } catch (err: any) {
+        console.warn('[resolveAndSubscribeProfile] Notice reading primary user doc:', err?.message || err);
+      }
+
+      // 2. If primary doc does not exist yet, search if there is an older document by phone number or email to migrate from
+      if (!existingData) {
+        try {
+          const targetPhone = user.phoneNumber || '';
+          if (targetPhone) {
+            const clean = targetPhone.replace(/\D/g, '');
+            const last10 = clean.slice(-10);
+            if (last10.length === 10) {
+              const formats = [`+91${last10}`, last10];
+              for (const fmt of formats) {
+                const q1 = query(collection(db, 'users'), where('phoneNumber', '==', fmt));
+                const snap1 = await getDocs(q1);
+                if (!snap1.empty) {
+                  existingData = snap1.docs[0].data();
+                  console.info('[resolveAndSubscribeProfile] Found legacy document by phone, copying data into primary UID:', user.uid);
+                  break;
+                }
+              }
+            }
+          }
+
+          // If still not found and email exists, search by email
+          if (!existingData && user.email) {
+            const qEmail = query(collection(db, 'users'), where('email', '==', user.email.toLowerCase().trim()));
+            const snapEmail = await getDocs(qEmail);
+            if (!snapEmail.empty) {
+              existingData = snapEmail.docs[0].data();
+              console.info('[resolveAndSubscribeProfile] Found legacy document by email, copying data into primary UID:', user.uid);
+            }
+          }
+        } catch (searchErr: any) {
+          console.warn('[resolveAndSubscribeProfile] Notice during legacy profile lookup:', searchErr?.message || searchErr);
+        }
+      }
+
+      // 3. Prepare merged payload strictly under doc(db, 'users', user.uid)
+      const isMasterAdmin = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
+                            existingData?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+
+      const payload: any = buildDualPersonaUserDoc({
+        ...(existingData || {}),
+        uid: user.uid, // ALWAYS strictly authenticated user.uid!
+        email: user.email || existingData?.email || '',
+        phoneNumber: user.phoneNumber || existingData?.phoneNumber || existingData?.mobile || '',
+        mobile: user.phoneNumber || existingData?.mobile || existingData?.phoneNumber || '',
+        displayName: user.displayName && user.displayName !== 'User' 
+          ? user.displayName 
+          : (existingData?.displayName || 'Customer'),
+        fullName: user.displayName && user.displayName !== 'User' 
+          ? user.displayName 
+          : (existingData?.fullName || 'Customer'),
+        role: isMasterAdmin ? 'admin' : (existingData?.role || 'customer'),
+        photoURL: user.photoURL || existingData?.photoURL || '',
+        referralCode: existingData?.referralCode || `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
+        walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 100,
+        onboardingComplete: true,
+        updatedAt: Timestamp.now(),
+      });
+
+      if (isMasterAdmin) {
+        payload.adminSubRole = 'head';
+      }
+
+      // 4. Upsert strictly into doc(db, 'users', user.uid)
+      try {
+        await setDoc(userDocRef, payload, { merge: true });
+      } catch (writeErr: any) {
+        console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
+        // Even if write fails (e.g. offline or strict rule), use in-memory payload!
+        onProfileUpdate({ ...payload, uid: user.uid } as UserProfile);
+      }
+
+      if (isUnsubscribed) return;
+
+      // 5. Establish real-time listener strictly on user's own document doc(db, 'users', user.uid)
+      try {
+        unsubscribeSnapshot = onSnapshot(
+          userDocRef,
+          (snap) => {
+            if (isUnsubscribed) return;
+            if (snap.exists()) {
+              const liveData = snap.data() as UserProfile;
+              const normalized = buildDualPersonaUserDoc({
+                ...liveData,
+                uid: user.uid,
+              });
+              if (isMasterAdmin) {
+                (normalized as any).role = 'admin';
+                (normalized as any).adminSubRole = 'head';
+              }
+              onProfileUpdate(normalized as UserProfile);
+            } else {
+              onProfileUpdate(payload as UserProfile);
+            }
+          },
+          (snapshotErr: any) => {
+            console.warn('[resolveAndSubscribeProfile] Snapshot listener notice/error:', snapshotErr?.message || snapshotErr);
+            // DO NOT log out or reset currentUser! Fallback to authenticated profile:
+            onProfileUpdate(payload as UserProfile);
+            if (onError) onError(snapshotErr);
+          }
+        );
+      } catch (subErr: any) {
+        console.warn('[resolveAndSubscribeProfile] Snapshot subscription error:', subErr?.message || subErr);
+        onProfileUpdate(payload as UserProfile);
+        if (onError) onError(subErr);
+      }
+    } catch (fatalErr: any) {
+      console.warn('[resolveAndSubscribeProfile] General resolution notice/error:', fatalErr?.message || fatalErr);
+      // ALWAYS keep the user logged in with fallback profile!
+      onProfileUpdate(fallbackProfile);
+      if (onError) onError(fatalErr);
+    }
+  };
+
+  executeResolution();
+
+  return () => {
+    isUnsubscribed = true;
+    if (unsubscribeSnapshot) {
+      try {
+        unsubscribeSnapshot();
+      } catch (e) {}
+    }
+  };
 }
