@@ -1645,9 +1645,9 @@ If you have any billing questions, or if your refund is delayed, please email us
 
   const isFullScreenView = activeTab === 'admin' || activeTab === 'partner';
 
-  if (isFullScreenView) {
-    return (
-      <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
+  return (
+    <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
+      {isFullScreenView ? (
         <div 
           className="min-h-screen"
           style={{
@@ -1661,21 +1661,16 @@ If you have any billing questions, or if your refund is delayed, please email us
           </Suspense>
           <OfflineSyncIndicator />
         </div>
-      </APIProvider>
-    );
-  }
-
-  return (
-    <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
-      <div 
-        className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans" 
-        style={{ 
-          backgroundColor: '#f8fafc', 
-          color: '#0f172a',
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehaviorY: 'auto'
-        }}
-      >
+      ) : (
+        <div 
+          className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans" 
+          style={{ 
+            backgroundColor: '#f8fafc', 
+            color: '#0f172a',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'auto'
+          }}
+        >
       <NotificationSystem onNavigate={setActiveTab} />
       {/* Navigation */}
       <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
@@ -2222,7 +2217,8 @@ If you have any billing questions, or if your refund is delayed, please email us
 
       <PWAInstallBanner />
 
-    </div>
+      </div>
+      )}
     </APIProvider>
   );
 }

@@ -49,6 +49,7 @@ import PartnerTrackingMap from "./PartnerTrackingMap";
 import UnifiedKYCForm from "./partner/UnifiedKYCForm";
 import UnassignedJobDispatcher from "./UnassignedJobDispatcher";
 import AdminBanners from "./admin/AdminBanners";
+import DailyCashRemittanceManager from "./admin/DailyCashRemittanceManager";
 import {
   CORPORATE_LANDLINE_GATEWAY,
 } from "../lib/telephony";
@@ -59,6 +60,7 @@ import {
   Settings,
   FileText,
   DollarSign,
+  Banknote,
   Briefcase,
   ChevronRight,
   TrendingUp,
@@ -134,6 +136,7 @@ type AdminTab =
   | "promotions"
   | "partner-promotions"
   | "earnings"
+  | "cod_remittance"
   | "help-center"
   | "tickets"
   | "admin-management"
@@ -292,6 +295,8 @@ export default function AdminDashboard({
 
   const [activeAdminTab, setActiveAdminTab] =
     useState<AdminTab>(initialAdminTab);
+  const [financialSubTab, setFinancialSubTab] =
+    useState<"overview" | "payouts" | "cod_remittance">("overview");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -822,6 +827,7 @@ export default function AdminDashboard({
           "analytics",
           "bookings",
           "earnings",
+          "cod_remittance",
           "amcs",
           "referrals",
         ].includes(tabId);
@@ -833,6 +839,7 @@ export default function AdminDashboard({
           "analytics",
           "bookings",
           "earnings",
+          "cod_remittance",
           "partners",
           "users",
           "referrals",
@@ -886,6 +893,7 @@ export default function AdminDashboard({
       { id: "services", icon: Briefcase, label: "Services" },
       { id: "banners", icon: ImageIcon, label: "Banners (Hero Sliders)" },
       { id: "earnings", icon: DollarSign, label: "Earnings" },
+      { id: "cod_remittance", icon: Banknote, label: "COD Cash Counter" },
       { id: "partners", icon: ShieldCheck, label: "Partners" },
       { id: "users", icon: Users, label: "Customers" },
       { id: "referrals", icon: Award, label: "Referrals" },
@@ -2002,10 +2010,62 @@ export default function AdminDashboard({
                 )}
               {activeAdminTab === "earnings" &&
                 isAdminAuthorized("earnings") && (
-                  <div className="space-y-8">
-                    <EarningsView bookings={bookings} role="admin" />
-                    <PayoutManager bookings={bookings} partners={partners} users={users} />
+                  <div className="space-y-6">
+                    {/* Financial Management Sub-Tabs */}
+                    <div className="bg-white rounded-3xl p-2.5 border border-slate-100 shadow-sm flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setFinancialSubTab("overview")}
+                        className={`px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                          financialSubTab === "overview"
+                            ? "bg-blue-700 text-white shadow-lg shadow-blue-700/20"
+                            : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        <TrendingUp size={16} />
+                        Revenue & Platform Analytics
+                      </button>
+
+                      <button
+                        onClick={() => setFinancialSubTab("payouts")}
+                        className={`px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                          financialSubTab === "payouts"
+                            ? "bg-blue-700 text-white shadow-lg shadow-blue-700/20"
+                            : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        <DollarSign size={16} />
+                        Partner Payout Requests
+                      </button>
+
+                      <button
+                        onClick={() => setFinancialSubTab("cod_remittance")}
+                        className={`px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                          financialSubTab === "cod_remittance"
+                            ? "bg-rose-700 text-white shadow-lg shadow-rose-700/20"
+                            : "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                        }`}
+                      >
+                        <Banknote size={16} />
+                        Daily Cash Remittances (COD Counter)
+                      </button>
+                    </div>
+
+                    {financialSubTab === "overview" && (
+                      <EarningsView bookings={bookings} role="admin" />
+                    )}
+
+                    {financialSubTab === "payouts" && (
+                      <PayoutManager bookings={bookings} partners={partners} users={users} />
+                    )}
+
+                    {financialSubTab === "cod_remittance" && (
+                      <DailyCashRemittanceManager partners={partners} adminProfile={profile} />
+                    )}
                   </div>
+                )}
+              {activeAdminTab === "cod_remittance" &&
+                isAdminAuthorized("cod_remittance") && (
+                  <DailyCashRemittanceManager partners={partners} adminProfile={profile} />
                 )}
               {activeAdminTab === "partners" &&
                 isAdminAuthorized("partners") && (
@@ -10602,6 +10662,23 @@ function PayoutManager({
         adminNotes: adminNotes,
         processedAt: Timestamp.now(),
       });
+
+      // 4. Update platform ledger and commission earnings
+      try {
+        await addDoc(collection(db, "platformTransactions"), {
+          type: "payout_settlement",
+          partnerId,
+          grossAmount: manualGrossAmount,
+          commissionRetained: manualCommission,
+          tdsDeducted: manualTds,
+          netDisbursed: manualNetPayable,
+          paymentRef,
+          notes: adminNotes,
+          createdAt: Timestamp.now()
+        });
+      } catch (ledgerErr) {
+        console.warn("Platform transaction log notice:", ledgerErr);
+      }
 
       if ((window as any).__showToast) {
         (window as any).__showToast("Manual payout disbursed and logged successfully.");

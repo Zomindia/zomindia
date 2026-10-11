@@ -680,24 +680,34 @@ async function startServer() {
           }
 
           // Credit partner earnings atomically if partner assigned
+          // Case A: Online Payment (Money collected by Zomindia via Razorpay)
+          // Platform commission (15%) belongs to Zomindia, Partner share (85%) is credited to withdrawable balance
           const partnerId = existingData?.partnerId || bookingPayload?.partnerId;
           if (partnerId) {
             try {
               const partnerRef = db.collection("partners").doc(partnerId);
               const partnerSnap = await partnerRef.get();
               if (partnerSnap.exists) {
+                const commissionRate = 0.15;
+                const platformCommission = Math.round(finalAmount * commissionRate);
+                const partnerShare = Math.max(0, finalAmount - platformCommission);
                 const rewardPts = 10;
+
                 await partnerRef.update({
-                  totalEarnings: admin.firestore.FieldValue.increment(finalAmount),
+                  totalEarnings: admin.firestore.FieldValue.increment(partnerShare),
                   rewardCredits: admin.firestore.FieldValue.increment(rewardPts),
                   updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
                 await partnerRef.collection("earningsHistory").add({
-                  type: "booking_earning",
-                  amount: finalAmount,
+                  type: "booking_earning_online",
+                  amount: partnerShare,
+                  grossAmount: finalAmount,
+                  platformCommission,
+                  partnerShare,
+                  paymentMethod: "online",
                   credits: rewardPts,
                   bookingId: resolvedBookingId,
-                  reason: "Completed service (razorpay): Verified Settlement",
+                  reason: `Completed online job #${resolvedBookingId.slice(0, 8).toUpperCase()}: 85% Partner Share (15% Zomindia Fee: ₹${platformCommission})`,
                   createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
               }
@@ -881,12 +891,17 @@ async function startServer() {
         const totalPrice = Number(bookingData.totalPrice || 0);
         const rewardPts = 10;
         const targetPartnerId = bookingData.partnerId || partnerId;
+        const commissionRate = 0.15;
+        const platformCommission = Math.round(totalPrice * commissionRate);
+        const partnerShare = totalPrice - platformCommission; // 85%
 
         t.update(bookingRef, {
           status: "completed",
           paymentStatus: "paid",
           paymentMethod: "cash",
           paidAmount: totalPrice,
+          platformCommission: platformCommission,
+          partnerCashCollected: totalPrice,
           paidAt: new Date().toISOString(),
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
           settledAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -905,45 +920,294 @@ async function startServer() {
           }
           if (partnerSnap.exists) {
             const pData = partnerSnap.data();
-            const currentEarnings = Number(pData.totalEarnings || 0);
             const currentCredits = Number(pData.rewardCredits || 0);
+            const currentUnsettled = Number(pData.unsettledCashInHand || 0);
+            const newUnsettled = currentUnsettled + totalPrice;
+
+            // DAILY OFFICE CASH REMITTANCE MODEL:
+            // 1. 100% of collected cash is added to partner's liability (unsettledCashInHand).
+            // 2. Update lastCashCollectedAt to serverTimestamp.
+            // 3. Partner share (85%) is logged as pending_cash_clearance.
+            // 4. Partner withdrawable totalEarnings is NOT credited until physical cash is cleared by Admin.
+            // 5. If unsettled cash exceeds 2000, mark isCashBlocked = true.
+            const shouldBlock = newUnsettled > 2000;
 
             t.update(partnerRef, {
-              totalEarnings: currentEarnings + totalPrice,
+              unsettledCashInHand: newUnsettled,
+              lastCashCollectedAt: admin.firestore.FieldValue.serverTimestamp(),
+              isCashBlocked: shouldBlock ? true : (pData.isCashBlocked || false),
               rewardCredits: currentCredits + rewardPts,
+              totalCashCollected: admin.firestore.FieldValue.increment(totalPrice),
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
-            if (pData.userId) {
-              const userRef = db.collection("users").doc(pData.userId);
-              const userSnap = await t.get(userRef);
-              if (userSnap.exists) {
-                const currentBal = Number(userSnap.data().walletBalance || 0);
-                t.update(userRef, {
-                  walletBalance: currentBal + totalPrice,
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-              }
-            }
-
             const earnRef = partnerRef.collection("earningsHistory").doc();
             t.set(earnRef, {
-              type: "booking_earning",
-              amount: totalPrice,
+              type: "booking_earning_cash",
+              status: "pending_cash_clearance",
+              amount: partnerShare,
+              grossAmount: totalPrice,
+              platformCommission: platformCommission,
+              partnerShare: partnerShare,
+              cashInHandCollected: totalPrice,
+              paymentMethod: "cash",
               credits: rewardPts,
               bookingId,
-              reason: `Completed service (Cash Collected): Verified Settlement`,
+              reason: `COD Service Completed: ₹${totalPrice} cash collected in hand. 85% share (₹${partnerShare}) pending office cash remittance clearance.`,
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
           }
         }
       });
 
-      console.log(`[Partner Cash Settlement] Successfully settled Booking #${bookingId}`);
+      console.log(`[Partner Cash Settlement] Successfully recorded COD booking #${bookingId}`);
       return res.json({ success: true, bookingId });
     } catch (err: any) {
       console.error("[Partner Settle Cash Error]:", err);
       return res.status(400).json({ error: err.message || "Failed to settle cash payment" });
+    }
+  });
+
+  // Admin Office Cash Clearance Counter Endpoint
+  app.post("/api/admin/clear-partner-cash", async (req, res) => {
+    try {
+      const { partnerId, amountReceived, paymentRef, cashierNotes, adminUid } = req.body;
+      if (!partnerId || !amountReceived || Number(amountReceived) <= 0) {
+        return res.status(400).json({ error: "Partner ID and positive amount received required" });
+      }
+
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      const receivedAmt = Math.round(Number(amountReceived));
+
+      let resolvedPartnerRef = db.collection("partners").doc(partnerId);
+      let pSnap = await resolvedPartnerRef.get();
+      if (!pSnap.exists) {
+        const querySnap = await db.collection("partners").where("userId", "==", partnerId).limit(1).get();
+        if (!querySnap.empty) {
+          resolvedPartnerRef = querySnap.docs[0].ref;
+          pSnap = querySnap.docs[0];
+        } else {
+          return res.status(404).json({ error: "Partner not found" });
+        }
+      }
+
+      const partnerData = pSnap.data();
+      const currentUnsettled = Number(partnerData.unsettledCashInHand || 0);
+      const newUnsettled = Math.max(0, currentUnsettled - receivedAmt);
+      const isUnblocked = newUnsettled <= 2000;
+
+      // Calculate 85% partner share from the deposited cash
+      const platformFee = Math.round(receivedAmt * 0.15);
+      const partnerCreditedShare = receivedAmt - platformFee;
+
+      // 1. Decrement unsettledCashInHand & increment totalEarnings by 85% partner share
+      await resolvedPartnerRef.update({
+        unsettledCashInHand: newUnsettled,
+        totalEarnings: admin.firestore.FieldValue.increment(partnerCreditedShare),
+        isCashBlocked: newUnsettled > 2000 ? true : false,
+        lastOfficeDepositAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 2. Update matching pending_cash_clearance entries in earningsHistory to 'cleared'
+      try {
+        const pendingSnap = await resolvedPartnerRef
+          .collection("earningsHistory")
+          .where("status", "==", "pending_cash_clearance")
+          .limit(25)
+          .get();
+
+        let remainingToClear = receivedAmt;
+        for (const doc of pendingSnap.docs) {
+          const eData = doc.data();
+          const grossAmt = Number(eData.grossAmount || eData.cashInHandCollected || 0);
+          if (remainingToClear >= grossAmt || grossAmt === 0) {
+            await doc.ref.update({
+              status: "cleared",
+              clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+              clearedByAdmin: adminUid || "admin",
+              paymentRef: paymentRef || `CASH-OFFICE-${Date.now()}`
+            });
+            remainingToClear -= grossAmt;
+          } else {
+            // Partial clearance
+            await doc.ref.update({
+              status: "cleared",
+              clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+              clearedByAdmin: adminUid || "admin",
+              notes: `Cleared ₹${remainingToClear} via counter deposit`
+            });
+            break;
+          }
+        }
+      } catch (clearErr) {
+        console.warn("[Admin Clear Cash] Notice on updating earnings history records:", clearErr);
+      }
+
+      // 3. Write permanent ledger entry in partner's earnings history
+      await resolvedPartnerRef.collection("earningsHistory").add({
+        type: "office_cash_deposit",
+        status: "cleared",
+        amount: partnerCreditedShare,
+        grossAmount: receivedAmt,
+        platformCommission: platformFee,
+        partnerShare: partnerCreditedShare,
+        paymentRef: paymentRef || `OFFICE-COUNTER-${Date.now()}`,
+        notes: cashierNotes || "Cash received and cleared at Zomindia office counter",
+        reason: `Office Cash Remittance: ₹${receivedAmt} physical cash deposited. 85% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 4. Write permanent ledger entry in platformTransactions
+      await db.collection("platformTransactions").add({
+        type: "office_cash_deposit",
+        partnerId: pSnap.id,
+        partnerUserId: partnerData.userId || partnerId,
+        partnerName: partnerData.name || partnerData.fullName || "Partner",
+        amountReceived: receivedAmt,
+        platformCommission: platformFee,
+        partnerCreditedShare: partnerCreditedShare,
+        paymentRef: paymentRef || `OFFICE-COUNTER-${Date.now()}`,
+        cashierNotes: cashierNotes || "",
+        receivedBy: adminUid || "admin",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      return res.json({
+        success: true,
+        clearedAmount: receivedAmt,
+        creditedEarnings: partnerCreditedShare,
+        newUnsettledCash: newUnsettled,
+        isCashBlocked: newUnsettled > 2000
+      });
+    } catch (err: any) {
+      console.error("[Admin Clear Partner Cash Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to clear partner cash remittance" });
+    }
+  });
+
+  // Partner Emergency Digital Cash Clearance Endpoint (Razorpay / UPI)
+  app.post("/api/partner/clear-cash-online", async (req, res) => {
+    try {
+      const {
+        partnerId,
+        amount,
+        razorpay_payment_id,
+        razorpay_order_id,
+        razorpay_signature
+      } = req.body;
+
+      if (!partnerId || !amount || Number(amount) <= 0) {
+        return res.status(400).json({ error: "Partner ID and positive amount required" });
+      }
+
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+
+      // Verify Razorpay HMAC signature if credentials are configured
+      const secret = process.env.RAZORPAY_KEY_SECRET;
+      if (secret && razorpay_order_id && razorpay_payment_id && razorpay_signature) {
+        const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+        const expectedSignature = crypto
+          .createHmac("sha256", secret)
+          .update(body.toString())
+          .digest("hex");
+
+        if (expectedSignature !== razorpay_signature) {
+          console.error("[Partner Digital Clearance] Razorpay signature mismatch:", { expectedSignature, razorpay_signature });
+          return res.status(400).json({ error: "Invalid Razorpay payment signature" });
+        }
+      }
+
+      const depositAmt = Math.round(Number(amount));
+
+      let resolvedPartnerRef = db.collection("partners").doc(partnerId);
+      let pSnap = await resolvedPartnerRef.get();
+      if (!pSnap.exists) {
+        const querySnap = await db.collection("partners").where("userId", "==", partnerId).limit(1).get();
+        if (!querySnap.empty) {
+          resolvedPartnerRef = querySnap.docs[0].ref;
+          pSnap = querySnap.docs[0];
+        } else {
+          return res.status(404).json({ error: "Partner not found" });
+        }
+      }
+
+      const partnerData = pSnap.data();
+      const currentUnsettled = Number(partnerData.unsettledCashInHand || 0);
+      const newUnsettled = Math.max(0, currentUnsettled - depositAmt);
+
+      const platformFee = Math.round(depositAmt * 0.15);
+      const partnerCreditedShare = depositAmt - platformFee;
+
+      // 1. Decrement unsettled cash & credit 85% withdrawable balance
+      await resolvedPartnerRef.update({
+        unsettledCashInHand: newUnsettled,
+        totalEarnings: admin.firestore.FieldValue.increment(partnerCreditedShare),
+        isCashBlocked: newUnsettled > 2000 ? true : false,
+        lastDigitalClearanceAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 2. Mark pending cash clearance records as cleared
+      try {
+        const pendingSnap = await resolvedPartnerRef
+          .collection("earningsHistory")
+          .where("status", "==", "pending_cash_clearance")
+          .limit(20)
+          .get();
+
+        for (const doc of pendingSnap.docs) {
+          await doc.ref.update({
+            status: "cleared",
+            clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+            paymentRef: razorpay_payment_id || `RAZORPAY-CLEAR-${Date.now()}`
+          });
+        }
+      } catch (err) {}
+
+      // 3. Write record in partner's earnings history
+      await resolvedPartnerRef.collection("earningsHistory").add({
+        type: "office_cash_deposit",
+        status: "cleared",
+        amount: partnerCreditedShare,
+        grossAmount: depositAmt,
+        platformCommission: platformFee,
+        partnerShare: partnerCreditedShare,
+        paymentRef: razorpay_payment_id || `DIGITAL-${Date.now()}`,
+        notes: "Digital Cash Remittance via Razorpay/UPI",
+        reason: `Digital Cash Clearance: ₹${depositAmt} deposited remotely. 85% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 4. Write platform transaction
+      await db.collection("platformTransactions").add({
+        type: "office_cash_deposit",
+        depositMethod: "razorpay_digital",
+        partnerId: pSnap.id,
+        partnerUserId: partnerData.userId || partnerId,
+        partnerName: partnerData.name || partnerData.fullName || "Partner",
+        amountReceived: depositAmt,
+        platformCommission: platformFee,
+        partnerCreditedShare: partnerCreditedShare,
+        paymentId: razorpay_payment_id || "",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      return res.json({
+        success: true,
+        clearedAmount: depositAmt,
+        creditedEarnings: partnerCreditedShare,
+        newUnsettledCash: newUnsettled,
+        isCashBlocked: newUnsettled > 2000
+      });
+    } catch (err: any) {
+      console.error("[Partner Digital Clearance Error]:", err);
+      return res.status(500).json({ error: err.message || "Failed to clear cash remotely" });
     }
   });
 
@@ -2210,40 +2474,95 @@ Structure:
 
   app.post("/api/add-funds", async (req, res) => {
     try {
-      const { paymentId, amount, userId, orderId, merchantTransactionId } = req.body;
-      if (!amount || !userId) return res.status(400).json({ error: "Missing parameters" });
+      const { 
+        paymentId, 
+        amount, 
+        userId, 
+        orderId, 
+        merchantTransactionId,
+        razorpay_payment_id,
+        razorpay_order_id,
+        razorpay_signature,
+        isMock
+      } = req.body || {};
 
-      const finalPaymentId = orderId || merchantTransactionId || paymentId || `CF_FUNDS_${Date.now()}`;
+      const numAmount = Number(amount);
+      if (!numAmount || isNaN(numAmount) || numAmount <= 0 || !userId) {
+        return res.status(400).json({ error: "Missing or invalid parameters" });
+      }
+
+      const effectivePaymentId = razorpay_payment_id || paymentId || merchantTransactionId || `pay_${Date.now()}`;
+      const effectiveOrderId = razorpay_order_id || orderId || `order_${Date.now()}`;
+
+      // Check if this is a simulation / test payment
+      const isSimulation =
+        isMock === true ||
+        String(effectiveOrderId).startsWith("order_mock_") ||
+        String(effectivePaymentId).startsWith("pay_mock_") ||
+        String(effectivePaymentId).startsWith("pay_sim_") ||
+        String(effectivePaymentId).startsWith("sim_pay_") ||
+        razorpay_signature === "mock_signature" ||
+        !RAZORPAY_KEY_SECRET ||
+        !razorpayClient;
+
+      let isSignatureValid = false;
+
+      if (isSimulation) {
+        isSignatureValid = true;
+      } else if (RAZORPAY_KEY_SECRET && razorpay_order_id && razorpay_payment_id && razorpay_signature) {
+        try {
+          const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+          const expectedSignature = crypto
+            .createHmac("sha256", RAZORPAY_KEY_SECRET)
+            .update(body)
+            .digest("hex");
+          isSignatureValid = expectedSignature === razorpay_signature;
+        } catch (sigErr: any) {
+          console.warn("[Razorpay Add Funds Signature Error]:", sigErr.message || sigErr);
+          isSignatureValid = false;
+        }
+      }
+
+      if (!isSignatureValid) {
+        return res.status(400).json({ success: false, error: "Invalid Razorpay payment signature" });
+      }
+
+      if (!db) {
+        return res.json({ success: true, newBalance: numAmount, isSimulated: true });
+      }
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
       if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
 
-      const currentBalance = userDoc.data()?.walletBalance || 0;
+      const currentBalance = Number(userDoc.data()?.walletBalance || 0);
+      const newBalance = currentBalance + numAmount;
       
       const batch = db.batch();
       
-      // Update balance
+      // Atomically increment user's walletBalance
       batch.update(userRef, {
-         walletBalance: currentBalance + amount,
-         updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        walletBalance: admin.firestore.FieldValue.increment(numAmount),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // Record transaction
+      // Write immutable record to walletTransactions
       const txRef = db.collection("walletTransactions").doc();
       batch.set(txRef, {
-         userId,
-         amount,
-         type: 'credit',
-         reason: 'Added funds via Razorpay',
-         referenceId: finalPaymentId,
-         status: 'completed',
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
+        userId,
+        amount: numAmount,
+        type: 'credit',
+        reason: 'Wallet Top-up via Razorpay',
+        paymentId: effectivePaymentId,
+        referenceId: effectivePaymentId,
+        orderId: effectiveOrderId,
+        status: 'completed',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       await batch.commit();
 
-      res.json({ success: true, newBalance: currentBalance + amount });
+      res.json({ success: true, newBalance, paymentId: effectivePaymentId });
     } catch (err: any) {
       const isPermErr =
         err?.code === 7 ||

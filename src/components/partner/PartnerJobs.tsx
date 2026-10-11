@@ -1103,7 +1103,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       if (selectedBooking?.id === booking.id) {
         setSelectedBooking(updatedBooking);
       }
-      alert("Success: Cash payment of ₹" + booking.totalPrice + " confirmed and service marked completed!");
+      alert(`Cash Collected: ₹${booking.totalPrice}. Please deposit this cash at the Zomindia office today or by 11:00 AM tomorrow.`);
     } catch (err: any) {
       console.error("Cash payment completion error:", err);
       if (err.message === "This job has already been settled.") {
@@ -2975,27 +2975,63 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
               <div className="h-[1px] bg-slate-800/60" />
 
               {/* Earnings breakdown */}
-              <div className="grid grid-cols-2 gap-3.5">
-                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 text-center shadow-sm">
-                  <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block mb-1">
-                    Book Earning
-                  </span>
-                  <div className="flex items-center justify-center gap-0.5 text-emerald-400">
-                    <span className="text-xs font-black">₹</span>
-                    <span className="text-lg font-black">{booking.totalPrice}</span>
+              {booking.paymentMethod === 'cash' ? (
+                <div className="space-y-3">
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-center">
+                    <p className="text-xs font-black text-amber-700 uppercase tracking-wide">
+                      Cash Collected: ₹{booking.totalPrice}
+                    </p>
+                    <p className="text-[11px] text-amber-900/90 font-semibold mt-1">
+                      Please deposit this cash at the Zomindia office today or by 11:00 AM tomorrow.
+                    </p>
                   </div>
-                </div>
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="bg-slate-100 border border-slate-200 rounded-2xl p-3 text-center">
+                      <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
+                        85% Partner Share
+                      </span>
+                      <div className="flex items-center justify-center gap-0.5 text-slate-800">
+                        <span className="text-xs font-black">₹</span>
+                        <span className="text-base font-black">{Math.max(0, Math.round(Number(booking.totalPrice || 0) * 0.85))}</span>
+                      </div>
+                      <span className="text-[8px] text-amber-600 block mt-0.5 font-bold">Pending Office Clearance</span>
+                    </div>
 
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 text-center shadow-sm">
-                  <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block mb-1">
-                    Reward points
-                  </span>
-                  <div className="flex items-center justify-center gap-1 text-amber-400">
-                    <Trophy size={14} className="animate-pulse" />
-                    <span className="text-lg font-black leading-none">+10</span>
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 text-center shadow-sm">
+                      <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
+                        Reward Points
+                      </span>
+                      <div className="flex items-center justify-center gap-1 text-amber-500">
+                        <Trophy size={14} className="animate-pulse" />
+                        <span className="text-lg font-black leading-none">+10</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 text-center shadow-sm">
+                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
+                      85% Partner Share
+                    </span>
+                    <div className="flex items-center justify-center gap-0.5 text-emerald-600">
+                      <span className="text-xs font-black">₹</span>
+                      <span className="text-lg font-black">{Math.max(0, Math.round(Number(booking.totalPrice || 0) * 0.85))}</span>
+                    </div>
+                    <span className="text-[8px] text-slate-400 block mt-0.5 font-bold">Credited to Wallet</span>
+                  </div>
+
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 text-center shadow-sm">
+                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
+                      Reward Points
+                    </span>
+                    <div className="flex items-center justify-center gap-1 text-amber-500">
+                      <Trophy size={14} className="animate-pulse" />
+                      <span className="text-lg font-black leading-none">+10</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Positive affirmation text */}

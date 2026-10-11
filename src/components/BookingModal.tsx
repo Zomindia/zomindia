@@ -9,6 +9,7 @@ import {
   doc, 
   updateDoc, 
   setDoc, 
+  addDoc,
   onSnapshot, 
   runTransaction 
 } from 'firebase/firestore';
@@ -1173,6 +1174,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           await updateDoc(uRef, {
             walletBalance: Math.max(0, (profile.walletBalance || 0) - walletDeduction)
           });
+
+          // Create an explicit walletTransactions debit entry
+          await addDoc(collection(db, 'walletTransactions'), {
+            userId: activeUid,
+            amount: -walletDeduction,
+            type: 'debit',
+            reason: `Deducted for booking #${bookingId.slice(0, 8).toUpperCase()}`,
+            referenceId: bookingId,
+            status: 'completed',
+            createdAt: Timestamp.now()
+          });
         } catch (walletDeductErr) {
           console.error("Wallet balance deduction write failed:", walletDeductErr);
         }
@@ -1224,8 +1236,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           email: resolvedEmail
         },
         transactionId: onlinePaymentData?.txnId || null,
-        onlinePaymentProvider: onlinePaymentData?.provider || null,
+        onlinePaymentProvider: isOnlineConfirmed ? (onlinePaymentData?.provider?.toLowerCase().includes('razorpay') ? 'razorpay' : onlinePaymentData?.provider || 'razorpay') : null,
         onlinePaymentMethod: onlinePaymentData?.method || null,
+        razorpayPaymentId: isOnlineConfirmed ? (onlinePaymentData?.txnId || null) : null,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       };

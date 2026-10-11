@@ -172,6 +172,7 @@ export interface KYCDocument {
 export interface PartnerProfile {
   id: string;
   userId: string;
+  name?: string;
   displayName?: string;
   categories: string[];
   skills?: string[];
@@ -262,6 +263,9 @@ export interface PartnerProfile {
   };
   educationalCertificates?: string;
   verificationCertificates?: string;
+  unsettledCashInHand?: number;
+  lastCashCollectedAt?: any;
+  isCashBlocked?: boolean;
 }
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -300,11 +304,22 @@ export interface SupportTicket {
 
 export interface EarningsHistory {
   id: string;
-  type: 'booking_earning' | 'reward_credit' | 'adjustment';
+  type: 'booking_earning' | 'booking_earning_online' | 'booking_earning_cash' | 'office_cash_deposit' | 'payout_disbursement' | 'cash_commission_deduction' | 'reward_credit' | 'adjustment' | string;
+  status?: 'cleared' | 'pending_cash_clearance' | 'disbursed' | string;
   amount: number;
-  credits: number;
+  credits?: number;
   reason?: string;
   bookingId?: string;
+  paymentMethod?: string;
+  grossAmount?: number;
+  platformCommission?: number;
+  partnerShare?: number;
+  netDisbursed?: number;
+  commissionDeducted?: number;
+  tdsDeducted?: number;
+  paymentRef?: string;
+  notes?: string;
+  description?: string;
   createdAt: any;
 }
 

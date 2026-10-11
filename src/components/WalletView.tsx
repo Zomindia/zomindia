@@ -61,26 +61,116 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
 
     setLoading(true);
     try {
-      // Direct integration to mock payment in the iframe
-      const res = await fetch('/api/add-funds', {
+      // 1. Create Razorpay order via backend
+      const receiptId = `wallet_${profile.uid.slice(0, 8)}_${Date.now()}`;
+      const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: profile.uid,
           amount: amount,
-          paymentId: `sim_pay_${Date.now()}`
+          currency: 'INR',
+          receipt: receiptId,
+          customerName: profile.fullName || 'Customer',
+          customerPhone: profile.mobile || profile.phoneNumber || '',
+          customerEmail: profile.email || '',
+          serviceName: 'Wallet Top-up'
         })
       });
-      const data = await res.json();
-      if (data.success) {
-        setTopupAmount('');
-        displayMessage("Wallet recharged successfully!");
-      } else {
-        displayMessage("Failed to add funds: " + data.error, true);
+
+      const orderData = await orderRes.json();
+      if (!orderData?.success) {
+        throw new Error(orderData?.error || "Failed to create payment order");
       }
-    } catch (err) {
-      console.error(err);
-      displayMessage("Failed to initiate payment", true);
+
+      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || orderData.keyId;
+      const isRealKey = Boolean(
+        clientKey &&
+        !clientKey.includes('placeholder') &&
+        (clientKey.startsWith('rzp_') || !orderData.isMock)
+      );
+
+      // Function to post verified payment details to /api/add-funds
+      const submitVerification = async (verifyPayload: any) => {
+        const addFundsRes = await fetch('/api/add-funds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: profile.uid,
+            amount: amount,
+            ...verifyPayload
+          })
+        });
+        const addFundsData = await addFundsRes.json();
+        if (addFundsData.success) {
+          setTopupAmount('');
+          displayMessage("Wallet recharged successfully via Razorpay!");
+        } else {
+          displayMessage("Failed to credit wallet: " + (addFundsData.error || "Verification issue"), true);
+        }
+      };
+
+      const RazorpayConstructor = (window as any).Razorpay;
+
+      // If Razorpay SDK is loaded and we have valid credentials, open the standard Razorpay checkout modal
+      if (isRealKey && typeof RazorpayConstructor === 'function') {
+        const options = {
+          key: clientKey,
+          amount: orderData.amount || Math.round(amount * 100),
+          currency: 'INR',
+          name: 'Zomindia Wallet Recharge',
+          description: `Add ₹${amount} to Wallet Balance`,
+          order_id: orderData.orderId,
+          handler: async function (response: any) {
+            try {
+              await submitVerification({
+                razorpay_order_id: response.razorpay_order_id || orderData.orderId,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                paymentId: response.razorpay_payment_id,
+                isMock: false
+              });
+            } catch (verErr: any) {
+              console.error("[Razorpay Wallet Add Funds Error]:", verErr);
+              displayMessage("Error processing verified payment: " + verErr.message, true);
+            }
+          },
+          prefill: {
+            name: profile.fullName || 'Customer',
+            contact: profile.mobile || profile.phoneNumber || '',
+            email: profile.email || 'customer@zomindia.com'
+          },
+          theme: {
+            color: '#1d4ed8'
+          },
+          modal: {
+            ondismiss: function () {
+              setLoading(false);
+            }
+          }
+        };
+
+        const rzp = new RazorpayConstructor(options);
+        rzp.on('payment.failed', function (resp: any) {
+          console.warn('[Razorpay Topup Failed]:', resp.error);
+          displayMessage(resp.error?.description || "Payment was declined.", true);
+          setLoading(false);
+        });
+        rzp.open();
+        return;
+      }
+
+      // Fallback sandbox simulation mode when testing without live keys
+      const mockPayId = `pay_sim_${Date.now()}`;
+      await submitVerification({
+        razorpay_order_id: orderData.orderId,
+        razorpay_payment_id: mockPayId,
+        razorpay_signature: 'mock_signature',
+        paymentId: mockPayId,
+        isMock: true
+      });
+    } catch (err: any) {
+      console.error("[Wallet Top-up Error]:", err);
+      displayMessage("Failed to initiate payment: " + (err.message || "Network error"), true);
     } finally {
       setLoading(false);
     }
