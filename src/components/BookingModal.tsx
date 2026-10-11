@@ -1680,27 +1680,38 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                             setIsFetchingGps(true);
                             setError(null);
                             if (typeof navigator !== 'undefined' && navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition(
-                                async (pos) => {
-                                  const lat = Number(pos.coords.latitude);
-                                  const lng = Number(pos.coords.longitude);
-                                  setLocation({ lat, lng });
-                                  setMapCenter({ lat, lng });
-                                  setMapZoom(16);
-                                  await reverseGeocodeLocation(lat, lng);
+                              try {
+                                navigator.geolocation.getCurrentPosition(
+                                  async (pos) => {
+                                    const lat = Number(pos.coords.latitude);
+                                    const lng = Number(pos.coords.longitude);
+                                    setLocation({ lat, lng });
+                                    setMapCenter({ lat, lng });
+                                    setMapZoom(16);
+                                    await reverseGeocodeLocation(lat, lng);
+                                    setIsFetchingGps(false);
+                                  },
+                                  async (geoErr) => {
+                                    console.warn("[GPS] Notice:", geoErr);
+                                    const defaultCoords = { lat: 22.7533, lng: 75.8937 };
+                                    setLocation(defaultCoords);
+                                    setMapCenter(defaultCoords);
+                                    setMapZoom(16);
+                                    await reverseGeocodeLocation(defaultCoords.lat, defaultCoords.lng);
+                                    setIsFetchingGps(false);
+                                  },
+                                  { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                                );
+                              } catch (navErr) {
+                                console.warn("[GPS] Execution exception caught:", navErr);
+                                const defaultCoords = { lat: 22.7533, lng: 75.8937 };
+                                setLocation(defaultCoords);
+                                setMapCenter(defaultCoords);
+                                setMapZoom(16);
+                                reverseGeocodeLocation(defaultCoords.lat, defaultCoords.lng).finally(() => {
                                   setIsFetchingGps(false);
-                                },
-                                async (geoErr) => {
-                                  console.warn("[GPS] Notice:", geoErr);
-                                  const defaultCoords = { lat: 22.7533, lng: 75.8937 };
-                                  setLocation(defaultCoords);
-                                  setMapCenter(defaultCoords);
-                                  setMapZoom(16);
-                                  await reverseGeocodeLocation(defaultCoords.lat, defaultCoords.lng);
-                                  setIsFetchingGps(false);
-                                },
-                                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-                              );
+                                });
+                              }
                             } else {
                               setIsFetchingGps(false);
                             }

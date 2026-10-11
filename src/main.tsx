@@ -9,6 +9,14 @@ import { defineCustomElements } from '@ionic/pwa-elements/loader';
 
 // Persistent Global Event Caching attached before React mounts
 if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Unhandled Rejection Suppressed]:', event.reason);
+    event.preventDefault();
+  });
+  window.addEventListener('error', (event) => {
+    console.error('[Global Error Suppressed]:', event.error);
+  });
+
   (window as any).gm_authFailure = () => {
     console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
   };

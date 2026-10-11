@@ -101,27 +101,38 @@ export function useGeolocation() {
             maximumAge: 60000, // Safe cached value fallback
           };
 
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              console.log("Successfully retrieved location using standard low-accuracy fallback.");
-              setPermissionState('granted');
-              setIsFetching(false);
-              resolve({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-              });
-            },
-            (fallbackErr) => {
-              setIsFetching(false);
-              const errMsg = "High accuracy location timed out and fallback request failed. Redirecting to manual input is recommended.";
-              setError(errMsg);
-              reject(new Error(errMsg));
-            },
-            lowAccuracyOptions
-          );
+          try {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                console.log("Successfully retrieved location using standard low-accuracy fallback.");
+                setPermissionState('granted');
+                setIsFetching(false);
+                resolve({
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                });
+              },
+              (fallbackErr) => {
+                setIsFetching(false);
+                const errMsg = "High accuracy location timed out and fallback request failed. Redirecting to manual input is recommended.";
+                setError(errMsg);
+                reject(new Error(errMsg));
+              },
+              lowAccuracyOptions
+            );
+          } catch (err: any) {
+            setIsFetching(false);
+            const errMsg = "Location fallback exception caught.";
+            setError(errMsg);
+            reject(new Error(errMsg));
+          }
         };
 
-        navigator.geolocation.getCurrentPosition(successCallback, fallbackAndErrorCallback, highAccuracyOptions);
+        try {
+          navigator.geolocation.getCurrentPosition(successCallback, fallbackAndErrorCallback, highAccuracyOptions);
+        } catch (err: any) {
+          fallbackAndErrorCallback(err as any);
+        }
       });
     },
     [queryPermission]

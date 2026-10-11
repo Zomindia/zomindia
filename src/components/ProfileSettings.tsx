@@ -2319,11 +2319,16 @@ export default function ProfileSettings({
                             setLoading(false);
                           };
 
-                          navigator.geolocation.getCurrentPosition(
-                            successCallback,
-                            errorCallback,
-                            { enableHighAccuracy: true, timeout: 8000 },
-                          );
+                          try {
+                            navigator.geolocation.getCurrentPosition(
+                              successCallback,
+                              errorCallback,
+                              { enableHighAccuracy: true, timeout: 8000 },
+                            );
+                          } catch (geoErr: any) {
+                            console.warn("[Geolocation] Direct invocation caught error:", geoErr);
+                            errorCallback(geoErr);
+                          }
                         } else {
                           console.warn("[Geolocation] Not supported in this environment");
                           if (!address) {
