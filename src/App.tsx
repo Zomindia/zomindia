@@ -710,9 +710,11 @@ export default function App() {
         // Native Push Registration trigger
         try {
           const { registerPushNotifications } = await import('./lib/push-notifications');
-          registerPushNotifications(u.uid);
+          registerPushNotifications(u.uid).catch((err) => {
+            console.warn('[Push Notification Native Bypass]:', err);
+          });
         } catch (e) {
-          console.warn("Push registration trigger notice:", e);
+          console.warn('[Push Notification Native Bypass]:', e);
         }
 
         // Robust real-time profile resolution using authenticated u.uid

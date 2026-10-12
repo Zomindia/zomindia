@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type PermissionStateValue = 'prompt' | 'granted' | 'denied' | 'unsupported';
 
+export const DEFAULT_INDORE_COORDS = { lat: 22.7196, lng: 75.8577 };
+
 export function useGeolocation() {
   const [permissionState, setPermissionState] = useState<PermissionStateValue>('prompt');
   const [isFetching, setIsFetching] = useState<boolean>(false);
@@ -15,7 +17,6 @@ export function useGeolocation() {
     }
     
     try {
-      // Query name: 'geolocation' is supported in all modern browsers
       const result = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
       
       const mapState = (state: string): PermissionStateValue => {
@@ -26,7 +27,6 @@ export function useGeolocation() {
 
       setPermissionState(mapState(result.state));
 
-      // Set up change event listener on permission status changes
       result.onchange = () => {
         setPermissionState(mapState(result.state));
       };
@@ -42,95 +42,109 @@ export function useGeolocation() {
     queryPermission();
   }, [queryPermission]);
 
-  // High Accuracy Request with Fallback to Standard Accuracy and Manual search redirection
+  // High Accuracy Request with Fallback to Standard Accuracy and Indore default fallback
   const getCurrentLocation = useCallback(
     async (customOptions?: { enableHighAccuracy?: boolean; timeout?: number }) => {
       setIsFetching(true);
       setError(null);
 
-      // Check current query status first to prevent loops or blocked triggers
-      const currentPerm = await queryPermission();
+      // Verify permissions before invoking native GPS bridges
+      let currentPerm: PermissionStateValue = 'prompt';
+      try {
+        currentPerm = await queryPermission();
+      } catch (e) {
+        console.warn("[Geolocation Native Bypass]: Permission query error:", e);
+      }
+
       if (currentPerm === 'denied') {
         setIsFetching(false);
         setShowBlockedModal(true);
-        const errMsg = "Location permission is blocked. Please enable map/device location settings manually from your browser address bar.";
+        const errMsg = "Location permission is blocked. Using default Indore coordinates.";
         setError(errMsg);
-        throw new Error(errMsg);
+        console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
+        return DEFAULT_INDORE_COORDS;
       }
 
       if (typeof window === 'undefined' || !navigator.geolocation) {
         setIsFetching(false);
-        const errMsg = "Geolocation is not supported by your browser.";
+        const errMsg = "Geolocation is not supported by your browser or WebView.";
         setError(errMsg);
-        throw new Error(errMsg);
+        console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
+        return DEFAULT_INDORE_COORDS;
       }
 
-      return new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+      return new Promise<{ lat: number; lng: number }>((resolve) => {
         const highAccuracyOptions: PositionOptions = {
           enableHighAccuracy: customOptions?.enableHighAccuracy ?? true,
           timeout: customOptions?.timeout ?? 10000,
-          maximumAge: 0, // Forces fresh, non-cached location lookup
+          maximumAge: 0,
         };
 
         const successCallback = (position: GeolocationPosition) => {
           setPermissionState('granted');
           setIsFetching(false);
-          resolve({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
+          const lat = position?.coords?.latitude;
+          const lng = position?.coords?.longitude;
+          if (typeof lat === 'number' && !isNaN(lat) && typeof lng === 'number' && !isNaN(lng)) {
+            resolve({ lat, lng });
+          } else {
+            resolve(DEFAULT_INDORE_COORDS);
+          }
         };
 
         const fallbackAndErrorCallback = (err: GeolocationPositionError) => {
-          console.warn(`Geolocation failed (code ${err.code}): ${err.message}. Trying fallback options...`);
+          console.warn(`[Geolocation Native Bypass] High accuracy failed (code ${err?.code}): ${err?.message}. Trying fallback...`);
           
-          if (err.code === err.PERMISSION_DENIED) {
+          if (err && err.code === err.PERMISSION_DENIED) {
             setPermissionState('denied');
             setShowBlockedModal(true);
             setIsFetching(false);
-            const errMsg = "Location permission was denied. Please adjust your browser settings.";
+            const errMsg = "Location permission was denied. Falling back to Indore coordinates.";
             setError(errMsg);
-            reject(new Error(errMsg));
+            console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
+            resolve(DEFAULT_INDORE_COORDS);
             return;
           }
 
-          // Automatically trigger the standard fallback request
+          // Fallback to low accuracy
           const lowAccuracyOptions: PositionOptions = {
             enableHighAccuracy: false,
             timeout: 15000,
-            maximumAge: 60000, // Safe cached value fallback
+            maximumAge: 60000,
           };
 
           try {
             navigator.geolocation.getCurrentPosition(
               (pos) => {
-                console.log("Successfully retrieved location using standard low-accuracy fallback.");
                 setPermissionState('granted');
                 setIsFetching(false);
-                resolve({
-                  lat: pos.coords.latitude,
-                  lng: pos.coords.longitude,
-                });
+                const lat = pos?.coords?.latitude;
+                const lng = pos?.coords?.longitude;
+                if (typeof lat === 'number' && !isNaN(lat) && typeof lng === 'number' && !isNaN(lng)) {
+                  resolve({ lat, lng });
+                } else {
+                  resolve(DEFAULT_INDORE_COORDS);
+                }
               },
               (fallbackErr) => {
                 setIsFetching(false);
-                const errMsg = "High accuracy location timed out and fallback request failed. Redirecting to manual input is recommended.";
-                setError(errMsg);
-                reject(new Error(errMsg));
+                console.warn("[Geolocation Native Bypass]: Both high & standard accuracy failed. Falling back to Indore:", fallbackErr);
+                setError("Location request timed out. Using default Indore coordinates.");
+                resolve(DEFAULT_INDORE_COORDS);
               },
               lowAccuracyOptions
             );
           } catch (err: any) {
             setIsFetching(false);
-            const errMsg = "Location fallback exception caught.";
-            setError(errMsg);
-            reject(new Error(errMsg));
+            console.warn("[Geolocation Native Bypass]: Location fallback bridge exception caught:", err);
+            resolve(DEFAULT_INDORE_COORDS);
           }
         };
 
         try {
           navigator.geolocation.getCurrentPosition(successCallback, fallbackAndErrorCallback, highAccuracyOptions);
         } catch (err: any) {
+          console.warn("[Geolocation Native Bypass]: Error invoking native GPS bridge:", err);
           fallbackAndErrorCallback(err as any);
         }
       });
@@ -148,3 +162,5 @@ export function useGeolocation() {
     refreshPermission: queryPermission,
   };
 }
+
+export default useGeolocation;

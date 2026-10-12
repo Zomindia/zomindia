@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { Booking } from '../types';
 
 const ACTIVE_BOOKING_STATUSES = ['assigned', 'accepted', 'on_the_way', 'in_progress'];
+export const DEFAULT_INDORE_COORDS = { lat: 22.7196, lng: 75.8577 };
 
 export function useLocationTracking(partnerProfileId: string | undefined, bookings: Booking[], availabilityStatus?: string) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -14,102 +15,149 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
   const activeBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
   const hasActiveJob = activeBookings.length > 0;
   const isAvailable = availabilityStatus === 'Available';
-  const isTrackingSupported = typeof window !== 'undefined' && 'geolocation' in navigator;
+  const isTrackingSupported = typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'geolocation' in navigator;
   const isTrackingActive = !!partnerProfileId && (hasActiveJob || isAvailable) && isTrackingSupported;
 
   useEffect(() => {
-    if (!partnerProfileId || (!hasActiveJob && !isAvailable) || !navigator.geolocation) {
+    let isCancelled = false;
+    let watchId: number | undefined;
+
+    if (!partnerProfileId || (!hasActiveJob && !isAvailable) || !isTrackingSupported) {
       return;
     }
 
-    console.log("[Geo Sync] Starting location tracking for partner:", partnerProfileId, "Active Jobs:", activeBookings.length, "Available:", isAvailable);
-    
-    let watchId: number | undefined;
-    let isRevertedToLowAccuracy = false;
-
-    const startWatching = (enableHigh: boolean): number | undefined => {
-      try {
-        return navigator.geolocation.watchPosition(
-          async (position) => {
-            const now = Date.now();
-            const currentActiveBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
-            const isOngoingTrip = currentActiveBookings.length > 0;
-            const interval = isOngoingTrip ? TRIP_UPDATE_INTERVAL : BACKGROUND_INTERVAL;
-
-            if (now - lastUpdateRef.current < interval) {
-              return;
-            }
-
-            const { latitude, longitude, heading } = position.coords;
-            const latNum = Number(latitude);
-            const lngNum = Number(longitude);
-            const headingVal = typeof heading === 'number' && !isNaN(heading) ? Number(heading) : null;
-            console.log(`[Geo Sync] Transmitted coordinates: lat=${latNum}, lng=${lngNum}, heading=${headingVal}`);
-            
+    const startSafeTracking = async () => {
+      // 1. Verify permissions before invoking native GPS bridges
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const perm = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+          if (perm.state === 'denied') {
+            console.warn('[Geo Sync Native Bypass]: Geolocation permission is denied. Bypassing native GPS bridge and applying Indore fallback.');
             try {
-              // 1. Update partner's global coordinates in Firestore
               await updateDoc(doc(db, 'partners', partnerProfileId), {
-                lat: latNum,
-                lng: lngNum,
-                heading: headingVal,
+                lat: DEFAULT_INDORE_COORDS.lat,
+                lng: DEFAULT_INDORE_COORDS.lng,
                 updatedAt: Timestamp.now()
               });
+            } catch (err) {
+              console.warn('[Geo Sync Native Bypass]: Error setting Indore fallback coords:', err);
+            }
+            return;
+          }
+        } catch (permErr) {
+          console.warn('[Geo Sync Native Bypass]: Permissions query failed:', permErr);
+        }
+      }
 
-              // 2. Securely sync coordinates to all active bookings (assigned, accepted, on_the_way, in_progress)
-              for (const activeB of currentActiveBookings) {
-                await updateDoc(doc(db, 'bookings', activeB.id), {
-                  partnerLocation: {
-                    lat: latNum,
-                    lng: lngNum,
-                  },
+      if (isCancelled) return;
+
+      let isRevertedToLowAccuracy = false;
+
+      const startWatching = (enableHigh: boolean): number | undefined => {
+        try {
+          return navigator.geolocation.watchPosition(
+            async (position) => {
+              if (isCancelled) return;
+              const now = Date.now();
+              const currentActiveBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
+              const isOngoingTrip = currentActiveBookings.length > 0;
+              const interval = isOngoingTrip ? TRIP_UPDATE_INTERVAL : BACKGROUND_INTERVAL;
+
+              if (now - lastUpdateRef.current < interval) {
+                return;
+              }
+
+              const latitude = position?.coords?.latitude;
+              const longitude = position?.coords?.longitude;
+              const heading = position?.coords?.heading;
+
+              const latNum = typeof latitude === 'number' && !isNaN(latitude) ? latitude : DEFAULT_INDORE_COORDS.lat;
+              const lngNum = typeof longitude === 'number' && !isNaN(longitude) ? longitude : DEFAULT_INDORE_COORDS.lng;
+              const headingVal = typeof heading === 'number' && !isNaN(heading) ? Number(heading) : null;
+
+              try {
+                // Update partner's coordinates in Firestore
+                await updateDoc(doc(db, 'partners', partnerProfileId), {
+                  lat: latNum,
+                  lng: lngNum,
                   heading: headingVal,
                   updatedAt: Timestamp.now()
                 });
-                console.log(`[Geo Sync] Synced location to active booking ${activeB.id} (${activeB.status})`);
-              }
 
-              lastUpdateRef.current = now;
-              setLastSyncedAt(new Date(now));
-            } catch (err) {
-              console.error("[Geo Sync] Failed to update location:", err);
-            }
-          },
-          (error) => {
-            console.warn(`[Geo Sync] watchPosition error code: ${error.code} (HighAccuracy: ${enableHigh})`, error.message);
-            
-            if (enableHigh && !isRevertedToLowAccuracy) {
-              console.warn("[Geo Sync] High accuracy watchPosition failed or timed out. Reverting to standard accuracy...");
-              isRevertedToLowAccuracy = true;
-              if (watchId !== undefined) {
-                try { navigator.geolocation.clearWatch(watchId); } catch {}
+                // Sync coordinates to all active bookings
+                for (const activeB of currentActiveBookings) {
+                  await updateDoc(doc(db, 'bookings', activeB.id), {
+                    partnerLocation: {
+                      lat: latNum,
+                      lng: lngNum,
+                    },
+                    heading: headingVal,
+                    updatedAt: Timestamp.now()
+                  });
+                }
+
+                lastUpdateRef.current = now;
+                setLastSyncedAt(new Date(now));
+              } catch (err) {
+                console.warn('[Geo Sync Native Bypass]: Error syncing coordinates to Firestore:', err);
               }
-              watchId = startWatching(false);
+            },
+            async (error) => {
+              console.warn(`[Geo Sync Native Bypass] watchPosition error (HighAccuracy: ${enableHigh}):`, error?.message);
+
+              if (enableHigh && !isRevertedToLowAccuracy) {
+                isRevertedToLowAccuracy = true;
+                if (watchId !== undefined) {
+                  try { navigator.geolocation.clearWatch(watchId); } catch {}
+                }
+                watchId = startWatching(false);
+              } else {
+                // Fall back to Indore coordinates safely if bridge rejected or position unavailable
+                try {
+                  await updateDoc(doc(db, 'partners', partnerProfileId), {
+                    lat: DEFAULT_INDORE_COORDS.lat,
+                    lng: DEFAULT_INDORE_COORDS.lng,
+                    updatedAt: Timestamp.now()
+                  });
+                } catch {}
+              }
+            },
+            {
+              enableHighAccuracy: enableHigh,
+              maximumAge: enableHigh ? 0 : 30000,
+              timeout: 10000
             }
-          },
-          {
-            enableHighAccuracy: enableHigh,
-            maximumAge: enableHigh ? 0 : 30000,
-            timeout: 10000
-          }
-        );
-      } catch (err) {
-        console.warn("[Geo Sync] Error initiating watchPosition:", err);
-        return undefined;
-      }
+          );
+        } catch (bridgeErr) {
+          console.warn('[Geo Sync Native Bypass]: Exception invoking native watchPosition bridge:', bridgeErr);
+          // Set fallback Indore coordinates
+          try {
+            updateDoc(doc(db, 'partners', partnerProfileId), {
+              lat: DEFAULT_INDORE_COORDS.lat,
+              lng: DEFAULT_INDORE_COORDS.lng,
+              updatedAt: Timestamp.now()
+            }).catch(() => {});
+          } catch {}
+          return undefined;
+        }
+      };
+
+      watchId = startWatching(true);
     };
 
-    // Directly initiate watchPosition with automatic standard accuracy fallback
-    watchId = startWatching(true);
+    startSafeTracking();
 
     return () => {
-      console.log("[Geo Sync] Stopping location tracking");
+      isCancelled = true;
       if (watchId !== undefined) {
         try {
           navigator.geolocation.clearWatch(watchId);
         } catch {}
       }
     };
-  }, [partnerProfileId, bookings, availabilityStatus, hasActiveJob, isAvailable]);
+  }, [partnerProfileId, bookings, availabilityStatus, hasActiveJob, isAvailable, isTrackingSupported]);
 
   return { lastSyncedAt, isTrackingActive };
 }
+
+export default useLocationTracking;
