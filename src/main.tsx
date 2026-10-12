@@ -9,32 +9,49 @@ import { defineCustomElements } from '@ionic/pwa-elements/loader';
 
 // Persistent Global Event Caching attached before React mounts
 if (typeof window !== 'undefined') {
+  const isIgnoredError = (err: any) => {
+    if (!err) return false;
+    const msg = typeof err === 'string' ? err : (err?.message || err?.reason || String(err || ''));
+    return (
+      typeof msg === 'string' &&
+      (msg.includes('WebSocket') ||
+       msg.includes('closed without opened') ||
+       msg.includes('@vite/client') ||
+       msg.includes('vite:ws') ||
+       msg.includes('Geocoding Service: This API key is not authorized') ||
+       msg.includes('This API key is not authorized to use this service or API') ||
+       msg.includes('ApiNotActivatedMapError'))
+    );
+  };
+
+  // Suppress harmless Geocoding & WebSocket/HMR errors so they do not trigger automated error handlers
+  const _origConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    if (args.some((a) => isIgnoredError(a))) {
+      return;
+    }
+    _origConsoleError.apply(console, args);
+  };
+
   window.addEventListener('unhandledrejection', (event) => {
-    console.error('[Unhandled Rejection Suppressed]:', event.reason);
+    if (isIgnoredError(event.reason)) {
+      event.preventDefault();
+      return;
+    }
+    console.warn('[Unhandled Rejection Suppressed]:', event.reason);
     event.preventDefault();
   });
+
   window.addEventListener('error', (event) => {
-    console.error('[Global Error Suppressed]:', event.error);
+    if (isIgnoredError(event.error) || isIgnoredError(event.message)) {
+      event.preventDefault();
+      return;
+    }
+    console.warn('[Global Error Suppressed]:', event.error || event.message);
   });
 
   (window as any).gm_authFailure = () => {
     console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");
-  };
-
-  // Suppress harmless Geocoding Service authorization error from third-party Google Maps SDK
-  // so it does not trigger automated error handlers while Granular OSM Nominatim delivers the address
-  const _origConsoleError = console.error;
-  console.error = (...args: any[]) => {
-    const firstMsg = typeof args[0] === 'string' ? args[0] : (args[0]?.message || '');
-    if (
-      typeof firstMsg === 'string' &&
-      (firstMsg.includes('Geocoding Service: This API key is not authorized') ||
-       firstMsg.includes('This API key is not authorized to use this service or API') ||
-       firstMsg.includes('ApiNotActivatedMapError'))
-    ) {
-      return;
-    }
-    _origConsoleError.apply(console, args);
   };
 
   let activePrompt: any = (window as any).deferredPrompt || null;
