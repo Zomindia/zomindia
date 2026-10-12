@@ -51,6 +51,7 @@ import AboutUs from './components/AboutUs';
 import Footer from './components/Footer';
 import AiSupportChat from './components/AiSupportChat';
 import { isValidCustomerService } from './utils/formatters';
+import { Telemetry } from './services/telemetry';
 
 // Direct static imports for robust component resolution
 import CustomerDashboard from './components/CustomerDashboard';
@@ -675,6 +676,14 @@ export default function App() {
       unsubscribePartnerApp();
 
       if (u) {
+        Telemetry.setUser({
+          uid: u.uid,
+          phoneNumber: u.phoneNumber || '',
+          displayName: u.displayName || '',
+          email: u.email || '',
+          role: u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
+        });
+
         // Immediate fallback in-memory profile to prevent ANY unauthenticated UI flash or Login button visibility
         const instantProfile = sanitizeUserProfile({
           uid: u.uid,
@@ -722,7 +731,15 @@ export default function App() {
           u,
           (updatedProfile) => {
             if (!isMounted) return;
-            setProfile(sanitizeUserProfile(updatedProfile, u));
+            const sanitized = sanitizeUserProfile(updatedProfile, u);
+            Telemetry.setUser({
+              uid: u.uid,
+              phoneNumber: sanitized.phoneNumber || u.phoneNumber || '',
+              displayName: sanitized.displayName || u.displayName || '',
+              email: sanitized.email || u.email || '',
+              role: sanitized.role || 'customer',
+            });
+            setProfile(sanitized);
             setLoading(false);
 
             // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
@@ -759,6 +776,7 @@ export default function App() {
         );
 
       } else {
+        Telemetry.setUser(null);
         setProfile(null);
         setHasActiveArrival(false);
         setPartnerApplication(null);

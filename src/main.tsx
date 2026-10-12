@@ -1,6 +1,8 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import './services/api';
+import './utils/safeStorage';
+import { Telemetry } from './services/telemetry';
 import App from './App.tsx';
 import './index.css';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -40,6 +42,7 @@ if (typeof window !== 'undefined') {
       return;
     }
     console.warn('[Unhandled Rejection Suppressed]:', event.reason);
+    Telemetry.logCrash(event.reason, 'Unhandled Global Rejection');
     event.preventDefault();
   });
 
@@ -49,7 +52,19 @@ if (typeof window !== 'undefined') {
       return;
     }
     console.warn('[Global Error Suppressed]:', event.error || event.message);
+    Telemetry.logCrash(event.error || event.message, 'Unhandled Global Error');
   });
+
+  window.onerror = (message, source, lineno, colno, error) => {
+    if (isIgnoredError(error) || isIgnoredError(message)) {
+      return true;
+    }
+    Telemetry.logCrash(
+      error || { message: String(message), source, lineno, colno },
+      'Unhandled Global Window Error'
+    );
+    return false;
+  };
 
   (window as any).gm_authFailure = () => {
     console.warn("[Google Maps API] Key restriction or API disabled. Google Maps fallback mode active.");

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Booking } from '../types';
+import { Telemetry } from '../services/telemetry';
 
 const ACTIVE_BOOKING_STATUSES = ['assigned', 'accepted', 'on_the_way', 'in_progress'];
 export const DEFAULT_INDORE_COORDS = { lat: 22.7196, lng: 75.8577 };
@@ -33,6 +34,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
           const perm = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
           if (perm.state === 'denied') {
             console.warn('[Geo Sync Native Bypass]: Geolocation permission is denied. Bypassing native GPS bridge and applying Indore fallback.');
+            Telemetry.addBreadcrumb('native', 'Location tracking permission denied, applying Indore fallback');
             try {
               await updateDoc(doc(db, 'partners', partnerProfileId), {
                 lat: DEFAULT_INDORE_COORDS.lat,
@@ -104,6 +106,10 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
             },
             async (error) => {
               console.warn(`[Geo Sync Native Bypass] watchPosition error (HighAccuracy: ${enableHigh}):`, error?.message);
+              Telemetry.addBreadcrumb('native', `watchPosition error (HighAccuracy: ${enableHigh})`, {
+                code: error?.code,
+                error: error?.message,
+              });
 
               if (enableHigh && !isRevertedToLowAccuracy) {
                 isRevertedToLowAccuracy = true;

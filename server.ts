@@ -203,6 +203,33 @@ async function startServer() {
   // API Routes
   app.use("/api", serverApiRouter);
 
+  // Enterprise Crash Telemetry Beacon Ingestion Endpoint
+  app.post(["/api/telemetry/crash", "/api/crash-log"], async (req, res) => {
+    try {
+      let payload = req.body;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          payload = { message: payload };
+        }
+      }
+      if (!payload || typeof payload !== "object") {
+        return res.status(400).json({ error: "Invalid crash payload" });
+      }
+
+      const db = getFirestore();
+      await db.collection("system_crashes").add({
+        ...payload,
+        serverReceivedAt: new Date().toISOString(),
+      });
+      return res.status(200).json({ success: true, logged: true });
+    } catch (err: any) {
+      console.warn("[Crash Telemetry Server Error]:", err?.message || err);
+      return res.status(500).json({ error: err?.message || "Failed to log crash" });
+    }
+  });
+
   app.post("/api/make-secure-call", async (req, res) => {
     return res.status(200).json({ 
       success: true, 

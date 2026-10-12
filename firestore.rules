@@ -692,6 +692,12 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    match /system_crashes/{crashId} {
+      allow create: if true;
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
     match /system_updates/{updateId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();

@@ -377,6 +377,24 @@
         "walletJoiningBonus": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "SystemCrash": {
+      "title": "System Crash",
+      "description": "Production crash logs and enterprise diagnostics.",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "stack": { "type": "string" },
+        "context": { "type": "string" },
+        "platform": { "type": "string" },
+        "url": { "type": "string" },
+        "userId": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "userRole": { "type": "string" },
+        "breadcrumbs": { "type": "array", "items": { "type": "object" } },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["message"]
     }
   },
   "firestore": {
@@ -474,6 +492,10 @@
     "/cityDemandAnalytics/{analyticsId}": {
       "schema": "CityDemandAnalytics",
       "description": "User interest and city launch demand logs."
+    },
+    "/system_crashes/{crashId}": {
+      "schema": "SystemCrash",
+      "description": "Production crash logs and diagnostics."
     }
   }
 }
