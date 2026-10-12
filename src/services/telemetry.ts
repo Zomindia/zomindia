@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp, getFirestore, Firestore } from 'firebase/firestore';
+import { app, db, FIRESTORE_DATABASE_ID } from '../lib/firebase';
 import { getApiUrl } from './api';
 
 export interface Breadcrumb {
@@ -137,7 +137,19 @@ class TelemetryService {
         clientTimestamp: new Date().toISOString(),
       };
 
-      // 1. Direct sendBeacon dispatch (survives window unloads and hard crashes)
+      // 1. Persist the last crash in localStorage so that even if the app hard-kills, the log survives on the phone
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('last_crash_report', JSON.stringify({
+            ...payload,
+            persistedAt: new Date().toISOString(),
+          }));
+        }
+      } catch (storageErr) {
+        // Suppress localStorage quota or security errors
+      }
+
+      // 2. Direct sendBeacon dispatch (survives window unloads and hard crashes)
       try {
         if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
           const beaconEndpoint = getApiUrl('/api/telemetry/crash');
@@ -148,11 +160,28 @@ class TelemetryService {
         // Suppress beacon transmission failures
       }
 
-      // 2. Direct Firestore Write (immutable record in collection system_crashes)
+      // 3. Direct Firestore Write (immutable record in active database collection `system_crashes`)
       let docId: string | null = null;
-      if (db) {
+      let activeDb: Firestore | null = (db as Firestore) || null;
+      if (!activeDb) {
         try {
-          const crashesCol = collection(db, 'system_crashes');
+          activeDb = getFirestore(app, 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc');
+        } catch {
+          try {
+            activeDb = getFirestore(app, FIRESTORE_DATABASE_ID);
+          } catch {
+            try {
+              activeDb = getFirestore(app);
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      }
+
+      if (activeDb) {
+        try {
+          const crashesCol = collection(activeDb, 'system_crashes');
           const docRef = await addDoc(crashesCol, {
             ...payload,
             timestamp: serverTimestamp(),

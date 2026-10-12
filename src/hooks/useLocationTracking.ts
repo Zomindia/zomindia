@@ -27,6 +27,10 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
       return;
     }
 
+    if (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) {
+      return;
+    }
+
     const startSafeTracking = async () => {
       // 1. Verify permissions before invoking native GPS bridges
       if (navigator.permissions && navigator.permissions.query) {

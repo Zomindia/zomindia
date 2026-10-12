@@ -54,6 +54,13 @@ export function useGeolocation() {
         enableHighAccuracy: customOptions?.enableHighAccuracy ?? true,
       });
 
+      // Prevent GPS requests while Name & Email onboarding modal is visible
+      if (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) {
+        console.info('[Geolocation Native Bypass]: Onboarding modal visible, suppressing GPS and returning default Indore coordinates.');
+        setIsFetching(false);
+        return DEFAULT_INDORE_COORDS;
+      }
+
       // Verify permissions before invoking native GPS bridges
       let currentPerm: PermissionStateValue = 'prompt';
       try {
@@ -69,6 +76,12 @@ export function useGeolocation() {
         setError(errMsg);
         console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
         Telemetry.addBreadcrumb('native', 'Location permission denied, using Indore fallback');
+        return DEFAULT_INDORE_COORDS;
+      }
+
+      if (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) {
+        setIsFetching(false);
+        Telemetry.addBreadcrumb('native', 'Geolocation paused during onboarding modal');
         return DEFAULT_INDORE_COORDS;
       }
 

@@ -644,10 +644,9 @@ export default function App() {
         }
 
         const freshDoc = await getDoc(userDocRef);
-        const userData = freshDoc.data();
+        const userData = freshDoc?.exists() ? freshDoc.data() : null;
 
         const hasStoredPhone = Boolean(
-          freshDoc.exists() &&
           userData?.phoneNumber &&
           userData.phoneNumber.toString().trim().length >= 10
         );
@@ -661,7 +660,7 @@ export default function App() {
           });
           setIsAuthModalOpen(true);
         } else {
-          setToastMessage(`Welcome, ${userData?.displayName || u.displayName || 'Customer'}!`);
+          setToastMessage(`Welcome, ${userData?.displayName || userData?.fullName || userData?.customerData?.fullName || u.displayName || 'Customer'}!`);
         }
       })
       .catch((err) => {
@@ -684,7 +683,9 @@ export default function App() {
           role: u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
         });
 
-        // Immediate fallback in-memory profile to prevent ANY unauthenticated UI flash or Login button visibility
+        // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+        // Strictly guard every access: userData?.role, userData?.customerData?.fullName, userData?.onboardingComplete.
+        // Never assume userData exists yet for fresh phone numbers!
         const instantProfile = sanitizeUserProfile({
           uid: u.uid,
           phoneNumber: u.phoneNumber || '',
@@ -692,13 +693,13 @@ export default function App() {
           role: u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
           walletBalance: 0,
           displayName: u.displayName || (u.phoneNumber ? `Customer (${u.phoneNumber.slice(-4)})` : 'Customer'),
-          fullName: u.displayName || 'Customer',
+          fullName: u.displayName || '',
           email: u.email || '',
           photoURL: u.photoURL || '',
           savedAddresses: [],
           addresses: [],
           bookings: [],
-          onboardingComplete: true,
+          onboardingComplete: false,
           createdAt: new Date().toISOString()
         }, u);
         setProfile((prev) => prev ? sanitizeUserProfile(prev, u) : instantProfile);
@@ -716,14 +717,21 @@ export default function App() {
           console.warn("Notice subscribing to partner application:", err);
         });
 
-        // Native Push Registration trigger
-        try {
-          const { registerPushNotifications } = await import('./lib/push-notifications');
-          registerPushNotifications(u.uid).catch((err) => {
-            console.warn('[Push Notification Native Bypass]:', err);
-          });
-        } catch (e) {
-          console.warn('[Push Notification Native Bypass]:', e);
+        // Native Push Registration trigger:
+        // Strictly prevent any PushNotification registrations while Name & Email onboarding modal is visible
+        const isOnboardingActive = Boolean(
+          (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) ||
+          isAuthModalOpen
+        );
+        if (!isOnboardingActive) {
+          try {
+            const { registerPushNotifications } = await import('./lib/push-notifications');
+            registerPushNotifications(u.uid).catch((err) => {
+              console.warn('[Push Notification Native Bypass]:', err);
+            });
+          } catch (e) {
+            console.warn('[Push Notification Native Bypass]:', e);
+          }
         }
 
         // Robust real-time profile resolution using authenticated u.uid
@@ -741,6 +749,15 @@ export default function App() {
             });
             setProfile(sanitized);
             setLoading(false);
+
+            // Safe Push Notification registration once onboarding is complete and onboarding modal is closed
+            if (sanitized.onboardingComplete && !(typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE)) {
+              import('./lib/push-notifications').then(({ registerPushNotifications }) => {
+                registerPushNotifications(u.uid).catch((err) => {
+                  console.warn('[Push Notification Native Bypass]:', err);
+                });
+              }).catch(() => {});
+            }
 
             // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
             const cleanHash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();

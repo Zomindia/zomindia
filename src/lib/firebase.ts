@@ -61,6 +61,9 @@ try {
   }
 }
 
+export const FIRESTORE_DATABASE_ID = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc';
+
+export { app };
 export const db = firestoreDb;
 export const auth = getAuth(app);
 export const storage = getStorage(app);

@@ -210,24 +210,31 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
   const phoneNumber = (raw?.phoneNumber || raw?.mobile || fallbackUser?.phoneNumber || '').trim();
   const isMasterAdmin = email.toLowerCase() === 'sarthakwebtech@gmail.com';
 
+  // Strictly guard every access: userData?.role, userData?.customerData?.fullName, userData?.onboardingComplete. Never assume userData exists.
+  // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+  const safeRole: 'customer' | 'partner' | 'admin' = isMasterAdmin ? 'admin' : (raw?.role || 'customer');
+  const safeFullName = raw?.customerData?.fullName || raw?.fullName || (raw?.displayName && raw?.displayName !== 'Customer' && !raw?.displayName?.startsWith('Customer (') ? raw?.displayName : '') || '';
+  const safeDisplayName = raw?.displayName || safeFullName || (phoneNumber ? `Customer (${phoneNumber.slice(-4)})` : 'Customer');
+  const safeOnboardingComplete = raw ? (raw?.onboardingComplete === true) : false;
+
   const safeProfile = {
     ...raw,
     uid,
     phoneNumber,
     mobile: phoneNumber,
     email,
-    displayName: raw?.displayName || fallbackUser?.displayName || (phoneNumber ? `Customer (${phoneNumber.slice(-4)})` : 'Customer'),
-    fullName: raw?.fullName || raw?.displayName || fallbackUser?.displayName || 'Customer',
-    role: isMasterAdmin ? 'admin' : (raw?.role || 'customer'),
+    displayName: safeDisplayName,
+    fullName: safeFullName,
+    role: safeRole,
     adminSubRole: isMasterAdmin ? 'head' : (raw?.adminSubRole || undefined),
     walletBalance: Number(raw?.walletBalance) || 0,
     savedAddresses: Array.isArray(raw?.savedAddresses) ? raw.savedAddresses : [],
     addresses: Array.isArray(raw?.addresses) ? raw.addresses : [],
     bookings: Array.isArray(raw?.bookings) ? raw.bookings : [],
-    onboardingComplete: raw?.onboardingComplete !== undefined ? raw.onboardingComplete : true,
+    onboardingComplete: safeOnboardingComplete,
     photoURL: raw?.photoURL || fallbackUser?.photoURL || '',
     customerData: {
-      fullName: raw?.customerData?.fullName || raw?.displayName || fallbackUser?.displayName || 'Customer',
+      fullName: raw?.customerData?.fullName || safeFullName,
       email: raw?.customerData?.email || email || '',
       phoneNumber: raw?.customerData?.phoneNumber || phoneNumber || '',
       mobile: raw?.customerData?.mobile || phoneNumber || '',
@@ -266,7 +273,7 @@ export function resolveAndSubscribeProfile(
   let isUnsubscribed = false;
   let unsubscribeSnapshot: (() => void) | null = null;
 
-  // Immediate in-memory fallback profile so UI is instantly authenticated
+  // Immediate in-memory fallback profile with default new user state
   const fallbackProfile = sanitizeUserProfile({
     uid: user.uid,
     phoneNumber: user.phoneNumber || '',
@@ -274,12 +281,13 @@ export function resolveAndSubscribeProfile(
     email: user.email || '',
     photoURL: user.photoURL || '',
     displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
-    fullName: user.displayName || 'Customer',
+    fullName: user.displayName || '',
+    role: 'customer',
     walletBalance: 0,
     savedAddresses: [],
     addresses: [],
     bookings: [],
-    onboardingComplete: true,
+    onboardingComplete: false,
     createdAt: new Date().toISOString()
   }, user);
 
@@ -336,41 +344,63 @@ export function resolveAndSubscribeProfile(
         }
       }
 
-      // 3. Prepare merged payload strictly under doc(db, 'users', user.uid)
       const isMasterAdmin = user.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
                             existingData?.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
 
-      const payload: any = buildDualPersonaUserDoc({
-        ...(existingData || {}),
-        uid: user.uid, // ALWAYS strictly authenticated user.uid!
-        email: user.email || existingData?.email || '',
-        phoneNumber: user.phoneNumber || existingData?.phoneNumber || existingData?.mobile || '',
-        mobile: user.phoneNumber || existingData?.mobile || existingData?.phoneNumber || '',
-        displayName: user.displayName && user.displayName !== 'User' 
-          ? user.displayName 
-          : (existingData?.displayName || 'Customer'),
-        fullName: user.displayName && user.displayName !== 'User' 
-          ? user.displayName 
-          : (existingData?.fullName || 'Customer'),
-        role: isMasterAdmin ? 'admin' : (existingData?.role || 'customer'),
-        photoURL: user.photoURL || existingData?.photoURL || '',
-        referralCode: existingData?.referralCode || `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
-        walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 100,
-        onboardingComplete: true,
-        updatedAt: Timestamp.now(),
-      });
+      let resolvedPayload: any = null;
 
-      if (isMasterAdmin) {
-        payload.adminSubRole = 'head';
-      }
+      // 3. For brand new phone number (no document in Firestore yet):
+      // Emit default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+      // Do NOT write dummy completed onboarding doc to Firestore before user submits Name & Email modal!
+      if (!existingData) {
+        const freshProfile = sanitizeUserProfile({
+          uid: user.uid,
+          email: user.email || '',
+          phoneNumber: user.phoneNumber || '',
+          mobile: user.phoneNumber || '',
+          role: isMasterAdmin ? 'admin' : 'customer',
+          fullName: '',
+          displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
+          onboardingComplete: false,
+          walletBalance: 100,
+          createdAt: Timestamp.now(),
+        }, user);
+        resolvedPayload = freshProfile;
+        onProfileUpdate(freshProfile);
+      } else {
+        // 4. Existing document exists: sync fields safely
+        const hasCompletedOnboarding = existingData?.onboardingComplete !== undefined
+          ? Boolean(existingData.onboardingComplete)
+          : Boolean(existingData?.fullName?.trim() || existingData?.customerData?.fullName?.trim());
 
-      // 4. Upsert strictly into doc(db, 'users', user.uid)
-      try {
-        await setDoc(userDocRef, payload, { merge: true });
-      } catch (writeErr: any) {
-        console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
-        // Even if write fails (e.g. offline or strict rule), use in-memory payload!
-        onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
+        const payload: any = buildDualPersonaUserDoc({
+          ...existingData,
+          uid: user.uid,
+          email: user.email || existingData?.email || '',
+          phoneNumber: user.phoneNumber || existingData?.phoneNumber || existingData?.mobile || '',
+          mobile: user.phoneNumber || existingData?.mobile || existingData?.phoneNumber || '',
+          displayName: existingData?.displayName || user.displayName || 'Customer',
+          fullName: existingData?.fullName || existingData?.customerData?.fullName || '',
+          role: isMasterAdmin ? 'admin' : (existingData?.role || 'customer'),
+          photoURL: user.photoURL || existingData?.photoURL || '',
+          referralCode: existingData?.referralCode || `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
+          walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 100,
+          onboardingComplete: hasCompletedOnboarding,
+          updatedAt: Timestamp.now(),
+        });
+
+        if (isMasterAdmin) {
+          payload.adminSubRole = 'head';
+        }
+
+        resolvedPayload = payload;
+
+        try {
+          await setDoc(userDocRef, payload, { merge: true });
+        } catch (writeErr: any) {
+          console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
+          onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
+        }
       }
 
       if (isUnsubscribed) return;
@@ -393,19 +423,19 @@ export function resolveAndSubscribeProfile(
               }
               onProfileUpdate(sanitizeUserProfile(normalized, user));
             } else {
-              onProfileUpdate(sanitizeUserProfile(payload, user));
+              onProfileUpdate(sanitizeUserProfile(resolvedPayload || fallbackProfile, user));
             }
           },
           (snapshotErr: any) => {
             console.warn('[resolveAndSubscribeProfile] Snapshot listener notice/error:', snapshotErr?.message || snapshotErr);
             // DO NOT log out or reset currentUser! Fallback to authenticated profile:
-            onProfileUpdate(sanitizeUserProfile(payload, user));
+            onProfileUpdate(sanitizeUserProfile(resolvedPayload || fallbackProfile, user));
             if (onError) onError(snapshotErr);
           }
         );
       } catch (subErr: any) {
         console.warn('[resolveAndSubscribeProfile] Snapshot subscription error:', subErr?.message || subErr);
-        onProfileUpdate(sanitizeUserProfile(payload, user));
+        onProfileUpdate(sanitizeUserProfile(resolvedPayload || fallbackProfile, user));
         if (onError) onError(subErr);
       }
     } catch (fatalErr: any) {

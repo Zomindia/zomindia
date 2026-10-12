@@ -107,6 +107,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     return () => clearInterval(interval);
   }, [timer]);
 
+  // Keep window.__ZOMINDIA_ONBOARDING_MODAL_VISIBLE in sync to prevent background GPS/Push
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = Boolean(isOpen && view === 'profile-setup');
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
+      }
+    };
+  }, [isOpen, view]);
+
   // Native WebOTP API Auto-detection with AbortController, auto-populate, and auto-submit
   useEffect(() => {
     if (!isOpen || view !== 'otp-entry') return;
@@ -185,9 +197,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   }, [isOpen, initialView, initialData]);
 
+  // Track visibility of Name & Email onboarding modal globally to prevent background tasks (GPS, Push)
+  useEffect(() => {
+    const isOnboardingView = isOpen && (view === 'profile-setup' || view === 'google-phone-setup');
+    if (typeof window !== 'undefined') {
+      (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = isOnboardingView;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
+      }
+    };
+  }, [isOpen, view]);
+
   // Defensive cleanup on unmount
   useEffect(() => {
     return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
+      }
       clearRecaptchaInstance();
     };
   }, []);
@@ -409,17 +437,31 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       } else {
         // Check Firestore for user profile
         const cleanPhone = phoneNumber.replace(/\D/g, '');
-        const formattedPhone = `+91${cleanPhone}`;
-        let profileSnap = await getDoc(doc(db, 'users', userObj.uid));
-        if (!profileSnap.exists()) {
-          const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
-          const pSnap = await getDocs(phoneQ);
-          if (!pSnap.empty) {
-            profileSnap = pSnap.docs[0];
+        const formattedPhone = cleanPhone ? `+91${cleanPhone}` : (userObj.phoneNumber || '');
+        let profileSnap: any = null;
+        try {
+          profileSnap = await getDoc(doc(db, 'users', userObj.uid));
+          if (!profileSnap?.exists() && formattedPhone) {
+            const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
+            const pSnap = await getDocs(phoneQ);
+            if (!pSnap.empty) {
+              profileSnap = pSnap.docs[0];
+            }
           }
+        } catch (fetchErr) {
+          console.warn('[AuthModal] Profile fetch notice:', fetchErr);
         }
 
-        if (profileSnap && profileSnap.exists()) {
+        // Strictly guard every access: userData?.role, userData?.customerData?.fullName, userData?.onboardingComplete. Never assume userData exists.
+        // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+        const userData = profileSnap?.exists() ? profileSnap.data() : null;
+        const hasCompletedOnboarding = Boolean(
+          userData &&
+          userData?.onboardingComplete !== false &&
+          (userData?.fullName?.toString().trim() || userData?.displayName?.toString().trim() || userData?.customerData?.fullName?.toString().trim())
+        );
+
+        if (hasCompletedOnboarding) {
           setView('success-transition');
           setTimeout(() => {
             onSuccess();
@@ -427,6 +469,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
             resetForm();
           }, 1500);
         } else {
+          // Fresh phone number or incomplete profile -> Route directly to profile-setup view
+          setDisplayName(userData?.customerData?.fullName || userData?.fullName || userData?.displayName || '');
+          setEmail(userData?.customerData?.email || userData?.email || '');
+          setVerifiedUid(userObj.uid);
           setView('profile-setup');
         }
       }
@@ -548,7 +594,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
       if (existingUserDoc) {
         // Enforce strict merge session cleanly into the authenticated user record
-        const existingData = existingUserDoc.data();
+        const existingData = existingUserDoc.data() || {};
         const mergedPayload: any = buildDualPersonaUserDoc({
           ...existingData,
           uid: activeUid, // Strictly activeUid!
@@ -564,11 +610,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         if (isSarthakEmail) {
           mergedPayload.role = 'admin';
           mergedPayload.adminSubRole = 'head';
+        } else if (!mergedPayload.role) {
+          mergedPayload.role = existingData?.role || 'customer';
         }
 
-        await setDoc(userRef, mergedPayload, { merge: true });
-      } else if (userSnap.exists()) {
-        const existingData = userSnap.data();
+        try {
+          await setDoc(userRef, mergedPayload, { merge: true });
+        } catch (setDocErr: any) {
+          console.error('[AuthModal] Merge setDoc error:', setDocErr);
+          setError(`Failed to save profile: ${setDocErr?.message || 'Database error'}. Please try again.`);
+          setLoading(false);
+          return;
+        }
+      } else if (userSnap && userSnap.exists()) {
+        const existingData = userSnap.data() || {};
         // Safe partial update of only user-controllable fields
         const updatePayload: any = {
           displayName: displayName.trim(),
@@ -578,19 +633,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           mobile: formattedPhone || existingData?.mobile || existingData?.phoneNumber || '',
           onboardingComplete: true,
           updatedAt: Timestamp.now(),
-          isPartner: false
+          isPartner: Boolean(existingData?.isPartner),
+          customerData: {
+            fullName: displayName.trim(),
+            email: email.trim(),
+            phoneNumber: formattedPhone || existingData?.phoneNumber || '',
+            ...(existingData?.customerData || {}),
+          }
         };
         if (existingData?.walletBalance === undefined) {
           updatePayload.walletBalance = walletJoiningBonus;
         }
-        // Omit role updates for normal clients to prevent any potential privilege-escalation/rule failures
         if (isSarthakEmail) {
           updatePayload.role = 'admin';
           updatePayload.adminSubRole = 'head';
         }
-        await updateDoc(userRef, updatePayload);
+
+        try {
+          await setDoc(userRef, updatePayload, { merge: true });
+        } catch (setDocErr: any) {
+          console.error('[AuthModal] Update setDoc error:', setDocErr);
+          setError(`Failed to update profile: ${setDocErr?.message || 'Database error'}. Please try again.`);
+          setLoading(false);
+          return;
+        }
       } else {
-        // Fallback document creation if auto-creation in App.tsx hasn't completed yet
+        // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+        // Set up fresh document
         const initialProfile: any = {
           uid: activeUid,
           displayName: displayName.trim(),
@@ -601,12 +670,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           role: isSarthakEmail ? 'admin' : 'customer',
           isPartner: false,
           createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
           referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,
           walletBalance: walletJoiningBonus, // Dynamic Onboarding welcome credit!
           onboardingComplete: true,
           savedAddresses: [],
           addresses: [],
           bookings: [],
+          customerData: {
+            fullName: displayName.trim(),
+            email: email.trim(),
+            phoneNumber: formattedPhone,
+            mobile: formattedPhone,
+            walletBalance: walletJoiningBonus,
+          },
           notificationPreferences: {
             bookingUpdates: true,
             promotionalMessages: true
@@ -617,7 +694,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           initialProfile.adminSubRole = 'head';
         }
 
-        await setDoc(userRef, initialProfile);
+        try {
+          await setDoc(userRef, initialProfile, { merge: true });
+        } catch (setDocErr: any) {
+          console.error('[AuthModal] Fresh user setDoc error:', setDocErr);
+          setError(`Failed to create user account: ${setDocErr?.message || 'Database error'}. Please try again.`);
+          setLoading(false);
+          return;
+        }
       }
 
       setView('success-transition');
