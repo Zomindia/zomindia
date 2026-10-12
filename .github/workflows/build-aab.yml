@@ -36,7 +36,7 @@ jobs:
       - name: Build Release AAB & APK
         run: |
           cd android
-          ./gradlew bundleRelease assembleDebug --stacktrace
+          ./gradlew bundleRelease assembleRelease assembleDebug --stacktrace
 
       - name: Sign Release Artifacts with Keystore
         env:
@@ -69,6 +69,9 @@ jobs:
             fi
 
             APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+            if [ -z "$APK_FILE" ]; then
+              APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+            fi
             if [ -n "$APK_FILE" ]; then
               echo "Signing $APK_FILE..."
               jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
@@ -79,6 +82,8 @@ jobs:
                 "$ALIAS"
               echo "Verifying APK signature..."
               jarsigner -verify "$APK_FILE"
+              echo "Printing APK certificate fingerprints:"
+              keytool -printcert -jarfile "$APK_FILE"
             else
               echo "Warning: No APK file found to sign."
             fi
