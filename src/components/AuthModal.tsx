@@ -1,14 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   signInWithPhoneNumber,
-  signInWithRedirect,
-  signInWithPopup,
-  getRedirectResult,
-  GoogleAuthProvider,
   ConfirmationResult,
   updateProfile,
 } from 'firebase/auth';
-import { getFriendlyAuthErrorMessage, loginWithGoogle } from '../services/authService';
+import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from '../lib/recaptcha';
 import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
@@ -37,17 +33,22 @@ interface Props {
   };
 }
 
-// Support phone & Google-based sign-in for maximum conversion and security.
+// Zomato / Swiggy model: Phone number + OTP is the sole authentication method.
 type AuthView = 
-  | 'login-selection'
   | 'phone-entry'
   | 'otp-entry'
   | 'profile-setup'
-  | 'google-phone-setup'
   | 'success-transition';
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView, initialData }: Props) {
-  const [view, setView] = useState<AuthView>(initialView || 'login-selection');
+  const getInitialView = (): AuthView => {
+    if (initialView && initialView !== ('login-selection' as any) && initialView !== ('google-phone-setup' as any)) {
+      return initialView;
+    }
+    return 'phone-entry';
+  };
+
+  const [view, setView] = useState<AuthView>(getInitialView);
   const [phoneNumber, setPhoneNumber] = useState('');
   
   // OTP states: single unified 6-digit string feeding native WebOTP & single input
@@ -175,7 +176,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
   // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
-    setView(initialView || 'login-selection');
+    setView(getInitialView());
     setPhoneNumber('');
     setOtpCode('');
     setDisplayName(initialData?.displayName || '');
@@ -199,7 +200,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
   // Track visibility of Name & Email onboarding modal globally to prevent background tasks (GPS, Push)
   useEffect(() => {
-    const isOnboardingView = isOpen && (view === 'profile-setup' || view === 'google-phone-setup');
+    const isOnboardingView = isOpen && (view === 'profile-setup');
     if (typeof window !== 'undefined') {
       (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = isOnboardingView;
     }
@@ -217,45 +218,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
       }
       clearRecaptchaInstance();
-    };
-  }, []);
-
-  // Check for any pending Google redirect results upon returning to the app
-  useEffect(() => {
-    let isSubscribed = true;
-    const inspectRedirect = async () => {
-      try {
-        const userCredential = await getRedirectResult(auth);
-        if (!isSubscribed || !userCredential || !userCredential.user) return;
-        const u = userCredential.user;
-        setVerifiedUid(u.uid);
-        setDisplayName(u.displayName || '');
-        setEmail(u.email || '');
-
-        const pDoc = await getDoc(doc(db, 'users', u.uid));
-        const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
-
-        if (!hasStoredPhone) {
-          setView('google-phone-setup');
-        } else {
-          setView('success-transition');
-          setTimeout(() => {
-            if (isSubscribed) {
-              onSuccess();
-              onClose();
-              resetForm();
-            }
-          }, 1200);
-        }
-      } catch (err: any) {
-        console.warn('[AuthModal] Google redirect result notice:', err);
-      }
-    };
-
-    inspectRedirect();
-
-    return () => {
-      isSubscribed = false;
     };
   }, []);
 
@@ -718,147 +680,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     }
   };
 
-  // Robust Google Sign In using centralized loginWithGoogle helper
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const userCredential = await loginWithGoogle();
-      if (userCredential && userCredential.user) {
-        const u = userCredential.user;
-        setVerifiedUid(u.uid);
-        setDisplayName(u.displayName || '');
-        setEmail(u.email || '');
-
-        const pDoc = await getDoc(doc(db, 'users', u.uid));
-        const hasStoredPhone = pDoc.exists() && pDoc.data()?.phoneNumber && pDoc.data()?.phoneNumber.toString().trim().length >= 10;
-
-        if (!hasStoredPhone) {
-          setView('google-phone-setup');
-        } else {
-          setView('success-transition');
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-            resetForm();
-          }, 1200);
-        }
-      }
-      // If userCredential is null, signInWithRedirect was initiated on mobile / standalone TWA
-    } catch (err: any) {
-      console.error("Google authentication error:", err);
-      setError(getFriendlyAuthErrorMessage(err));
-      setLoading(false);
-    }
-  };
-
-  // Helper to send onboarding OTP safely using Firebase Phone Auth ReCAPTCHA
-  const sendOnboardingOTP = async (formattedPhone: string) => {
-    try {
-      const verifier = getOrCreateRecaptchaVerifier(auth);
-      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
-      setConfirmationResult(result);
-      setIsOnboardingVerification(true);
-      setView('otp-entry');
-      setTimer(30);
-    } catch (err: any) {
-      console.error("[AuthModal] Onboarding OTP failed:", err);
-      clearRecaptchaInstance();
-      setError(getFriendlyAuthErrorMessage(err));
-    }
-  };
-
-  // Setup mobile number for Google Signed-In Users: directly save profile in Firestore without requiring a second phone OTP
-  const handleGooglePhoneRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!displayName.trim()) {
-      setError('Full Name is required');
-      return;
-    }
-    const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) {
-      setError('Please enter a valid 10-digit mobile number');
-      return;
-    }
-    
-    const activeUid = verifiedUid || auth.currentUser?.uid;
-    if (!activeUid) {
-      setError('Active user session expired. Please sign in again.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const formattedPhone = `+91${cleanPhone}`;
-      const userEmail = (email || auth.currentUser?.email || '').trim();
-      const isSarthakEmail = userEmail.toLowerCase() === 'sarthakwebtech@gmail.com';
-      const userRef = doc(db, 'users', activeUid);
-      const userSnap = await getDoc(userRef);
-
-      const existingData = userSnap.exists() ? userSnap.data() : null;
-
-      // Ensure user gets the welcome credit (₹100) or retains existing balance
-      const walletBalance = existingData?.walletBalance !== undefined 
-        ? existingData.walletBalance 
-        : walletJoiningBonus;
-
-      const profilePayload: any = {
-        uid: activeUid,
-        displayName: displayName.trim(),
-        fullName: displayName.trim(),
-        email: userEmail,
-        phoneNumber: formattedPhone,
-        mobile: formattedPhone,
-        walletBalance: walletBalance,
-        onboardingComplete: true,
-        savedAddresses: Array.isArray(existingData?.savedAddresses) ? existingData.savedAddresses : [],
-        addresses: Array.isArray(existingData?.addresses) ? existingData.addresses : [],
-        bookings: Array.isArray(existingData?.bookings) ? existingData.bookings : [],
-        isPartner: existingData?.isPartner ?? false,
-        updatedAt: Timestamp.now()
-      };
-
-      if (!existingData) {
-        profilePayload.role = isSarthakEmail ? 'admin' : 'customer';
-        profilePayload.createdAt = Timestamp.now();
-        profilePayload.referralCode = `ZOM${activeUid.slice(-6).toUpperCase()}`;
-        profilePayload.notificationPreferences = {
-          bookingUpdates: true,
-          promotionalMessages: true
-        };
-      }
-
-      if (isSarthakEmail) {
-        profilePayload.role = 'admin';
-        profilePayload.adminSubRole = 'head';
-      }
-
-      // Directly save/merge user profile in Firestore
-      await setDoc(userRef, profilePayload, { merge: true });
-
-      // Update Firebase Auth profile display name if available
-      if (auth.currentUser) {
-        try {
-          await updateProfile(auth.currentUser, { displayName: displayName.trim() });
-        } catch (profileErr) {
-          console.warn('[AuthModal] Could not update auth display name:', profileErr);
-        }
-      }
-
-      // Immediately call onSuccess and close modal so user seamlessly lands on dashboard with ₹100 credit
-      onSuccess();
-      onClose();
-      resetForm();
-    } catch (err: any) {
-      console.error("[AuthModal] Failed to save Google user profile:", err);
-      setError(err?.message || 'Failed to save profile. Please check your connection and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -902,17 +723,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         <div className="p-6 overflow-y-auto no-scrollbar">
           <AnimatePresence mode="wait">
             
-            {/* VIEW 0: Login Selection Screen */}
-            {view === 'login-selection' && (
+            {/* VIEW: Phone Entry (Zomato / Swiggy Clean Single Flow) */}
+            {view === 'phone-entry' && (
               <motion.div
-                key="login-selection"
+                key="phone-entry"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6 py-2"
               >
                 <div className="text-center space-y-2">
-                  <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto shadow-md border border-amber-100/50 p-0.5">
+                  <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto shadow-md border border-neutral-100 p-1">
                     <img 
                       src={LogoIcon} 
                       alt="zomindia" 
@@ -921,78 +742,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     />
                   </div>
                   <h2 className="text-xl font-black tracking-tight text-neutral-900 mt-2">
-                    Welcome to zomindia
+                    Login or Sign up
                   </h2>
                   <p className="text-xs text-neutral-500 max-w-[270px] mx-auto leading-relaxed">
-                    Indore's trusted app for clean, hassle-free home services.
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  {/* Google Authenticate Button (Bold + Premium Accent) */}
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-3 bg-white border border-neutral-200 p-4 rounded-2xl font-bold text-neutral-700 hover:bg-neutral-50 hover:border-neutral-300 active:scale-[0.98] transition-all duration-200 outline-none shadow-sm relative overflow-hidden group"
-                  >
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-5 h-5" />
-                    <span className="text-sm">Continue with Google</span>
-                  </button>
-
-                  {/* Mobile Sign In Button (Zomato/Urban Company Bold Accent) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setView('phone-entry');
-                      setError(null);
-                    }}
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-3 bg-[#050CA6] text-white p-4 rounded-2xl font-bold hover:bg-[#040980] active:scale-[0.98] transition-all duration-200 outline-none shadow-md shadow-blue-700/10"
-                  >
-                    <Smartphone size={18} />
-                    <span className="text-sm">Continue with Mobile Number</span>
-                  </button>
-                </div>
-
-                {error && (
-                  <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
-                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2.5 justify-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
-                  <span>Secure SSL connection</span>
-                  <span>•</span>
-                  <span>100% verified partners</span>
-                </div>
-              </motion.div>
-            )}
-
-            {/* VIEW 1: Phone Entry (Zomato/Urban Company Inspired) */}
-            {view === 'phone-entry' && (
-              <motion.div
-                key="phone-entry"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div>
-                  <button 
-                    type="button"
-                    onClick={() => setView('login-selection')}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-[#050CA6] uppercase tracking-wider hover:underline"
-                  >
-                    <ChevronLeft size={12} />
-                    <span>Back</span>
-                  </button>
-                  <h2 className="text-xl font-bold tracking-tight text-neutral-900 mt-2">
-                    Verify Mobile Number
-                  </h2>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    We'll send you an OTP to verify your number safely.
+                    Enter your mobile number to get an OTP for instant access.
                   </p>
                 </div>
 
@@ -1038,7 +791,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                       <BrandedButtonSpinner className="w-4 h-4" />
                     ) : (
                       <>
-                        <span>Send OTP</span>
+                        <span>Continue</span>
                         <ArrowRight size={16} />
                       </>
                     )}
@@ -1048,113 +801,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 <p className="text-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
                   By continuing, you agree to zomindia's <span className="text-neutral-700 font-semibold underline cursor-pointer">Terms & Privacy Policy</span>.
                 </p>
+
+                <div className="flex items-center gap-2.5 justify-center text-[10px] text-neutral-400 font-medium px-2 pt-1 leading-normal border-t border-neutral-100/60">
+                  <span>🔒 Secure SSL connection</span>
+                  <span>•</span>
+                  <span>⚡ Instant OTP verification</span>
+                </div>
               </motion.div>
-            )}            {/* VIEW: Google Phone Setup (For missing mobile number in Google login) */}
-            {view === 'google-phone-setup' && (
-              <motion.div
-                key="google-phone-setup"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                  <div>
-                    <button 
-                      type="button"
-                      onClick={() => setView('login-selection')}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-[#050CA6] uppercase tracking-wider hover:underline"
-                    >
-                      <ChevronLeft size={12} />
-                      <span>Back</span>
-                    </button>
-                    <h2 className="text-lg font-bold text-neutral-900 mt-2">
-                      Almost there! 🎉
-                    </h2>
-                    <p className="text-xs text-neutral-500 mt-1">
-                      Just a quick step to set up your profile.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleGooglePhoneRegister} className="space-y-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                        Full Name
-                      </label>
-                      <input 
-                        type="text"
-                        required
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="Jane Doe"
-                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                        Email Address
-                      </label>
-                      <input 
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="jane@example.com"
-                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
-                        Mobile Number
-                      </label>
-                      <div className="relative">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pr-3 border-r border-neutral-100">
-                          <img src="https://flagcdn.com/w20/in.png" alt="India flag" className="w-4 rounded-sm" />
-                          <span className="text-xs font-bold text-neutral-800">+91</span>
-                        </div>
-                        <input 
-                          type="tel"
-                          required
-                          autoFocus
-                          value={phoneNumber}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                            setPhoneNumber(val);
-                          }}
-                          placeholder="98765 43210"
-                          className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white pl-[84px] pr-4 py-3.5 rounded-2xl outline-none transition-all font-semibold text-sm tracking-widest text-neutral-900"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
-                      <div className="space-y-0.5">
-                        <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
-                        <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
-                      </div>
-                    </div>
-
-                    {error && (
-                      <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
-                        <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                        <span>{error}</span>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={loading || phoneNumber.length < 10 || !displayName.trim()}
-                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md"
-                    >
-                      {loading ? (
-                        <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
-                      ) : (
-                        "Get Started"
-                      )}
-                    </button>
-                  </form>
-                </motion.div>
             )}
 
             {/* VIEW 2: OTP Entry state (Clean verification blocks) */}

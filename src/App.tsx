@@ -42,7 +42,7 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import { LoadingScreen } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
-import { getRedirectAuthResult, handleRedirectAuthResult, signOutUser, resolveAndSubscribeProfile, sanitizeUserProfile } from './services/authService';
+import { signOutUser, resolveAndSubscribeProfile, sanitizeUserProfile } from './services/authService';
 import BottomNav from './components/BottomNav';
 import OfflineSyncIndicator from './components/OfflineSyncIndicator';
 import { CitySelector } from './components/CitySelector';
@@ -213,7 +213,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalInitialView, setAuthModalInitialView] = useState<'login-selection' | 'phone-entry' | 'otp-entry' | 'profile-setup' | 'google-phone-setup' | 'success-transition'>('login-selection');
+  const [authModalInitialView, setAuthModalInitialView] = useState<'phone-entry' | 'otp-entry' | 'profile-setup' | 'success-transition'>('phone-entry');
   const [authModalInitialData, setAuthModalInitialData] = useState<{ uid?: string; displayName?: string; email?: string } | undefined>(undefined);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => {
@@ -464,6 +464,8 @@ export default function App() {
       const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
 
       const publicPaths: Record<string, string> = {
+        'partner': 'partner',
+        'partner-signup': 'partner-signup',
         'about': 'about-us',
         'contact': 'contact-us',
         'privacy': 'privacy-policy',
@@ -605,67 +607,6 @@ export default function App() {
     let unsubscribeBookings = () => {};
     let unsubscribeProfile = () => {};
     let unsubscribePartnerApp = () => {};
-
-    // 1. Listen for Google OAuth Redirect Sign-In on App Mount
-    handleRedirectAuthResult()
-      .then(async (u) => {
-        if (!isMounted || !u) return;
-        setUser(u);
-        console.info('[Auth] Google Sign-In redirect resolved user upon return:', u.uid);
-
-        // Ensure user profile is fetched / synced in Firestore (users/{uid})
-        const userDocRef = doc(db, 'users', u.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (!userDocSnap.exists()) {
-          // Provision initial user profile document in Firestore
-          const initialProfileData = {
-            uid: u.uid,
-            displayName: u.displayName || 'Service Customer',
-            fullName: u.displayName || 'Service Customer',
-            email: u.email || '',
-            photoURL: u.photoURL || '',
-            role: 'customer',
-            currentMode: 'customer',
-            walletBalance: 100, // ₹100 Welcome Bonus
-            city: 'Indore',
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          };
-          await setDoc(userDocRef, initialProfileData, { merge: true });
-        } else {
-          // Update last login and basic profile details
-          await updateDoc(userDocRef, {
-            lastLoginAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-            ...(u.photoURL ? { photoURL: u.photoURL } : {}),
-            ...(u.email ? { email: u.email } : {}),
-          }).catch((e) => console.warn('[Auth] Non-fatal profile touch notice:', e));
-        }
-
-        const freshDoc = await getDoc(userDocRef);
-        const userData = freshDoc?.exists() ? freshDoc.data() : null;
-
-        const hasStoredPhone = Boolean(
-          userData?.phoneNumber &&
-          userData.phoneNumber.toString().trim().length >= 10
-        );
-
-        if (!hasStoredPhone) {
-          setAuthModalInitialView('google-phone-setup');
-          setAuthModalInitialData({
-            uid: u.uid,
-            displayName: u.displayName || '',
-            email: u.email || '',
-          });
-          setIsAuthModalOpen(true);
-        } else {
-          setToastMessage(`Welcome, ${userData?.displayName || userData?.fullName || userData?.customerData?.fullName || u.displayName || 'Customer'}!`);
-        }
-      })
-      .catch((err) => {
-        console.error('Redirect sign-in error:', err);
-      });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (!isMounted) return;
@@ -1938,7 +1879,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         initialData={authModalInitialData}
         onClose={() => {
           setIsAuthModalOpen(false);
-          setAuthModalInitialView('login-selection');
+          setAuthModalInitialView('phone-entry');
           setAuthModalInitialData(undefined);
           try {
             sessionStorage.removeItem("zomini_pending_booking_action");
@@ -1966,7 +1907,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             setProfile(instantProfile);
           }
           setIsAuthModalOpen(false);
-          setAuthModalInitialView('login-selection');
+          setAuthModalInitialView('phone-entry');
           setAuthModalInitialData(undefined);
 
           // Auto-Redirect: restore saved tab if any, otherwise route to home with smooth scroll

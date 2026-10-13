@@ -223,7 +223,7 @@ export default function PrivacyPolicy({ onBack, onNavigate }: PrivacyPolicyProps
                   <div>
                     <h4 className="text-xs font-bold text-slate-900">Google Cloud Platform & Firebase Services</h4>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      We utilize <strong>Firebase Authentication</strong> (phone OTP & Google sign-in) for identity security, <strong>Cloud Firestore</strong> for database encryption at rest, and <strong>Firebase Cloud Messaging (FCM)</strong> for real-time dispatch alerts.
+                      We utilize <strong>Firebase Authentication</strong> (phone number & OTP verification) for identity security, <strong>Cloud Firestore</strong> for database encryption at rest, and <strong>Firebase Cloud Messaging (FCM)</strong> for real-time dispatch alerts.
                     </p>
                   </div>
                 </div>

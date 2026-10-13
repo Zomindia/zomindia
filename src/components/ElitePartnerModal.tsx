@@ -15,7 +15,7 @@ export default function ElitePartnerModal({
   initialFullName = '',
   initialPhone = ''
 }: ElitePartnerModalProps) {
-  const dummyProfile: UserProfile = {
+  const guestProfile: UserProfile = {
     uid: '',
     displayName: initialFullName,
     fullName: initialFullName,
@@ -27,7 +27,7 @@ export default function ElitePartnerModal({
 
   return (
     <SignUpAsPartner
-      profile={dummyProfile}
+      profile={guestProfile}
       onSuccess={onClose}
       isOpen={isOpen}
       onClose={onClose}

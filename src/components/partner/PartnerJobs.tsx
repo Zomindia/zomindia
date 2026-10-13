@@ -911,25 +911,31 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     setRefreshing(true);
     setRefreshSuccess(null);
     try {
-      const computedId = partner?.userId || profile?.uid;
-      if (computedId) {
+      const candidatePartnerIds = Array.from(new Set([
+        profile?.uid,
+        partner?.id,
+        partner?.userId,
+        (profile as any)?.partnerId
+      ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
+
+      const activeIds = candidatePartnerIds.length > 0 ? candidatePartnerIds : (profile?.uid ? [profile.uid] : []);
+      if (activeIds.length > 0) {
         const qMy = query(
           collection(db, 'bookings'), 
-          where('partnerId', '==', computedId)
+          where('partnerId', 'in', activeIds)
         );
-        const qPool = query(
-          collection(db, 'bookings'),
-          where('status', '==', 'pending')
-        );
-        const [snapMy, snapPool] = await Promise.all([
-          getDocs(qMy),
-          getDocs(qPool)
-        ]);
+        const snapMy = await getDocs(qMy);
 
-        const loadedMy = snapMy.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-        const loadedPool = snapPool.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.partnerId);
+        const loadedMy = snapMy.docs
+          .map(d => ({ id: d.id, ...d.data() } as Booking))
+          .filter(b => {
+            const s = b.status?.toLowerCase();
+            const isAssigned = (b.partnerId && activeIds.includes(b.partnerId)) ||
+                               ((b as any).assignedPartnerId && activeIds.includes((b as any).assignedPartnerId));
+            return isAssigned && s !== 'cancelled';
+          });
         
-        setRefreshSuccess(`Synced! Loaded ${loadedMy.length + loadedPool.length} bookings.`);
+        setRefreshSuccess(`Synced! Loaded ${loadedMy.length} assigned jobs.`);
       } else {
         setRefreshSuccess('Checked cloud database.');
       }
@@ -1135,15 +1141,27 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     }
   };
 
-  // Filter Bookings
+  // Filter Bookings (Admin-Assigned Only Dispatch Lock)
+  const candidatePartnerIds = Array.from(new Set([
+    profile?.uid,
+    partner?.id,
+    partner?.userId,
+    (profile as any)?.partnerId
+  ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
+
+  const isAssignedToCurrentPartner = (b: Booking) => {
+    return (b.partnerId && candidatePartnerIds.includes(b.partnerId)) ||
+           ((b as any).assignedPartnerId && candidatePartnerIds.includes((b as any).assignedPartnerId));
+  };
+
   const PRIORITY_ORDER = { high: 3, medium: 2, low: 1, undefined: 0 };
   const getPriority = (b: Booking) => PRIORITY_ORDER[(b.partnerPriority || 'undefined') as keyof typeof PRIORITY_ORDER] || 0;
 
   const ongoingJobs = bookings
     .filter(b => {
       const s = b.status?.toLowerCase();
-      // Unassigned bookings belong in the invitations / pool tab until accepted
-      if (!b.partnerId && (s === 'pending' || s === 'confirmed' || s === 'pending_acceptance')) {
+      // Exclude cancelled and unassigned bookings
+      if (s === 'cancelled' || !isAssignedToCurrentPartner(b)) {
         return false;
       }
       return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
@@ -1151,19 +1169,23 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     .sort((a, b) => {
       const pDiff = getPriority(b) - getPriority(a);
       if (pDiff !== 0) return pDiff;
-      // Secondary sort: newly scheduled first? Or status? 
-      // simple secondary sort
       return (b.scheduledAt?.seconds || 0) - (a.scheduledAt?.seconds || 0);
     });
+
   const pendingInvitations = bookings.filter(b => {
     const s = b.status?.toLowerCase();
-    return s === 'pending_acceptance' || ((s === 'pending' || s === 'confirmed') && !b.partnerId);
+    // Strictly assigned invitations, never unassigned pool bookings
+    return s === 'pending_acceptance' && isAssignedToCurrentPartner(b);
   }); 
+
   const historyJobs = bookings
     .filter(b => {
       const s = b.status?.toLowerCase() || '';
-      return ['completed', 'finalized', 'cancelled'].includes(s) && 
-        !['assigned', 'in_progress', 'on_the_way', 'arrived', 'confirmed'].includes(s);
+      // Exclude cancelled bookings and ensure assigned
+      if (s === 'cancelled' || !isAssignedToCurrentPartner(b)) {
+        return false;
+      }
+      return ['completed', 'finalized'].includes(s);
     })
     .sort((a, b) => {
       const timeA = (a.completedAt as any)?.seconds || (a.settledAt as any)?.seconds || (a.scheduledAt as any)?.seconds || 0;

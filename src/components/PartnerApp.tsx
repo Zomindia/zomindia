@@ -300,7 +300,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       );
     };
 
-    // Fetch bookings data
+    // Fetch bookings data (Locked Partner Dispatch Model - Admin-Assigned Only)
     const fetchBookings = () => {
         // Standardize ID Matching: Cover profile.uid, partner.id, partner.userId, and profile.partnerId fallback
         const candidatePartnerIds = Array.from(new Set([
@@ -310,66 +310,44 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           (profile as any).partnerId
         ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
 
+        const activeIds = candidatePartnerIds.length > 0 ? candidatePartnerIds : [profile.uid];
+
+        // Query ONLY bookings directly assigned to this partner
         const qMy = query(
           collection(db, 'bookings'), 
-          where('partnerId', 'in', candidatePartnerIds.length > 0 ? candidatePartnerIds : [profile.uid])
+          where('partnerId', 'in', activeIds)
         );
-
-        // Update Pool Query: Expand unassigned pool jobs to include unassigned confirmed bookings
-        const qPool = query(
-          collection(db, 'bookings'), 
-          where('status', 'in', ['pending', 'confirmed'])
-        );
-
-        let myBookings: Booking[] = [];
-        let poolBookings: Booking[] = [];
-
-        const updateAllBookings = (my: Booking[], pool: Booking[]) => {
-          if (!isMounted) return;
-          const combined = [...my, ...pool.filter(p => !my.find(m => m.id === p.id))];
-          // In-memory sort by scheduledAt / createdAt (newest first) to avoid composite index requirements
-          combined.sort((a, b) => {
-            const timeA = (a.scheduledAt as any)?.seconds || (a.createdAt as any)?.seconds || 0;
-            const timeB = (b.scheduledAt as any)?.seconds || (b.createdAt as any)?.seconds || 0;
-            return timeB - timeA;
-          });
-          setBookings(combined);
-        };
 
         const unsubMy = onSnapshot(
           qMy,
           (snap) => {
             if (!isMounted) return;
-            // Retain all assigned bookings (active, pending, completed, finalized, and cancelled)
-            // so both active workspace tabs and history/completed tabs receive real-time data
-            myBookings = snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-            updateAllBookings(myBookings, poolBookings);
-          },
-          (err) => {
-            if (!isMounted) return;
-            console.warn("My bookings snapshot warning in PartnerApp:", err);
-          }
-        );
-
-        const unsubPool = onSnapshot(
-          qPool,
-          (snap) => {
-            if (!isMounted) return;
-            // Filter only unassigned bookings (when partnerId == null or empty)
-            poolBookings = snap.docs
+            // Retain ONLY admin-assigned bookings and exclude cancelled bookings
+            const assignedBookings = snap.docs
               .map(d => ({ id: d.id, ...d.data() } as Booking))
-              .filter(b => !b.partnerId || b.partnerId === "");
-            updateAllBookings(myBookings, poolBookings);
+              .filter(b => {
+                const s = b.status?.toLowerCase();
+                const isAssigned = (b.partnerId && activeIds.includes(b.partnerId)) ||
+                                   ((b as any).assignedPartnerId && activeIds.includes((b as any).assignedPartnerId));
+                return isAssigned && s !== 'cancelled';
+              });
+
+            // In-memory sort by scheduledAt / createdAt (newest first)
+            assignedBookings.sort((a, b) => {
+              const timeA = (a.scheduledAt as any)?.seconds || (a.createdAt as any)?.seconds || 0;
+              const timeB = (b.scheduledAt as any)?.seconds || (b.createdAt as any)?.seconds || 0;
+              return timeB - timeA;
+            });
+            setBookings(assignedBookings);
           },
           (err) => {
             if (!isMounted) return;
-            console.warn("Pool bookings snapshot warning in PartnerApp:", err);
+            console.warn("Assigned partner bookings snapshot warning in PartnerApp:", err);
           }
         );
 
         return () => {
           if (typeof unsubMy === "function") unsubMy();
-          if (typeof unsubPool === "function") unsubPool();
         };
     };
 
@@ -512,9 +490,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     }
   };
 
-  const hasUrgentPoolRequest = bookings.some(b => 
-    b.status === 'pending' && 
-    !b.partnerId && 
+  const hasUrgentAssignedRequest = bookings.some(b => 
+    ['assigned', 'confirmed', 'on_the_way', 'in_progress'].includes(b.status) && 
     (b.partnerPriority === 'high' || b.isPriority === true)
   );
 
@@ -787,7 +764,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                   className="relative flex flex-col items-center justify-center pt-1 pb-1 transition-all flex-1"
                 >
                   <div className={`relative p-1.5 rounded-xl transition-all duration-300 ${isActive ? 'text-blue-700 bg-blue-50/80 font-bold scale-105' : 'text-slate-400 active:scale-95 hover:text-slate-600'}`}>
-                    {tab.id === 'jobs' && hasUrgentPoolRequest && !isActive && (
+                    {tab.id === 'jobs' && hasUrgentAssignedRequest && !isActive && (
                       <>
                         <motion.span
                           className="absolute inset-0 rounded-xl bg-amber-500/30 pointer-events-none"
