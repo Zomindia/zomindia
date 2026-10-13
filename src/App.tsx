@@ -752,11 +752,17 @@ export default function App() {
 
             // Safe Push Notification registration once onboarding is complete and onboarding modal is closed
             if (sanitized.onboardingComplete && !(typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE)) {
-              import('./lib/push-notifications').then(({ registerPushNotifications }) => {
-                registerPushNotifications(u.uid).catch((err) => {
-                  console.warn('[Push Notification Native Bypass]:', err);
+              try {
+                import('./lib/push-notifications').then(({ registerPushNotifications }) => {
+                  registerPushNotifications(u.uid).catch((err) => {
+                    console.warn('[Push Notification Native Bypass]:', err);
+                  });
+                }).catch((importErr) => {
+                  console.warn('[Push Notification Native Bypass]: import error:', importErr);
                 });
-              }).catch(() => {});
+              } catch (e) {
+                console.warn('[Push Notification Native Bypass]:', e);
+              }
             }
 
             // Optional auto-route to workspace for admin / partner only if at root home without user navigation intent
