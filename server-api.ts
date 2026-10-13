@@ -93,11 +93,8 @@ const getDb = () => {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
     if (realAdmin.apps.length > 0) {
-      if (firebaseConfig.firestoreDatabaseId) {
-        _adminDb = getAdminFirestore(realAdmin.apps[0], firebaseConfig.firestoreDatabaseId);
-      } else {
-        _adminDb = realAdmin.firestore();
-      }
+      const targetDbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
+      _adminDb = getAdminFirestore(realAdmin.apps[0], targetDbId);
       return _adminDb;
     }
   } catch (err: any) {

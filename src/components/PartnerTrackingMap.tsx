@@ -15,6 +15,8 @@ import {
   MessageSquare,
   Star,
   Maximize2,
+  ArrowLeft,
+  X,
 } from "lucide-react";
 
 export interface PartnerTrackingMapProps {
@@ -240,28 +242,24 @@ function MapCanvas({
     });
   }, [map, isMini]);
 
-  // 1. Initial framing: fitBounds strictly on first render
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || hasInitialFittedRef.current) return;
+  const lastFitBoundsKeyRef = useRef<string>("");
 
-    if (partnerLocation && destCoords) {
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend(partnerLocation);
-      bounds.extend(destCoords);
-      if (routePath.length > 0) {
-        routePath.forEach((pt) => bounds.extend(pt));
-      }
-      map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
-      hasInitialFittedRef.current = true;
-    } else if (partnerLocation) {
-      map.panTo(partnerLocation);
-      map.setZoom(15);
-      hasInitialFittedRef.current = true;
-    } else if (destCoords) {
-      map.panTo(destCoords);
-      map.setZoom(15);
-      hasInitialFittedRef.current = true;
+  // Auto-fit bounds between Customer and Partner location continuously
+  useEffect(() => {
+    if (!map || typeof google === "undefined") return;
+    if (!partnerLocation || !destCoords) return;
+
+    const boundsKey = `${partnerLocation.lat.toFixed(4)},${partnerLocation.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
+    if (lastFitBoundsKeyRef.current === boundsKey) return;
+    lastFitBoundsKeyRef.current = boundsKey;
+
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(partnerLocation);
+    bounds.extend(destCoords);
+    if (routePath.length > 0) {
+      routePath.forEach((pt) => bounds.extend(pt));
     }
+    map.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
   }, [map, partnerLocation, destCoords, routePath]);
 
   // 2. Dynamic Camera Movement: Smoothly follow moving vehicle when new coordinates arrive in partnerLocation
@@ -341,11 +339,8 @@ function MapCanvas({
               <span className="text-lg leading-none select-none">🛵</span>
             </div>
             {!isMini && (
-              <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md whitespace-nowrap flex items-center gap-1">
-                <span>Partner</span>
-                <span className="text-blue-300 font-mono text-[8px]">
-                  {Math.round(effectiveBearing)}°
-                </span>
+              <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
+                Technician
               </div>
             )}
           </div>
@@ -370,6 +365,7 @@ export default function PartnerTrackingMap({
   serviceName,
   onCall,
   onChat,
+  onClose,
   heightClassName = "h-[360px] sm:h-[400px]",
   variant = "full",
   onExpand,
@@ -673,6 +669,21 @@ export default function PartnerTrackingMap({
           </>
         ) : (
           <>
+            {/* Close/Back button at top-left of screen */}
+            {onClose && (
+              <div className="absolute top-4 left-4 z-20 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-full bg-white/95 hover:bg-white text-slate-800 shadow-md flex items-center justify-center border border-slate-200/80 transition-all active:scale-95 cursor-pointer backdrop-blur-xs"
+                  title="Close Navigation"
+                  aria-label="Close"
+                >
+                  <ArrowLeft size={16} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+
             {/* Full View: Top Floating ETA Pill */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
               <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/95 text-slate-900 border border-slate-200 shadow-md">

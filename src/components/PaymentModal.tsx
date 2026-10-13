@@ -83,6 +83,24 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       });
     } catch (e) {}
 
+    try {
+      const bRef = doc(db, 'bookings', booking.id);
+      const targetStatus = booking.status === 'payment_pending'
+        ? 'completed'
+        : (booking.status === 'pending' ? 'confirmed' : booking.status);
+
+      await updateDoc(bRef, {
+        paymentStatus: 'paid',
+        status: targetStatus,
+        transactionId: txnId,
+        paymentMethod: provider.toLowerCase().includes('wallet') ? 'wallet' : 'online',
+        paidAmount: finalPayable,
+        updatedAt: Timestamp.now()
+      });
+    } catch (writeErr) {
+      console.warn('[PaymentModal] Direct Firestore booking payment update notice:', writeErr);
+    }
+
     setPaymentSuccess(true);
     setIsProcessing(false);
 

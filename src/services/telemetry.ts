@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
-import { collection, addDoc, serverTimestamp, getFirestore, Firestore } from 'firebase/firestore';
-import { app, db, FIRESTORE_DATABASE_ID } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { getApiUrl } from './api';
 
 export interface Breadcrumb {
@@ -162,26 +162,9 @@ class TelemetryService {
 
       // 3. Direct Firestore Write (immutable record in active database collection `system_crashes`)
       let docId: string | null = null;
-      let activeDb: Firestore | null = (db as Firestore) || null;
-      if (!activeDb) {
+      if (db) {
         try {
-          activeDb = getFirestore(app, 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc');
-        } catch {
-          try {
-            activeDb = getFirestore(app, FIRESTORE_DATABASE_ID);
-          } catch {
-            try {
-              activeDb = getFirestore(app);
-            } catch {
-              // Ignore
-            }
-          }
-        }
-      }
-
-      if (activeDb) {
-        try {
-          const crashesCol = collection(activeDb, 'system_crashes');
+          const crashesCol = collection(db, 'system_crashes');
           const docRef = await addDoc(crashesCol, {
             ...payload,
             timestamp: serverTimestamp(),

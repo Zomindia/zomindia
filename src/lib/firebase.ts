@@ -21,6 +21,9 @@ const resolvedConfig = {
 
 const app = getApps().length === 0 ? initializeApp(resolvedConfig) : getApp();
 
+export const FIRESTORE_DB_ID = 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc';
+export const FIRESTORE_DATABASE_ID = FIRESTORE_DB_ID;
+
 // Set log level to silent to prevent benign connection warning spam in sandboxed iframe environments
 try {
   setLogLevel('silent');
@@ -39,7 +42,7 @@ try {
         tabManager: persistentMultipleTabManager(),
       }),
     },
-    firebaseConfig.firestoreDatabaseId
+    FIRESTORE_DB_ID
   );
 } catch (e1) {
   try {
@@ -50,18 +53,12 @@ try {
         experimentalForceLongPolling: true,
         localCache: memoryLocalCache(),
       },
-      firebaseConfig.firestoreDatabaseId
+      FIRESTORE_DB_ID
     );
   } catch {
-    try {
-      firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-    } catch {
-      firestoreDb = getFirestore(app);
-    }
+    firestoreDb = getFirestore(app, FIRESTORE_DB_ID);
   }
 }
-
-export const FIRESTORE_DATABASE_ID = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc';
 
 export { app };
 export const db = firestoreDb;

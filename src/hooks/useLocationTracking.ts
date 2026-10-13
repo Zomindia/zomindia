@@ -67,7 +67,8 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
               const now = Date.now();
               const currentActiveBookings = bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status));
               const isOngoingTrip = currentActiveBookings.length > 0;
-              const interval = isOngoingTrip ? TRIP_UPDATE_INTERVAL : BACKGROUND_INTERVAL;
+              const hasOnTheWayBooking = currentActiveBookings.some(b => b.status === 'on_the_way');
+              const interval = hasOnTheWayBooking ? 3000 : (isOngoingTrip ? 7000 : BACKGROUND_INTERVAL);
 
               if (now - lastUpdateRef.current < interval) {
                 return;
@@ -82,13 +83,21 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
               const headingVal = typeof heading === 'number' && !isNaN(heading) ? Number(heading) : null;
 
               try {
-                // Update partner's coordinates in Firestore
+                // Update partner's coordinates in Firestore partners collection
                 await updateDoc(doc(db, 'partners', partnerProfileId), {
                   lat: latNum,
                   lng: lngNum,
                   heading: headingVal,
                   updatedAt: Timestamp.now()
-                });
+                }).catch(() => {});
+
+                // Also sync partner location to user profile
+                await updateDoc(doc(db, 'users', partnerProfileId), {
+                  'location.lat': latNum,
+                  'location.lng': lngNum,
+                  'location.updatedAt': Timestamp.now(),
+                  updatedAt: Timestamp.now()
+                }).catch(() => {});
 
                 // Sync coordinates to all active bookings
                 for (const activeB of currentActiveBookings) {
@@ -96,10 +105,11 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
                     partnerLocation: {
                       lat: latNum,
                       lng: lngNum,
+                      updatedAt: Timestamp.now()
                     },
                     heading: headingVal,
                     updatedAt: Timestamp.now()
-                  });
+                  }).catch(e => console.warn('[useLocationTracking] Booking update notice:', e));
                 }
 
                 lastUpdateRef.current = now;

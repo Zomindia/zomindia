@@ -24,6 +24,7 @@ import {
   Wrench,
   Sparkles,
   ShieldAlert,
+  KeyRound,
 } from "lucide-react";
 import { doc, updateDoc, Timestamp, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -31,6 +32,7 @@ import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "..
 import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import PartnerTrackingMap from "./PartnerTrackingMap";
+import { TrackingModal } from "./tracking/TrackingModal";
 import { LogoIcon } from "./BrandLogo";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
@@ -300,13 +302,29 @@ export function CustomerBookingCard({
     !isCancelled;
 
   // Dynamic OTP calculation
-  const otp = propOtpCode || booking.serviceOtp || booking.startOTP;
-  const showOtpBox =
+  const otp =
+    propOtpCode ||
+    booking.serviceOtp ||
+    booking.startOTP ||
+    (booking as any).completionOtp ||
+    (booking.id
+      ? (parseInt(booking.id.replace(/\D/g, "").slice(-4), 10) || 4821)
+          .toString()
+          .padStart(4, "0")
+      : "4821");
+
+  const isOtpRelevantStatus =
+    ["assigned", "on_the_way", "in_progress", "accepted", "arrived"].includes(rawStatus) ||
+    (hasPartner && !isCompleted && !isCancelled);
+
+  const showServiceOtpBadge =
     Boolean(otp) &&
     !booking.otpVerified &&
     !isCompleted &&
     !isCancelled &&
-    (isAssigned || isOnTheWay || isArrived || hasPartner);
+    isOtpRelevantStatus;
+
+  const showOtpBox = showServiceOtpBadge;
 
   // Formatted date & time slot
   const rawDate = (booking as any).date;
@@ -566,6 +584,28 @@ export function CustomerBookingCard({
           )}
         </span>
       </div>
+
+      {/* High-Contrast Prominent Service Completion OTP Badge directly on Main Card */}
+      {showServiceOtpBadge && (
+        <div className="mt-2.5 p-3 rounded-2xl bg-amber-500/10 border-2 border-amber-500 flex items-center justify-between gap-3 shadow-2xs select-text">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-xs">
+              <KeyRound size={16} className="text-slate-950 stroke-[2.5]" />
+            </div>
+            <div>
+              <p className="text-[11.5px] font-black text-amber-950 leading-tight">
+                Share this Start/End OTP with technician only after service is completed:
+              </p>
+              <p className="text-[10px] text-amber-800 font-bold mt-0.5">
+                Do not share before arrival or before work is done
+              </p>
+            </div>
+          </div>
+          <div className="bg-slate-950 text-amber-300 font-mono font-black text-base sm:text-lg tracking-[0.25em] px-3.5 py-1.5 rounded-xl border border-amber-400/50 shadow-inner shrink-0 select-all">
+            {otp}
+          </div>
+        </div>
+      )}
 
       {/* 3. Sleek Single Bottom Bar: Inline Price on Left + Compact Track Live Pill on Right */}
       <div className="flex items-center justify-between gap-3 mt-2.5 pt-2 border-t border-slate-100">
@@ -953,148 +993,24 @@ export function CustomerBookingCard({
         )}
       </AnimatePresence>
 
-      {/* Fullscreen Live Navigation Modal / Bottom Sheet */}
-      <AnimatePresence>
-        {isFullscreenTrackingOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
-            onClick={() => setIsFullscreenTrackingOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 60, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 60, scale: 0.97 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh]"
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/80 bg-slate-50/90">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
-                    <Navigation size={16} className="animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
-                      Live Technician Location • {serviceName}
-                    </h3>
-                    <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mt-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
-                      Technician is en-route to your Indore address
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreenTrackingOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
-                  title="Close Live Navigation"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {/* Full Map Canvas */}
-              <div className="p-3 sm:p-4 overflow-y-auto space-y-3">
-                <PartnerTrackingMap
-                  partnerId={booking.partnerId!}
-                  partnerLat={booking.partnerLocation?.lat}
-                  partnerLng={booking.partnerLocation?.lng}
-                  customerLat={booking.lat}
-                  customerLng={booking.lng}
-                  destinationAddress={booking.address}
-                  bookingLocation={
-                    booking.lat && booking.lng
-                      ? { lat: booking.lat, lng: booking.lng }
-                      : undefined
-                  }
-                  bookingId={booking.id}
-                  serviceName={serviceName}
-                  variant="full"
-                  heightClassName="h-[360px] sm:h-[400px]"
-                  onCall={() => {
-                    if (partnerUser && onCallPartner) {
-                      onCallPartner(partnerUser, booking);
-                    }
-                  }}
-                  onChat={() => {
-                    if (onChatPartner) {
-                      onChatPartner(booking);
-                    }
-                  }}
-                />
-
-                {/* Additional Info Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start gap-2 shadow-2xs">
-                    <MapPin size={14} className="text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                        Service Destination
-                      </span>
-                      <span className="font-semibold text-slate-800 line-clamp-2 mt-0.5">
-                        {booking.address || "Indore, Madhya Pradesh"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {showOtpBox && otp && (
-                    <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block">
-                          Start Job Verification OTP
-                        </span>
-                        <span className="text-[11px] font-medium text-slate-600">
-                          Share with pro on arrival
-                        </span>
-                      </div>
-                      <span className="text-base font-black font-mono tracking-widest text-blue-700 bg-white px-2.5 py-0.5 rounded-lg border border-blue-300 shadow-2xs">
-                        {otp}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Persistent Help & Support Dock inside live tracking modal */}
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center justify-between flex-wrap gap-2 text-xs shadow-2xs">
-                  <div className="flex items-center gap-1.5 font-extrabold text-slate-800">
-                    <ShieldCheck size={15} className="text-emerald-600" />
-                    <span>Priority Support Dock</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onSupport) {
-                          onSupport(booking.id);
-                        } else if (typeof (window as any).__openSupportChat === "function") {
-                          (window as any).__openSupportChat(booking);
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-xl font-bold text-blue-700 bg-white hover:bg-blue-50 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <MessageSquare size={13} className="text-blue-600" />
-                      <span>Need Help? Chat Support</span>
-                    </button>
-                    <a
-                      href={`tel:${CORPORATE_LANDLINE_GATEWAY}`}
-                      className="px-3 py-1.5 rounded-xl font-bold text-emerald-800 bg-white hover:bg-emerald-50 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                      title={`Helpline: ${CORPORATE_LANDLINE_GATEWAY}`}
-                    >
-                      <Phone size={13} className="text-emerald-600" />
-                      <span>Call Support</span>
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Clean Fullscreen Live Navigation Split-View Modal (Urban Company / Uber Style) */}
+      <TrackingModal
+        isOpen={isFullscreenTrackingOpen}
+        onClose={() => setIsFullscreenTrackingOpen(false)}
+        booking={booking}
+        partnerUser={partnerUser}
+        serviceName={serviceName}
+        onCallPartner={() => {
+          if (partnerUser && onCallPartner) {
+            onCallPartner(partnerUser, booking);
+          }
+        }}
+        onChatPartner={() => {
+          if (onChatPartner) {
+            onChatPartner(booking);
+          }
+        }}
+      />
     </motion.div>
   );
 }

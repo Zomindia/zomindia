@@ -123,11 +123,8 @@ const getDbInstance = () => {
     const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
     const firebaseConfig = JSON.parse(readFileSync(firebaseConfigPath, "utf-8"));
     if (admin.apps.length > 0) {
-      if (firebaseConfig.firestoreDatabaseId) {
-        _serverAdminDb = getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId);
-      } else {
-        _serverAdminDb = getFirestore();
-      }
+      const targetDbId = firebaseConfig.firestoreDatabaseId || "ai-studio-bc834479-53a0-46d8-936d-a07da1f344fc";
+      _serverAdminDb = getFirestore(admin.apps[0], targetDbId);
       return _serverAdminDb;
     }
   } catch (err: any) {
@@ -218,7 +215,10 @@ async function startServer() {
         return res.status(400).json({ error: "Invalid crash payload" });
       }
 
-      const db = getFirestore();
+      const db = getDbInstance();
+      if (!db) {
+        return res.status(500).json({ error: "Database unavailable" });
+      }
       await db.collection("system_crashes").add({
         ...payload,
         serverReceivedAt: new Date().toISOString(),
