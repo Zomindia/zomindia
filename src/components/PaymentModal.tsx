@@ -188,7 +188,9 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           currency: 'INR',
           bookingId: booking.id,
           customerPhone: profile.phoneNumber || profile.mobile || '9999999999',
-          customerEmail: profile.email || 'customer@zomindia.com',
+          customerEmail: (profile.email && !profile.email.includes('customer@zomindia.com'))
+            ? profile.email
+            : (profile.phoneNumber || profile.mobile ? `${(profile.phoneNumber || profile.mobile || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com'),
           customerName: profile.displayName || profile.fullName || 'Customer',
           serviceName: booking.serviceName || 'Home Service'
         })
@@ -290,7 +292,9 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           prefill: {
             name: profile.displayName || profile.fullName || 'Customer',
             contact: profile.phoneNumber || profile.mobile || '',
-            email: profile.email || 'customer@zomindia.com'
+            email: (profile.email && !profile.email.includes('customer@zomindia.com'))
+              ? profile.email
+              : (profile.phoneNumber || profile.mobile ? `${(profile.phoneNumber || profile.mobile || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
           },
           theme: {
             color: '#dc2626'

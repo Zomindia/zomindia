@@ -157,7 +157,9 @@ export default function OnlinePaymentGatewayModal({
           currency: 'INR',
           bookingId: bookingId || `bk_${Date.now()}`,
           customerPhone: customerPhone || '9999999999',
-          customerEmail: customerEmail || 'customer@zomindia.com',
+          customerEmail: (customerEmail && !customerEmail.includes('customer@zomindia.com')) 
+            ? customerEmail 
+            : (customerPhone ? `${customerPhone.replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com'),
           customerName: customerName || 'Zomindia Customer',
           serviceName
         })
@@ -278,7 +280,9 @@ export default function OnlinePaymentGatewayModal({
           prefill: {
             name: customerName,
             contact: customerPhone,
-            email: customerEmail || 'customer@zomindia.com'
+            email: (customerEmail && !customerEmail.includes('customer@zomindia.com')) 
+              ? customerEmail 
+              : (customerPhone ? `${customerPhone.replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
           },
           theme: {
             color: '#002e6e'

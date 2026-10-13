@@ -137,7 +137,9 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           prefill: {
             name: profile.fullName || 'Customer',
             contact: profile.mobile || profile.phoneNumber || '',
-            email: profile.email || 'customer@zomindia.com'
+            email: (profile.email && !profile.email.includes('customer@zomindia.com'))
+              ? profile.email
+              : (profile.mobile || profile.phoneNumber ? `${(profile.mobile || profile.phoneNumber || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
           },
           theme: {
             color: '#1d4ed8'

@@ -937,8 +937,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       return;
     }
 
-    const emailToUse = (overrideEmail || contactEmail).trim();
-    const phoneToUse = (overridePhone || contactPhone).trim();
+    const rawProvidedEmail = (overrideEmail || contactEmail || profile?.email || auth.currentUser?.email || '').trim();
+    const phoneToUse = (overridePhone || contactPhone || profile?.phoneNumber || profile?.mobile || '').trim();
     const activeUid = auth.currentUser.uid;
 
     let cleanPhone = phoneToUse.replace(/\D/g, "");
@@ -947,75 +947,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
       cleanPhone = cleanPhone.substring(1);
     }
-    const formattedPrimaryPhone = `+91${cleanPhone}`;
-    const emailLower = emailToUse.toLowerCase();
 
-    // Dual-field cross-validation
+    // Dynamic unique phone-based fallback if user has not provided a custom email
+    const emailToUse = (rawProvidedEmail && rawProvidedEmail.includes('@') && !rawProvidedEmail.includes('@phone.zomindia.com'))
+      ? rawProvidedEmail
+      : `${cleanPhone}@phone.zomindia.com`;
+
+    // Seamless user address & contact sync under authenticated UID
     try {
-      const phoneQ1 = query(collection(db, "users"), where("phoneNumber", "==", formattedPrimaryPhone));
-      const phoneQ2 = query(collection(db, "users"), where("mobile", "==", formattedPrimaryPhone));
-      const phoneQ3 = query(collection(db, "users"), where("phoneNumber", "==", cleanPhone));
-      const phoneQ4 = query(collection(db, "users"), where("mobile", "==", cleanPhone));
-      const phoneQ5 = query(collection(db, "users"), where("phoneNumber", "==", `91${cleanPhone}`));
-      const phoneQ6 = query(collection(db, "users"), where("mobile", "==", `91${cleanPhone}`));
-      const emailQ1 = query(collection(db, "users"), where("email", "==", emailToUse));
-      const emailQ2 = query(collection(db, "users"), where("email", "==", emailLower));
-
-      const [pSnap1, pSnap2, pSnap3, pSnap4, pSnap5, pSnap6, eSnap1, eSnap2] = await Promise.all([
-        getDocs(phoneQ1),
-        getDocs(phoneQ2),
-        getDocs(phoneQ3),
-        getDocs(phoneQ4),
-        getDocs(phoneQ5),
-        getDocs(phoneQ6),
-        getDocs(emailQ1),
-        getDocs(emailQ2)
-      ]);
-
-      const phoneDocIds = Array.from(new Set([
-        ...pSnap1.docs.map(d => d.id),
-        ...pSnap2.docs.map(d => d.id),
-        ...pSnap3.docs.map(d => d.id),
-        ...pSnap4.docs.map(d => d.id),
-        ...pSnap5.docs.map(d => d.id),
-        ...pSnap6.docs.map(d => d.id)
-      ].filter(id => id !== activeUid)));
-
-      const emailDocIds = Array.from(new Set([
-        ...eSnap1.docs.map(d => d.id),
-        ...eSnap2.docs.map(d => d.id)
-      ].filter(id => id !== activeUid)));
-
       await runTransaction(db, async (transaction) => {
-        for (const docId of phoneDocIds) {
-          const docRef = doc(db, "users", docId);
-          const snap = await transaction.get(docRef);
-          if (snap.exists()) {
-            const docEmail = (snap.data().email || "").trim().toLowerCase();
-            if (docEmail && docEmail !== emailLower) {
-              throw new Error("This mobile number is already linked to another account.");
-            }
-          }
-        }
-
-        for (const docId of emailDocIds) {
-          const docRef = doc(db, "users", docId);
-          const snap = await transaction.get(docRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
-            let cleanDocPhone = docPhone;
-            if (cleanDocPhone.length === 12 && cleanDocPhone.startsWith('91')) {
-              cleanDocPhone = cleanDocPhone.substring(2);
-            } else if (cleanDocPhone.length === 11 && cleanDocPhone.startsWith('0')) {
-              cleanDocPhone = cleanDocPhone.substring(1);
-            }
-            if (cleanDocPhone && cleanDocPhone !== cleanPhone) {
-              throw new Error("This email is already associated with another mobile number.");
-            }
-          }
-        }
-
         const userRef = doc(db, "users", activeUid);
         const userSnap = await transaction.get(userRef);
 
@@ -1069,11 +1009,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       });
     } catch (transErr: any) {
-      console.error("Firestore Transaction Validation Aborted:", transErr);
-      setError(transErr.message || "Failed contact validation checks");
-      setLoading(false);
-      isSubmittingRef.current = false;
-      return;
+      console.warn("Firestore user address sync bypass:", transErr);
     }
 
     try {

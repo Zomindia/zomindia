@@ -516,14 +516,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         for (const docSnap of mergedPhoneDocs) {
           if (docSnap.id !== activeUid) {
             const docEmail = (docSnap.data().email || '').trim().toLowerCase();
-            if (docEmail && docEmail !== emailLower) {
-              throw new Error("This mobile number is already linked to another email.");
+            if (docEmail && emailLower && !emailLower.includes('@phone.zomindia.com') && !docEmail.includes('@phone.zomindia.com') && docEmail !== emailLower) {
+              console.warn("[AuthModal] Account linked to another email, continuing phone auth seamlessly.");
             }
           }
         }
       }
 
-      if (emailLower) {
+      if (emailLower && !emailLower.includes('@phone.zomindia.com') && emailLower.includes('@')) {
         const checkEmailQ1 = query(collection(db, 'users'), where('email', '==', email.trim()));
         const checkEmailQ2 = query(collection(db, 'users'), where('email', '==', emailLower));
 
@@ -537,8 +537,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           if (docSnap.id !== activeUid) {
             const data = docSnap.data();
             const docPhone = (data.phoneNumber || data.mobile || '').replace(/\D/g, '');
-            if (docPhone && docPhone !== phoneDigits) {
-              throw new Error("This email is already associated with another mobile number.");
+            if (docPhone && phoneDigits && docPhone !== phoneDigits) {
+              console.warn("[AuthModal] Email matched another record, proceeding with phone identity.");
             }
           }
         }

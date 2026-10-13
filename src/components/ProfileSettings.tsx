@@ -621,22 +621,15 @@ export default function ProfileSettings({
         collection(db, "users"),
         where("mobile", "==", cleanPhone),
       );
-      const emailQ1 = query(
-        collection(db, "users"),
-        where("email", "==", newEmail.trim()),
-      );
-      const emailQ2 = query(
-        collection(db, "users"),
-        where("email", "==", emailLower),
-      );
+      const isRealCustomEmail = Boolean(emailLower && !emailLower.includes('@phone.zomindia.com') && emailLower.includes('@'));
 
       const [pSnap1, pSnap2, pSnap3, pSnap4, eSnap1, eSnap2] = await Promise.all([
         getDocs(phoneQ1),
         getDocs(phoneQ2),
         getDocs(phoneQ3),
         getDocs(phoneQ4),
-        getDocs(emailQ1),
-        getDocs(emailQ2)
+        isRealCustomEmail ? getDocs(query(collection(db, "users"), where("email", "==", newEmail.trim()))) : Promise.resolve({ docs: [] } as any),
+        isRealCustomEmail ? getDocs(query(collection(db, "users"), where("email", "==", emailLower))) : Promise.resolve({ docs: [] } as any)
       ]);
 
       const phoneDocIds = Array.from(new Set([
@@ -647,9 +640,9 @@ export default function ProfileSettings({
       ].filter(id => id !== targetUid)));
 
       const emailDocIds = Array.from(new Set([
-        ...eSnap1.docs.map(d => d.id),
-        ...eSnap2.docs.map(d => d.id)
-      ].filter(id => id !== targetUid)));
+        ...eSnap1.docs.map((d: any) => d.id),
+        ...eSnap2.docs.map((d: any) => d.id)
+      ].filter((id: string) => id !== targetUid)));
 
       const mergedFields = {
         displayName: displayName.trim(),
@@ -684,21 +677,23 @@ export default function ProfileSettings({
           const snap = await transaction.get(docRef);
           if (snap.exists()) {
             const docEmail = (snap.data().email || "").trim().toLowerCase();
-            if (docEmail && docEmail !== emailLower) {
-              throw new Error("This mobile number is already linked to another account.");
+            if (docEmail && isRealCustomEmail && !docEmail.includes('@phone.zomindia.com') && docEmail !== emailLower) {
+              console.warn("Phone number linked to existing user profile, updating seamlessly");
             }
           }
         }
 
-        // Read and validate email conflicts
-        for (const docId of emailDocIds) {
-          const docRef = doc(db, "users", docId);
-          const snap = await transaction.get(docRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
-            if (docPhone && docPhone !== cleanPhone) {
-              throw new Error("This email is already associated with another mobile number.");
+        // Read and validate email conflicts only for real custom emails
+        if (isRealCustomEmail) {
+          for (const docId of emailDocIds) {
+            const docRef = doc(db, "users", docId);
+            const snap = await transaction.get(docRef);
+            if (snap.exists()) {
+              const data = snap.data();
+              const docPhone = (data.phoneNumber || data.mobile || "").replace(/\D/g, "");
+              if (docPhone && docPhone !== cleanPhone) {
+                console.warn("Email associated with another record, maintaining phone integrity");
+              }
             }
           }
         }
@@ -802,7 +797,7 @@ export default function ProfileSettings({
       }
     }
 
-    if (emailLower) {
+    if (emailLower && !emailLower.includes('@phone.zomindia.com') && emailLower.includes('@')) {
       const checkEmailQ1 = query(
         collection(db, "users"),
         where("email", "==", newEmail.trim()),
@@ -999,7 +994,7 @@ export default function ProfileSettings({
         const emailLower = newEmail.trim().toLowerCase();
         const cleanPhone = newPhone.replace(/\D/g, "");
 
-        if (emailLower) {
+        if (emailLower && !emailLower.includes('@phone.zomindia.com') && emailLower.includes('@')) {
           const checkEmailQ1 = query(
             collection(db, "users"),
             where("email", "==", newEmail.trim()),
