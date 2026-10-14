@@ -23,6 +23,7 @@ import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import UnifiedKYCForm from './partner/UnifiedKYCForm';
+import PartnerNotificationDrawer from './partner/PartnerNotificationDrawer';
 import { LoadingScreen } from './LoadingIndicator';
 import { LogoHorizontal, LogoIcon } from './BrandLogo';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
@@ -37,8 +38,10 @@ interface Props {
 }
 
 export default function PartnerApp({ profile, initialTab = 'home', targetBookingId: initialTargetId, onNavigate: onAppNavigate }: Props) {
-  const [activeTab, setActiveTab] = useState<'stats' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab === 'home' ? 'stats' : (initialTab as any));
+  const [activeTab, setActiveTab] = useState<'stats' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab === 'home' || initialTab === 'notifications' ? 'stats' : (initialTab as any));
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
+  const [showNotificationDrawer, setShowNotificationDrawer] = useState<boolean>(initialTab === 'notifications');
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -179,6 +182,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   }, [kycStatus, profile.uid]);
 
   const navigateWithTarget = (screen: any, targetId: string | null = null) => {
+    // If screen is notifications, open drawer without navigating away from dashboard
+    if (screen === 'notifications') {
+      setShowNotificationDrawer(true);
+      return;
+    }
     // If screen is a top level app tab, use onAppNavigate
     if (onAppNavigate && (screen === 'admin' || screen === 'home')) {
        onAppNavigate(screen);
@@ -187,6 +195,29 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     setTargetBookingId(targetId);
     setActiveTab(screen === 'home' ? 'stats' : screen);
   };
+
+  // Real-time listener for partner unread notification count
+  useEffect(() => {
+    if (!profile?.uid) return;
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', profile.uid)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const count = snap.docs.filter((d) => !d.data().read).length;
+        setUnreadNotifCount(count);
+      },
+      (err) => {
+        console.warn('[PartnerApp] Notifications count error:', err);
+      }
+    );
+
+    return () => unsub();
+  }, [profile?.uid]);
 
   useEffect(() => {
     let isMounted = true;
@@ -463,7 +494,20 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     const homePartner = partner ? { ...partner, gracePeriodEnd: null } : null;
     switch (activeTab) {
       case 'stats':
-        return <PartnerHome partner={homePartner as any} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
+        return (
+          <PartnerHome 
+            partner={homePartner as any} 
+            bookings={bookings} 
+            services={services} 
+            users={users} 
+            onNavigate={navigateWithTarget} 
+            profile={profile} 
+            application={application}
+            onUpdateStatus={updateStatus}
+            onOpenStatusModal={() => setShowStatusModal(true)}
+            isTrackingActive={isTrackingActive}
+          />
+        );
       case 'jobs':
         return (
           <PartnerJobs 
@@ -480,13 +524,39 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'settings':
         return <PartnerSettings partner={partner} profile={profile} onNavigate={navigateWithTarget} bookings={bookings} services={services} users={users} />;
       case 'notifications':
-        return <NotificationsView profile={profile} onNavigate={navigateWithTarget} />;
+        return (
+          <PartnerHome 
+            partner={homePartner as any} 
+            bookings={bookings} 
+            services={services} 
+            users={users} 
+            onNavigate={navigateWithTarget} 
+            profile={profile} 
+            application={application}
+            onUpdateStatus={updateStatus}
+            onOpenStatusModal={() => setShowStatusModal(true)}
+            isTrackingActive={isTrackingActive}
+          />
+        );
       case 'amc-leads':
         return <PartnerAmcLeads profile={profile} partner={partner} />;
       case 'offers':
         return <OffersView profile={profile} onAuthRequired={() => {}} setActiveTab={(tab) => navigateWithTarget(tab as any)} context="partner" />;
       default:
-        return <PartnerHome partner={homePartner as any} bookings={bookings} services={services} users={users} onNavigate={navigateWithTarget} profile={profile} application={application} />;
+        return (
+          <PartnerHome 
+            partner={homePartner as any} 
+            bookings={bookings} 
+            services={services} 
+            users={users} 
+            onNavigate={navigateWithTarget} 
+            profile={profile} 
+            application={application}
+            onUpdateStatus={updateStatus}
+            onOpenStatusModal={() => setShowStatusModal(true)}
+            isTrackingActive={isTrackingActive}
+          />
+        );
     }
   };
 
@@ -685,11 +755,17 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
              </button>
            )}
            <button 
-             onClick={() => navigateWithTarget('notifications')}
-             className="relative p-1.5 text-slate-400 hover:text-blue-700 transition-colors shrink-0"
+             onClick={() => setShowNotificationDrawer(true)}
+             aria-label="Partner Notifications"
+             title="Notifications"
+             className="relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-xl transition-all shrink-0 active:scale-95 cursor-pointer"
            >
              <Bell size={18} />
-             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-rose-500 rounded-full border border-white" />
+             {unreadNotifCount > 0 && (
+               <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-rose-500 text-white text-[9px] font-black rounded-full border-2 border-white min-w-[18px] text-center shadow-xs">
+                 {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+               </span>
+             )}
            </button>
            <button 
              onClick={() => navigateWithTarget('settings')}
@@ -945,6 +1021,17 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           </div>
         )}
       </AnimatePresence>
+
+      {/* Slide-over Partner Notifications Drawer (Urban Company Style) */}
+      <PartnerNotificationDrawer
+        isOpen={showNotificationDrawer}
+        onClose={() => setShowNotificationDrawer(false)}
+        profile={profile}
+        onSelectJob={(bId) => {
+          setShowNotificationDrawer(false);
+          navigateWithTarget('jobs', bId);
+        }}
+      />
     </div>
   );
 }

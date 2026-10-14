@@ -23,23 +23,15 @@ service cloud.firestore {
     function isAdmin() {
       // Check if user has the specific master admin email or is verified and in admins collection or has admin role in profile
       return isSignedIn() && (
-               ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
-               ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.lower() == 'sarthak.webtech@gmail.com') ||
-               ('email_address' in request.auth.token && request.auth.token.email_address != null && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||
-               ('email_address' in request.auth.token && request.auth.token.email_address != null && request.auth.token.email_address.lower() == 'sarthak.webtech@gmail.com') ||
+               ('email' in request.auth.token && request.auth.token.email != null && (request.auth.token.email.lower() == 'sarthakwebtech@gmail.com' || request.auth.token.email.lower() == 'sarthak.webtech@gmail.com')) ||
+               ('email_address' in request.auth.token && request.auth.token.email_address != null && (request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com' || request.auth.token.email_address.lower() == 'sarthak.webtech@gmail.com')) ||
                request.auth.uid == 'tAXPSenVwVgJRAJs2EcJN0UUzPI2' ||
                exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-                'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-                'email' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email != null &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.lower() == 'sarthakwebtech@gmail.com') ||
-               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-                'email' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email != null &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.lower() == 'sarthak.webtech@gmail.com')
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('email', '') == 'sarthakwebtech@gmail.com' ||
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('email', '') == 'sarthak.webtech@gmail.com'
+               ))
              );
     }
 
@@ -279,7 +271,7 @@ service cloud.firestore {
              data.title is string && data.title.size() <= 200 &&
              data.message is string && data.message.size() <= 2000 &&
              data.read is bool &&
-             data.createdAt is timestamp &&
+             (data.createdAt is timestamp || data.createdAt is string) &&
              (!('type' in data) || (data.type is string)) &&
              (!('bookingId' in data) || (data.bookingId is string || data.bookingId == null));
     }
@@ -478,10 +470,19 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
-      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow read: if isSignedIn() && (
+        (resource != null && (resource.data.userId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid)) ||
+        isAdmin()
+      );
       allow create: if isSignedIn() && isValidNotification(incoming());
-      allow update: if isSignedIn() && isOwner(resource.data.userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
-      allow delete: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow update: if isSignedIn() && (
+        (resource != null && (resource.data.userId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid) && incoming().diff(existing()).affectedKeys().hasOnly(['read'])) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        (resource != null && (resource.data.userId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid)) ||
+        isAdmin()
+      );
     }
 
     match /bookings/{bookingId} {

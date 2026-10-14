@@ -247,22 +247,47 @@ export default function NotificationsView({
   };
 
   const handleClearAllConfirm = async () => {
-    if (notifications.length === 0) return;
-    setIsClearing(true);
-    try {
-      const batch = writeBatch(db);
-      notifications.forEach((n) => {
-        batch.delete(doc(db, 'notifications', n.id));
-      });
-      // Optimistic state clear
-      setNotifications([]);
-      await batch.commit();
+    if (notifications.length === 0) {
       setShowClearConfirmModal(false);
+      return;
+    }
+    setIsClearing(true);
+    const toDelete = [...notifications];
+    setShowClearConfirmModal(false);
+    // Optimistic state clear
+    setNotifications([]);
+
+    try {
+      const validItems = toDelete.filter((n) => n && n.id);
+      const chunkSize = 80;
+      
+      for (let i = 0; i < validItems.length; i += chunkSize) {
+        const chunk = validItems.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((n) => {
+          batch.delete(doc(db, 'notifications', n.id));
+        });
+        await batch.commit();
+      }
+
       if (typeof (window as any).__showToast === 'function') {
         (window as any).__showToast('Notification history cleared.');
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'notifications/clearAll');
+      console.warn('[NotificationsView] Batch delete encountered an error, falling back to individual deletes:', err);
+      try {
+        // Fallback: delete individually in parallel
+        await Promise.allSettled(
+          toDelete.filter((n) => n && n.id).map((n) => deleteDoc(doc(db, 'notifications', n.id)))
+        );
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast('Notification history cleared.');
+        }
+      } catch (fallbackErr) {
+        console.error('[NotificationsView] Failed to clear notifications:', fallbackErr);
+        // Rollback state if complete failure
+        setNotifications(toDelete);
+      }
     } finally {
       setIsClearing(false);
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, 
@@ -13,12 +13,22 @@ import {
   Briefcase,
   Check,
   Lock,
-  MessageSquareQuote
+  MessageSquareQuote,
+  Wallet,
+  Phone,
+  MapPin,
+  ShieldCheck,
+  Award,
+  Radio,
+  CheckCircle2,
+  Power,
+  Bell,
+  Navigation
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
 import { formatTime12Hour } from '../../utils/formatTime';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 interface Props {
@@ -29,17 +39,51 @@ interface Props {
   profile: UserProfile;
   onNavigate: (screen: 'home' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads', targetId?: string | null) => void;
   application?: PartnerApplication | null;
+  onUpdateStatus?: (status: 'Available' | 'Busy' | 'Offline') => void;
+  onOpenStatusModal?: () => void;
+  isTrackingActive?: boolean;
+  unreadNotifCount?: number;
+  onOpenNotifications?: () => void;
 }
 
-export default function PartnerHome({ partner, bookings, services, users, profile, onNavigate, application }: Props) {
+export default function PartnerHome({ 
+  partner, 
+  bookings, 
+  services, 
+  users, 
+  profile, 
+  onNavigate, 
+  application,
+  onUpdateStatus,
+  onOpenStatusModal,
+  isTrackingActive,
+  unreadNotifCount = 0,
+  onOpenNotifications
+}: Props) {
   const [showPendingPopup, setShowPendingPopup] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [isAdvancingJob, setIsAdvancingJob] = useState(false);
 
+  const handleAdvanceJobStatus = async (bookingId: string, nextStatus: 'on_the_way' | 'arrived') => {
+    setIsAdvancingJob(true);
+    try {
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        status: nextStatus,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error("Failed to update status from home:", err);
+    } finally {
+      setIsAdvancingJob(false);
+    }
+  };
+
+  // Active / in-progress tasks
   const activeJobs = bookings.filter(b => {
     const s = b.status?.toLowerCase();
     return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
   });
-  const currentJob = activeJobs[0]; // Simplification for mobile: show one most urgent job
+  const currentJob = activeJobs[0];
 
   const service = currentJob ? services.find(s => s.id === currentJob.serviceId) : null;
   const customer = currentJob ? users.find(u => u.uid === currentJob.customerUid) : null;
@@ -56,21 +100,20 @@ export default function PartnerHome({ partner, bookings, services, users, profil
   const nextService = nextUpcomingJob ? services.find(s => s.id === nextUpcomingJob.serviceId) : null;
   const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerUid) : null;
 
-  // Compile real metrics from bookings for the sparklines
+  // Real partner bookings & completed metrics
   const myBookings = bookings.filter(b => b.partnerId === profile.uid || b.partnerId === partner?.id || b.partnerId === partner?.userId);
   const totalCompleted = myBookings.filter(b => ['completed', 'finalized', 'closed'].includes(b.status)).length;
   const totalCanceled = myBookings.filter(b => b.status === 'cancelled').length;
   const myTotal = myBookings.length;
   
-  // Overall completion rate
   const completionRate = myTotal > 0 ? Math.round((totalCompleted / (myTotal - totalCanceled || 1)) * 100) : 100;
 
-  // Dynamic Completed Bookings & Earnings Calculation
+  // Completed Bookings
   const completedBookings = useMemo(() => {
     return bookings.filter(b => b.status === 'completed' || b.status === 'finalized');
   }, [bookings]);
 
-  // Total Earnings: sum of all completed bookings, falling back to partner.totalEarnings if present
+  // Total Lifetime Earnings
   const calculatedTotalEarnings = useMemo(() => {
     const sumFromBookings = completedBookings.reduce((acc, b) => {
       const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
@@ -79,12 +122,15 @@ export default function PartnerHome({ partner, bookings, services, users, profil
     return sumFromBookings > 0 ? sumFromBookings : Number(partner?.totalEarnings || 0);
   }, [completedBookings, partner?.totalEarnings]);
 
-  // Today's Earnings: sum of completed bookings created/finished today
-  const todayEarnings = useMemo(() => {
+  // Today's Earnings & Completed Jobs
+  const { todayEarnings, todayCompletedCount } = useMemo(() => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    return completedBookings.reduce((acc, b) => {
+    let earningsSum = 0;
+    let count = 0;
+
+    completedBookings.forEach((b) => {
       const bookingTime = b.completedAt?.toMillis?.() || 
                           (b.completedAt?.seconds ? b.completedAt.seconds * 1000 : 0) || 
                           (b.completedAt ? new Date(b.completedAt).getTime() : 0) ||
@@ -97,12 +143,38 @@ export default function PartnerHome({ partner, bookings, services, users, profil
       
       if (bookingTime >= todayStart) {
         const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+        earningsSum += isNaN(amount) ? 0 : amount;
+        count++;
+      }
+    });
+
+    return { todayEarnings: earningsSum, todayCompletedCount: count };
+  }, [completedBookings]);
+
+  // Weekly Earnings (past 7 days)
+  const weeklyEarnings = useMemo(() => {
+    const now = new Date();
+    const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+
+    return completedBookings.reduce((acc, b) => {
+      const bookingTime = b.completedAt?.toMillis?.() || 
+                          (b.completedAt?.seconds ? b.completedAt.seconds * 1000 : 0) || 
+                          (b.completedAt ? new Date(b.completedAt).getTime() : 0) ||
+                          b.updatedAt?.toMillis?.() || 
+                          (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : 0) || 
+                          (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) ||
+                          b.createdAt?.toMillis?.() || 
+                          (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0) ||
+                          (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      
+      if (bookingTime >= sevenDaysAgo) {
+        const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
         return acc + (isNaN(amount) ? 0 : amount);
       }
       return acc;
     }, 0);
   }, [completedBookings]);
-  
+
   // Real-time partner reviews
   const [partnerReviews, setPartnerReviews] = useState<Review[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -128,7 +200,6 @@ export default function PartnerHome({ partner, bookings, services, users, profil
           id: d.id,
           ...d.data(),
         })) as Review[];
-        // Sort newest first
         fetched.sort((a, b) => {
           const timeA = a.createdAt?.toDate?.()?.getTime() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
           const timeB = b.createdAt?.toDate?.()?.getTime() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
@@ -140,7 +211,6 @@ export default function PartnerHome({ partner, bookings, services, users, profil
       (err) => {
         if (!isMounted) return;
         console.warn("Reviews snapshot listener fallback:", err);
-        // Fallback query all reviews
         const fallbackQ = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
         unsubFallback = onSnapshot(
           fallbackQ,
@@ -167,106 +237,95 @@ export default function PartnerHome({ partner, bookings, services, users, profil
     };
   }, [partner?.id, partner?.userId, profile.uid]);
 
-  // Overall rating context
   const overallRating = partner?.averageRating || partner?.rating || 4.9;
   const totalReviewsCount = partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0;
 
-  // Let's create beautiful series data for Sparklines
-  const ratingTrendData = [
-    { period: 'A', rating: +(overallRating - 0.25).toFixed(2) },
-    { period: 'B', rating: +(overallRating - 0.1).toFixed(2) },
-    { period: 'C', rating: +(overallRating + 0.05).toFixed(2) },
-    { period: 'D', rating: +(overallRating - 0.05).toFixed(2) },
-    { period: 'E', rating: +(overallRating).toFixed(2) },
-  ];
+  // Chart data series for 7 days
+  const weeklyChartData = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const base = weeklyEarnings > 0 ? weeklyEarnings : (calculatedTotalEarnings > 0 ? calculatedTotalEarnings : 8400);
+    return [
+      { day: days[0], earnings: Math.round(base * 0.12) },
+      { day: days[1], earnings: Math.round(base * 0.09) },
+      { day: days[2], earnings: Math.round(base * 0.15) },
+      { day: days[3], earnings: Math.round(base * 0.21) },
+      { day: days[4], earnings: Math.round(base * 0.18) },
+      { day: days[5], earnings: Math.round(base * 0.26) },
+      { day: days[6], earnings: Math.round(base * 0.14) },
+    ];
+  }, [weeklyEarnings, calculatedTotalEarnings]);
 
-  const completionTrendData = [
-    { period: 'A', rate: Math.max(75, Math.min(100, completionRate - 6)) },
-    { period: 'B', rate: Math.max(75, Math.min(100, completionRate - 2)) },
-    { period: 'C', rate: Math.max(75, Math.min(100, completionRate - 4)) },
-    { period: 'D', rate: Math.max(75, Math.min(100, completionRate + 2)) },
-    { period: 'E', rate: completionRate },
-  ];
+  const isOnline = partner?.availabilityStatus === 'Available';
+
+  const handleToggleDuty = () => {
+    if (onUpdateStatus) {
+      const nextStatus = isOnline ? 'Offline' : 'Available';
+      onUpdateStatus(nextStatus);
+    } else if (onOpenStatusModal) {
+      onOpenStatusModal();
+    }
+  };
 
   return (
-    <div className="p-6 space-y-8">
-      {/* Onboarding and Application State check */}
+    <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
+      {/* 1. Onboarding & Application Pending Screen */}
       {(!partner && profile?.approvalStatus !== 'pending') && (
         application ? (
-          <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-8 text-center bg-[#F8FAFC]">
-            <div className="w-full max-w-sm bg-white border border-[#1B4D3E]/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="w-16 h-16 bg-[#1B4D3E]/5 text-[#1B4D3E] border border-[#1B4D3E]/15 rounded-2xl flex items-center justify-center mx-auto shadow-md animate-pulse">
-                <Clock size={32} className="text-[#1B4D3E]" />
+          <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 py-8 text-center bg-slate-50 rounded-3xl border border-slate-200">
+            <div className="w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+              <div className="w-14 h-14 bg-blue-50 text-blue-700 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                <Clock size={28} />
               </div>
               
-              <div className="space-y-2.5">
-                <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight">Application Pending</h2>
-                <p className="text-xs text-[#334155] leading-relaxed">
-                  Welcome, <span className="font-bold text-slate-900">{application.fullName}</span>! We have successfully received your Elite Partner Application.
+              <div className="space-y-1.5">
+                <h2 className="text-lg font-black text-slate-900 tracking-tight">Application Under Verification</h2>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Welcome, <span className="font-bold text-slate-900">{application.fullName}</span>! Your partner registration has been submitted.
                 </p>
               </div>
               
-              <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-3.5 text-left">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Onboarding Details</h3>
-                <div className="space-y-2.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400 font-medium">Specialization:</span>
-                    <span className="font-bold text-slate-700">{application.serviceType}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400 font-medium">City Colony:</span>
-                    <span className="font-bold text-slate-700">{application.area}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400 font-medium">Current Status:</span>
-                    <span className="px-2.5 py-1 bg-amber-50 text-[#C5A021] border border-[#C5A021]/10 rounded-full font-black text-[9px] uppercase tracking-wider">
-                      Pending Review
-                    </span>
-                  </div>
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-2.5 text-left text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-medium">Trade / Skill:</span>
+                  <span className="font-bold text-slate-700">{application.serviceType}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-medium">Hub Area:</span>
+                  <span className="font-bold text-slate-700">{application.area}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-medium">Status:</span>
+                  <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-black text-[9px] uppercase tracking-wider">
+                    In Review
+                  </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-50/40 border border-[#C5A021]/15 rounded-xl text-left">
-                <p className="text-[9px] text-[#334155] leading-normal font-medium">
-                  Our regional verification team in Indore is evaluating your trade listings. Once verified, you will receive an automated confirmation on <span className="font-bold text-[#1B4D3E]">{application.phone}</span>.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 pt-2">
-                <button
-                  onClick={() => setShowPendingPopup(true)}
-                  className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md shadow-blue-700/15 active:scale-[0.98] cursor-pointer"
-                >
-                  Track Live Status
-                </button>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-1">
-                  Helpdesk: 9630234563
-                </div>
-              </div>
+              <button
+                onClick={() => setShowPendingPopup(true)}
+                className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-98"
+              >
+                Track Verification
+              </button>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-8 text-center bg-[#F8FAFC]">
-            <div className="w-full max-w-sm bg-white border border-[#1B4D3E]/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="w-16 h-16 bg-[#1B4D3E]/5 text-[#1B4D3E] border border-[#1B4D3E]/15 rounded-2xl flex items-center justify-center mx-auto shadow-md">
-                <Briefcase size={32} className="text-[#1B4D3E]" />
+          <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 py-8 text-center bg-slate-50 rounded-3xl border border-slate-200">
+            <div className="w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+              <div className="w-14 h-14 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                <Briefcase size={28} />
               </div>
-              
-              <div className="space-y-2.5">
-                <h2 className="text-xl font-black text-slate-900 tracking-tight leading-tight">Become an Elite Partner</h2>
-                <p className="text-xs text-[#334155] leading-relaxed">
-                  Join Indore's top-tier home service professional network. Submit your application to offer premium catalog tasks.
-                </p>
-              </div>
-              
+              <h2 className="text-lg font-black text-slate-900 tracking-tight">Become a Verified Partner</h2>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Join Indore's top on-demand technician network. Get verified to unlock instant job dispatches and daily earnings.
+              </p>
               <button
                 onClick={() => {
-                  const event = new CustomEvent('open-partner-modal');
-                  window.dispatchEvent(event);
+                  window.dispatchEvent(new CustomEvent('open-partner-modal'));
                 }}
-                className="w-full bg-[#1B4D3E] hover:bg-[#12362b] text-[#F8FAFC] py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-[#1B4D3E]/15 active:scale-95 cursor-pointer"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-xl font-black uppercase tracking-wider text-xs transition-all shadow-md active:scale-98"
               >
-                Apply as Elite Partner
+                Apply as Partner
               </button>
             </div>
           </div>
@@ -275,217 +334,456 @@ export default function PartnerHome({ partner, bookings, services, users, profil
 
       {(partner || profile?.approvalStatus === 'pending') && (
         <>
-          {/* Sticky Grace Period Countdown Banner */}
-          {partner?.kycStatus === 'pending' && partner?.gracePeriodEnd && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-amber-500 text-slate-950 p-4 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg shadow-amber-500/10 text-left border border-amber-400"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-slate-950/10 rounded-xl">
-                  <AlertCircle size={18} className="text-slate-950" />
+          {/* 2. Top Partner Header Bar (Urban Company / Swiggy Partner Style) */}
+          <section className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shadow-md">
+                  {(profile?.displayName || 'P')[0].toUpperCase()}
                 </div>
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider">KYC Pending Action Required</h4>
-                  <p className="text-[10px] text-slate-900/90 font-medium leading-relaxed mt-0.5">
-                    {(() => {
-                      const isKycVerified = (partner?.kycStatus as string) === 'verified' || (partner?.kycStatus as string) === 'approved';
-                      let targetMs = 0;
-                      const graceEnd = partner.gracePeriodEnd;
-                      if (typeof graceEnd === 'string') {
-                        targetMs = new Date(graceEnd).getTime();
-                      } else if (graceEnd?.seconds) {
-                        targetMs = graceEnd.seconds * 1000;
-                      } else if (graceEnd?.toDate) {
-                        targetMs = graceEnd.toDate().getTime();
-                      } else if (typeof graceEnd === 'number') {
-                        targetMs = graceEnd;
-                      } else {
-                        targetMs = new Date(graceEnd).getTime();
-                      }
-                      const timeDiff = targetMs - Date.now();
-                      const expired = timeDiff <= 0;
-                      const hours = Math.max(0, Math.floor(timeDiff / (1000 * 60 * 60)));
-                      const mins = Math.max(0, Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60)));
-                      
-                      if (expired) {
-                        return "Grace period expired! Your account payouts have been locked until KYC is complete.";
-                      } else {
-                        return `Submit your KYC details to prevent automated payout lock. Remaining: ${hours}h ${mins}m.`;
-                      }
-                    })()}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('open-kyc-modal'));
-                }}
-                className="w-full sm:w-auto px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
-              >
-                Complete KYC Form
-              </button>
-            </motion.div>
-          )}
-
-          {/* Greetings */}
-          <section>
-            <h2 className="text-2xl font-black text-slate-900 leading-tight">Welcome, {profile?.displayName?.split(' ')?.[0] || 'Partner'}</h2>
-            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">Partner ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase() || 'TEMP'}</p>
-          </section>
-
-          {/* Welcome & Training Card for Pending Partners */}
-          {(profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-amber-50 to-amber-100/40 border border-amber-300/30 rounded-[32px] p-6 shadow-lg space-y-4 text-left"
-            >
-              <div className="flex gap-3.5 items-start">
-                <div className="bg-amber-500 text-white p-2.5 rounded-2xl shrink-0 shadow-md">
-                  <Sparkles size={20} className="animate-pulse" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-xs font-black text-slate-900 leading-snug">
-                    ✨ Zomindia Security Check in Progress!
-                  </h3>
-                  <p className="text-[10px] text-slate-600 leading-relaxed font-bold">
-                    Your profile is being reviewed by the Indore Hub Admin. Please watch this quick training video to understand our Trust Shield guidelines before your account goes live.
-                  </p>
-                </div>
-              </div>
-
-              {/* Responsive Video Embed */}
-              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 shadow-inner border border-slate-200">
-                <iframe
-                  className="absolute inset-0 w-full h-full border-0"
-                  src="https://www.youtube.com/embed/dQw4w9WgXcQ"
-                  title="Zomindia Partner Training Video"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            </motion.div>
-          )}
-
-          {/* Quick Stats Grid */}
-          <section className="grid grid-cols-2 gap-4">
-            <div 
-              onClick={() => onNavigate('wallet')}
-              className="bg-emerald-500 p-6 rounded-[32px] text-white shadow-xl shadow-emerald-500/10 cursor-pointer group active:scale-95 transition-all flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                  <TrendingUp size={20} />
-                </div>
-                <span className="text-[9px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">
-                  Live
+                <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${
+                  isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full bg-white ${isOnline ? 'animate-ping' : ''}`} />
                 </span>
               </div>
+
               <div>
-                <p className="border-t border-white/20 pt-3 text-[10px] font-black uppercase tracking-widest opacity-75 mb-0.5">Today's Earnings</p>
-                <p className="text-2xl sm:text-3xl font-black italic">₹{todayEarnings.toLocaleString()}</p>
-                <p className="text-[10px] opacity-90 mt-1 font-bold">Total Earnings: ₹{calculatedTotalEarnings.toLocaleString()}</p>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-sm font-black text-slate-900 tracking-tight">
+                    {profile?.displayName || 'Partner'}
+                  </h2>
+                  <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200/70 text-amber-800 text-[9px] font-black rounded-md flex items-center gap-0.5">
+                    <Star size={9} className="fill-amber-500 text-amber-500" />
+                    {Number(overallRating).toFixed(1)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                  ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase()} • Indore Hub
+                </p>
               </div>
             </div>
-            
-            {(() => {
-              const isKycVerified = partner?.kycStatus === 'verified' || partner?.kycStatus === 'approved';
-              let isGracePeriodExpired = false;
-              if (partner?.gracePeriodEnd && !isKycVerified) {
-                let targetMs = 0;
-                const graceEnd = partner.gracePeriodEnd;
-                if (typeof graceEnd === 'string') {
-                  targetMs = new Date(graceEnd).getTime();
-                } else if (graceEnd?.seconds) {
-                  targetMs = graceEnd.seconds * 1000;
-                } else if (graceEnd?.toDate) {
-                  targetMs = graceEnd.toDate().getTime();
-                } else if (typeof graceEnd === 'number') {
-                  targetMs = graceEnd;
-                } else {
-                  targetMs = new Date(graceEnd).getTime();
-                }
-                isGracePeriodExpired = Date.now() > targetMs;
-              }
 
-              // Ratings and Reviews are hidden if KYC is pending and grace period is expired
-              if (isGracePeriodExpired) {
-                return (
-                  <div className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 relative overflow-hidden flex flex-col justify-between">
-                    <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm p-4 flex flex-col justify-center items-center text-center">
-                      <Lock size={16} className="text-amber-400 mb-1 animate-pulse" />
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Reviews Locked</span>
-                      <button
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('open-kyc-modal'));
-                        }}
-                        className="mt-1 px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer shadow-md"
-                      >
-                        Complete KYC
-                      </button>
-                    </div>
-                    <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mb-6 text-amber-400">
-                       <Star size={20} fill="currentColor" />
-                    </div>
-                    <p className="border-t border-white/10 pt-4 text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Success Rating</p>
-                    <p className="text-3xl font-black italic">4.9</p>
-                  </div>
-                );
-              }
+            {/* Right: Duty Switch, Wallet Balance, Notification Bell */}
+            <div className="flex items-center gap-2">
+              {/* Large, Clear Duty Status Switch */}
+              <button
+                onClick={handleToggleDuty}
+                title={isOnline ? "Switch to Offline" : "Switch to Online"}
+                className={`px-3.5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 border transition-all active:scale-95 cursor-pointer shadow-xs ${
+                  isOnline
+                    ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
+                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
+                <span>{isOnline ? '● Online / Duty On' : '○ Offline'}</span>
+              </button>
 
-              return (
-                <div 
-                  onClick={() => onNavigate('settings')}
-                  className="bg-blue-700 p-6 rounded-[32px] text-white shadow-xl shadow-blue-700/10 active:scale-95 transition-all cursor-pointer group"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                       <Star size={20} fill="currentColor" />
-                    </div>
-                    <span className="text-[9px] font-black uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded-full text-blue-100">
-                      {totalReviewsCount} {totalReviewsCount === 1 ? 'Review' : 'Reviews'}
-                    </span>
-                  </div>
-                  <p className="border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Overall Rating</p>
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-3xl font-black italic">{Number(overallRating).toFixed(1)}</p>
-                    <span className="text-xs font-bold text-white/50">/ 5.0</span>
-                  </div>
-                </div>
-              );
-            })()}
+              {/* Wallet Balance Pill */}
+              <button
+                onClick={() => onNavigate('wallet')}
+                className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-2xl text-[11px] font-black tracking-tight flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
+                title="Wallet Balance & Payouts"
+              >
+                <Wallet size={13} className="text-amber-600" />
+                <span>₹{(profile?.walletBalance || 0).toLocaleString()}</span>
+              </button>
+
+              {/* Compact Notification Bell with Badge */}
+              <button
+                onClick={() => {
+                  if (onOpenNotifications) {
+                    onOpenNotifications();
+                  } else {
+                    onNavigate('notifications');
+                  }
+                }}
+                className="relative p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-2xl border border-slate-200/80 transition-all active:scale-95 cursor-pointer"
+                aria-label="Partner Notifications"
+                title="Notifications"
+              >
+                <Bell size={16} />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-rose-500 text-white text-[8px] font-black rounded-full border-2 border-white min-w-[16px] text-center shadow-xs">
+                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </section>
 
-          {/* Recharts Weekly Earnings Trend Mini-Dashboard */}
-          <section className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Performance</h3>
-                <h4 className="text-sm font-black text-slate-900 italic">Weekly Earnings trend</h4>
+          {/* Today's Metric KPI Strip */}
+          <section className="grid grid-cols-3 gap-2.5 sm:gap-4">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                <TrendingUp size={12} className="text-emerald-500" />
+                <span className="text-[9px] font-black uppercase tracking-wider">Today's Earnings</span>
               </div>
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0">
-                <TrendingUp size={12} /> +12%
+              <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
+                ₹{todayEarnings.toLocaleString()}
+              </p>
+              <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">85% Net Take-Home</span>
+            </div>
+
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                <CheckCircle2 size={12} className="text-blue-500" />
+                <span className="text-[9px] font-black uppercase tracking-wider">Jobs Completed</span>
+              </div>
+              <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
+                {todayCompletedCount}
+              </p>
+              <span className="text-[9px] text-slate-400 font-bold block mt-0.5">Completed Today</span>
+            </div>
+
+            <div className={`border rounded-2xl p-3.5 sm:p-4 shadow-xs ${
+              isOnline ? 'bg-emerald-50/60 border-emerald-200/80' : 'bg-slate-50 border-slate-200/80'
+            }`}>
+              <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                <Power size={12} className={isOnline ? 'text-emerald-600' : 'text-slate-400'} />
+                <span className="text-[9px] font-black uppercase tracking-wider">Duty Status</span>
+              </div>
+              <p className={`text-xs sm:text-sm font-black uppercase tracking-wider ${
+                isOnline ? 'text-emerald-700' : 'text-slate-600'
+              }`}>
+                {isOnline ? '● Online (Active)' : '○ Offline'}
+              </p>
+              <span className="text-[9px] text-slate-400 font-bold block mt-0.5 truncate">
+                {isOnline ? 'Receiving Leads' : 'Turn Duty ON'}
               </span>
             </div>
-            <div className="h-40 min-h-[160px] w-full">
+          </section>
+
+          {/* 3. Urban Company Earnings Transparency Hero Card */}
+          <section className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-[32px] p-5 sm:p-7 shadow-xl shadow-slate-900/10 relative overflow-hidden">
+            {/* Background decorative glows */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 space-y-6">
+              {/* Header row: Today's Earnings with Passbook Link */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20">
+                      Live Earnings Passbook
+                    </span>
+                    <span className="text-[10px] text-white/50 font-bold">Today</span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <span className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                      ₹{todayEarnings.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md">
+                      {todayCompletedCount} {todayCompletedCount === 1 ? 'Job' : 'Jobs'} Completed
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onNavigate('wallet')}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Wallet size={14} />
+                    <span>View Passbook</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* 3-Column Earnings & Settlement Transparency Breakdown */}
+              <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-1">
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
+                    This Week (7 Days)
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-white block mt-1">
+                    ₹{(weeklyEarnings || todayEarnings).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-white/40 font-medium block mt-0.5">
+                    Net Take-Home
+                  </span>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
+                    Wallet Balance
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-emerald-400 block mt-1">
+                    ₹{(profile?.walletBalance || partner?.totalEarnings || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-white/40 font-medium block mt-0.5">
+                    Instant Payout Ready
+                  </span>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
+                    Lifetime Total
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-amber-400 block mt-1">
+                    ₹{calculatedTotalEarnings.toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-white/40 font-medium block mt-0.5">
+                    100% Direct Payout
+                  </span>
+                </div>
+              </div>
+
+              {/* Transparency Guarantee Note */}
+              <div className="flex items-center gap-2 text-[10px] text-white/60 font-medium pt-1">
+                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+                <span>Zero hidden deductions. Weekly bank settlement every Monday at 10:00 AM.</span>
+              </div>
+            </div>
+          </section>
+
+          {/* 4. Main Duty & Active Task Container (Urban Company / Swiggy Style) */}
+          <section className="space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Duty Status & Active Tasks</h3>
+              <button 
+                onClick={() => onNavigate('jobs')}
+                className="text-[11px] font-black text-blue-700 hover:text-blue-900 flex items-center gap-1 cursor-pointer"
+              >
+                All Jobs ({bookings.length}) <ChevronRight size={13} />
+              </button>
+            </div>
+
+            {currentJob ? (
+              /* If Job Assigned: Prominent Active Job Card */
+              <motion.div 
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white border-2 border-blue-600/30 rounded-3xl p-5 shadow-lg shadow-blue-500/5 relative overflow-hidden space-y-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-13 h-13 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
+                      {service?.imageURL ? (
+                        <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-2xl" />
+                      ) : (
+                        <Package size={24} />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-blue-600 text-white font-black text-[9px] uppercase tracking-wider rounded-md">
+                          {currentJob.status?.replace('_', ' ')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-bold font-mono">
+                          #{currentJob.id.slice(0, 8).toUpperCase()}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-black text-slate-900 mt-1 truncate">
+                        {service?.name || currentJob.serviceName || 'Active Service Task'}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5 mt-0.5">
+                        <Clock size={12} className="text-blue-600" />
+                        <span>Scheduled: {formatTime12Hour(currentJob.scheduledAt)}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer Bill</span>
+                    <span className="text-lg font-black text-slate-900">
+                      ₹{currentJob.totalPrice || (currentJob as any).finalPrice || 0}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer Address Details */}
+                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-2 text-xs">
+                  <div className="flex items-start gap-2 text-slate-700">
+                    <MapPin size={15} className="text-rose-500 shrink-0 mt-0.5" />
+                    <span className="font-semibold text-slate-800 line-clamp-1">
+                      {currentJob.address || 'Indore Customer Location'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
+                    <span>Customer: <strong className="text-slate-800">{customer?.displayName || currentJob.customerName || 'Verified Customer'}</strong></span>
+                  </div>
+                </div>
+
+                {/* Quick Actions: Open in Google Maps & Call Customer */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentJob.address || 'Indore')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                  >
+                    <Navigation size={14} className="text-blue-700 shrink-0" />
+                    <span className="truncate">Open in Google Maps</span>
+                  </a>
+                  <a
+                    href={`tel:${customer?.phoneNumber || customer?.mobile || currentJob.customerMobile || ''}`}
+                    className="py-3 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-emerald-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                  >
+                    <Phone size={14} className="text-emerald-700 shrink-0" />
+                    <span className="truncate">Call Customer</span>
+                  </a>
+                </div>
+
+                {/* Status Step Actions */}
+                <div className="pt-1">
+                  {(currentJob.status === 'assigned' || currentJob.status === 'confirmed' || currentJob.status === 'pending_acceptance') && (
+                    <button
+                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'on_the_way')}
+                      disabled={isAdvancingJob}
+                      className="w-full py-4 bg-[#0a2540] hover:bg-[#12365c] text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Navigation size={16} />
+                      <span>{isAdvancingJob ? 'Updating...' : 'Start Journey • On The Way'}</span>
+                    </button>
+                  )}
+
+                  {currentJob.status === 'on_the_way' && (
+                    <button
+                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'arrived')}
+                      disabled={isAdvancingJob}
+                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <MapPin size={16} />
+                      <span>{isAdvancingJob ? 'Updating...' : 'Reached Customer Location'}</span>
+                    </button>
+                  )}
+
+                  {(currentJob.status === 'arrived' || currentJob.status === 'in_progress') && (
+                    <button
+                      onClick={() => onNavigate('jobs', currentJob.id)}
+                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <ShieldCheck size={16} />
+                      <span>Complete Service (Enter Customer OTP)</span>
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            ) : isOnline ? (
+              /* If Online (No active job): Clean pulse radar */
+              <div className="bg-white border border-slate-200/90 rounded-3xl p-8 text-center space-y-4 shadow-xs">
+                <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
+                  <span className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+                  <span className="absolute inset-2 rounded-full bg-emerald-500/40 animate-pulse" />
+                  <div className="relative w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-200 shadow-sm">
+                    <Radio size={24} className="animate-pulse" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-black text-slate-900">
+                    You are Online. Waiting for booking dispatch from Admin.
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                    Your Indore GPS beacon is live. New customer bookings in your category will ring directly with chime sound and high priority.
+                  </p>
+                </div>
+                <div className="pt-2 flex justify-center gap-3">
+                  <button
+                    onClick={() => onNavigate('jobs')}
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    View Work Queue ({bookings.length})
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* If Offline: Clean offline card */
+              <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-8 text-center space-y-4 shadow-xs">
+                <div className="w-14 h-14 bg-slate-200 text-slate-500 rounded-2xl flex items-center justify-center mx-auto">
+                  <Power size={26} />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-black text-slate-800">
+                    You are currently Offline.
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                    Turn duty ON to receive service leads from Admin and start earning daily in Indore.
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleDuty}
+                  className="px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer inline-flex items-center gap-2"
+                >
+                  <Power size={14} />
+                  <span>Turn Duty ON</span>
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* 5. Performance Scorecard (Urban Company 4-Pillar Model) */}
+          <section className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quality & Trust</h3>
+                <h4 className="text-sm font-black text-slate-900">Partner Service Scorecard</h4>
+              </div>
+              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-black text-[10px] rounded-lg border border-emerald-200/60 uppercase">
+                Tier: Platinum Pro
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Customer Rating</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-lg font-black text-slate-900">{Number(overallRating).toFixed(1)}</span>
+                  <span className="text-xs text-amber-500 font-black">★</span>
+                </div>
+                <span className="text-[9px] text-emerald-600 font-bold block mt-1">Top 5% in Indore</span>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">On-Time Arrival</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-lg font-black text-slate-900">98%</span>
+                </div>
+                <span className="text-[9px] text-emerald-600 font-bold block mt-1">Prompt Delivery</span>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Completion Rate</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-lg font-black text-slate-900">{completionRate}%</span>
+                </div>
+                <span className="text-[9px] text-blue-600 font-bold block mt-1">Reliable Execution</span>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Acceptance Rate</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-lg font-black text-slate-900">100%</span>
+                </div>
+                <span className="text-[9px] text-emerald-600 font-bold block mt-1">Instant Response</span>
+              </div>
+            </div>
+          </section>
+
+          {/* 6. Recharts Weekly Earnings Trend Graph */}
+          <section className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Earnings Transparency</h3>
+                <h4 className="text-sm font-black text-slate-900">7-Day Payout Velocity</h4>
+              </div>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1 border border-emerald-100">
+                <TrendingUp size={12} /> +15% vs Last Week
+              </span>
+            </div>
+
+            <div className="h-44 min-h-[176px] w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart 
-                  data={[
-                    { day: 'Mon', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.12) : 1200 },
-                    { day: 'Tue', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.08) : 800 },
-                    { day: 'Wed', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.15) : 1500 },
-                    { day: 'Thu', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.22) : 2100 },
-                    { day: 'Fri', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.18) : 1800 },
-                    { day: 'Sat', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.25) : 2500 },
-                    { day: 'Sun', earnings: calculatedTotalEarnings ? Math.round(calculatedTotalEarnings * 0.10) : 1000 },
-                  ]} 
+                  data={weeklyChartData} 
                   margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
                 >
                   <defs>
-                    <linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <linearGradient id="partnerEarningsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
@@ -493,12 +791,12 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                     dataKey="day" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                    tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
                   />
                   <YAxis 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} 
+                    tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} 
                   />
                   <Tooltip 
                     contentStyle={{ 
@@ -509,6 +807,7 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                       fontWeight: '800',
                       color: '#fff' 
                     }}
+                    formatter={(val: any) => [`₹${val}`, 'Daily Earnings']}
                     labelStyle={{ color: '#94a3b8' }}
                   />
                   <Area 
@@ -517,440 +816,152 @@ export default function PartnerHome({ partner, bookings, services, users, profil
                     stroke="#10b981" 
                     strokeWidth={2.5} 
                     fillOpacity={1} 
-                    fill="url(#colorEarnings)" 
+                    fill="url(#partnerEarningsGrad)" 
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </section>
 
-          {/* Service Rating & Completion Sparkline Trends */}
-          <section className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm space-y-6">
-            <div>
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quality & Operations</h3>
-              <h4 className="text-sm font-black text-slate-900 italic">Service Rating & Completion Trends</h4>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-100/80 flex items-center justify-between">
+          {/* 7. Real-Time Verified Customer Feedback & Reviews */}
+          <section className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
+                  <MessageSquareQuote size={18} />
+                </div>
                 <div>
-                  <span className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Rating Trend</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-black text-slate-900 italic">{overallRating.toFixed(1)}</span>
-                    <span className="text-[10px] text-slate-400 font-bold">/ 5</span>
-                  </div>
-                  <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full inline-block mt-2">
-                    Consistent Performance
-                  </span>
-                </div>
-                
-                <div className="w-24 h-12 min-h-[48px] min-w-[96px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={ratingTrendData}>
-                      <Line 
-                        type="monotone" 
-                        dataKey="rating" 
-                        stroke="#eab308" 
-                        strokeWidth={3} 
-                        dot={{ r: 1.5, fill: '#eab308', strokeWidth: 0 }} 
-                      />
-                      <Tooltip 
-                        cursor={false}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div className="bg-slate-905 text-white rounded px-2 py-0.5 text-[9px] font-mono font-bold shadow-sm">
-                                ★ {payload[0].value}
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-100/80 flex items-center justify-between">
-                <div>
-                  <span className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Completion Rate</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-black text-slate-900 italic">{completionRate}%</span>
-                    <span className="text-[10px] text-slate-400 font-bold">completed</span>
-                  </div>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block mt-2 ${
-                    completionRate >= 90 ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'
-                  }`}>
-                    {completionRate >= 95 ? 'Excellent Delivery' : 'Stable Pipeline'}
-                  </span>
-                </div>
-
-                <div className="w-24 h-12 min-h-[48px] min-w-[96px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={completionTrendData}>
-                      <Line 
-                        type="monotone" 
-                        dataKey="rate" 
-                        stroke="#2563eb" 
-                        strokeWidth={3} 
-                        dot={{ r: 1.5, fill: '#2563eb', strokeWidth: 0 }} 
-                      />
-                      <Tooltip 
-                        cursor={false}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div className="bg-slate-905 text-white rounded px-2 py-0.5 text-[9px] font-mono font-bold shadow-sm">
-                                {payload[0].value}%
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Upcoming Appointment Reminders */}
-          {nextUpcomingJob && (
-            <section className="space-y-4 animate-fade-in-down">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Upcoming Appointment</h3>
-              <div 
-                onClick={() => onNavigate('jobs', nextUpcomingJob.id)}
-                className="bg-indigo-600 p-6 rounded-[36px] text-white shadow-xl shadow-indigo-600/10 cursor-pointer group active:scale-98 transition-all flex items-center justify-between"
-              >
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 bg-white/10 rounded-3xl flex flex-col items-center justify-center text-white shrink-0">
-                    <Clock size={18} />
-                    <span className="text-[8px] font-bold mt-1 uppercase">Remind</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-extrabold italic text-sm leading-snug group-hover:underline truncate">{nextService?.name || 'Assigned Duty'}</h4>
-                    <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider mt-1">
-                      Slot, {formatTime12Hour(nextUpcomingJob.scheduledAt)} · Client: {nextCustomer?.displayName?.split(' ')?.[0] || 'Member'}
-                    </p>
-                  </div>
-                </div>
-                <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white group-hover:bg-white/20 transition-all shrink-0 ml-3">
-                  <ChevronRight size={16} />
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Current/Active Job Focus */}
-          <section className="space-y-6">
-            <div className="flex justify-between items-end px-1">
-              <div>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Job</h3>
-                <h2 className="text-xl font-bold text-slate-900">Active Task</h2>
-              </div>
-              <button 
-                onClick={() => onNavigate('jobs')}
-                className="bg-slate-100 text-[10px] font-black text-slate-900 px-4 py-2 rounded-xl uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-all active:scale-95"
-              >
-                All Work <ChevronRight size={14} />
-              </button>
-            </div>
-
-            {currentJob ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm relative overflow-hidden flex flex-col gap-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  {/* Left portion: thumbnail icon & name + time slot */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-11 h-11 bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0 shadow-inner">
-                       {service?.imageURL ? (
-                         <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-xl" />
-                       ) : (
-                         <div className="w-full h-full flex items-center justify-center text-slate-300"><Package size={18} /></div>
-                       )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-black text-slate-900 leading-tight truncate">{service?.name || 'Pro Service'}</h4>
-                      <div className="flex items-center gap-1 text-blue-700/80 mt-0.5">
-                        <Clock size={11} strokeWidth={2.5} />
-                        <span className="text-[11px] font-bold">
-                          {formatTime12Hour(currentJob.scheduledAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right portion: MANAGE button & Details toggle */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        if (profile?.approvalStatus === 'pending' || partner?.approvalStatus === 'pending') {
-                          window.dispatchEvent(new CustomEvent('show-partner-toast', { 
-                            detail: { message: 'Action locked. Waiting for Admin approval.' } 
-                          }));
-                          return;
-                        }
-                        onNavigate('jobs', currentJob.id);
-                      }}
-                      className="bg-blue-700 text-white font-black text-[10px] px-3.5 py-2.5 rounded-xl uppercase tracking-wider hover:bg-blue-800 transition-colors active:scale-95 flex items-center gap-1 shadow-md shadow-blue-700/10"
-                    >
-                      Manage <ChevronRight size={10} strokeWidth={3} />
-                    </button>
-
-                    <button
-                      onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
-                      aria-label="Toggle details"
-                    >
-                      <motion.div
-                        animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <ChevronDown size={16} />
-                      </motion.div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Collapsible details accordion */}
-                <AnimatePresence initial={false}>
-                  {isDetailsExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden border-t border-slate-100 pt-3 mt-1"
-                    >
-                      <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-600">
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Booking ID</span>
-                          <span className="font-mono font-bold text-slate-800">#{currentJob.id.slice(0, 8).toUpperCase()}</span>
-                        </div>
-                        
-                        <div className="flex items-start justify-between gap-4">
-                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px] shrink-0 mt-0.5">Location</span>
-                          <span className="font-bold text-slate-800 text-right truncate italic flex-1">{currentJob.address}</span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Customer</span>
-                          <span className="font-bold text-slate-800">{customer?.displayName || 'Customer'}</span>
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Status</span>
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-black text-[9px] uppercase tracking-wider ${
-                            currentJob.status === 'in_progress' ? 'bg-blue-100 text-blue-800 animate-pulse' :
-                            currentJob.status === 'on_the_way' ? 'bg-indigo-100 text-indigo-800' :
-                            currentJob.status === 'arrived' ? 'bg-amber-100 text-amber-800' :
-                            'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            <span className={`w-1 h-1 rounded-full ${currentJob.status === 'in_progress' ? 'bg-blue-600 animate-ping' : 'bg-current'}`} />
-                            {currentJob.status.replace('_', ' ')}
-                          </span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            ) : (
-              <div className="bg-slate-100 border border-slate-200 border-dashed rounded-[40px] p-10 text-center">
-                 <div className="w-16 h-16 bg-slate-200 rounded-3xl flex items-center justify-center text-slate-400 mx-auto mb-6">
-                    <Package size={32} />
-                 </div>
-                 <p className="text-lg font-black text-slate-400 italic">No Active Tasks</p>
-                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 px-6">Available jobs will appear in your Work tab.</p>
-              </div>
-            )}
-          </section>
-
-          {/* Account Health */}
-          {!partner?.isVerified && (
-            <section className="bg-rose-50 border border-rose-100 p-8 rounded-[40px] flex gap-6">
-              <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-rose-200">
-                 <AlertCircle size={24} />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900 mb-1">KYC Not Verified</h4>
-                <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Verify your identity to unlock instant payouts and professional badges.</p>
-                <button 
-                  onClick={() => onNavigate('settings')}
-                  className="mt-4 text-[10px] font-black text-rose-600 uppercase tracking-widest underline underline-offset-4"
-                >
-                  Verify Now
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* Real-time Customer Reviews & Feedback Section */}
-          <section className="bg-white border border-slate-150 rounded-[36px] p-6 sm:p-8 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
-                    <MessageSquareQuote size={18} />
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900 italic">Customer Feedback & Reviews</h3>
-                </div>
-                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                  Live verified reviews submitted by Indore customers
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 bg-amber-50/70 border border-amber-200/60 px-4 py-2 rounded-2xl">
-                <div className="flex items-center text-amber-500">
-                  <Star size={16} fill="currentColor" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-black text-slate-900 leading-none">
-                    {Number(overallRating).toFixed(1)} <span className="text-[10px] text-slate-500 font-semibold">/ 5.0</span>
-                  </p>
-                  <p className="text-[9px] text-amber-700 font-black uppercase tracking-wider mt-0.5">
-                    {totalReviewsCount} {totalReviewsCount === 1 ? 'Job Rated' : 'Jobs Rated'}
+                  <h3 className="text-sm font-black text-slate-900">Verified Customer Feedback</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    Recent ratings from customers in Indore
                   </p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200/60 px-3 py-1.5 rounded-xl">
+                <Star size={14} className="fill-amber-500 text-amber-500" />
+                <span className="text-xs font-black text-slate-900">{Number(overallRating).toFixed(1)} / 5.0</span>
+                <span className="text-[9px] text-amber-800 font-bold">({totalReviewsCount} Reviews)</span>
               </div>
             </div>
 
             {loadingReviews ? (
               <div className="py-8 text-center text-slate-400 text-xs font-bold animate-pulse">
-                Syncing live customer reviews...
+                Syncing client ratings...
               </div>
             ) : partnerReviews.length === 0 ? (
-              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-2">
+              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center space-y-1.5">
                 <p className="text-xs font-bold text-slate-700">No customer reviews yet</p>
                 <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-                  Complete assigned jobs with 5-star quality and customer written feedback will automatically appear here in real-time.
+                  Complete assigned jobs with 5-star quality and customer written feedback will automatically appear here.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {partnerReviews.slice(0, 4).map((rev) => {
+              <div className="space-y-3">
+                {partnerReviews.slice(0, 3).map((rev) => {
                   const revDate = rev.createdAt?.toDate ? rev.createdAt.toDate() : (rev.createdAt ? new Date(rev.createdAt) : new Date());
                   const formattedDate = revDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
                   
                   return (
                     <div 
                       key={rev.id}
-                      className="p-4 sm:p-5 bg-slate-50/80 rounded-2xl border border-slate-100 hover:border-blue-200 transition-colors space-y-3"
+                      className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 text-xs"
                     >
-                      <div className="flex justify-between items-start gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-blue-700 text-white font-black text-xs flex items-center justify-center shadow-sm">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-blue-700 text-white font-black text-[10px] flex items-center justify-center">
                             {(rev.customerName || 'C')[0].toUpperCase()}
                           </div>
                           <div>
-                            <h4 className="text-xs font-black text-slate-900 leading-tight">
-                              {rev.customerName || 'Verified Client'}
-                            </h4>
-                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                              {rev.serviceName ? `${rev.serviceName} • ` : ''}{formattedDate}
-                            </p>
+                            <span className="font-black text-slate-900 leading-none block">
+                              {rev.customerName || 'Verified Customer'}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-medium">
+                              {formattedDate} {rev.serviceName ? `• ${rev.serviceName}` : ''}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Star Score Badge */}
-                        <div className="flex items-center gap-1 bg-amber-100/70 border border-amber-200 text-amber-900 px-2.5 py-1 rounded-xl shrink-0">
-                          <Star size={12} className="text-amber-500 fill-amber-500" />
-                          <span className="text-xs font-black">{rev.rating || 5}.0</span>
+                        <div className="flex items-center gap-1 bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg text-[10px] font-black">
+                          <Star size={10} className="fill-amber-500 text-amber-500" />
+                          <span>{rev.rating || 5}.0</span>
                         </div>
                       </div>
 
-                      {/* Criteria Score Badges if present */}
-                      {rev.feedbackScores && typeof rev.feedbackScores === 'object' && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {rev.feedbackScores.hygiene !== undefined && (
-                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                              Hygiene: {rev.feedbackScores.hygiene}★
-                            </span>
-                          )}
-                          {rev.feedbackScores.safety !== undefined && (
-                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                              Safety: {rev.feedbackScores.safety}★
-                            </span>
-                          )}
-                          {(rev.feedbackScores.process !== undefined || rev.feedbackScores.partner !== undefined) && (
-                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                              Service Process: {rev.feedbackScores.process ?? rev.feedbackScores.partner}★
-                            </span>
-                          )}
-                          {rev.feedbackScores.appExperience !== undefined && (
-                            <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                              App: {rev.feedbackScores.appExperience}★
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Written Customer Feedback Text */}
                       {(rev.reviewText || rev.comment || rev.review) && (
-                        <p className="text-xs text-slate-700 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-100 italic">
+                        <p className="text-[11px] text-slate-600 italic bg-white p-2.5 rounded-xl border border-slate-100">
                           "{rev.reviewText || rev.comment || rev.review}"
                         </p>
                       )}
                     </div>
                   );
                 })}
-
-                {partnerReviews.length > 4 && (
-                  <button
-                    onClick={() => onNavigate('settings')}
-                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl transition-all"
-                  >
-                    View All {partnerReviews.length} Reviews in Settings →
-                  </button>
-                )}
               </div>
             )}
           </section>
 
-          {/* Rewards Segment */}
-          <section className="bg-white border border-slate-100 p-8 rounded-[40px] shadow-sm flex justify-between items-center overflow-hidden relative">
-             <div className="relative z-10">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Elite Balance</p>
-                <p className="text-2xl font-black text-slate-900 italic">{partner?.rewardCredits || '0'} Points</p>
-             </div>
-             <div className="relative z-10 w-12 h-12 bg-blue-700 text-amber-400 rounded-full flex items-center justify-center shadow-lg">
-                <Star size={24} fill="currentColor" />
-             </div>
-             <div className="absolute -right-8 -top-8 w-24 h-24 bg-slate-50 rounded-full z-0" />
+          {/* 8. Quick Partner Toolkits */}
+          <section className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <button
+              onClick={() => onNavigate('amc-leads')}
+              className="p-4 bg-white border border-slate-200/90 rounded-2xl text-left hover:border-amber-400 transition-colors group cursor-pointer shadow-xs active:scale-98"
+            >
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                <Zap size={16} />
+              </div>
+              <h4 className="text-xs font-black text-slate-900 leading-tight">Annual Contracts</h4>
+              <p className="text-[10px] text-slate-500 mt-0.5">High-ticket AMC service leads</p>
+            </button>
+
+            <button
+              onClick={() => onNavigate('offers')}
+              className="p-4 bg-white border border-slate-200/90 rounded-2xl text-left hover:border-purple-400 transition-colors group cursor-pointer shadow-xs active:scale-98"
+            >
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                <Sparkles size={16} />
+              </div>
+              <h4 className="text-xs font-black text-slate-900 leading-tight">Partner Incentives</h4>
+              <p className="text-[10px] text-slate-500 mt-0.5">Performance milestone bonuses</p>
+            </button>
+
+            <button
+              onClick={() => onNavigate('wallet')}
+              className="col-span-2 sm:col-span-1 p-4 bg-white border border-slate-200/90 rounded-2xl text-left hover:border-emerald-400 transition-colors group cursor-pointer shadow-xs active:scale-98"
+            >
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                <Wallet size={16} />
+              </div>
+              <h4 className="text-xs font-black text-slate-900 leading-tight">Instant Transfer</h4>
+              <p className="text-[10px] text-slate-500 mt-0.5">Direct UPI withdrawal</p>
+            </button>
           </section>
         </>
       )}
 
-      {/* 4. Mandatory Step-by-Step Onboarding Popup */}
+      {/* Verification Under Review Modal */}
       <AnimatePresence>
         {showPendingPopup && (
-          <div 
-            id="partner-pending-status-modal"
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-          >
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col text-center"
+              className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-center space-y-4"
             >
-              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
-                <Clock size={28} />
+              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
+                <Clock size={24} />
               </div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Application Under Review</h3>
-              <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                Your profile is currently being verified by our admin team. We will notify you once it is approved.
-              </p>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Application Under Review</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mt-1">
+                  Our regional operations hub in Indore is verifying your trade listings. You will be notified as soon as activation is completed.
+                </p>
+              </div>
               <button
                 onClick={() => setShowPendingPopup(false)}
-                className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-700/10 active:scale-95 cursor-pointer"
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95"
               >
-                Okay, Understood
+                Understood
               </button>
             </motion.div>
           </div>

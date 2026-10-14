@@ -75,48 +75,51 @@ export default function PartnerPortalLanding({ onLogin, onExploreServices }: Pro
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 tracking-wider uppercase mb-6"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-emerald-400 tracking-wider uppercase mb-6"
           >
-            <Zap className="w-3.5 h-3.5 text-blue-400 fill-blue-400" />
-            ZomIndia Service Partner Program
+            <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+            Zomindia Partner / Expert Network
           </motion.div>
 
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl md:text-6xl font-black text-white tracking-tight leading-none max-w-4xl mx-auto"
+            className="text-4xl md:text-6xl font-black text-white tracking-tight leading-tight max-w-4xl mx-auto"
           >
-            Ecosystem for Top Service Professionals
+            Zomindia Partner / Expert <br />
+            <span className="text-emerald-400 bg-linear-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
+              Earn ₹1,500 - ₹3,000 Daily
+            </span>
           </motion.h1>
 
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-slate-400 mt-6 text-base md:text-lg max-w-2xl mx-auto font-medium leading-relaxed"
+            className="text-slate-300 mt-6 text-base md:text-lg max-w-2xl mx-auto font-medium leading-relaxed"
           >
-            Join zomindia to double your daily bookings, unlock recurring premium AMC maintenance agreements, and manage your payouts with high-fidelity live map navigation.
+            Join Indore's top-rated on-demand service ecosystem. Receive direct customer booking dispatch, zero commission cuts on tips, and enjoy weekly guaranteed bank payouts.
           </motion.p>
 
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-10 flex flex-wrap justify-center gap-4"
+            className="mt-10 flex flex-wrap justify-center items-center gap-4"
           >
             <button 
               id="partner-landing-login-btn"
               onClick={onLogin}
-              className="px-8 py-4 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-500 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2 group cursor-pointer"
+              className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm uppercase tracking-wider transition-all shadow-xl shadow-emerald-500/20 active:scale-95 flex items-center gap-2.5 group cursor-pointer"
             >
-              Sign In to Partner App
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <span>Partner Login / Register</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-slate-950" />
             </button>
             <button 
               id="partner-landing-explore-btn"
               onClick={onExploreServices}
-              className="px-8 py-4 rounded-2xl bg-slate-800 text-slate-200 border border-slate-700 font-bold hover:bg-slate-700 transition-all cursor-pointer"
+              className="px-8 py-4 rounded-2xl bg-slate-800 text-slate-200 border border-slate-700 font-bold hover:bg-slate-700 transition-all cursor-pointer text-sm"
             >
               Back to Services
             </button>

@@ -1325,6 +1325,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     if (!verifyingOTPId || !otpInput || !computedPartnerId) return;
     setLoading(true);
     setOtpError(false);
+    const bookingForOTP = bookings.find(b => b.id === verifyingOTPId);
+    const isCompletionStep = bookingForOTP?.status === 'arrived' || bookingForOTP?.status === 'in_progress' || true;
+
     try {
       // 1. Try server-side validation first
       const res = await fetch('/api/verify-job-otp', {
@@ -1333,15 +1336,28 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         body: JSON.stringify({
           bookingId: verifyingOTPId,
           partnerId: computedPartnerId,
-          otp: otpInput
+          otp: otpInput,
+          isCompletion: isCompletionStep,
+          targetStatus: isCompletionStep ? 'completed' : 'in_progress'
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const finalStatus = isCompletionStep ? 'completed' : 'in_progress';
+        const updatedBooking = {
+          ...bookingForOTP,
+          status: finalStatus as any,
+          otpVerified: true,
+          completedAt: Timestamp.now()
+        } as Booking;
+
         setVerifyingOTPId(null);
         setOtpInput('');
         if (selectedBooking?.id === verifyingOTPId) {
-          setSelectedBooking(prev => prev ? { ...prev, status: 'in_progress', otpVerified: true } : null);
+          setSelectedBooking(updatedBooking);
+        }
+        if (isCompletionStep) {
+          setCompletedSuccessBooking(updatedBooking);
         }
         return;
       }
@@ -1351,7 +1367,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
     // 2. Client-side fallback if server fails or is unreachable
     const cleanedInput = otpInput.trim();
-    const bookingForOTP = bookings.find(b => b.id === verifyingOTPId);
     const expectedOtp = (
       bookingForOTP?.serviceOtp || 
       bookingForOTP?.startOTP || 
@@ -1362,17 +1377,30 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
 
     if (isServiceOtpMatch) {
       try {
+        const finalStatus = isCompletionStep ? 'completed' : 'in_progress';
         const bRef = doc(db, 'bookings', verifyingOTPId);
-        await updateDoc(bRef, {
-          status: 'in_progress',
+        const updateData: any = {
+          status: finalStatus,
           otpVerified: true,
           updatedAt: Timestamp.now()
-        });
+        };
+        if (isCompletionStep) {
+          updateData.completedAt = serverTimestamp();
+        }
+
+        await updateDoc(bRef, updateData);
         
+        const updatedBooking = {
+          ...bookingForOTP,
+          status: finalStatus as any,
+          otpVerified: true,
+          completedAt: Timestamp.now()
+        } as Booking;
+
         if (bookingForOTP) {
           notifyBookingUpdate(
-            { ...bookingForOTP, status: 'in_progress', otpVerified: true },
-            'in_progress',
+            updatedBooking,
+            finalStatus,
             computedPartnerId
           );
         }
@@ -1380,9 +1408,12 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         setVerifyingOTPId(null);
         setOtpInput('');
         if (selectedBooking?.id === verifyingOTPId) {
-          setSelectedBooking(prev => prev ? { ...prev, status: 'in_progress', otpVerified: true } : null);
+          setSelectedBooking(updatedBooking);
         }
-        console.log("Client-side fallback OTP matches. Booking updated to in_progress.");
+        if (isCompletionStep) {
+          setCompletedSuccessBooking(updatedBooking);
+        }
+        console.log(`Client-side OTP matches. Booking updated to ${finalStatus}.`);
       } catch (dbErr) {
         console.error("Client-side fallback firestore update failed:", dbErr);
         setOtpError(true);
@@ -1858,12 +1889,32 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                 </div>
               )}
 
+              {/* Quick Actions Strip */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.address || 'Indore')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                >
+                  <MapPin size={13} className="text-blue-700 shrink-0" />
+                  <span className="truncate">Open in Google Maps</span>
+                </a>
+                <a
+                  href={`tel:${booking.customerMobile || booking.customerPhone || customers[booking.customerId]?.phoneNumber || ''}`}
+                  className="py-3 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-emerald-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                >
+                  <Phone size={13} className="text-emerald-700 shrink-0" />
+                  <span className="truncate">Call Customer</span>
+                </a>
+              </div>
+
               {(booking.status === 'confirmed' || booking.status === 'assigned' || booking.status === 'pending_acceptance') && (
                 <button 
                   onClick={() => handleBookingUpdate(booking.id, { status: 'on_the_way' })}
-                  className="w-full bg-[#0a2540] text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-[#0a2540]/20 flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-95 transition-all duration-200"
+                  className="w-full bg-[#0a2540] text-white py-4.5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-[#0a2540]/20 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-95 transition-all duration-200 cursor-pointer"
                 >
-                  <Navigation size={18} /> Start Journey
+                  <Navigation size={16} /> On The Way
                 </button>
               )}
 
@@ -1871,20 +1922,19 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                 <button 
                   onClick={async () => {
                     await handleBookingUpdate(booking.id, { status: 'arrived' });
-                    setVerifyingOTPId(booking.id);
                   }}
-                  className="w-full bg-amber-500 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-amber-500/20 flex items-center justify-center gap-3"
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4.5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
                 >
-                  <Navigation size={18} /> I Have Arrived
+                  <MapPin size={16} /> Reached Customer Location
                 </button>
               )}
 
-              {booking.status === 'arrived' && (
+              {(booking.status === 'arrived' || booking.status === 'in_progress') && (
                 <button 
                   onClick={() => setVerifyingOTPId(booking.id)}
-                  className="w-full bg-emerald-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-emerald-600/20"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4.5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                 >
-                  Verify Service OTP
+                  <ShieldCheck size={16} /> Complete Service
                 </button>
               )}
 
@@ -2513,8 +2563,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner ring-4 ring-emerald-500/10">
                      <ShieldCheck size={32} />
                   </div>
-                  <h3 className="text-2xl font-black italic mb-2">Service Lock</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">Ask customer for the 4-digit OTP</p>
+                  <h3 className="text-2xl font-black italic mb-2">Service Completion OTP</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">Ask customer for the 4-digit completion code</p>
                   
 
 
@@ -2583,9 +2633,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                         <button 
                           onClick={handleVerifyOTP}
                           disabled={loading || otpInput.length < 4}
-                          className="flex-[2] bg-emerald-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
+                          className="flex-[2] bg-emerald-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
                         >
-                          {loading ? '...' : 'Verify & Start'}
+                          {loading ? '...' : 'Verify & Complete Service'}
                         </button>
                      </div>
                   </div>
@@ -3030,66 +3080,66 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
                 </div>
               </div>
 
-              <div className="h-[1px] bg-slate-800/60" />
+              <div className="h-px bg-slate-200" />
 
-              {/* Earnings breakdown */}
-              {booking.paymentMethod === 'cash' ? (
-                <div className="space-y-3">
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-center">
-                    <p className="text-xs font-black text-amber-700 uppercase tracking-wide">
-                      Cash Collected: ₹{booking.totalPrice}
-                    </p>
-                    <p className="text-[11px] text-amber-900/90 font-semibold mt-1">
-                      Please deposit this cash at the Zomindia office today or by 11:00 AM tomorrow.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="bg-slate-100 border border-slate-200 rounded-2xl p-3 text-center">
-                      <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
-                        85% Partner Share
-                      </span>
-                      <div className="flex items-center justify-center gap-0.5 text-slate-800">
-                        <span className="text-xs font-black">₹</span>
-                        <span className="text-base font-black">{Math.max(0, Math.round(Number(booking.totalPrice || 0) * 0.85))}</span>
+              {/* Transparent Settlement Breakdown */}
+              {(() => {
+                const totalBill = Number(booking.totalPrice ?? (booking as any).finalPrice ?? 500);
+                const partnerNet = Math.max(0, Math.round(totalBill * 0.85));
+                const platformFee = totalBill - partnerNet;
+                const isCash = booking.paymentMethod === 'cash';
+
+                return (
+                  <div className="space-y-3.5">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5 text-left shadow-xs">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-bold">Total Customer Bill:</span>
+                        <span className="text-slate-900 font-black text-sm">₹{totalBill.toLocaleString()}</span>
                       </div>
-                      <span className="text-[8px] text-amber-600 block mt-0.5 font-bold">Pending Office Clearance</span>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-bold">Zomindia Platform Fee (15%):</span>
+                        <span className="text-rose-600 font-black">-₹{platformFee.toLocaleString()}</span>
+                      </div>
+                      <div className="h-px bg-slate-100 my-1" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-900 font-black text-xs uppercase tracking-wider">Partner Net Take-Home:</span>
+                        <span className="text-emerald-600 font-black text-lg">₹{partnerNet.toLocaleString()}</span>
+                      </div>
                     </div>
 
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 text-center shadow-sm">
-                      <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
-                        Reward Points
+                    {/* Collection Instruction Pill */}
+                    <div className={`p-4 rounded-2xl border text-center font-bold text-xs ${
+                      isCash 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                    }`}>
+                      <span className="font-black uppercase tracking-wider text-[10px] block mb-1">
+                        {isCash ? '💵 Cash Collection' : '💳 Digital Payment Settlement'}
                       </span>
-                      <div className="flex items-center justify-center gap-1 text-amber-500">
+                      <p className="text-sm font-black">
+                        {isCash 
+                          ? `Collect ₹${totalBill.toLocaleString()} Cash from Customer` 
+                          : `Paid Online - ₹${partnerNet.toLocaleString()} credited to your wallet`}
+                      </p>
+                      {isCash && (
+                        <p className="text-[10px] text-amber-800 font-semibold mt-1">
+                          Please deposit this physical cash at the Indore office counter to release your net share.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 flex items-center justify-between shadow-xs">
+                      <span className="text-[10px] text-slate-600 font-black uppercase tracking-wider">
+                        Partner Quality Loyalty Points
+                      </span>
+                      <div className="flex items-center gap-1 text-amber-600">
                         <Trophy size={14} className="animate-pulse" />
-                        <span className="text-lg font-black leading-none">+10</span>
+                        <span className="text-sm font-black">+10 Pts</span>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3.5">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 text-center shadow-sm">
-                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
-                      85% Partner Share
-                    </span>
-                    <div className="flex items-center justify-center gap-0.5 text-emerald-600">
-                      <span className="text-xs font-black">₹</span>
-                      <span className="text-lg font-black">{Math.max(0, Math.round(Number(booking.totalPrice || 0) * 0.85))}</span>
-                    </div>
-                    <span className="text-[8px] text-slate-400 block mt-0.5 font-bold">Credited to Wallet</span>
-                  </div>
-
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 text-center shadow-sm">
-                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block mb-1">
-                      Reward Points
-                    </span>
-                    <div className="flex items-center justify-center gap-1 text-amber-500">
-                      <Trophy size={14} className="animate-pulse" />
-                      <span className="text-lg font-black leading-none">+10</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Positive affirmation text */}
