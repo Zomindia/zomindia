@@ -1,7 +1,7 @@
 name: Build Zomindia Partner APK
 
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
   build-partner:
@@ -22,11 +22,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
+
+      - name: Configure Bubblewrap Environment
+        run: |
+          mkdir -p ~/.bubblewrap
+          cat << EOF > ~/.bubblewrap/config.json
+          {
+            "jdkPath": "$JAVA_HOME",
+            "androidSdkPath": "$ANDROID_HOME"
+          }
+          EOF
 
       - name: Configure Partner Manifest & Build Project
         run: |
@@ -84,6 +91,9 @@ jobs:
             }
           }
           EOF
+
+          # Accept preinstalled Android SDK licenses automatically
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
           # Build release APK
           bubblewrap build --skipPwaValidation --keyStorePassword zomindia123 --keyPassword zomindia123
