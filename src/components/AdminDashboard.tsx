@@ -530,103 +530,178 @@ export default function AdminDashboard({
       (err) => handleFirestoreError(err, OperationType.LIST, "services"),
     );
 
-    const unsubPartners = onSnapshot(
-      collection(db, "users"),
-      (snap) => {
-        const pList: any[] = [];
-        snap.docs.forEach((d) => {
-          const u = d.data();
-          const rawDirectKyc = String(u.kycStatus || "").toLowerCase().trim();
-          const rawNestedKyc = String(u.partnerData?.kycStatus || "").toLowerCase().trim();
-          const rawDirectRole = String(u.role || "").toLowerCase().trim();
-          const rawDirectStatus = String(u.status || "").toLowerCase().trim();
-          const rawNestedStatus = String(u.partnerData?.status || "").toLowerCase().trim();
+    let usersList: any[] = [];
+    let partnersCollectionList: any[] = [];
 
-          const isPartnerUser =
-            u.isPartner === true ||
-            rawDirectRole === "partner" ||
-            !!u.partnerId ||
-            (u.partnerData && Object.keys(u.partnerData).length > 0) ||
+    const rebuildRawPartners = () => {
+      const partnerMap = new Map<string, any>();
+
+      // 1. Process users collection
+      usersList.forEach((d) => {
+        const u = d.data();
+        const docId = d.id;
+        const rawDirectKyc = String(u.kycStatus || "").toLowerCase().trim();
+        const rawNestedKyc = String(u.partnerData?.kycStatus || "").toLowerCase().trim();
+        const rawDirectRole = String(u.role || "").toLowerCase().trim();
+        const rawDirectStatus = String(u.status || "").toLowerCase().trim();
+        const rawNestedStatus = String(u.partnerData?.status || "").toLowerCase().trim();
+
+        const isPartnerUser =
+          u.isPartner === true ||
+          rawDirectRole === "partner" ||
+          !!u.partnerId ||
+          (u.partnerData && Object.keys(u.partnerData).length > 0) ||
+          rawDirectKyc === "approved" ||
+          rawDirectKyc === "verified" ||
+          rawDirectKyc === "pending" ||
+          rawDirectKyc === "submitted" ||
+          rawDirectKyc === "under_review" ||
+          rawNestedKyc === "approved" ||
+          rawNestedKyc === "verified" ||
+          rawNestedKyc === "pending" ||
+          rawDirectStatus === "approved" ||
+          rawDirectStatus === "verified" ||
+          rawDirectStatus === "active" ||
+          rawNestedStatus === "approved" ||
+          rawNestedStatus === "verified" ||
+          rawNestedStatus === "active" ||
+          u.isVerified === true ||
+          u.partnerData?.isVerified === true;
+
+        if (isPartnerUser) {
+          const pData = u.partnerData || {};
+          let finalKycStatus = "pending";
+          if (
             rawDirectKyc === "approved" ||
             rawDirectKyc === "verified" ||
             rawNestedKyc === "approved" ||
             rawNestedKyc === "verified" ||
             rawDirectStatus === "approved" ||
             rawDirectStatus === "verified" ||
-            rawDirectStatus === "active" ||
             rawNestedStatus === "approved" ||
-            rawNestedStatus === "verified" ||
-            rawNestedStatus === "active" ||
-            u.isVerified === true ||
-            u.partnerData?.isVerified === true;
-
-          if (isPartnerUser) {
-            const pData = u.partnerData || {};
-            
-            // Safe KYC / status check in both locations (direct and nested) and support case-insensitive "approved" or "verified"
-            let finalKycStatus = "pending";
-            
-            if (
-              rawDirectKyc === "approved" ||
-              rawDirectKyc === "verified" ||
-              rawNestedKyc === "approved" ||
-              rawNestedKyc === "verified" ||
-              rawDirectStatus === "approved" ||
-              rawDirectStatus === "verified" ||
-              rawNestedStatus === "approved" ||
-              rawNestedStatus === "verified"
-            ) {
+            rawNestedStatus === "verified"
+          ) {
+            finalKycStatus = "approved";
+          } else if (
+            rawDirectKyc === "rejected" ||
+            rawNestedKyc === "rejected" ||
+            rawDirectStatus === "rejected" ||
+            rawNestedStatus === "rejected"
+          ) {
+            finalKycStatus = "rejected";
+          } else {
+            const combined = `${rawDirectKyc} ${rawNestedKyc} ${rawDirectStatus} ${rawNestedStatus}`;
+            if (combined.includes("approve") || combined.includes("verif") || combined.includes("active")) {
               finalKycStatus = "approved";
-            } else if (
-              rawDirectKyc === "rejected" ||
-              rawNestedKyc === "rejected" ||
-              rawDirectStatus === "rejected" ||
-              rawNestedStatus === "rejected"
-            ) {
+            } else if (combined.includes("reject")) {
               finalKycStatus = "rejected";
             } else {
-              const combined = `${rawDirectKyc} ${rawNestedKyc} ${rawDirectStatus} ${rawNestedStatus}`;
-              if (combined.includes("approve") || combined.includes("verif") || combined.includes("active")) {
-                finalKycStatus = "approved";
-              } else if (combined.includes("reject")) {
-                finalKycStatus = "rejected";
-              } else {
-                finalKycStatus = "pending";
-              }
+              finalKycStatus = "pending";
             }
-
-            const isVerifiedUser = finalKycStatus === "approved" || pData.isVerified === true || u.isVerified === true || rawDirectRole === "partner";
-
-            pList.push({
-              id: d.id,
-              userId: d.id,
-              displayName: u.displayName || u.fullName || pData.displayName || "Partner",
-              categories: pData.categories || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
-              skills: pData.skills || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
-              bio: pData.bio || u.bio || `Elite Certified Professional`,
-              rating: pData.rating !== undefined ? pData.rating : 4.9,
-              reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
-              isVerified: isVerifiedUser,
-              status: pData.status || (isVerifiedUser ? "active" : "pending"),
-              availabilityStatus: pData.availabilityStatus || (pData.isAvailable === true ? "Available" : "Offline"),
-              isAvailable: pData.isAvailable !== undefined ? pData.isAvailable : (pData.availabilityStatus === "Available"),
-              kycStatus: finalKycStatus,
-              lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
-              lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
-              createdAt: u.createdAt || pData.createdAt || Timestamp.now(),
-              updatedAt: u.updatedAt || pData.updatedAt || Timestamp.now(),
-              profilePhoto: u.profilePhoto || pData.profilePhoto || u.photoURL,
-              onboardingCompleted: pData.onboardingCompleted !== undefined ? pData.onboardingCompleted : true,
-              govtId: pData.govtId || u.govtId,
-              bankDetails: pData.bankDetails || u.bankDetails,
-              approvalStatus: u.approvalStatus || pData.approvalStatus || "pending",
-              gracePeriodEnd: u.gracePeriodEnd || pData.gracePeriodEnd || null,
-            });
           }
+
+          const isVerifiedUser = finalKycStatus === "approved" || pData.isVerified === true || u.isVerified === true || u.isKycVerified === true || rawDirectRole === "partner";
+
+          partnerMap.set(docId, {
+            id: docId,
+            userId: docId,
+            displayName: u.displayName || u.fullName || pData.displayName || "Partner",
+            categories: pData.categories || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
+            skills: pData.skills || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
+            bio: pData.bio || u.bio || `Elite Certified Professional`,
+            rating: pData.rating !== undefined ? pData.rating : 4.9,
+            reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
+            isVerified: isVerifiedUser,
+            status: pData.status || (isVerifiedUser ? "active" : "pending"),
+            availabilityStatus: pData.availabilityStatus || (pData.isAvailable === true ? "Available" : "Offline"),
+            isAvailable: pData.isAvailable !== undefined ? pData.isAvailable : (pData.availabilityStatus === "Available"),
+            kycStatus: finalKycStatus,
+            lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
+            lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
+            createdAt: u.createdAt || pData.createdAt || Timestamp.now(),
+            updatedAt: u.updatedAt || pData.updatedAt || Timestamp.now(),
+            profilePhoto: u.profilePhoto || pData.profilePhoto || u.photoURL,
+            onboardingCompleted: pData.onboardingCompleted !== undefined ? pData.onboardingCompleted : true,
+            govtId: pData.govtId || u.govtId,
+            bankDetails: pData.bankDetails || u.bankDetails,
+            aadhaarNumber: u.aadhaarNumber || pData.aadhaarNumber,
+            aadhaarPhoto: u.aadhaarPhoto || pData.aadhaarPhoto,
+            panNumber: u.panNumber || pData.panNumber,
+            panPhoto: u.panPhoto || pData.panPhoto,
+            ref1Name: u.ref1Name || pData.ref1Name,
+            ref1Mobile: u.ref1Mobile || pData.ref1Mobile,
+            ref2Name: u.ref2Name || pData.ref2Name,
+            ref2Mobile: u.ref2Mobile || pData.ref2Mobile,
+            approvalStatus: u.approvalStatus || pData.approvalStatus || "pending",
+            gracePeriodEnd: u.gracePeriodEnd || pData.gracePeriodEnd || null,
+          });
+        }
+      });
+
+      // 2. Merge records from partners collection
+      partnersCollectionList.forEach((d) => {
+        const p = d.data();
+        const docId = d.id;
+        const existing = partnerMap.get(docId) || {};
+        const pKycRaw = String(p.kycStatus || "").toLowerCase().trim();
+        const isApproved = pKycRaw === "verified" || pKycRaw === "approved" || p.isVerified === true || p.isKycVerified === true;
+        const finalKycStatus = isApproved ? "approved" : (pKycRaw === "rejected" ? "rejected" : "pending");
+
+        partnerMap.set(docId, {
+          ...existing,
+          id: docId,
+          userId: p.userId || existing.userId || docId,
+          displayName: p.displayName || p.fullName || existing.displayName || "Partner",
+          categories: p.categories || p.skills || existing.categories || ["Appliance Repair"],
+          skills: p.skills || existing.skills || ["Appliance Repair"],
+          bio: p.bio || existing.bio || "Elite Certified Professional",
+          rating: p.rating !== undefined ? p.rating : (existing.rating !== undefined ? existing.rating : 4.9),
+          reviewCount: p.reviewCount !== undefined ? p.reviewCount : (existing.reviewCount || 0),
+          isVerified: isApproved || existing.isVerified || false,
+          status: p.status || existing.status || (isApproved ? "active" : "pending"),
+          availabilityStatus: p.availabilityStatus || existing.availabilityStatus || "Available",
+          isAvailable: p.isAvailable !== undefined ? p.isAvailable : true,
+          kycStatus: finalKycStatus,
+          lat: p.lat !== undefined ? p.lat : (existing.lat !== undefined ? existing.lat : 22.7196),
+          lng: p.lng !== undefined ? p.lng : (existing.lng !== undefined ? existing.lng : 75.8577),
+          createdAt: p.createdAt || existing.createdAt || Timestamp.now(),
+          updatedAt: p.updatedAt || existing.updatedAt || Timestamp.now(),
+          profilePhoto: p.profilePhoto || p.photoURL || existing.profilePhoto,
+          onboardingCompleted: p.onboardingCompleted !== undefined ? p.onboardingCompleted : true,
+          govtId: p.govtId || existing.govtId,
+          bankDetails: p.bankDetails || existing.bankDetails,
+          aadhaarNumber: p.aadhaarNumber || existing.aadhaarNumber,
+          aadhaarPhoto: p.aadhaarPhoto || existing.aadhaarPhoto,
+          panNumber: p.panNumber || existing.panNumber,
+          panPhoto: p.panPhoto || existing.panPhoto,
+          ref1Name: p.ref1Name || existing.ref1Name,
+          ref1Mobile: p.ref1Mobile || existing.ref1Mobile,
+          ref2Name: p.ref2Name || existing.ref2Name,
+          ref2Mobile: p.ref2Mobile || existing.ref2Mobile,
+          approvalStatus: p.approvalStatus || existing.approvalStatus || "pending",
+          gracePeriodEnd: p.gracePeriodEnd || existing.gracePeriodEnd || null,
         });
-        setRawPartners(pList);
+      });
+
+      setRawPartners(Array.from(partnerMap.values()));
+    };
+
+    const unsubPartners = onSnapshot(
+      collection(db, "users"),
+      (snap) => {
+        usersList = snap.docs;
+        rebuildRawPartners();
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "users"),
+    );
+
+    const unsubPartnersDirect = onSnapshot(
+      collection(db, "partners"),
+      (snap) => {
+        partnersCollectionList = snap.docs;
+        rebuildRawPartners();
+      },
+      (err) => console.warn("Error streaming partners collection:", err),
     );
 
     const unsubPromos = onSnapshot(
@@ -708,6 +783,7 @@ export default function AdminDashboard({
       unsubCategories();
       unsubServices();
       unsubPartners();
+      unsubPartnersDirect();
       unsubPromos();
       unsubSupportTickets();
       unsubTickets();
@@ -5521,7 +5597,12 @@ function PartnerManager({
       const userRef = doc(db, "users", partnerId);
       await updateDoc(userRef, {
         isPartner: true,
+        kycStatus: targetKycStatus,
+        isKycVerified: verified,
+        isVerified: verified,
+        status: targetStatus,
         "partnerData.kycStatus": targetKycStatus,
+        "partnerData.isKycVerified": verified,
         "partnerData.status": targetStatus,
         "partnerData.isVerified": verified,
         updatedAt: Timestamp.now()
@@ -5530,6 +5611,7 @@ function PartnerManager({
       // 2. Keep 'partners' document synced for any legacy queries
       await setDoc(doc(db, "partners", partnerId), {
         isVerified: verified,
+        isKycVerified: verified,
         kycStatus: targetKycStatus,
         status: targetStatus,
         kycRejectReason: null,
@@ -6358,6 +6440,61 @@ function PartnerManager({
                             </a>
                           </div>
                         ))}
+                        {(p.aadhaarNumber || p.aadhaarPhoto) && (
+                          <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100">
+                            <span className="text-[10px] font-bold text-slate-900">
+                              Aadhaar Card {p.aadhaarNumber ? `(${p.aadhaarNumber})` : ''}
+                            </span>
+                            {p.aadhaarPhoto ? (
+                              <a
+                                href={p.aadhaarPhoto}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase bg-slate-50 px-2 py-1 rounded"
+                              >
+                                View
+                              </a>
+                            ) : (
+                              <span className="text-[9px] text-slate-400 font-medium">Provided</span>
+                            )}
+                          </div>
+                        )}
+                        {(p.panNumber || p.panPhoto) && (
+                          <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100">
+                            <span className="text-[10px] font-bold text-slate-900">
+                              PAN Card {p.panNumber ? `(${p.panNumber})` : ''}
+                            </span>
+                            {p.panPhoto ? (
+                              <a
+                                href={p.panPhoto}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase bg-slate-50 px-2 py-1 rounded"
+                              >
+                                View
+                              </a>
+                            ) : (
+                              <span className="text-[9px] text-slate-400 font-medium">Provided</span>
+                            )}
+                          </div>
+                        )}
+                        {(p.ref1Name || p.ref2Name) && (
+                          <div className="p-2.5 bg-white rounded-lg border border-amber-100 space-y-1 text-left">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">
+                              References
+                            </span>
+                            {p.ref1Name && (
+                              <p className="text-[9px] text-slate-700">
+                                1. {p.ref1Name} ({p.ref1Mobile || 'No Mobile'})
+                              </p>
+                            )}
+                            {p.ref2Name && (
+                              <p className="text-[9px] text-slate-700">
+                                2. {p.ref2Name} ({p.ref2Mobile || 'No Mobile'})
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {(p.govtId || p.onboardingData?.governmentIdDoc) && !p.kycDocuments?.some(d => d.url === (p.govtId || p.onboardingData?.governmentIdDoc)) && (
                           <div
                             className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-100"

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { doc, updateDoc, Timestamp, getDoc } from "firebase/firestore";
+import { doc, updateDoc, setDoc, Timestamp, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { User, ShieldCheck, CreditCard, Landmark, Users, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -67,12 +67,16 @@ export default function UnifiedKYCForm({ partnerId, mode, onSuccess, onClose }: 
     }
 
     try {
-      const targetKycStatus = mode === "admin_manual" ? "verified" : "pending_review";
+      const targetKycStatus = mode === "admin_manual" ? "verified" : "pending";
       const isEliteValue = mode === "admin_manual" ? true : false;
+      const isVerifiedStatus = targetKycStatus === "verified";
 
       const payload = {
         kycStatus: targetKycStatus,
+        isKycVerified: isVerifiedStatus,
+        isVerified: isVerifiedStatus,
         isElite: isEliteValue,
+        submittedAt: serverTimestamp(),
         aadhaarNumber,
         aadhaarPhoto,
         panNumber,
@@ -93,7 +97,8 @@ export default function UnifiedKYCForm({ partnerId, mode, onSuccess, onClose }: 
         },
         partnerData: {
           kycStatus: targetKycStatus,
-          isVerified: targetKycStatus === "verified",
+          isKycVerified: isVerifiedStatus,
+          isVerified: isVerifiedStatus,
           isElite: isEliteValue,
           bankDetails: {
             accountHolder: bankHolder,
@@ -101,46 +106,46 @@ export default function UnifiedKYCForm({ partnerId, mode, onSuccess, onClose }: 
             ifscCode: bankIfsc,
           }
         },
-        updatedAt: Timestamp.now(),
+        updatedAt: serverTimestamp(),
       };
 
-      // Update User Doc
+      // Set or update User Doc
       const userRef = doc(db, "users", partnerId);
-      await updateDoc(userRef, payload);
+      await setDoc(userRef, payload, { merge: true });
 
-      // Also try to update Partners Doc if exists
+      // Always ensure partners collection doc is synced with submitted KYC
       try {
         const partnerRef = doc(db, "partners", partnerId);
-        const partnerSnap = await getDoc(partnerRef);
-        if (partnerSnap.exists()) {
-          await updateDoc(partnerRef, {
-            kycStatus: targetKycStatus,
-            isVerified: targetKycStatus === "verified",
-            isElite: isEliteValue,
-            aadhaarNumber,
-            aadhaarPhoto,
-            panNumber,
-            panPhoto,
-            ref1Name,
-            ref1Mobile,
-            ref1Address,
-            ref1Aadhaar,
-            ref2Name,
-            ref2Mobile,
-            ref2Address,
-            ref2Relation,
-            ref2Aadhaar,
-            bankDetails: {
-              accountHolder: bankHolder,
-              accountNumber: bankAccount,
-              ifscCode: bankIfsc,
-            },
-            onboardingCompleted: true,
-            updatedAt: Timestamp.now(),
-          });
-        }
+        await setDoc(partnerRef, {
+          userId: partnerId,
+          kycStatus: targetKycStatus,
+          isKycVerified: isVerifiedStatus,
+          isVerified: isVerifiedStatus,
+          isElite: isEliteValue,
+          submittedAt: serverTimestamp(),
+          aadhaarNumber,
+          aadhaarPhoto,
+          panNumber,
+          panPhoto,
+          ref1Name,
+          ref1Mobile,
+          ref1Address,
+          ref1Aadhaar,
+          ref2Name,
+          ref2Mobile,
+          ref2Address,
+          ref2Relation,
+          ref2Aadhaar,
+          bankDetails: {
+            accountHolder: bankHolder,
+            accountNumber: bankAccount,
+            ifscCode: bankIfsc,
+          },
+          onboardingCompleted: true,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
       } catch (err) {
-        console.warn("Failed to update partner collection document: ", err);
+        console.warn("Failed to set partner collection document: ", err);
       }
 
       setSuccess(true);

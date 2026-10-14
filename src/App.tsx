@@ -1612,9 +1612,17 @@ If you have any billing questions, or if your refund is delayed, please email us
     );
   };
 
+  const isPartnerView = 
+    activeTab === 'partner' || 
+    (typeof window !== 'undefined' && (
+      window.location.pathname.startsWith('/partner') || 
+      window.location.hash.toLowerCase().includes('partner')
+    )) ||
+    (currentMode === 'partner' && (profile?.role === 'partner' || profile?.role === 'admin' || profile?.partnerId));
+
   const renderContent = () => {
     const content = renderContentInner();
-    if (activeTab === 'home' || activeTab === 'admin' || activeTab === 'partner') {
+    if (activeTab === 'home' || activeTab === 'admin' || isPartnerView) {
       return content;
     }
     return (
@@ -1627,7 +1635,7 @@ If you have any billing questions, or if your refund is delayed, please email us
     );
   };
 
-  const isFullScreenView = activeTab === 'admin' || activeTab === 'partner';
+  const isFullScreenView = activeTab === 'admin' || isPartnerView;
 
   return (
     <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
