@@ -25,6 +25,16 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
+      - name: Pre-configure Bubblewrap Environment
+        run: |
+          mkdir -p ~/.bubblewrap
+          cat << EOF > ~/.bubblewrap/config.json
+          {
+            "jdkPath": "$JAVA_HOME",
+            "androidSdkPath": "$ANDROID_HOME"
+          }
+          EOF
+
       - name: Generate Android Project & Build via Gradle
         run: |
           # 1. Start local server for partner icon
@@ -82,11 +92,14 @@ jobs:
           }
           EOF
 
-          # 4. Android files create karein
+          export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
+          export BUBBLEWRAP_KEY_PASSWORD=zomindia123
+
+          # 4. Generate Android files without prompting questions
           bubblewrap update --skipVersionUpgrade
           kill $SERVER_PID || true
 
-          # 5. Direct Gradle build (Bubblewrap build ko completely bypass kar diya)
+          # 5. Direct Gradle build
           chmod +x ./gradlew
           ./gradlew assembleRelease
 
