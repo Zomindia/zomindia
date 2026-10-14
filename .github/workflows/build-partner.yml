@@ -35,7 +35,7 @@ jobs:
           }
           EOF
 
-      - name: Configure Partner Manifest & Build Project
+      - name: Prepare Partner Project & Keystore
         run: |
           mkdir -p partner-android
           cd partner-android
@@ -55,6 +55,27 @@ jobs:
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
           echo "========================================"
 
+          # Create a high-res 512x512 PNG icon locally so Bubblewrap does not crash on .ico
+          python3 -c "
+          from PIL import Image, ImageDraw
+          img = Image.new('RGBA', (512, 512), color=(30, 64, 175, 255))
+          d = ImageDraw.Draw(img)
+          d.rectangle([(20, 20), (492, 492)], outline=(255, 255, 255), width=16)
+          img.save('icon-512.png')
+          "
+
+          # If public folder has existing icons, prefer that
+          if [ -f "../public/pwa-512x512.png" ]; then
+            cp ../public/pwa-512x512.png icon-512.png
+          elif [ -f "../public/icon-512.png" ]; then
+            cp ../public/icon-512.png icon-512.png
+          fi
+
+          # Host icon locally for Bubblewrap fetch
+          python3 -m http.server 8085 &
+          SERVER_PID=$!
+          sleep 2
+
           # Create TWA manifest pointing directly to /partner
           cat << 'EOF' > twa-manifest.json
           {
@@ -66,8 +87,8 @@ jobs:
             "navigationColor": "#000000",
             "backgroundColor": "#FFFFFF",
             "startUrl": "/partner",
-            "iconUrl": "https://zomindia.com/favicon.ico",
-            "maskableIconUrl": "https://zomindia.com/favicon.ico",
+            "iconUrl": "http://localhost:8085/icon-512.png",
+            "maskableIconUrl": "http://localhost:8085/icon-512.png",
             "appVersionName": "1.0.0",
             "appVersionCode": 1,
             "shortcuts": [],
@@ -92,11 +113,18 @@ jobs:
           }
           EOF
 
-          # Accept preinstalled Android SDK licenses automatically
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          # Set environment passwords for unattended CI build
+          export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
+          export BUBBLEWRAP_KEY_PASSWORD=zomindia123
 
-          # Build release APK
-          bubblewrap build --skipPwaValidation --keyStorePassword zomindia123 --keyPassword zomindia123
+          # Generate the Gradle project files from twa-manifest.json
+          bubblewrap update --skipVersionUpgrade
+
+          # Clean up local icon server
+          kill $SERVER_PID || true
+
+          # Build release signed APK
+          bubblewrap build --skipPwaValidation
 
       - name: Upload Partner APK Artifact
         uses: actions/upload-artifact@v4
