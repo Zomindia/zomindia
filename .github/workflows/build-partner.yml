@@ -1,0 +1,95 @@
+name: Build Zomindia Partner APK
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  build-partner:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Configure Partner Manifest & Build Project
+        run: |
+          mkdir -p partner-android
+          cd partner-android
+
+          # Generate dedicated keystore for Partner APK
+          keytool -genkey -v -keystore partner-release.keystore \
+            -alias partner \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass zomindia123 \
+            -keypass zomindia123 \
+            -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
+
+          # Print SHA-256 fingerprint for AssetLinks
+          echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
+          keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
+          echo "========================================"
+
+          # Create TWA manifest pointing directly to /partner
+          cat << 'EOF' > twa-manifest.json
+          {
+            "packageId": "com.zomindia.partner",
+            "host": "zomindia.com",
+            "name": "Zomindia Partner",
+            "launcherName": "Partner",
+            "themeColor": "#1E40AF",
+            "navigationColor": "#000000",
+            "backgroundColor": "#FFFFFF",
+            "startUrl": "/partner",
+            "iconUrl": "https://zomindia.com/favicon.ico",
+            "maskableIconUrl": "https://zomindia.com/favicon.ico",
+            "appVersionName": "1.0.0",
+            "appVersionCode": 1,
+            "shortcuts": [],
+            "generatorApp": "bubblewrap-cli",
+            "webManifestUrl": "https://zomindia.com/manifest.json",
+            "fallbackType": "customtabs",
+            "features": {
+              "locationDelegation": {
+                "enabled": true
+              }
+            },
+            "alphaDependencies": {
+              "enabled": false
+            },
+            "enableSiteSettingsShortcut": true,
+            "isChromeOSOnly": false,
+            "isMetaQuest": false,
+            "signingKey": {
+              "path": "./partner-release.keystore",
+              "alias": "partner"
+            }
+          }
+          EOF
+
+          # Build release APK
+          bubblewrap build --skipPwaValidation --keyStorePassword zomindia123 --keyPassword zomindia123
+
+      - name: Upload Partner APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zomindia-partner-apk
+          path: partner-android/app-release-signed.apk
