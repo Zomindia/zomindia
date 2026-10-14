@@ -35,12 +35,17 @@ jobs:
           }
           EOF
 
-      - name: Prepare Partner Project & Keystore
+      - name: Build Partner APK
         run: |
+          # 1. Start a local server to serve public icons
+          python3 -m http.server 8085 --directory public &
+          SERVER_PID=$!
+          sleep 2
+
           mkdir -p partner-android
           cd partner-android
 
-          # Generate dedicated keystore for Partner APK
+          # 2. Generate Keystore
           keytool -genkey -v -keystore partner-release.keystore \
             -alias partner \
             -keyalg RSA \
@@ -50,36 +55,11 @@ jobs:
             -keypass zomindia123 \
             -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
 
-          # Print SHA-256 fingerprint for AssetLinks
-          echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
+          echo "=== PARTNER APK SHA-256 ==="
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
-          echo "========================================"
+          echo "==========================="
 
-          # Create a valid 512x512 PNG using Python built-in standard library (Zero extra packages needed)
-          python3 -c "
-          import zlib, struct
-          raw = b''.join(b'\x00' + bytes([30, 64, 175, 255] * 512) for _ in range(512))
-          compressed = zlib.compress(raw)
-          def chunk(t, d):
-              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
-          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 512, 512, 8, 6, 0, 0, 0)) + chunk(b'IDAT', compressed) + chunk(b'IEND', b'')
-          with open('icon-512.png', 'wb') as f:
-              f.write(png)
-          "
-
-          # If public folder has existing icons, prefer that
-          if [ -f "../public/pwa-512x512.png" ]; then
-            cp ../public/pwa-512x512.png icon-512.png
-          elif [ -f "../public/icon-512.png" ]; then
-            cp ../public/icon-512.png icon-512.png
-          fi
-
-          # Host icon locally for Bubblewrap fetch
-          python3 -m http.server 8085 &
-          SERVER_PID=$!
-          sleep 2
-
-          # Create TWA manifest pointing directly to /partner
+          # 3. Create TWA Manifest with your real icon
           cat << 'EOF' > twa-manifest.json
           {
             "packageId": "com.zomindia.partner",
@@ -90,8 +70,8 @@ jobs:
             "navigationColor": "#000000",
             "backgroundColor": "#FFFFFF",
             "startUrl": "/partner",
-            "iconUrl": "http://localhost:8085/icon-512.png",
-            "maskableIconUrl": "http://localhost:8085/icon-512.png",
+            "iconUrl": "http://localhost:8085/partner-icon-512.png",
+            "maskableIconUrl": "http://localhost:8085/partner-icon-512.png",
             "appVersionName": "1.0.0",
             "appVersionCode": 1,
             "shortcuts": [],
@@ -116,17 +96,12 @@ jobs:
           }
           EOF
 
-          # Set environment passwords for unattended CI build
           export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
           export BUBBLEWRAP_KEY_PASSWORD=zomindia123
 
-          # Generate the Gradle project files from twa-manifest.json
+          # 4. Generate Android files and Build APK
           bubblewrap update --skipVersionUpgrade
-
-          # Clean up local icon server
           kill $SERVER_PID || true
-
-          # Build release signed APK
           bubblewrap build --skipPwaValidation
 
       - name: Upload Partner APK Artifact
