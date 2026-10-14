@@ -55,13 +55,16 @@ jobs:
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
           echo "========================================"
 
-          # Create a high-res 512x512 PNG icon locally so Bubblewrap does not crash on .ico
+          # Create a valid 512x512 PNG using Python built-in standard library (Zero extra packages needed)
           python3 -c "
-          from PIL import Image, ImageDraw
-          img = Image.new('RGBA', (512, 512), color=(30, 64, 175, 255))
-          d = ImageDraw.Draw(img)
-          d.rectangle([(20, 20), (492, 492)], outline=(255, 255, 255), width=16)
-          img.save('icon-512.png')
+          import zlib, struct
+          raw = b''.join(b'\x00' + bytes([30, 64, 175, 255] * 512) for _ in range(512))
+          compressed = zlib.compress(raw)
+          def chunk(t, d):
+              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 512, 512, 8, 6, 0, 0, 0)) + chunk(b'IDAT', compressed) + chunk(b'IEND', b'')
+          with open('icon-512.png', 'wb') as f:
+              f.write(png)
           "
 
           # If public folder has existing icons, prefer that
