@@ -1446,20 +1446,6 @@ export default function CustomerHome({
 
   return (
     <div className="pb-28 sm:pb-16 w-full">
-      {profile?.role === "partner" && (
-        <div className="bg-amber-50 border-b border-amber-100 py-3 px-4 flex items-center justify-center gap-3 relative z-[20]">
-          <div className="p-1.5 bg-amber-500 rounded-lg text-white">
-            <ShieldCheck size={16} />
-          </div>
-          <p className="text-amber-900 text-xs font-bold uppercase tracking-widest leading-none">
-            Partner Reference Mode:{" "}
-            <span className="font-medium normal-case tracking-normal text-amber-700 ml-1">
-              You can explore services but booking is restricted for partners.
-            </span>
-          </p>
-        </div>
-      )}
-
       {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
       <div 
         className={

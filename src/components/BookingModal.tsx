@@ -1219,40 +1219,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   };
 
-  if (profile?.role === 'partner') {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
-        />
-        
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-8 text-center"
-        >
-          <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Info size={32} />
-          </div>
-          <h3 className="text-xl font-bold text-slate-900 mb-2">Partner Account Mode</h3>
-          <p className="text-slate-500 text-xs mb-6 leading-relaxed">
-            As a registered <b>Service Partner</b>, you cannot book services for yourself. Switch to Customer Mode from your profile menu to book.
-          </p>
-          <button 
-            onClick={handleModalClose}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-700 transition-all cursor-pointer"
-          >
-            I Understand
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
-
   const totalBill = calculateFinalPrice();
   const walletDeduction = useWalletBalance ? Math.min(profile?.walletBalance || 0, totalBill) : 0;
   const finalPayable = Math.max(0, totalBill - walletDeduction);
