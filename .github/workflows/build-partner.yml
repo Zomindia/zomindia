@@ -37,15 +37,26 @@ jobs:
 
       - name: Build Partner APK
         run: |
-          # 1. Start a local server to serve public icons
-          python3 -m http.server 8085 --directory public &
-          SERVER_PID=$!
-          sleep 2
+          # 1. Fallback icon check in public folder
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -f "public/partner-icon-512.png" ]; then
+            if [ -f "public/pwa-512x512.png" ]; then
+              cp public/pwa-512x512.png public/partner-icon-512.png
+            elif [ -f "public/icon-512.png" ]; then
+              cp public/icon-512.png public/partner-icon-512.png
+            fi
+          fi
 
+          # 2. Start local HTTP server explicitly bound to 127.0.0.1 (IPv4)
+          python3 -m http.server 8085 --bind 127.0.0.1 --directory "$GITHUB_WORKSPACE/public" &
+          SERVER_PID=$!
+          sleep 3
+
+          # 3. Setup Android project directory
           mkdir -p partner-android
           cd partner-android
 
-          # 2. Generate Keystore
+          # 4. Generate Keystore
           keytool -genkey -v -keystore partner-release.keystore \
             -alias partner \
             -keyalg RSA \
@@ -59,7 +70,7 @@ jobs:
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
           echo "==========================="
 
-          # 3. Create TWA Manifest with your real icon
+          # 5. TWA Manifest with direct 127.0.0.1 IP (Fixes IPv6 ::1 ECONNREFUSED)
           cat << 'EOF' > twa-manifest.json
           {
             "packageId": "com.zomindia.partner",
@@ -70,8 +81,8 @@ jobs:
             "navigationColor": "#000000",
             "backgroundColor": "#FFFFFF",
             "startUrl": "/partner",
-            "iconUrl": "http://localhost:8085/partner-icon-512.png",
-            "maskableIconUrl": "http://localhost:8085/partner-icon-512.png",
+            "iconUrl": "http://127.0.0.1:8085/partner-icon-512.png",
+            "maskableIconUrl": "http://127.0.0.1:8085/partner-icon-512.png",
             "appVersionName": "1.0.0",
             "appVersionCode": 1,
             "shortcuts": [],
@@ -99,7 +110,7 @@ jobs:
           export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
           export BUBBLEWRAP_KEY_PASSWORD=zomindia123
 
-          # 4. Generate Android files and Build APK
+          # 6. Generate Android project files and build APK
           bubblewrap update --skipVersionUpgrade
           kill $SERVER_PID || true
           bubblewrap build --skipPwaValidation
