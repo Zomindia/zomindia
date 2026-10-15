@@ -11,36 +11,28 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli
-
-      - name: Configure Bubblewrap Environment
+      - name: Build Pure Android APK (Zero Bubblewrap)
         run: |
-          mkdir -p ~/.bubblewrap
-          cat << EOF > ~/.bubblewrap/config.json
-          {
-            "jdkPath": "$JAVA_HOME",
-            "androidSdkPath": "$ANDROID_HOME"
-          }
-          EOF
-
-      - name: Prepare Partner Project & Keystore
-        run: |
-          mkdir -p partner-android
+          # 1. Android Directory Structure
+          mkdir -p partner-android/app/src/main/res/drawable
           cd partner-android
 
-          # Generate dedicated keystore for Partner APK
+          # 2. Setup Partner Icon
+          if [ -f "$GITHUB_WORKSPACE/public/partner-icon-512.png" ]; then
+            cp "$GITHUB_WORKSPACE/public/partner-icon-512.png" app/src/main/res/drawable/ic_launcher.png
+          elif [ -f "$GITHUB_WORKSPACE/public/pwa-512x512.png" ]; then
+            cp "$GITHUB_WORKSPACE/public/pwa-512x512.png" app/src/main/res/drawable/ic_launcher.png
+          else
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkWPjfDwAEeQHzfXkLqAAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/drawable/ic_launcher.png
+          fi
+
+          # 3. Create Production Keystore
           keytool -genkey -v -keystore partner-release.keystore \
             -alias partner \
             -keyalg RSA \
@@ -50,127 +42,128 @@ jobs:
             -keypass zomindia123 \
             -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
 
-          # Print SHA-256 fingerprint for AssetLinks
           echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
           echo "========================================"
 
-          # Prefer high-res partner icon if available in public, fallback to pwa icon or generate valid PNG
-          if [ -s "../public/partner-icon-512.png" ]; then
-            cp ../public/partner-icon-512.png icon-512.png
-          elif [ -s "../public/pwa-512x512.png" ]; then
-            cp ../public/pwa-512x512.png icon-512.png
-          elif [ -s "../public/icon-512.png" ]; then
-            cp ../public/icon-512.png icon-512.png
-          else
-            python3 -c "
-          import zlib, struct
-          raw = b''.join(b'\x00' + bytes([30, 64, 175, 255] * 512) for _ in range(512))
-          compressed = zlib.compress(raw)
-          def chunk(t, d):
-              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
-          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 512, 512, 8, 6, 0, 0, 0)) + chunk(b'IDAT', compressed) + chunk(b'IEND', b'')
-          with open('icon-512.png', 'wb') as f:
-              f.write(png)
-          "
-          fi
-
-          # Host icon locally for Bubblewrap fetch
-          python3 -m http.server 8085 &
-          SERVER_PID=$!
-          sleep 2
-
-          # Create TWA manifest pointing directly to /partner with explicit enableNotifications: false and splashScreenFadeOutDuration: 300
-          cat << 'EOF' > twa-manifest.json
-          {
-            "packageId": "com.zomindia.partner",
-            "host": "zomindia.com",
-            "name": "Zomindia Partner",
-            "launcherName": "Partner",
-            "themeColor": "#1E40AF",
-            "navigationColor": "#000000",
-            "backgroundColor": "#FFFFFF",
-            "startUrl": "/partner",
-            "iconUrl": "http://localhost:8085/icon-512.png",
-            "maskableIconUrl": "http://localhost:8085/icon-512.png",
-            "appVersionName": "1.0.0",
-            "appVersionCode": 1,
-            "shortcuts": [],
-            "generatorApp": "bubblewrap-cli",
-            "webManifestUrl": "https://zomindia.com/manifest.json",
-            "fallbackType": "customtabs",
-            "features": {
-              "locationDelegation": {
-                "enabled": true
+          # 4. Create settings.gradle
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
               }
-            },
-            "splashScreenFadeOutDuration": 300,
-            "enableNotifications": false,
-            "alphaDependencies": {
-              "enabled": false
-            },
-            "enableSiteSettingsShortcut": true,
-            "isChromeOSOnly": false,
-            "isMetaQuest": false,
-            "signingKey": {
-              "path": "./partner-release.keystore",
-              "alias": "partner"
-            }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ZomindiaPartner"
+          include ':app'
+          EOF
+
+          # 5. Create Root build.gradle
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          # Set environment passwords for unattended CI build
-          export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
-          export BUBBLEWRAP_KEY_PASSWORD=zomindia123
+          # 6. Create app/build.gradle (Pure Android Standard)
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
 
-          # Generate the Gradle project files from twa-manifest.json
-          bubblewrap update --skipVersionUpgrade
+          android {
+              namespace 'com.zomindia.partner'
+              compileSdk 34
 
-          # Clean up local icon server
-          kill $SERVER_PID || true
+              defaultConfig {
+                  applicationId "com.zomindia.partner"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0.0"
+              }
 
-          # Universal regex cleaner: delete ANY dangling unassigned property generated by Bubblewrap
-          if [ -f "app/build.gradle" ]; then
-            sed -i '/:[[:space:]]*,/d' app/build.gradle
-            sed -i '/:[[:space:]]*$/d' app/build.gradle
-          fi
+              signingConfigs {
+                  release {
+                      storeFile file("../partner-release.keystore")
+                      storePassword "zomindia123"
+                      keyAlias "partner"
+                      keyPassword "zomindia123"
+                  }
+              }
 
-          # Build release APK via Gradle wrapper
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+
+          dependencies {
+              implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+          }
+          EOF
+
+          # 7. Create AndroidManifest.xml (TWA Launching directly to /partner)
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="Zomindia Partner"
+                  android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+                  <activity
+                      android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+                      android:exported="true">
+                      <meta-data
+                          android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                          android:value="https://zomindia.com/partner" />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.VIEW" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.BROWSABLE" />
+                          <data
+                              android:scheme="https"
+                              android:host="zomindia.com"
+                              android:pathPrefix="/partner" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # 8. Initialize clean Gradle Wrapper and Assemble Release APK
+          gradle wrapper --gradle-version 8.5
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
 
-          # Find unsigned/release APK and sign with apksigner or jarsigner
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          if [ -z "$RELEASE_APK" ]; then
-            RELEASE_APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
-          fi
-
-          echo "Found release apk at: $RELEASE_APK"
-          cp "$RELEASE_APK" app-release-signed.apk
-
-          # Locate apksigner in Android SDK build-tools
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
-          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
-            echo "Signing with apksigner: $APKSIGNER"
-            "$APKSIGNER" sign --ks partner-release.keystore \
-              --ks-key-alias partner \
-              --ks-pass pass:zomindia123 \
-              --key-pass pass:zomindia123 \
-              --out app-release-signed.apk \
-              "$RELEASE_APK"
-            "$APKSIGNER" verify app-release-signed.apk
-          else
-            echo "apksigner not found; falling back to jarsigner..."
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-              -keystore partner-release.keystore \
-              -storepass zomindia123 \
-              -keypass zomindia123 \
-              app-release-signed.apk \
-              partner
-            jarsigner -verify app-release-signed.apk
-          fi
-
-          echo "Partner APK successfully built and signed: app-release-signed.apk"
+          # Copy signed APK for artifact upload
+          cp app/build/outputs/apk/release/app-release.apk app-release-signed.apk
+          echo "BUILD SUCCESSFUL! Pure Signed APK Generated."
 
       - name: Upload Partner APK Artifact
         uses: actions/upload-artifact@v4
