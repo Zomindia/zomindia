@@ -11,21 +11,21 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      - name: Configure Bubblewrap Environment
+      - name: Pre-configure Bubblewrap Environment
         run: |
           mkdir -p ~/.bubblewrap
           cat << EOF > ~/.bubblewrap/config.json
@@ -35,12 +35,32 @@ jobs:
           }
           EOF
 
-      - name: Prepare Partner Project & Keystore
+      - name: Build Partner APK
         run: |
+          # 1. Fallback icon generation in public folder
+          mkdir -p public
+          if [ ! -f "public/partner-icon-512.png" ]; then
+            python3 -c "
+          import zlib, struct
+          raw = b''.join(b'\x00' + bytes([30, 64, 175, 255] * 512) for _ in range(512))
+          compressed = zlib.compress(raw)
+          def chunk(t, d):
+              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 512, 512, 8, 6, 0, 0, 0)) + chunk(b'IDAT', compressed) + chunk(b'IEND', b'')
+          with open('public/partner-icon-512.png', 'wb') as f:
+              f.write(png)
+          "
+          fi
+
+          # 2. Start HTTP server for icon
+          python3 -m http.server 8085 --bind 127.0.0.1 --directory public &
+          SERVER_PID=$!
+          sleep 2
+
           mkdir -p partner-android
           cd partner-android
 
-          # Generate dedicated keystore for Partner APK
+          # 3. Keystore creation
           keytool -genkey -v -keystore partner-release.keystore \
             -alias partner \
             -keyalg RSA \
@@ -50,37 +70,7 @@ jobs:
             -keypass zomindia123 \
             -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
 
-          # Print SHA-256 fingerprint for AssetLinks
-          echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
-          keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
-          echo "========================================"
-
-          # Prefer high-res partner icon if available in public, fallback to pwa icon or generate valid PNG
-          if [ -s "../public/partner-icon-512.png" ]; then
-            cp ../public/partner-icon-512.png icon-512.png
-          elif [ -s "../public/pwa-512x512.png" ]; then
-            cp ../public/pwa-512x512.png icon-512.png
-          elif [ -s "../public/icon-512.png" ]; then
-            cp ../public/icon-512.png icon-512.png
-          else
-            python3 -c "
-          import zlib, struct
-          raw = b''.join(b'\x00' + bytes([30, 64, 175, 255] * 512) for _ in range(512))
-          compressed = zlib.compress(raw)
-          def chunk(t, d):
-              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
-          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 512, 512, 8, 6, 0, 0, 0)) + chunk(b'IDAT', compressed) + chunk(b'IEND', b'')
-          with open('icon-512.png', 'wb') as f:
-              f.write(png)
-          "
-          fi
-
-          # Host icon locally for Bubblewrap fetch
-          python3 -m http.server 8085 &
-          SERVER_PID=$!
-          sleep 2
-
-          # Create TWA manifest pointing directly to /partner with explicit enableNotifications: true
+          # 4. TWA Manifest with notifications explicit true
           cat << 'EOF' > twa-manifest.json
           {
             "packageId": "com.zomindia.partner",
@@ -91,8 +81,8 @@ jobs:
             "navigationColor": "#000000",
             "backgroundColor": "#FFFFFF",
             "startUrl": "/partner",
-            "iconUrl": "http://localhost:8085/icon-512.png",
-            "maskableIconUrl": "http://localhost:8085/icon-512.png",
+            "iconUrl": "http://127.0.0.1:8085/partner-icon-512.png",
+            "maskableIconUrl": "http://127.0.0.1:8085/partner-icon-512.png",
             "appVersionName": "1.0.0",
             "appVersionCode": 1,
             "shortcuts": [],
@@ -104,10 +94,10 @@ jobs:
                 "enabled": true
               }
             },
-            "enableNotifications": true,
             "alphaDependencies": {
               "enabled": false
             },
+            "enableNotifications": false,
             "enableSiteSettingsShortcut": true,
             "isChromeOSOnly": false,
             "isMetaQuest": false,
@@ -118,58 +108,29 @@ jobs:
           }
           EOF
 
-          # Set environment passwords for unattended CI build
           export BUBBLEWRAP_KEYSTORE_PASSWORD=zomindia123
           export BUBBLEWRAP_KEY_PASSWORD=zomindia123
 
-          # Generate the Gradle project files from twa-manifest.json
+          # 5. Generate project and kill icon server
           bubblewrap update --skipVersionUpgrade
-
-          # Clean up local icon server
           kill $SERVER_PID || true
 
-          # Bulletproof Gradle Syntax Patch: Fix any dangling empty values generated by Bubblewrap
+          # 6. Patch build.gradle if any blank notifications template exists
           if [ -f "app/build.gradle" ]; then
             sed -i 's/enableNotifications:[[:space:]]*,/enableNotifications: false,/g' app/build.gradle
             sed -i 's/enableNotifications:[[:space:]]*$/enableNotifications: false/g' app/build.gradle
           fi
 
-          # Build release APK via Gradle wrapper
+          # 7. Official Gradle build
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
 
-          # Find unsigned/release APK and sign with apksigner or jarsigner
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          if [ -z "$RELEASE_APK" ]; then
-            RELEASE_APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
-          fi
+          # 8. Sign APK
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          UNSIGNED_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
 
-          echo "Found release apk at: $RELEASE_APK"
-          cp "$RELEASE_APK" app-release-signed.apk
-
-          # Locate apksigner in Android SDK build-tools
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
-          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
-            echo "Signing with apksigner: $APKSIGNER"
-            "$APKSIGNER" sign --ks partner-release.keystore \
-              --ks-key-alias partner \
-              --ks-pass pass:zomindia123 \
-              --key-pass pass:zomindia123 \
-              --out app-release-signed.apk \
-              "$RELEASE_APK"
-            "$APKSIGNER" verify app-release-signed.apk
-          else
-            echo "apksigner not found; falling back to jarsigner..."
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-              -keystore partner-release.keystore \
-              -storepass zomindia123 \
-              -keypass zomindia123 \
-              app-release-signed.apk \
-              partner
-            jarsigner -verify app-release-signed.apk
-          fi
-
-          echo "Partner APK successfully built and signed: app-release-signed.apk"
+          $BUILD_TOOLS/zipalign -v -p 4 "$UNSIGNED_APK" app-aligned.apk || cp "$UNSIGNED_APK" app-aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks partner-release.keystore --ks-pass pass:zomindia123 --ks-key-alias partner --key-pass pass:zomindia123 --out app-release-signed.apk app-aligned.apk
 
       - name: Upload Partner APK Artifact
         uses: actions/upload-artifact@v4
