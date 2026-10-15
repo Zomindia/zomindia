@@ -613,8 +613,11 @@ export default function AdminDashboard({
             reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
             isVerified: isVerifiedUser,
             status: pData.status || (isVerifiedUser ? "active" : "pending"),
-            availabilityStatus: pData.availabilityStatus || (pData.isAvailable === true ? "Available" : "Offline"),
-            isAvailable: pData.isAvailable !== undefined ? pData.isAvailable : (pData.availabilityStatus === "Available"),
+            availabilityStatus: (u.isOnline === false || u.dutyStatus === 'offline' || pData.isOnline === false || pData.dutyStatus === 'offline' || pData.availabilityStatus === 'Offline' || u.availabilityStatus === 'Offline') ? "Offline" : "Available",
+            isAvailable: !(u.isOnline === false || u.dutyStatus === 'offline' || pData.isOnline === false || pData.dutyStatus === 'offline' || pData.availabilityStatus === 'Offline' || u.availabilityStatus === 'Offline'),
+            isOnline: !(u.isOnline === false || u.dutyStatus === 'offline' || pData.isOnline === false || pData.dutyStatus === 'offline' || pData.availabilityStatus === 'Offline' || u.availabilityStatus === 'Offline'),
+            dutyStatus: (u.isOnline === false || u.dutyStatus === 'offline' || pData.isOnline === false || pData.dutyStatus === 'offline' || pData.availabilityStatus === 'Offline' || u.availabilityStatus === 'Offline') ? "offline" : "online",
+            lastActive: u.lastActive || pData.lastActive || null,
             kycStatus: finalKycStatus,
             lat: u.lat !== undefined ? u.lat : (pData.lat !== undefined ? pData.lat : 22.7196),
             lng: u.lng !== undefined ? u.lng : (pData.lng !== undefined ? pData.lng : 75.8577),
@@ -659,8 +662,11 @@ export default function AdminDashboard({
           reviewCount: p.reviewCount !== undefined ? p.reviewCount : (existing.reviewCount || 0),
           isVerified: isApproved || existing.isVerified || false,
           status: p.status || existing.status || (isApproved ? "active" : "pending"),
-          availabilityStatus: p.availabilityStatus || existing.availabilityStatus || "Available",
-          isAvailable: p.isAvailable !== undefined ? p.isAvailable : true,
+          availabilityStatus: (p.isOnline === false || p.dutyStatus === 'offline' || p.availabilityStatus === 'Offline' || existing.isOnline === false) ? "Offline" : "Available",
+          isAvailable: !(p.isOnline === false || p.dutyStatus === 'offline' || p.availabilityStatus === 'Offline' || existing.isOnline === false),
+          isOnline: !(p.isOnline === false || p.dutyStatus === 'offline' || p.availabilityStatus === 'Offline' || existing.isOnline === false),
+          dutyStatus: (p.isOnline === false || p.dutyStatus === 'offline' || p.availabilityStatus === 'Offline' || existing.isOnline === false) ? "offline" : "online",
+          lastActive: p.lastActive || existing.lastActive || null,
           kycStatus: finalKycStatus,
           lat: p.lat !== undefined ? p.lat : (existing.lat !== undefined ? existing.lat : 22.7196),
           lng: p.lng !== undefined ? p.lng : (existing.lng !== undefined ? existing.lng : 75.8577),
@@ -2811,8 +2817,8 @@ function BookingManager({
       if (aMatch && !bMatch) return -1;
       if (!aMatch && bMatch) return 1;
 
-      const aOnline = a.availabilityStatus === "Available";
-      const bOnline = b.availabilityStatus === "Available";
+      const aOnline = a.isOnline === true || a.dutyStatus === "online" || a.availabilityStatus === "Available" || a.isAvailable === true;
+      const bOnline = b.isOnline === true || b.dutyStatus === "online" || b.availabilityStatus === "Available" || b.isAvailable === true;
       if (aOnline && !bOnline) return -1;
       if (!aOnline && bOnline) return 1;
       return 0;
@@ -2821,16 +2827,10 @@ function BookingManager({
 
   // Sort partners to show 'Available' ones first for fallback references
   const sortedPartners = [...partners].sort((a, b) => {
-    if (
-      a.availabilityStatus === "Available" &&
-      b.availabilityStatus !== "Available"
-    )
-      return -1;
-    if (
-      a.availabilityStatus !== "Available" &&
-      b.availabilityStatus === "Available"
-    )
-      return 1;
+    const aOnline = a.isOnline === true || a.dutyStatus === "online" || a.availabilityStatus === "Available" || a.isAvailable === true;
+    const bOnline = b.isOnline === true || b.dutyStatus === "online" || b.availabilityStatus === "Available" || b.isAvailable === true;
+    if (aOnline && !bOnline) return -1;
+    if (!aOnline && bOnline) return 1;
     return 0;
   });
 
@@ -3335,7 +3335,7 @@ function BookingManager({
                   >
                     <option value="">No Agent Assigned</option>
                     {sortedAllocationPartners.map((p) => {
-                      const isOnline = p.availabilityStatus === "Available";
+                      const isOnline = p.isOnline === true || p.dutyStatus === "online" || p.availabilityStatus === "Available" || p.isAvailable === true;
                       const onlineLabel = isOnline ? "Online" : "Offline";
                       const u = users.find((user) => user.uid === p.userId);
                       

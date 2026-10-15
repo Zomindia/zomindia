@@ -97,10 +97,19 @@ export interface UserProfile {
     averageRating?: number;
     reviewCount?: number;
     totalReviews?: number;
-    totalRatingPoints?: number;
     isVerified?: boolean;
     kycStatus?: string;
+    isOnline?: boolean;
+    isAvailable?: boolean;
+    dutyStatus?: 'online' | 'offline';
+    availabilityStatus?: 'Available' | 'Busy' | 'Offline';
+    lastActive?: any;
   };
+  isOnline?: boolean;
+  isAvailable?: boolean;
+  dutyStatus?: 'online' | 'offline';
+  availabilityStatus?: 'Available' | 'Busy' | 'Offline';
+  lastActive?: any;
 }
 
 export interface Category {
@@ -196,6 +205,10 @@ export interface PartnerProfile {
   isVerified: boolean;
   status: 'active' | 'inactive' | 'pending';
   availabilityStatus?: 'Available' | 'Busy' | 'Offline';
+  isOnline?: boolean;
+  isAvailable?: boolean;
+  dutyStatus?: 'online' | 'offline';
+  lastActive?: any;
   statusReason?: string;
   kycStatus?: 'not_submitted' | 'pending' | 'pending_review' | 'verified' | 'rejected' | 'approved';
   kycRejectReason?: string;

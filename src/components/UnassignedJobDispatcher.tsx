@@ -126,7 +126,7 @@ export default function UnassignedJobDispatcher({
   }, [bookings]);
 
   const onlinePartnersCount = useMemo(() => {
-    return partners.filter(p => p.availabilityStatus === 'Available' || p.status === 'active').length;
+    return partners.filter(p => p.isOnline === true || p.dutyStatus === 'online' || p.availabilityStatus === 'Available' || p.isAvailable === true).length;
   }, [partners]);
 
   // Filter bookings based on selected status & search query
@@ -232,7 +232,8 @@ export default function UnassignedJobDispatcher({
 
       if (!isApprovedPartner) return false;
 
-      if (partnerStatusFilter === 'available' && p.availabilityStatus !== 'Available') return false;
+      const isPartnerOnline = p.isOnline === true || p.dutyStatus === 'online' || p.availabilityStatus === 'Available' || p.isAvailable === true;
+      if (partnerStatusFilter === 'available' && !isPartnerOnline) return false;
       if (partnerStatusFilter === 'indore') {
         const cityStr = String(p.city || userDoc?.city || '').toLowerCase();
         if (!cityStr.includes('indore') && cityStr !== '') return false;
@@ -254,9 +255,9 @@ export default function UnassignedJobDispatcher({
       const bMatch = targetCatId && b.categories?.includes(targetCatId) ? 1 : 0;
       if (aMatch !== bMatch) return bMatch - aMatch;
 
-      // 2. Available status match
-      const aAvail = a.availabilityStatus === 'Available' ? 1 : 0;
-      const bAvail = b.availabilityStatus === 'Available' ? 1 : 0;
+      // 2. Available/Online status match
+      const aAvail = (a.isOnline === true || a.dutyStatus === 'online' || a.availabilityStatus === 'Available' || a.isAvailable === true) ? 1 : 0;
+      const bAvail = (b.isOnline === true || b.dutyStatus === 'online' || b.availabilityStatus === 'Available' || b.isAvailable === true) ? 1 : 0;
       if (aAvail !== bAvail) return bAvail - aAvail;
 
       // 3. Proximity distance (closest technician to customer doorstep first)
@@ -761,7 +762,7 @@ export default function UnassignedJobDispatcher({
                           </div>
                           <span 
                             className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                              partner.availabilityStatus === 'Available' ? 'bg-emerald-500' : 'bg-slate-400'
+                              (partner.isOnline === true || partner.dutyStatus === 'online' || partner.availabilityStatus === 'Available' || partner.isAvailable === true) ? 'bg-emerald-500' : 'bg-slate-400'
                             }`} 
                           />
                         </div>

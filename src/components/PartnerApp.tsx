@@ -26,7 +26,7 @@ import UnifiedKYCForm from './partner/UnifiedKYCForm';
 import PartnerNotificationDrawer from './partner/PartnerNotificationDrawer';
 import { LoadingScreen } from './LoadingIndicator';
 import { LogoHorizontal, LogoIcon } from './BrandLogo';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
 
@@ -200,10 +200,16 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   useEffect(() => {
     if (!profile?.uid) return;
 
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', profile.uid)
-    );
+    const candidateIds = Array.from(new Set([
+      profile.uid,
+      partner?.id,
+      partner?.userId,
+      (profile as any)?.partnerId
+    ].filter((id): id is string => Boolean(id))));
+
+    const q = candidateIds.length > 1
+      ? query(collection(db, 'notifications'), where('userId', 'in', candidateIds.slice(0, 10)))
+      : query(collection(db, 'notifications'), where('userId', '==', profile.uid));
 
     const unsub = onSnapshot(
       q,
@@ -217,7 +223,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     );
 
     return () => unsub();
-  }, [profile?.uid]);
+  }, [profile?.uid, partner?.id, partner?.userId, (profile as any)?.partnerId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -457,31 +463,52 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   }, [partner, application]);
 
   const updateStatus = async (status: 'Available' | 'Busy' | 'Offline') => {
-    if (!partner) return;
+    const isOnlineNow = status === 'Available';
+    const dutyStatusVal: 'online' | 'offline' = isOnlineNow ? 'online' : 'offline';
+    const activeUid = auth.currentUser?.uid || profile.uid;
+    const targetPartnerId = partner?.id || profile.partnerId || activeUid;
+
+    const payload = {
+      availabilityStatus: status,
+      isAvailable: isOnlineNow,
+      isOnline: isOnlineNow,
+      dutyStatus: dutyStatusVal,
+      lastActive: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+
     try {
-      // 1. Update partners collection
-      await updateDoc(doc(db, 'partners', partner.id), {
-        availabilityStatus: status,
-        isAvailable: status === 'Available',
-        updatedAt: Timestamp.now()
-      });
+      // 1. Update partners collection with setDoc merge: true
+      if (targetPartnerId) {
+        await setDoc(doc(db, 'partners', targetPartnerId), payload, { merge: true });
+      }
 
       // 2. Also update users collection so user profile snapshots do not overwrite status
-      const activeUid = auth.currentUser?.uid || profile.uid;
       if (activeUid) {
         await updateDoc(doc(db, 'users', activeUid), {
-          availabilityStatus: status,
-          isAvailable: status === 'Available',
+          ...payload,
           "partnerData.availabilityStatus": status,
-          "partnerData.isAvailable": status === 'Available',
-          updatedAt: Timestamp.now()
+          "partnerData.isAvailable": isOnlineNow,
+          "partnerData.isOnline": isOnlineNow,
+          "partnerData.dutyStatus": dutyStatusVal,
+          "partnerData.lastActive": Timestamp.now(),
         }).catch(console.error);
       }
 
       // Optimistically update local state immediately
-      setPartner(prev => prev ? { ...prev, availabilityStatus: status, isAvailable: status === 'Available' } : prev);
+      setPartner(prev => prev ? { 
+        ...prev, 
+        availabilityStatus: status, 
+        isAvailable: isOnlineNow,
+        isOnline: isOnlineNow,
+        dutyStatus: dutyStatusVal,
+        lastActive: new Date()
+      } : prev);
 
-      setToastMessage(`Status updated to "${status}" successfully.`);
+      const toast = isOnlineNow 
+        ? "Duty turned ON. You are now ONLINE to accept incoming leads." 
+        : "Duty turned OFF. You are now OFFLINE.";
+      setToastMessage(toast);
       setShowToast(true);
       setShowStatusModal(false);
       setTimeout(() => setShowToast(false), 3000);
@@ -777,35 +804,6 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                 <img src={LogoIcon} referrerPolicy="no-referrer" alt="ZomIndia Partner Logo" className="w-full h-full object-contain rounded-full bg-slate-950 p-1" />
               )}
            </button>
-           <button 
-             onClick={() => {
-               if (approvalStatus === 'pending') {
-                 window.dispatchEvent(new CustomEvent('show-partner-toast', { 
-                   detail: { message: 'Action locked. Waiting for Admin approval.' } 
-                 }));
-                 return;
-               }
-               setShowStatusModal(true);
-             }}
-             className={`px-2 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border transition-all shrink-0 ${
-               partner?.availabilityStatus === 'Available' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-               partner?.availabilityStatus === 'Busy' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-               'bg-slate-100 text-slate-500 border-slate-200'
-             }`}
-           >
-             {partner?.availabilityStatus === 'Available' && isTrackingActive ? (
-               <span className="relative flex h-1.5 w-1.5 shrink-0">
-                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-               </span>
-             ) : (
-               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                 partner?.availabilityStatus === 'Available' ? 'bg-emerald-500 animate-pulse' :
-                 partner?.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-400'
-               }`} />
-             )}
-             {partner?.availabilityStatus || 'Offline'}
-           </button>
         </div>
       </header>
 
@@ -1027,6 +1025,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         isOpen={showNotificationDrawer}
         onClose={() => setShowNotificationDrawer(false)}
         profile={profile}
+        partner={partner}
         onSelectJob={(bId) => {
           setShowNotificationDrawer(false);
           navigateWithTarget('jobs', bId);

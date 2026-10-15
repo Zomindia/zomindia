@@ -25,7 +25,7 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { UserProfile, NotificationItem as Notification } from '../../types';
+import { UserProfile, PartnerProfile, NotificationItem as Notification } from '../../types';
 import { formatNotificationTime } from '../../utils/formatTime';
 
 interface Props {
@@ -33,13 +33,15 @@ interface Props {
   onClose: () => void;
   profile: UserProfile;
   onSelectJob?: (bookingId: string) => void;
+  partner?: PartnerProfile | null;
 }
 
 export default function PartnerNotificationDrawer({ 
   isOpen, 
   onClose, 
   profile, 
-  onSelectJob 
+  onSelectJob,
+  partner
 }: Props) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,10 +51,16 @@ export default function PartnerNotificationDrawer({
   useEffect(() => {
     if (!profile?.uid) return;
 
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', profile.uid)
-    );
+    const candidateIds = Array.from(new Set([
+      profile.uid,
+      partner?.id,
+      partner?.userId,
+      (profile as any)?.partnerId
+    ].filter((id): id is string => Boolean(id))));
+
+    const q = candidateIds.length > 1
+      ? query(collection(db, 'notifications'), where('userId', 'in', candidateIds.slice(0, 10)))
+      : query(collection(db, 'notifications'), where('userId', '==', profile.uid));
 
     const unsub = onSnapshot(
       q,

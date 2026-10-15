@@ -22,13 +22,12 @@ import {
   Radio,
   CheckCircle2,
   Power,
-  Bell,
   Navigation
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
 import { formatTime12Hour } from '../../utils/formatTime';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 interface Props {
@@ -42,8 +41,6 @@ interface Props {
   onUpdateStatus?: (status: 'Available' | 'Busy' | 'Offline') => void;
   onOpenStatusModal?: () => void;
   isTrackingActive?: boolean;
-  unreadNotifCount?: number;
-  onOpenNotifications?: () => void;
 }
 
 export default function PartnerHome({ 
@@ -56,9 +53,7 @@ export default function PartnerHome({
   application,
   onUpdateStatus,
   onOpenStatusModal,
-  isTrackingActive,
-  unreadNotifCount = 0,
-  onOpenNotifications
+  isTrackingActive
 }: Props) {
   const [showPendingPopup, setShowPendingPopup] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
@@ -255,16 +250,73 @@ export default function PartnerHome({
     ];
   }, [weeklyEarnings, calculatedTotalEarnings]);
 
-  const isOnline = partner?.availabilityStatus === 'Available';
+  const isOnline = Boolean(
+    partner?.availabilityStatus === 'Available' || 
+    partner?.isAvailable === true || 
+    (partner as any)?.isOnline === true || 
+    (partner as any)?.dutyStatus === 'online'
+  );
 
-  const handleToggleDuty = () => {
-    if (onUpdateStatus) {
-      const nextStatus = isOnline ? 'Offline' : 'Available';
-      onUpdateStatus(nextStatus);
-    } else if (onOpenStatusModal) {
-      onOpenStatusModal();
+  const [isTogglingDuty, setIsTogglingDuty] = useState(false);
+
+  const handleToggleDuty = async () => {
+    if (isTogglingDuty) return;
+    setIsTogglingDuty(true);
+    const nextStatus = isOnline ? 'Offline' : 'Available';
+    const isOnlineNow = nextStatus === 'Available';
+    const dutyStatusVal: 'online' | 'offline' = isOnlineNow ? 'online' : 'offline';
+
+    try {
+      if (onUpdateStatus) {
+        await onUpdateStatus(nextStatus);
+      } else {
+        const activeUid = profile.uid;
+        const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
+        const payload = {
+          availabilityStatus: nextStatus,
+          isAvailable: isOnlineNow,
+          isOnline: isOnlineNow,
+          dutyStatus: dutyStatusVal,
+          lastActive: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        };
+        if (targetPartnerId) {
+          await setDoc(doc(db, 'partners', targetPartnerId), payload, { merge: true });
+        }
+        if (activeUid) {
+          await updateDoc(doc(db, 'users', activeUid), {
+            ...payload,
+            "partnerData.availabilityStatus": nextStatus,
+            "partnerData.isAvailable": isOnlineNow,
+            "partnerData.isOnline": isOnlineNow,
+            "partnerData.dutyStatus": dutyStatusVal,
+            "partnerData.lastActive": Timestamp.now(),
+          }).catch(console.error);
+        }
+      }
+    } catch (err) {
+      console.error("Error toggling partner duty:", err);
+    } finally {
+      setIsTogglingDuty(false);
     }
   };
+
+  // Active leads count (pending acceptance, assigned, and in-progress jobs for this partner)
+  const candidateIds = useMemo(() => [
+    profile.uid,
+    partner?.id,
+    partner?.userId,
+    (profile as any)?.partnerId
+  ].filter((id): id is string => Boolean(id && typeof id === 'string')), [profile.uid, partner?.id, partner?.userId, (profile as any)?.partnerId]);
+
+  const activeLeadsCount = useMemo(() => {
+    return bookings.filter(b => {
+      const isAssigned = (b.partnerId && candidateIds.includes(b.partnerId)) ||
+                         ((b as any).assignedPartnerId && candidateIds.includes((b as any).assignedPartnerId));
+      const s = b.status?.toLowerCase();
+      return isAssigned && ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts', 'pending_acceptance'].includes(s);
+    }).length;
+  }, [bookings, candidateIds]);
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -369,15 +421,23 @@ export default function PartnerHome({
               {/* Large, Clear Duty Status Switch */}
               <button
                 onClick={handleToggleDuty}
-                title={isOnline ? "Switch to Offline" : "Switch to Online"}
+                disabled={isTogglingDuty}
+                title={isOnline ? "Switch to Offline / Duty Off" : "Switch to Online / Duty On"}
                 className={`px-3.5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 border transition-all active:scale-95 cursor-pointer shadow-xs ${
                   isOnline
-                    ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
-                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                }`}
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 ring-2 ring-emerald-500/20 shadow-emerald-500/20'
+                    : 'bg-slate-800 hover:bg-slate-900 text-slate-200 border-slate-700 shadow-slate-900/20'
+                } disabled:opacity-60`}
               >
-                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
-                <span>{isOnline ? '● Online / Duty On' : '○ Offline'}</span>
+                {isOnline ? (
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                  </span>
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                )}
+                <span>{isOnline ? '● ONLINE / DUTY ON' : '○ OFFLINE / DUTY OFF'}</span>
               </button>
 
               {/* Wallet Balance Pill */}
@@ -388,27 +448,6 @@ export default function PartnerHome({
               >
                 <Wallet size={13} className="text-amber-600" />
                 <span>₹{(profile?.walletBalance || 0).toLocaleString()}</span>
-              </button>
-
-              {/* Compact Notification Bell with Badge */}
-              <button
-                onClick={() => {
-                  if (onOpenNotifications) {
-                    onOpenNotifications();
-                  } else {
-                    onNavigate('notifications');
-                  }
-                }}
-                className="relative p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-2xl border border-slate-200/80 transition-all active:scale-95 cursor-pointer"
-                aria-label="Partner Notifications"
-                title="Notifications"
-              >
-                <Bell size={16} />
-                {unreadNotifCount > 0 && (
-                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-rose-500 text-white text-[8px] font-black rounded-full border-2 border-white min-w-[16px] text-center shadow-xs">
-                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                  </span>
-                )}
               </button>
             </div>
           </section>
@@ -437,22 +476,27 @@ export default function PartnerHome({
               <span className="text-[9px] text-slate-400 font-bold block mt-0.5">Completed Today</span>
             </div>
 
-            <div className={`border rounded-2xl p-3.5 sm:p-4 shadow-xs ${
-              isOnline ? 'bg-emerald-50/60 border-emerald-200/80' : 'bg-slate-50 border-slate-200/80'
-            }`}>
-              <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                <Power size={12} className={isOnline ? 'text-emerald-600' : 'text-slate-400'} />
-                <span className="text-[9px] font-black uppercase tracking-wider">Duty Status</span>
+            {/* 3rd Card: ACTIVE LEADS with quick link to Work Queue */}
+            <button
+              onClick={() => onNavigate('jobs')}
+              className="bg-white hover:bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-xs text-left transition-all active:scale-95 group cursor-pointer flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Briefcase size={12} className="text-indigo-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">Active Leads</span>
+                  </div>
+                  <ChevronRight size={12} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
+                  {activeLeadsCount > 0 ? `${activeLeadsCount} Active` : '0 Pending'}
+                </p>
               </div>
-              <p className={`text-xs sm:text-sm font-black uppercase tracking-wider ${
-                isOnline ? 'text-emerald-700' : 'text-slate-600'
-              }`}>
-                {isOnline ? '● Online (Active)' : '○ Offline'}
-              </p>
-              <span className="text-[9px] text-slate-400 font-bold block mt-0.5 truncate">
-                {isOnline ? 'Receiving Leads' : 'Turn Duty ON'}
+              <span className="text-[9px] text-indigo-600 font-bold block mt-0.5 group-hover:underline">
+                View Work Queue →
               </span>
-            </div>
+            </button>
           </section>
 
           {/* 3. Urban Company Earnings Transparency Hero Card */}
