@@ -17,13 +17,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build Pure Android APK (Zero Bubblewrap)
+      - name: Build Pure Android APK
         run: |
-          # 1. Android Directory Structure
           mkdir -p partner-android/app/src/main/res/drawable
           cd partner-android
 
-          # 2. Setup Partner Icon
+          # 1. Partner App Icon
           if [ -f "$GITHUB_WORKSPACE/public/partner-icon-512.png" ]; then
             cp "$GITHUB_WORKSPACE/public/partner-icon-512.png" app/src/main/res/drawable/ic_launcher.png
           elif [ -f "$GITHUB_WORKSPACE/public/pwa-512x512.png" ]; then
@@ -32,7 +31,7 @@ jobs:
             echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkWPjfDwAEeQHzfXkLqAAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/drawable/ic_launcher.png
           fi
 
-          # 3. Create Production Keystore
+          # 2. Release Keystore Generation
           keytool -genkey -v -keystore partner-release.keystore \
             -alias partner \
             -keyalg RSA \
@@ -45,6 +44,13 @@ jobs:
           echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
           echo "========================================"
+
+          # 3. Create gradle.properties (Fixes AndroidX requirement)
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
 
           # 4. Create settings.gradle
           cat << 'EOF' > settings.gradle
@@ -73,7 +79,7 @@ jobs:
           }
           EOF
 
-          # 6. Create app/build.gradle (Pure Android Standard)
+          # 6. Create app/build.gradle
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -114,11 +120,12 @@ jobs:
           }
 
           dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
               implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
           }
           EOF
 
-          # 7. Create AndroidManifest.xml (TWA Launching directly to /partner)
+          # 7. Create AndroidManifest.xml (Loads https://zomindia.com/partner)
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -156,14 +163,14 @@ jobs:
           </manifest>
           EOF
 
-          # 8. Initialize clean Gradle Wrapper and Assemble Release APK
+          # 8. Gradle Wrapper & Assemble Release
           gradle wrapper --gradle-version 8.5
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
 
-          # Copy signed APK for artifact upload
+          # Copy ready-to-use signed APK
           cp app/build/outputs/apk/release/app-release.apk app-release-signed.apk
-          echo "BUILD SUCCESSFUL! Pure Signed APK Generated."
+          echo "APK BUILD SUCCESSFUL"
 
       - name: Upload Partner APK Artifact
         uses: actions/upload-artifact@v4
