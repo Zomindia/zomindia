@@ -21,7 +21,9 @@ import {
   Trophy,
   Sparkles,
   Mic,
-  MicOff
+  MicOff,
+  Clock,
+  MessageCircle
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource as CapCameraSource } from '@capacitor/camera';
 import { PartnerProfile, Booking, UserProfile, Service } from '../../types';
@@ -620,6 +622,34 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     window.open(`tel:${cleanNumber}`, '_self');
   };
 
+  const handleWhatsAppClient = (booking: Booking) => {
+    const customer = customers[booking.customerUid];
+    const customerPhone = 
+      (booking as any).customerPhone ||
+      (booking as any).phone ||
+      (booking as any).customerMobile ||
+      (booking as any).customerBookedPhone ||
+      customer?.phoneNumber ||
+      customer?.mobile;
+
+    let cleanNum = customerPhone ? String(customerPhone).replace(/[^0-9]/g, '') : '';
+    if (cleanNum.length === 10) {
+      cleanNum = `91${cleanNum}`;
+    } else if (cleanNum.length === 11 && cleanNum.startsWith('0')) {
+      cleanNum = `91${cleanNum.slice(1)}`;
+    } else if (!cleanNum || cleanNum.length < 10) {
+      cleanNum = '919630234563'; // Zomindia Central Dispatcher Fallback
+    }
+
+    const partnerName = partner?.name || partner?.fullName || profile?.displayName || 'Vikas';
+    const serviceName = services[booking.serviceId]?.name || (booking as any)?.serviceName || 'service';
+    const shortBookingId = (booking.id || '').slice(0, 8).toUpperCase();
+
+    const text = `Hello, I am ${partnerName} from Zomindia regarding your scheduled ${serviceName} (Booking ID: #${shortBookingId}).`;
+    const url = `https://wa.me/${cleanNum}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleAnswerCall = async (booking: Booking) => {
     try {
       await updateDoc(doc(db, 'bookings', booking.id), {
@@ -874,7 +904,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
   const [completionPhoto, setCompletionPhoto] = useState<string | null>(null);
   const [capturingCompletionPhoto, setCapturingCompletionPhoto] = useState(false);
-  const [chatHidden, setChatHidden] = useState(false);
   const [isAddressExpanded, setIsAddressExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSuccess, setRefreshSuccess] = useState<string | null>(null);
@@ -1466,7 +1495,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
         key={bookingId}
         onClick={() => {
           setSelectedBooking(booking);
-          setChatHidden(false);
         }}
         className="bg-white border border-slate-100 rounded-[32px] p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden group"
       >
@@ -1603,259 +1631,276 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[85dvh] overflow-y-auto flex flex-col relative"
+          className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[88dvh] flex flex-col relative overflow-hidden"
         >
-          {/* Header */}
-          <div className="bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between sticky top-0 z-10">
-            <div>
-              <h3 className="text-base font-black italic tracking-tighter">Job Details</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Booking #{bookingId.toUpperCase()}</p>
+          {/* 1. Clean Urban Company / Zomato Partner Header */}
+          <div className="bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between shrink-0">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black italic tracking-tight text-slate-900 truncate">Job Details</h3>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                  bookingStatus === 'completed' || bookingStatus === 'finalized' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  bookingStatus === 'in_progress' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                  bookingStatus === 'on_the_way' || bookingStatus === 'arrived' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-slate-100 text-slate-700 border border-slate-200'
+                }`}>
+                  {bookingStatus.replace('_', ' ')}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wider mt-0.5">Booking #{bookingId.toUpperCase()}</p>
             </div>
             <button 
-              onClick={() => {
-                setSelectedBooking(null);
-                setChatHidden(false);
-              }} 
-              className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
+              type="button"
+              onClick={() => setSelectedBooking(null)} 
+              className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors cursor-pointer shrink-0 ml-2"
+              title="Close Details"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
 
-          <div className="flex-1 p-5 space-y-6 pb-24 text-left">
-            {/* Quick Actions */}
-            {!isHistory && (
-              <div className="grid grid-cols-3 gap-3">
-                 <button 
-                   id="partner-booking-secure-call-btn-2"
-                   disabled={isCalling}
-                   onClick={() => handleInitiateCall(booking)}
-                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 hover:scale-[0.98] active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                 >
-                   <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-md">
-                     <Phone size={18} className="fill-emerald-200/30" />
-                   </div>
-                   <span className="text-[8px] font-black uppercase tracking-wider">{isCalling ? "Connecting..." : "Call"}</span>
-                 </button>
-                 <button 
-                   onClick={() => setActiveChat(booking)}
-                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 hover:scale-[0.98] transition-all"
-                 >
-                   <div className="w-10 h-10 bg-blue-700 text-white rounded-xl flex items-center justify-center shadow-md">
-                     <MessageSquare size={18} fill="currentColor" className="fill-blue-200/30" />
-                   </div>
-                   <span className="text-[8px] font-black uppercase tracking-wider">Message</span>
-                 </button>
-                 <button 
-                   onClick={() => {
-                     const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
-                     window.open(url, '_blank');
-                   }}
-                   className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-indigo-50 text-indigo-700 border border-indigo-100 hover:scale-[0.98] transition-all"
-                 >
-                   <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md">
-                     <Navigation size={18} />
-                   </div>
-                   <span className="text-[8px] font-black uppercase tracking-wider">Navigate</span>
-                 </button>
-              </div>
-            )}
-
-          {/* Drastically simplified compact details card */}
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3.5 text-left">
-            {/* Service Details */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white p-1 border border-slate-200 overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+          {/* 2. Scrollable Body */}
+          <div className="flex-1 p-5 space-y-4 overflow-y-auto text-left">
+            {/* Service & Category Header */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-white p-1 border border-slate-200 overflow-hidden shrink-0 shadow-xs flex items-center justify-center">
                 {service?.imageURL ? (
                   <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-lg" />
                 ) : (
-                  <Briefcase size={18} className="text-slate-400" />
+                  <Briefcase size={20} className="text-slate-400" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Service</p>
-                <h4 className="text-sm font-black text-slate-950 truncate leading-none uppercase tracking-tight">{service?.name || 'Service Order'}</h4>
-              </div>
-            </div>
-
-            <hr className="border-slate-200/65" />
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Customer Name</p>
-              <p className="text-sm font-bold text-slate-900 leading-none">
-                {['completed', 'finalized'].includes(bookingStatus) ? 'Access Masked' : (customer?.displayName || 'Client')}
-              </p>
-              {!['completed', 'finalized'].includes(bookingStatus) && (
-                <span className="text-[9px] font-bold text-emerald-600 block mt-1 select-none font-sans">
-                  🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber)}
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">
+                  {(service as any)?.category || service?.categoryId || 'Service Order'}
                 </span>
-              )}
-            </div>
-
-            <hr className="border-slate-200/65" />
-
-            {/* Payment details */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Payment Mode</p>
-                <span className="text-xs font-bold text-slate-950 uppercase tracking-tighter bg-white border border-slate-200 px-2 py-0.5 rounded-md inline-block font-sans">
-                  {booking.paymentMethod || 'cash'}
-                </span>
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Net Payout</p>
-                <p className="text-sm font-black text-emerald-600 leading-none mt-0.5 font-sans">₹{booking.totalPrice}</p>
-              </div>
-            </div>
-
-            <hr className="border-slate-200/65" />
-
-            {/* Address with collapse/expand */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Service Address</p>
-                {!['completed', 'finalized'].includes(bookingStatus) && (
-                  <button 
-                    onClick={() => {
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`;
-                      window.open(url, '_blank');
-                    }}
-                    className="text-[9px] font-black text-blue-700 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-100 font-sans"
-                  >
-                    Route
-                  </button>
-                )}
-              </div>
-              <div className="bg-white border border-slate-100 p-3 rounded-xl font-sans">
-                <p className="text-xs font-bold text-slate-600 leading-relaxed">
-                  {(() => {
-                    const isLongAddress = booking.address && booking.address.length > 50;
-                    const truncatedAddress = isLongAddress ? `${booking.address.slice(0, 50)}...` : booking.address;
-                    const displayAddress = ['completed', 'finalized'].includes(bookingStatus)
-                      ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}`
-                      : (isAddressExpanded ? booking.address : truncatedAddress);
-                    return (
-                      <>
-                        {displayAddress}
-                        {isLongAddress && !['completed', 'finalized'].includes(bookingStatus) && (
-                          <button
-                            onClick={() => setIsAddressExpanded(!isAddressExpanded)}
-                            className="text-blue-700 hover:text-blue-800 text-[9px] font-bold uppercase tracking-wider block mt-1 hover:underline cursor-pointer font-sans"
-                          >
-                            {isAddressExpanded ? 'Show Less' : 'Show More'}
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
+                <h4 className="text-sm font-black text-slate-950 truncate uppercase tracking-tight">
+                  {service?.name || (booking as any)?.serviceName || 'Service Booking'}
+                </h4>
+                <p className="text-[10px] font-mono text-slate-400 font-bold mt-0.5">
+                  ID: #{bookingId.slice(0, 8).toUpperCase()}
                 </p>
               </div>
             </div>
-          </div>
 
-          {/* Live Chat Section */}
-          <div className="space-y-4">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                   <MessageSquare size={18} className="text-blue-500" />
-                   <h5 className="text-sm font-black uppercase tracking-widest text-slate-900">Direct Message Client</h5>
+            {/* Key Specs Card: Customer, Area, Scheduled Slot, Net Payout */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+              {/* Customer & Area */}
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Customer & Area</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-extrabold text-slate-900 leading-tight">
+                    {['completed', 'finalized'].includes(bookingStatus) ? 'Customer (Masked)' : (customer?.displayName || 'Client')}
+                    <span className="text-xs font-bold text-slate-500 ml-1.5">• {getGeneralLocality(booking.address)}</span>
+                  </p>
                 </div>
-                {chatHidden ? (
-                   <button 
-                      onClick={() => setChatHidden(false)}
-                      className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
-                   >
-                      Show Chat
-                   </button>
-                ) : (
-                   <button 
-                      onClick={() => setChatHidden(true)}
-                      className="text-[10px] font-black text-rose-600 uppercase tracking-widest bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100"
-                   >
-                      Cancel
-                   </button>
+                {!['completed', 'finalized'].includes(bookingStatus) && (
+                  <span className="text-[10px] font-bold text-emerald-700 block mt-1 select-none font-sans">
+                    🔒 Protected: {getMaskedPhoneNumber(customer?.phoneNumber || (booking as any).customerPhone)}
+                  </span>
                 )}
-             </div>
-             {!chatHidden && (
-                <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden transition-all duration-300 animate-in fade-in">
-                   <ChatWindow 
-                     booking={booking}
-                     otherUser={customer || null}
-                     isEmbedded={true}
-                   />
-                </div>
-             )}
-          </div>
+              </div>
 
-          {/* Service Protocol */}
-          {booking.status === 'in_progress' && (
-             <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100">
-                <div className="flex justify-between items-center mb-6">
-                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Service Protocol</p>
-                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">Mandatory Checks</span>
+              <hr className="border-slate-200/70" />
+
+              {/* Scheduled Date & Time */}
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Scheduled Slot</p>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800 bg-white border border-slate-200/80 px-3 py-2 rounded-xl">
+                  <Clock size={14} className="text-blue-600 shrink-0" />
+                  <span>
+                    {booking.scheduledAt?.toDate?.()?.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) || 'Today'}
+                    {' at '}
+                    {formatTime12Hour(booking.scheduledAt) || (booking as any).scheduledTime || (booking as any).timeSlot || 'Standard Slot'}
+                  </span>
+                </div>
+              </div>
+
+              <hr className="border-slate-200/70" />
+
+              {/* Payment Mode & Net Payout (80% Take-Home) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white border border-slate-200/80 p-2.5 rounded-xl">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Payment Mode</p>
+                  <span className="text-xs font-black text-slate-900 uppercase">
+                    {booking.paymentMethod || 'Cash on Delivery'}
+                  </span>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200/80 p-2.5 rounded-xl">
+                  <p className="text-[9px] font-black text-emerald-800 uppercase tracking-widest mb-0.5">Net Payout (80%)</p>
+                  <p className="text-base font-black text-emerald-700 leading-tight">
+                    ₹{Math.max(0, Math.round(Number(booking.totalPrice ?? (booking as any).finalPrice ?? 500) * 0.80))}
+                    <span className="text-[9px] font-bold text-emerald-600 ml-1">/ ₹{booking.totalPrice || 500}</span>
+                  </p>
+                </div>
+              </div>
+
+              <hr className="border-slate-200/70" />
+
+              {/* Service Address & Navigation */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Service Address</p>
+                  {!['completed', 'finalized'].includes(bookingStatus) && (
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const url = booking.lat && booking.lng 
+                          ? `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`
+                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.address || 'Indore')}`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="text-[10px] font-black text-blue-700 hover:text-blue-800 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Navigation size={11} />
+                      <span>Route in Maps</span>
+                    </button>
+                  )}
+                </div>
+                <div className="bg-white border border-slate-200/80 p-3 rounded-xl">
+                  <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                    {(() => {
+                      const isLongAddress = booking.address && booking.address.length > 50;
+                      const truncatedAddress = isLongAddress ? `${booking.address.slice(0, 50)}...` : booking.address;
+                      const displayAddress = ['completed', 'finalized'].includes(bookingStatus)
+                        ? `Booking ID: ${booking.id.toUpperCase()} • Area: ${getGeneralLocality(booking.address)}`
+                        : (isAddressExpanded ? booking.address : truncatedAddress);
+                      return (
+                        <>
+                          {displayAddress || 'Address details provided upon dispatch'}
+                          {isLongAddress && !['completed', 'finalized'].includes(bookingStatus) && (
+                            <button
+                              type="button"
+                              onClick={() => setIsAddressExpanded(!isAddressExpanded)}
+                              className="text-blue-700 hover:text-blue-800 text-[10px] font-bold uppercase tracking-wider block mt-1 hover:underline cursor-pointer"
+                            >
+                              {isAddressExpanded ? 'Show Less' : 'Show More'}
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Clean 2-Button Client Contact Bar (Urban Company & Zomato Standard) */}
+            {!isHistory && (
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-4 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Client Communication</span>
+                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                    Instant Connect
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    disabled={isCalling}
+                    onClick={() => handleInitiateCall(booking)}
+                    className="py-3 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Phone size={15} className="shrink-0" />
+                    <span>{isCalling ? 'Calling...' : 'Call Client'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsAppClient(booking)}
+                    className="py-3 px-3 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-[#25D366]/25 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                      <path d="M12.031 2C6.496 2 2 6.496 2 12.031c0 1.77.463 3.498 1.341 5.023L2 22l5.097-1.336a9.984 9.984 0 0 0 4.934 1.367c5.535 0 10.031-4.496 10.031-10.031S17.566 2 12.031 2zm0 18.262a8.217 8.217 0 0 1-4.195-1.147l-.301-.179-3.118.818.832-3.04-.196-.312a8.212 8.212 0 0 1-1.253-4.371c0-4.542 3.69-8.231 8.231-8.231s8.231 3.689 8.231 8.231-3.689 8.231-8.231 8.231zm4.512-6.172c-.247-.124-1.463-.722-1.69-.805-.227-.082-.392-.124-.557.124-.165.247-.64 1.002-.784 1.167-.144.165-.288.185-.536.062-.247-.124-1.044-.385-1.988-1.227-.735-.656-1.232-1.466-1.376-1.713-.144-.247-.015-.381.109-.504.111-.111.247-.288.371-.433.124-.144.165-.247.247-.412.082-.165.041-.309-.021-.433-.062-.124-.557-1.34-.763-1.835-.2-.484-.403-.418-.557-.426-.144-.008-.309-.01-.474-.01-.165 0-.433.062-.66.309-.227.247-.866.845-.866 2.062 0 1.216.886 2.392 1.01 2.557.124.165 1.742 2.66 4.221 3.732.59.255 1.051.408 1.41.522.593.188 1.133.162 1.56.098.476-.071 1.463-.598 1.669-1.175.206-.577.206-1.072.144-1.175-.062-.103-.227-.165-.474-.288z" />
+                    </svg>
+                    <span>WhatsApp</span>
+                  </button>
+                </div>
+
+                {/* Optional In-App Support Chat Drawer Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setActiveChat(booking)}
+                  className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-blue-200/80 transition-all active:scale-95 cursor-pointer"
+                >
+                  <MessageSquare size={14} className="text-blue-600" />
+                  <span>Open In-App Support Chat</span>
+                </button>
+              </div>
+            )}
+
+            {/* 4. Service Protocol (Mandatory Checklist) */}
+            {booking.status === 'in_progress' && (
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Service Protocol</p>
+                  <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">Mandatory Checks</span>
                 </div>
                 
                 {(() => {
-                   const tasks = (services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']) || [];
-                   const completedCount = tasks.filter(t => booking.completedTasks?.includes(t || '')).length;
-                   const percent = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
-                   return (
-                     <div className="mb-6 bg-white p-4 rounded-3xl border border-slate-100 shadow-xs animate-in fade-in">
-                       <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-500 tracking-wider mb-2">
-                         <span>{completedCount} of {tasks.length} Tasks Checked</span>
-                         <span className="text-blue-700">{percent}%</span>
-                       </div>
-                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                         <div className="bg-gradient-to-r from-blue-600 to-blue-700 h-full transition-all duration-550 ease-out rounded-full" style={{ width: `${percent}%` }} />
-                       </div>
-                     </div>
-                   );
+                  const tasks = (services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']) || [];
+                  const completedCount = tasks.filter(t => booking.completedTasks?.includes(t || '')).length;
+                  const percent = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+                  return (
+                    <div className="mb-4 bg-white p-3.5 rounded-2xl border border-slate-100 shadow-xs">
+                      <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5">
+                        <span>{completedCount} of {tasks.length} Tasks Checked</span>
+                        <span className="text-blue-700">{percent}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 h-full transition-all duration-550 ease-out rounded-full" style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                  );
                 })()}
 
-                <div className="space-y-4">
-                   {(services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']).map((task, i) => {
-                     const isCompleted = booking.completedTasks?.includes(task || '');
-                     const checkboxId = `task-checkbox-${booking.id}-${i}`;
-                     return (
-                       <label 
-                         key={i} 
-                         htmlFor={checkboxId}
-                         className={`flex items-center gap-4 p-4 rounded-[24px] border transition-all duration-300 select-none cursor-pointer group ${isCompleted ? 'bg-blue-50/20 border-blue-100' : 'bg-white border-slate-100 hover:border-slate-200'}`}
-                       >
-                         <div className="relative flex items-center justify-center shrink-0">
-                           <input 
-                             type="checkbox"
-                             id={checkboxId}
-                             checked={isCompleted}
-                             onChange={() => {
-                               const isChecking = !isCompleted;
-                               const currentTasks = booking.completedTasks || [];
-                               const updatedTasks = isCompleted 
-                                 ? currentTasks.filter(t => t !== task)
-                                 : [...currentTasks, task];
-                               const allTasks = (services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']) || [];
-                               const percent = allTasks.length > 0 ? Math.round((updatedTasks.length / allTasks.length) * 100) : 0;
-                               handleBookingUpdate(booking.id, { 
-                                 completedTasks: updatedTasks,
-                                 progressPercentage: percent,
-                                 checklist: allTasks,
-                                 lastCompletedTask: isChecking ? task : (updatedTasks.length > 0 ? updatedTasks[updatedTasks.length - 1] : null),
-                                 taskActivity: isChecking ? `Step completed: ${task}` : null
-                                });
-                             }}
-                             className="w-5 h-5 rounded border-slate-300 text-blue-700 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer accent-blue-700 transition-all font-sans font-medium"
-                           />
-                         </div>
-                         <span className={`text-sm font-black transition-all duration-300 ${isCompleted ? 'text-slate-400 line-through decoration-slate-300 decoration-2' : 'text-slate-700'}`}>{task}</span>
-                       </label>
-                     );
-                   })}
+                <div className="space-y-2.5">
+                  {(services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']).map((task, i) => {
+                    const isCompleted = booking.completedTasks?.includes(task || '');
+                    const checkboxId = `task-checkbox-${booking.id}-${i}`;
+                    return (
+                      <label 
+                        key={i} 
+                        htmlFor={checkboxId}
+                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 select-none cursor-pointer group ${isCompleted ? 'bg-blue-50/30 border-blue-100' : 'bg-white border-slate-100 hover:border-slate-200'}`}
+                      >
+                        <div className="relative flex items-center justify-center shrink-0">
+                          <input 
+                            type="checkbox"
+                            id={checkboxId}
+                            checked={isCompleted}
+                            onChange={() => {
+                              const isChecking = !isCompleted;
+                              const currentTasks = booking.completedTasks || [];
+                              const updatedTasks = isCompleted 
+                                ? currentTasks.filter(t => t !== task)
+                                : [...currentTasks, task];
+                              const allTasks = (services[booking.serviceId]?.predefinedTasks?.length ? services[booking.serviceId].predefinedTasks : ['Inspect issue & prep tools', 'Perform requested service', 'Clean workspace', 'Final check with customer']) || [];
+                              const percent = allTasks.length > 0 ? Math.round((updatedTasks.length / allTasks.length) * 100) : 0;
+                              handleBookingUpdate(booking.id, { 
+                                completedTasks: updatedTasks,
+                                progressPercentage: percent,
+                                checklist: allTasks,
+                                lastCompletedTask: isChecking ? task : (updatedTasks.length > 0 ? updatedTasks[updatedTasks.length - 1] : null),
+                                taskActivity: isChecking ? `Step completed: ${task}` : null
+                              });
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer accent-blue-700 transition-all font-sans font-medium"
+                          />
+                        </div>
+                        <span className={`text-xs font-bold transition-all duration-200 ${isCompleted ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>{task}</span>
+                      </label>
+                    );
+                  })}
                 </div>
-             </div>
-          )}
+              </div>
+            )}
+          </div>
 
-          {/* Lifecycle Buttons */}
+          {/* Lifecycle Buttons Footer */}
           {!isHistory && (
-            <div className="bg-white p-6 border-t border-slate-100 fixed bottom-0 left-0 right-0 z-20">
+            <div className="bg-white p-4 border-t border-slate-100 shrink-0 space-y-2">
               {booking.status === 'pending_acceptance' && (
                 <div className="space-y-2">
                   <button 
@@ -1873,7 +1918,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                         setAcceptingBookingId(null);
                       }, 120);
                     }}
-                    className={`w-full bg-emerald-500 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all duration-300 origin-center ${acceptingBookingId === booking.id ? 'opacity-80 scale-95' : 'hover:scale-[1.01] active:scale-95'}`}
+                    className={`w-full bg-emerald-500 text-white py-4.5 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all duration-300 origin-center ${acceptingBookingId === booking.id ? 'opacity-80 scale-95' : 'hover:scale-[1.01] active:scale-95'}`}
                   >
                     {acceptingBookingId === booking.id ? (
                       <>
@@ -1888,26 +1933,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                   </p>
                 </div>
               )}
-
-              {/* Quick Actions Strip */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.address || 'Indore')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
-                >
-                  <MapPin size={13} className="text-blue-700 shrink-0" />
-                  <span className="truncate">Open in Google Maps</span>
-                </a>
-                <a
-                  href={`tel:${booking.customerMobile || booking.customerPhone || customers[booking.customerId]?.phoneNumber || ''}`}
-                  className="py-3 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-emerald-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
-                >
-                  <Phone size={13} className="text-emerald-700 shrink-0" />
-                  <span className="truncate">Call Customer</span>
-                </a>
-              </div>
 
               {(booking.status === 'confirmed' || booking.status === 'assigned' || booking.status === 'pending_acceptance') && (
                 <button 
@@ -2156,11 +2181,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
               )}
             </div>
           )}
-        </div>
 
-
+        </motion.div>
       </motion.div>
-    </motion.div>
     );
   };
 
@@ -2456,7 +2479,6 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
           services={services} 
           onSelectBooking={(b) => {
             setSelectedBooking(b);
-            setChatHidden(false);
           }} 
           onUpdateStatus={handleBookingUpdate}
           activeMarkerId={activeMarkerId}
@@ -3085,7 +3107,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
               {/* Transparent Settlement Breakdown */}
               {(() => {
                 const totalBill = Number(booking.totalPrice ?? (booking as any).finalPrice ?? 500);
-                const partnerNet = Math.max(0, Math.round(totalBill * 0.85));
+                const partnerNet = Math.max(0, Math.round(totalBill * 0.80));
                 const platformFee = totalBill - partnerNet;
                 const isCash = booking.paymentMethod === 'cash';
 
@@ -3097,7 +3119,7 @@ function JobCompletionSuccess({ booking, partner, serviceName, onClose }: JobCom
                         <span className="text-slate-900 font-black text-sm">₹{totalBill.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-bold">Zomindia Platform Fee (15%):</span>
+                        <span className="text-slate-500 font-bold">Zomindia Platform Fee (20%):</span>
                         <span className="text-rose-600 font-black">-₹{platformFee.toLocaleString()}</span>
                       </div>
                       <div className="h-px bg-slate-100 my-1" />

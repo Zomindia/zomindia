@@ -213,7 +213,7 @@ export default function PartnerWallet({ partner }: Props) {
             }
 
             const resJson = await clearRes.json();
-            alert(`Success! ₹${amt} deposited. 85% share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`);
+            alert(`Success! ₹${amt} deposited. 80% share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`);
             setShowDigitalClearModal(false);
             setDigitalClearAmount('');
           } catch (vErr: any) {
@@ -264,7 +264,7 @@ export default function PartnerWallet({ partner }: Props) {
               <div className="space-y-0.5">
                 <p className="text-xs font-black uppercase tracking-wider text-rose-100">Mandatory Deadline:</p>
                 <p className="text-sm font-black text-white">Today evening or tomorrow morning by 11:00 AM.</p>
-                <p className="text-[11px] text-rose-100/90 font-medium">Deposit physical cash at Zomindia office counter to unlock your 85% share.</p>
+                <p className="text-[11px] text-rose-100/90 font-medium">Deposit physical cash at Zomindia office counter to unlock your 80% share.</p>
               </div>
 
               {/* Emergency Digital Clearance Option */}
@@ -304,7 +304,7 @@ export default function PartnerWallet({ partner }: Props) {
         <Calendar size={18} className="text-blue-600 shrink-0" />
         <p className="text-xs font-bold leading-relaxed">
           <span className="font-black text-slate-900 uppercase tracking-wide mr-1.5">Payout Policy:</span>
-          Withdrawals are processed Monday to Friday. Weekend requests are scheduled for Monday payout.
+          20% Platform Fee • 80% Direct Technician Payout. Withdrawals are processed Monday to Friday. Weekend requests are scheduled for Monday payout.
         </p>
       </section>
 
@@ -409,13 +409,13 @@ export default function PartnerWallet({ partner }: Props) {
                     <span className="text-rose-600 font-black">₹{unsettledCash.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-xs font-bold text-slate-600">
-                    <span>Platform Commission (15%):</span>
-                    <span className="text-slate-900 font-black">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.15).toLocaleString()}</span>
+                    <span>Platform Commission (20%):</span>
+                    <span className="text-slate-900 font-black">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.20).toLocaleString()}</span>
                   </div>
                   <div className="h-[1px] bg-slate-200 my-1" />
                   <div className="flex justify-between text-xs font-bold text-emerald-700">
-                    <span>Your Credited Share (85%):</span>
-                    <span className="font-black text-sm">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.85).toLocaleString()}</span>
+                    <span>Your Credited Share (80%):</span>
+                    <span className="font-black text-sm">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.80).toLocaleString()}</span>
                   </div>
                 </div>
 

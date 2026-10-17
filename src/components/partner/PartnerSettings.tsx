@@ -591,7 +591,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
                 <p className="text-[9px] uppercase tracking-wider text-amber-700 font-black">Pending Payments</p>
                 <p className="text-3xl font-black text-amber-950 mt-2 font-display">₹{(() => {
                   const pending = bookings.filter(b => b.partnerId === profile.uid && ['payment_pending', 'completed'].includes(b.status) && b.paymentStatus !== 'paid');
-                  const val = pending.reduce((sum, b) => sum + (b.totalPrice || 0), 0) * 0.85; // Net partner payout after platform split
+                  const val = pending.reduce((sum, b) => sum + (b.totalPrice || 0), 0) * 0.80; // Net partner payout after platform split
                   return Math.round(val);
                 })().toLocaleString()}</p>
                 <p className="text-[8px] mt-1 font-bold text-amber-600 uppercase tracking-wider">In Settlement Queue</p>
@@ -656,7 +656,7 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
             <div className="space-y-3">
               {[
                 { q: "How do I withdraw my earnings?", a: "Your earnings are transferred directly using the bank account or UPI information configured in your payouts channel. Payouts are parsed and processed daily at 8:00 PM IST." },
-                { q: "What is the platform service fee?", a: "zomindia only charges a standard 15% booking brokerage fee to support platform hosting, map coordinates billing, cloud syncing, and emergency technician insurance." },
+                { q: "What is the platform service fee?", a: "zomindia only charges a standard 20% booking brokerage fee to support platform hosting, map coordinates billing, cloud syncing, and emergency technician insurance." },
                 { q: "How to handle a customer dispute?", a: "If there is a dispute or if customers request out-of-scope manual labor, do not proceed. Contact our live AI support or dial the administrator hotline immediately." },
                 { q: "Why is my KYC document rejected?", a: "Documents are usually rejected for blurry photographs, mismatched Aadhaar/PAN names, or expired address proof certificates. Re-upload a clean scan under the KYC sub-page." }
               ].map((item, idx) => (

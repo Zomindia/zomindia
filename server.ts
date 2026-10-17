@@ -712,14 +712,14 @@ async function startServer() {
 
           // Credit partner earnings atomically if partner assigned
           // Case A: Online Payment (Money collected by Zomindia via Razorpay)
-          // Platform commission (15%) belongs to Zomindia, Partner share (85%) is credited to withdrawable balance
+          // Platform commission (20%) belongs to Zomindia, Partner share (80%) is credited to withdrawable balance
           const partnerId = existingData?.partnerId || bookingPayload?.partnerId;
           if (partnerId) {
             try {
               const partnerRef = db.collection("partners").doc(partnerId);
               const partnerSnap = await partnerRef.get();
               if (partnerSnap.exists) {
-                const commissionRate = 0.15;
+                const commissionRate = 0.20;
                 const platformCommission = Math.round(finalAmount * commissionRate);
                 const partnerShare = Math.max(0, finalAmount - platformCommission);
                 const rewardPts = 10;
@@ -738,7 +738,7 @@ async function startServer() {
                   paymentMethod: "online",
                   credits: rewardPts,
                   bookingId: resolvedBookingId,
-                  reason: `Completed online job #${resolvedBookingId.slice(0, 8).toUpperCase()}: 85% Partner Share (15% Zomindia Fee: ₹${platformCommission})`,
+                  reason: `Completed online job #${resolvedBookingId.slice(0, 8).toUpperCase()}: 80% Partner Share (20% Zomindia Fee: ₹${platformCommission})`,
                   createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
               }
@@ -863,12 +863,17 @@ async function startServer() {
 
           if (bookingRef && bData) {
             const paidAmount = Number(payment?.amount ? payment.amount / 100 : bData.totalPrice || 0);
+            const commissionRate = 0.20;
+            const platformCommission = Math.round(paidAmount * commissionRate);
+            const partnerShare = Math.max(0, paidAmount - platformCommission);
+
             await bookingRef.update({
               paymentStatus: "paid",
               status: bData.status === "payment_pending" ? "completed" : (bData.status === "pending" ? "confirmed" : bData.status || "confirmed"),
               paymentMethod: "razorpay",
               paidAt: new Date().toISOString(),
               paidAmount,
+              platformCommission,
               transactionId: paymentId || orderId,
               onlinePaymentProvider: "Razorpay",
               razorpayOrderId: orderId,
@@ -880,9 +885,21 @@ async function startServer() {
               try {
                 const partnerRef = db.collection("partners").doc(bData.partnerId);
                 await partnerRef.update({
-                  totalEarnings: admin.firestore.FieldValue.increment(paidAmount),
+                  totalEarnings: admin.firestore.FieldValue.increment(partnerShare),
                   rewardCredits: admin.firestore.FieldValue.increment(10),
                   updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                await partnerRef.collection("earningsHistory").add({
+                  type: "booking_earning_online",
+                  amount: partnerShare,
+                  grossAmount: paidAmount,
+                  platformCommission,
+                  partnerShare,
+                  paymentMethod: "razorpay",
+                  credits: 10,
+                  bookingId: bookingRef.id,
+                  reason: `Completed service (Razorpay Webhook: 80% partner share, 20% platform fee: ₹${platformCommission})`,
+                  createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
               } catch (pErr) {}
             }
@@ -922,9 +939,9 @@ async function startServer() {
         const totalPrice = Number(bookingData.totalPrice || 0);
         const rewardPts = 10;
         const targetPartnerId = bookingData.partnerId || partnerId;
-        const commissionRate = 0.15;
+        const commissionRate = 0.20;
         const platformCommission = Math.round(totalPrice * commissionRate);
-        const partnerShare = totalPrice - platformCommission; // 85%
+        const partnerShare = totalPrice - platformCommission; // 80%
 
         t.update(bookingRef, {
           status: "completed",
@@ -958,7 +975,7 @@ async function startServer() {
             // DAILY OFFICE CASH REMITTANCE MODEL:
             // 1. 100% of collected cash is added to partner's liability (unsettledCashInHand).
             // 2. Update lastCashCollectedAt to serverTimestamp.
-            // 3. Partner share (85%) is logged as pending_cash_clearance.
+            // 3. Partner share (80%) is logged as pending_cash_clearance.
             // 4. Partner withdrawable totalEarnings is NOT credited until physical cash is cleared by Admin.
             // 5. If unsettled cash exceeds 2000, mark isCashBlocked = true.
             const shouldBlock = newUnsettled > 2000;
@@ -984,7 +1001,7 @@ async function startServer() {
               paymentMethod: "cash",
               credits: rewardPts,
               bookingId,
-              reason: `COD Service Completed: ₹${totalPrice} cash collected in hand. 85% share (₹${partnerShare}) pending office cash remittance clearance.`,
+              reason: `COD Service Completed: ₹${totalPrice} cash collected in hand. 80% share (₹${partnerShare}) pending office cash remittance clearance.`,
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
           }
@@ -1030,11 +1047,11 @@ async function startServer() {
       const newUnsettled = Math.max(0, currentUnsettled - receivedAmt);
       const isUnblocked = newUnsettled <= 2000;
 
-      // Calculate 85% partner share from the deposited cash
-      const platformFee = Math.round(receivedAmt * 0.15);
+      // Calculate 80% partner share from the deposited cash
+      const platformFee = Math.round(receivedAmt * 0.20);
       const partnerCreditedShare = receivedAmt - platformFee;
 
-      // 1. Decrement unsettledCashInHand & increment totalEarnings by 85% partner share
+      // 1. Decrement unsettledCashInHand & increment totalEarnings by 80% partner share
       await resolvedPartnerRef.update({
         unsettledCashInHand: newUnsettled,
         totalEarnings: admin.firestore.FieldValue.increment(partnerCreditedShare),
@@ -1088,7 +1105,7 @@ async function startServer() {
         partnerShare: partnerCreditedShare,
         paymentRef: paymentRef || `OFFICE-COUNTER-${Date.now()}`,
         notes: cashierNotes || "Cash received and cleared at Zomindia office counter",
-        reason: `Office Cash Remittance: ₹${receivedAmt} physical cash deposited. 85% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
+        reason: `Office Cash Remittance: ₹${receivedAmt} physical cash deposited. 80% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
@@ -1172,10 +1189,10 @@ async function startServer() {
       const currentUnsettled = Number(partnerData.unsettledCashInHand || 0);
       const newUnsettled = Math.max(0, currentUnsettled - depositAmt);
 
-      const platformFee = Math.round(depositAmt * 0.15);
+      const platformFee = Math.round(depositAmt * 0.20);
       const partnerCreditedShare = depositAmt - platformFee;
 
-      // 1. Decrement unsettled cash & credit 85% withdrawable balance
+      // 1. Decrement unsettled cash & credit 80% withdrawable balance
       await resolvedPartnerRef.update({
         unsettledCashInHand: newUnsettled,
         totalEarnings: admin.firestore.FieldValue.increment(partnerCreditedShare),
@@ -1211,7 +1228,7 @@ async function startServer() {
         partnerShare: partnerCreditedShare,
         paymentRef: razorpay_payment_id || `DIGITAL-${Date.now()}`,
         notes: "Digital Cash Remittance via Razorpay/UPI",
-        reason: `Digital Cash Clearance: ₹${depositAmt} deposited remotely. 85% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
+        reason: `Digital Cash Clearance: ₹${depositAmt} deposited remotely. 80% share (₹${partnerCreditedShare}) credited to withdrawable balance.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
@@ -2948,14 +2965,19 @@ Structure:
         };
 
         if (isFullyPaid) {
+          const commissionRate = 0.20;
+          const platformCommission = Math.round(totalPrice * commissionRate);
+          const partnerShare = Math.max(0, totalPrice - platformCommission);
+
           bookingUpdate.paymentStatus = 'paid';
           bookingUpdate.paymentMethod = newTotalWalletDeduct >= totalPrice ? 'wallet' : (bookingData.paymentMethod || 'wallet_online');
           bookingUpdate.status = 'completed';
           bookingUpdate.paidAmount = totalPrice;
+          bookingUpdate.platformCommission = platformCommission;
           bookingUpdate.paidAt = new Date().toISOString();
           bookingUpdate.settledAt = admin.firestore.FieldValue.serverTimestamp();
 
-          // Credit partner earnings only upon full settlement
+          // Credit partner earnings only upon full settlement (80% net take-home)
           const partnerId = bookingData?.partnerId;
           if (partnerId) {
             const partnerRef = db.collection('partners').doc(partnerId);
@@ -2965,7 +2987,7 @@ Structure:
               const currentCredits = Number(partnerDoc.data()?.rewardCredits || 0);
               const rewardPts = 10;
               t.update(partnerRef, {
-                totalEarnings: currentEarnings + totalPrice,
+                totalEarnings: currentEarnings + partnerShare,
                 rewardCredits: currentCredits + rewardPts,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
               });
@@ -2973,10 +2995,14 @@ Structure:
               const earnRef = db.collection('partners').doc(partnerId).collection('earningsHistory').doc();
               t.set(earnRef, {
                 type: 'booking_earning',
-                amount: totalPrice,
+                amount: partnerShare,
+                grossAmount: totalPrice,
+                platformCommission,
+                partnerShare,
+                paymentMethod: 'wallet',
                 credits: rewardPts,
                 bookingId: bookingId,
-                reason: `Completed service (Wallet settlement)`,
+                reason: `Completed service (Wallet settlement: 80% partner share, 20% platform fee: ₹${platformCommission})`,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
               });
             }

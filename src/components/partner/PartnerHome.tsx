@@ -18,6 +18,7 @@ import {
   Phone,
   MapPin,
   ShieldCheck,
+  ShieldAlert,
   Award,
   Radio,
   CheckCircle2,
@@ -41,6 +42,7 @@ interface Props {
   onUpdateStatus?: (status: 'Available' | 'Busy' | 'Offline') => void;
   onOpenStatusModal?: () => void;
   isTrackingActive?: boolean;
+  onOpenSupport?: () => void;
 }
 
 export default function PartnerHome({ 
@@ -53,7 +55,8 @@ export default function PartnerHome({
   application,
   onUpdateStatus,
   onOpenStatusModal,
-  isTrackingActive
+  isTrackingActive,
+  onOpenSupport
 }: Props) {
   const [showPendingPopup, setShowPendingPopup] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
@@ -318,6 +321,12 @@ export default function PartnerHome({
     }).length;
   }, [bookings, candidateIds]);
 
+  const liveWalletBalance = useMemo(() => {
+    if (typeof profile?.walletBalance === 'number') return profile.walletBalance;
+    if (typeof (partner as any)?.walletBalance === 'number') return (partner as any).walletBalance;
+    return 0;
+  }, [profile?.walletBalance, (partner as any)?.walletBalance]);
+
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
       {/* 1. Onboarding & Application Pending Screen */}
@@ -410,14 +419,23 @@ export default function PartnerHome({
                     {Number(overallRating).toFixed(1)}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                  ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase()} • Indore Hub
-                </p>
+                <div className="flex items-center flex-wrap gap-2 mt-0.5">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    ID: PRO-{(profile?.uid || '').slice(0, 6).toUpperCase()} • Indore Hub
+                  </p>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 border border-slate-200/90 rounded-md text-[8.5px] font-bold text-slate-500">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className={`absolute inline-flex h-full w-full rounded-full ${isOnline ? 'bg-emerald-400 animate-ping opacity-75' : 'bg-slate-300'}`} />
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                    </span>
+                    <span>GPS {isOnline ? 'Beacon: Active' : 'Standby'}</span>
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Right: Duty Switch, Wallet Balance, Notification Bell */}
-            <div className="flex items-center gap-2">
+            {/* Right: Duty Switch, Urban Company Wallet Chip & SOS Safety Action */}
+            <div className="flex items-center flex-wrap gap-2">
               {/* Large, Clear Duty Status Switch */}
               <button
                 onClick={handleToggleDuty}
@@ -440,14 +458,34 @@ export default function PartnerHome({
                 <span>{isOnline ? '● ONLINE / DUTY ON' : '○ OFFLINE / DUTY OFF'}</span>
               </button>
 
-              {/* Wallet Balance Pill */}
+              {/* Rich Urban Company Wallet Chip: 👛 ₹ {walletBalance} • Passbook > */}
               <button
                 onClick={() => onNavigate('wallet')}
-                className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-2xl text-[11px] font-black tracking-tight flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
-                title="Wallet Balance & Payouts"
+                className="group px-3 py-2 bg-amber-50 hover:bg-amber-100/90 text-amber-950 border border-amber-200/90 rounded-2xl text-[11px] font-black tracking-tight flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
+                title="Open Live Earnings & Passbook"
               >
-                <Wallet size={13} className="text-amber-600" />
-                <span>₹{(profile?.walletBalance || 0).toLocaleString()}</span>
+                <Wallet size={13} className="text-amber-600 shrink-0" />
+                <span>₹{liveWalletBalance.toLocaleString('en-IN')}</span>
+                <span className="text-amber-400 font-bold">•</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 group-hover:text-amber-900 flex items-center gap-0.5">
+                  Passbook <ChevronRight size={11} className="text-amber-600 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
+
+              {/* Discrete Emergency SOS / Safety Action Button */}
+              <button
+                onClick={() => {
+                  if (onOpenSupport) {
+                    onOpenSupport();
+                  } else {
+                    window.dispatchEvent(new CustomEvent('open-partner-support'));
+                  }
+                }}
+                className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs"
+                title="Technician Emergency Safety Hotline (SOS)"
+              >
+                <ShieldAlert size={13} className="text-rose-600 shrink-0" />
+                <span>SOS</span>
               </button>
             </div>
           </section>
@@ -462,7 +500,7 @@ export default function PartnerHome({
               <p className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
                 ₹{todayEarnings.toLocaleString()}
               </p>
-              <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">85% Net Take-Home</span>
+              <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">80% Net Take-Home</span>
             </div>
 
             <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-xs">
@@ -579,7 +617,7 @@ export default function PartnerHome({
               {/* Transparency Guarantee Note */}
               <div className="flex items-center gap-2 text-[10px] text-white/60 font-medium pt-1">
                 <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                <span>Zero hidden deductions. Weekly bank settlement every Monday at 10:00 AM.</span>
+                <span>Zero hidden deductions • 20% Platform Fee • 80% Direct Technician Payout. Weekly bank settlement every Monday at 10:00 AM.</span>
               </div>
             </div>
           </section>

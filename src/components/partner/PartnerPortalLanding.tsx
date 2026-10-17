@@ -248,7 +248,7 @@ export default function PartnerPortalLanding({ onLogin, onExploreServices }: Pro
               <div className="mt-6 space-y-3.5">
                 <div className="flex items-center gap-2.5 text-xs text-slate-300 font-semibold">
                   <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Platform Commission limit capped at 12%</span>
+                  <span>20% Platform Fee • 80% Direct Technician Payout</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-xs text-slate-300 font-semibold">
                   <Check className="w-4 h-4 text-emerald-400" />

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart3, 
   Briefcase,
-  Wallet,
+  Headphones,
   Bell,
   CheckCircle2,
   X,
@@ -24,6 +24,7 @@ import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import UnifiedKYCForm from './partner/UnifiedKYCForm';
 import PartnerNotificationDrawer from './partner/PartnerNotificationDrawer';
+import PartnerSupportModal from './partner/PartnerSupportModal';
 import { LoadingScreen } from './LoadingIndicator';
 import { LogoHorizontal, LogoIcon } from './BrandLogo';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
@@ -41,6 +42,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [activeTab, setActiveTab] = useState<'stats' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab === 'home' || initialTab === 'notifications' ? 'stats' : (initialTab as any));
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [showNotificationDrawer, setShowNotificationDrawer] = useState<boolean>(initialTab === 'notifications');
+  const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [partner, setPartner] = useState<PartnerProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -110,6 +112,13 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     };
     window.addEventListener('show-partner-toast', handleShowToast);
     return () => window.removeEventListener('show-partner-toast', handleShowToast);
+  }, []);
+
+  // Listen to open-partner-support event
+  useEffect(() => {
+    const handleOpenSupport = () => setShowSupportModal(true);
+    window.addEventListener('open-partner-support', handleOpenSupport);
+    return () => window.removeEventListener('open-partner-support', handleOpenSupport);
   }, []);
 
   // Set up live countdown for grace period
@@ -533,6 +542,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             onUpdateStatus={updateStatus}
             onOpenStatusModal={() => setShowStatusModal(true)}
             isTrackingActive={isTrackingActive}
+            onOpenSupport={() => setShowSupportModal(true)}
           />
         );
       case 'jobs':
@@ -563,6 +573,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             onUpdateStatus={updateStatus}
             onOpenStatusModal={() => setShowStatusModal(true)}
             isTrackingActive={isTrackingActive}
+            onOpenSupport={() => setShowSupportModal(true)}
           />
         );
       case 'amc-leads':
@@ -582,6 +593,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             onUpdateStatus={updateStatus}
             onOpenStatusModal={() => setShowStatusModal(true)}
             isTrackingActive={isTrackingActive}
+            onOpenSupport={() => setShowSupportModal(true)}
           />
         );
     }
@@ -772,15 +784,15 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                Admin
              </button>
            )}
-           {profile.walletBalance !== undefined && (
-             <button 
-               onClick={() => navigateWithTarget('wallet')}
-               className={`flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border transition-all active:scale-95 shrink-0 ${activeTab === 'wallet' ? 'border-amber-500 bg-amber-50/20' : 'border-slate-100'}`}
-             >
-               <Wallet size={13} className="text-amber-500" />
-               <span className="text-[11px] font-black text-slate-800 tracking-tight">₹{profile.walletBalance}</span>
-             </button>
-           )}
+           {/* Quick Partner Help / Support action button */}
+           <button 
+             onClick={() => setShowSupportModal(true)}
+             aria-label="Partner Support & Helpline"
+             title="Partner Support & Indore Helpline"
+             className="relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-xl transition-all shrink-0 active:scale-95 cursor-pointer"
+           >
+             <Headphones size={18} />
+           </button>
            <button 
              onClick={() => setShowNotificationDrawer(true)}
              aria-label="Partner Notifications"
@@ -1030,6 +1042,14 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
           setShowNotificationDrawer(false);
           navigateWithTarget('jobs', bId);
         }}
+      />
+
+      {/* Partner Support & Helpline Modal (Indore Hub standard) */}
+      <PartnerSupportModal
+        isOpen={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+        profile={profile}
+        partner={partner}
       />
     </div>
   );

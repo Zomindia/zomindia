@@ -161,7 +161,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
     }).length;
   }, [livePartners]);
 
-  const totalPlatformCut = Math.round(totalCashInField * 0.15);
+  const totalPlatformCut = Math.round(totalCashInField * 0.20);
 
   const openClearanceModal = (p: PartnerProfile) => {
     setSelectedPartner(p);
@@ -200,7 +200,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
       }
 
       const resData = await res.json();
-      alert(`Success: ₹${amt} cash remittance received and cleared! Partner credited ₹${resData.creditedEarnings} (85%).`);
+      alert(`Success: ₹${amt} cash remittance received and cleared! Partner credited ₹${resData.creditedEarnings} (80%).`);
       setSelectedPartner(null);
     } catch (err: any) {
       console.error("Clear partner cash failed:", err);
@@ -230,7 +230,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
               </h2>
               <p className="text-xs text-slate-300 font-medium max-w-2xl">
                 Technicians collect 100% COD cash from customers and remit it daily at the Zomindia office.
-                Clear physical cash deposits here to unlock and disburse the partner's 85% earnings.
+                Clear physical cash deposits here to unlock and disburse the partner's 80% earnings.
               </p>
             </div>
 
@@ -273,7 +273,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
               <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block mb-1">
-                Platform Commission Share (15%)
+                Platform Commission Share (20%)
               </span>
               <p className="text-2xl font-black text-emerald-400 italic">
                 ₹{totalPlatformCut.toLocaleString()}
@@ -395,7 +395,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
                           </span>
                         </div>
                         <span className="text-[9px] text-slate-400 font-bold block">
-                          85% Share: ₹{Math.round(cash * 0.85).toLocaleString()}
+                          80% Share: ₹{Math.round(cash * 0.80).toLocaleString()}
                         </span>
                       </td>
 
@@ -472,7 +472,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
                       +₹{Number(tx.amountReceived || 0).toLocaleString()}
                     </span>
                     <span className="text-[10px] text-slate-400 font-bold block">
-                      Partner 85%: ₹{Number(tx.partnerCreditedShare || 0).toLocaleString()}
+                      Partner 80%: ₹{Number(tx.partnerCreditedShare || 0).toLocaleString()}
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-slate-400">
@@ -561,12 +561,12 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
                 {Number(amountReceived) > 0 && (
                   <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3.5 space-y-1.5 text-xs">
                     <div className="flex justify-between font-bold text-slate-600">
-                      <span>Platform Commission Retained (15%):</span>
-                      <span className="font-black text-slate-900">₹{Math.round(Number(amountReceived) * 0.15).toLocaleString()}</span>
+                      <span>Platform Commission Retained (20%):</span>
+                      <span className="font-black text-slate-900">₹{Math.round(Number(amountReceived) * 0.20).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between font-bold text-emerald-800">
-                      <span>Credit to Partner Withdrawable Balance (85%):</span>
-                      <span className="font-black text-sm">₹{Math.round(Number(amountReceived) * 0.85).toLocaleString()}</span>
+                      <span>Credit to Partner Withdrawable Balance (80%):</span>
+                      <span className="font-black text-sm">₹{Math.round(Number(amountReceived) * 0.80).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between font-bold text-slate-500 text-[11px] pt-1 border-t border-emerald-200/60">
                       <span>Remaining Cash Liability:</span>
@@ -615,7 +615,7 @@ export default function DailyCashRemittanceManager({ partners = [], adminProfile
                     ) : (
                       <>
                         <CheckCircle2 size={18} />
-                        <span>Confirm Cash Receipt & Credit 85%</span>
+                        <span>Confirm Cash Receipt & Credit 80%</span>
                       </>
                     )}
                   </button>
