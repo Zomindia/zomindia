@@ -18,7 +18,6 @@ import {
   Phone,
   MapPin,
   ShieldCheck,
-  ShieldAlert,
   Award,
   Radio,
   CheckCircle2,
@@ -276,6 +275,8 @@ export default function PartnerHome({
         const activeUid = profile.uid;
         const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
         const payload = {
+          userId: activeUid,
+          uid: activeUid,
           availabilityStatus: nextStatus,
           isAvailable: isOnlineNow,
           isOnline: isOnlineNow,
@@ -434,7 +435,7 @@ export default function PartnerHome({
               </div>
             </div>
 
-            {/* Right: Duty Switch, Urban Company Wallet Chip & SOS Safety Action */}
+            {/* Right: Duty Switch & Urban Company Wallet Passbook Chip */}
             <div className="flex items-center flex-wrap gap-2">
               {/* Large, Clear Duty Status Switch */}
               <button
@@ -458,7 +459,7 @@ export default function PartnerHome({
                 <span>{isOnline ? '● ONLINE / DUTY ON' : '○ OFFLINE / DUTY OFF'}</span>
               </button>
 
-              {/* Rich Urban Company Wallet Chip: 👛 ₹ {walletBalance} • Passbook > */}
+              {/* Urban Company Wallet Chip: 👛 ₹ {walletBalance} • Passbook > */}
               <button
                 onClick={() => onNavigate('wallet')}
                 className="group px-3 py-2 bg-amber-50 hover:bg-amber-100/90 text-amber-950 border border-amber-200/90 rounded-2xl text-[11px] font-black tracking-tight flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
@@ -470,22 +471,6 @@ export default function PartnerHome({
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 group-hover:text-amber-900 flex items-center gap-0.5">
                   Passbook <ChevronRight size={11} className="text-amber-600 group-hover:translate-x-0.5 transition-transform" />
                 </span>
-              </button>
-
-              {/* Discrete Emergency SOS / Safety Action Button */}
-              <button
-                onClick={() => {
-                  if (onOpenSupport) {
-                    onOpenSupport();
-                  } else {
-                    window.dispatchEvent(new CustomEvent('open-partner-support'));
-                  }
-                }}
-                className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs"
-                title="Technician Emergency Safety Hotline (SOS)"
-              >
-                <ShieldAlert size={13} className="text-rose-600 shrink-0" />
-                <span>SOS</span>
               </button>
             </div>
           </section>

@@ -1042,7 +1042,13 @@ export default function AiSupportChat({
       if (payRes.ok) {
         const payData = await payRes.json();
         if (payData.orderId) orderId = payData.orderId;
-        if (payData.keyId) keyId = payData.keyId;
+        if (payData.keyId && !payData.keyId.includes("placeholder")) {
+          keyId = payData.keyId;
+        } else if ((import.meta as any).env?.VITE_RAZORPAY_KEY_ID) {
+          keyId = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
+        } else if (payData.keyId) {
+          keyId = payData.keyId;
+        }
         if (payData.amount) amountPaise = payData.amount;
       }
 

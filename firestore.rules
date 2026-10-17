@@ -439,13 +439,27 @@ service cloud.firestore {
 
     match /partners/{partnerId} {
       allow read: if true;
-      allow create: if isSignedIn() && (isAdmin() || isHRAdmin() || isHeadAdmin() || incoming().userId == request.auth.uid);
+      allow create: if isSignedIn() && (
+        isAdmin() || isHRAdmin() || isHeadAdmin() || 
+        partnerId == request.auth.uid ||
+        ('userId' in incoming() && incoming().userId == request.auth.uid) ||
+        ('uid' in incoming() && incoming().uid == request.auth.uid)
+      );
       allow update: if isSignedIn() && (
         isAdmin() || isHRAdmin() || isHeadAdmin() || (
-          isOwner(existing().userId) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['availabilityStatus', 'isAvailable', 'fcmToken', 'lat', 'lng', 'partnerLocation', 'heading', 'updatedAt'])
+          (
+            partnerId == request.auth.uid ||
+            ('userId' in existing() && existing().userId == request.auth.uid) ||
+            ('uid' in existing() && existing().uid == request.auth.uid) ||
+            ('partnerId' in existing() && existing().partnerId == request.auth.uid)
+          ) &&
+          !incoming().diff(existing()).affectedKeys().hasAny([
+            'totalEarnings', 'earnings', 'commissionRate', 'settledAmount', 'withdrawableBalance'
+          ])
         ) || (
-          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'averageRating', 'reviewCount', 'totalReviews', 'totalRatingPoints', 'feedbackScores', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'rating', 'averageRating', 'reviewCount', 'totalReviews', 'totalRatingPoints', 'feedbackScores', 'updatedAt'
+          ])
         )
       );
       allow delete: if isAdmin();

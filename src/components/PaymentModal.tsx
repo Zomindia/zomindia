@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Booking, UserProfile } from '../types';
 import { formatBookingTime } from '../utils/formatTime';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
   ShieldCheck,
@@ -14,21 +14,71 @@ import {
   Sparkles,
   Zap,
   ArrowRight,
-  Banknote
+  Banknote,
+  MapPin,
+  Calendar
 } from 'lucide-react';
 import { playSuccessChime } from '../lib/audio';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import confetti from 'canvas-confetti';
 
-interface PaymentModalProps {
-  booking: Booking;
-  profile: UserProfile;
-  onClose: () => void;
-  onSuccess: () => void;
+export interface PaymentSuccessData {
+  txnId: string;
+  method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'online' | 'razorpay';
+  provider: string;
+  amount: number;
+  paidAt: string;
 }
 
-export default function PaymentModal({ booking, profile, onClose, onSuccess }: PaymentModalProps) {
+export interface PaymentModalProps {
+  // Existing booking settlement mode (CustomerHome, CustomerDashboard)
+  booking?: Booking;
+  profile?: UserProfile | null;
+  onSuccess?: () => void;
+
+  // Direct checkout mode (BookingModal, etc.)
+  isOpen?: boolean;
+  amount?: number;
+  serviceName?: string;
+  bookingId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  bookingDetails?: {
+    date: string;
+    time: string;
+    address: string;
+  };
+  onPaymentSuccess?: (data: PaymentSuccessData) => Promise<void> | void;
+  onPaymentCancel?: () => void;
+
+  // Shared
+  onClose: () => void;
+}
+
+// Backwards compatibility alias
+export type OnlinePaymentGatewayModalProps = PaymentModalProps;
+
+export default function PaymentModal({
+  booking,
+  profile,
+  onClose,
+  onSuccess,
+  isOpen,
+  amount,
+  serviceName,
+  bookingId,
+  customerName,
+  customerPhone,
+  customerEmail,
+  bookingDetails,
+  onPaymentSuccess,
+  onPaymentCancel
+}: PaymentModalProps) {
+  // If isOpen is explicitly passed as false, do not render
+  if (isOpen === false) return null;
+
   const [useWalletPartial, setUseWalletPartial] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -41,11 +91,21 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
 
   const isMountedRef = useRef<boolean>(true);
 
-  const totalBill = booking.totalPrice || 0;
+  // Unified data resolution
+  const totalBill = typeof amount === 'number' && amount > 0 
+    ? amount 
+    : (booking?.totalPrice || 0);
+
+  const resolvedBookingId = booking?.id || bookingId || `bk_${Date.now()}`;
+  const resolvedServiceName = serviceName || booking?.serviceName || 'Zomindia Doorstep Service';
+  const resolvedCustomerName = customerName || profile?.displayName || profile?.fullName || 'Valued Customer';
+  const resolvedCustomerPhone = customerPhone || profile?.phoneNumber || profile?.mobile || '';
+  const resolvedCustomerEmail = customerEmail || profile?.email || '';
+
   const walletBalance = profile?.walletBalance || 0;
   const walletDeduction = useWalletPartial ? Math.min(walletBalance, totalBill) : 0;
   const finalPayable = Math.max(0, totalBill - walletDeduction);
-  const canPayEntirelyWithWallet = walletBalance >= totalBill;
+  const canPayEntirelyWithWallet = Boolean(profile && walletBalance >= totalBill && totalBill > 0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -62,7 +122,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       setIsSimulation(false);
       setActiveOrderId(null);
     }
-  }, [finalPayable]);
+  }, [finalPayable, resolvedBookingId]);
 
   // Handle terminal success confirmation
   const handleFinalSuccess = async (txnId: string, provider: string = 'Razorpay') => {
@@ -77,36 +137,56 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
 
     try {
       confetti({
-        particleCount: 80,
-        spread: 60,
+        particleCount: 90,
+        spread: 65,
         origin: { y: 0.6 }
       });
     } catch (e) {}
 
-    try {
-      const bRef = doc(db, 'bookings', booking.id);
-      const targetStatus = booking.status === 'payment_pending'
-        ? 'completed'
-        : (booking.status === 'pending' ? 'confirmed' : booking.status);
+    // Update Firestore booking document if booking is available
+    if (booking?.id) {
+      try {
+        const bRef = doc(db, 'bookings', booking.id);
+        const targetStatus = booking.status === 'payment_pending'
+          ? 'completed'
+          : (booking.status === 'pending' ? 'confirmed' : booking.status);
 
-      await updateDoc(bRef, {
-        paymentStatus: 'paid',
-        status: targetStatus,
-        transactionId: txnId,
-        paymentMethod: provider.toLowerCase().includes('wallet') ? 'wallet' : 'online',
-        paidAmount: finalPayable,
-        updatedAt: Timestamp.now()
-      });
-    } catch (writeErr) {
-      console.warn('[PaymentModal] Direct Firestore booking payment update notice:', writeErr);
+        await updateDoc(bRef, {
+          paymentStatus: 'paid',
+          status: targetStatus,
+          transactionId: txnId,
+          paymentMethod: provider.toLowerCase().includes('wallet') ? 'wallet' : 'razorpay',
+          paidAmount: finalPayable,
+          updatedAt: Timestamp.now()
+        });
+      } catch (writeErr) {
+        console.warn('[PaymentModal] Direct Firestore booking payment update notice:', writeErr);
+      }
     }
 
     setPaymentSuccess(true);
     setIsProcessing(false);
 
-    setTimeout(() => {
+    const successData: PaymentSuccessData = {
+      txnId,
+      method: provider.toLowerCase().includes('wallet') ? 'wallet' : 'razorpay',
+      provider,
+      amount: finalPayable,
+      paidAt: new Date().toISOString()
+    };
+
+    setTimeout(async () => {
       if (isMountedRef.current) {
-        onSuccess();
+        try {
+          if (onPaymentSuccess) {
+            await onPaymentSuccess(successData);
+          }
+          if (onSuccess) {
+            onSuccess();
+          }
+        } catch (cbErr) {
+          console.warn('[PaymentModal] Success callback notice:', cbErr);
+        }
         onClose();
       }
     }, 1200);
@@ -118,6 +198,10 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       setErrorMessage('Insufficient wallet balance.');
       return;
     }
+    if (!profile?.uid) {
+      setErrorMessage('User session required for wallet deduction.');
+      return;
+    }
 
     setIsProcessing(true);
     setErrorMessage(null);
@@ -127,7 +211,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          bookingId: booking.id, 
+          bookingId: resolvedBookingId, 
           userId: profile.uid, 
           debitAmount: totalBill,
           isFullSettlement: true
@@ -149,6 +233,12 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
 
   // Switch to COD / Pay After Service
   const handleSwitchToCOD = async () => {
+    if (!booking?.id) {
+      if (onPaymentCancel) onPaymentCancel();
+      onClose();
+      return;
+    }
+
     setIsProcessing(true);
     setErrorMessage(null);
     try {
@@ -180,13 +270,13 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     setIsSimulation(false);
 
     try {
-      // If partial wallet is chosen, debit partial wallet first
-      if (walletDeduction > 0) {
+      // Partial wallet deduction if enabled
+      if (useWalletPartial && walletDeduction > 0 && profile?.uid) {
         const walletRes = await fetch('/api/pay-via-wallet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            bookingId: booking.id, 
+            bookingId: resolvedBookingId, 
             userId: profile.uid, 
             debitAmount: walletDeduction,
             isFullSettlement: false
@@ -204,13 +294,13 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         body: JSON.stringify({
           amount: finalPayable,
           currency: 'INR',
-          bookingId: booking.id,
-          customerPhone: profile.phoneNumber || profile.mobile || '9999999999',
-          customerEmail: (profile.email && !profile.email.includes('customer@zomindia.com'))
-            ? profile.email
-            : (profile.phoneNumber || profile.mobile ? `${(profile.phoneNumber || profile.mobile || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com'),
-          customerName: profile.displayName || profile.fullName || 'Customer',
-          serviceName: booking.serviceName || 'Home Service'
+          bookingId: resolvedBookingId,
+          customerPhone: resolvedCustomerPhone || '9999999999',
+          customerEmail: (resolvedCustomerEmail && !resolvedCustomerEmail.includes('customer@zomindia.com'))
+            ? resolvedCustomerEmail
+            : (resolvedCustomerPhone ? `${resolvedCustomerPhone.replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com'),
+          customerName: resolvedCustomerName,
+          serviceName: resolvedServiceName
         })
       });
 
@@ -223,10 +313,15 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         return;
       }
 
+      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
+      const effectiveKey = (data.keyId && !data.keyId.includes('placeholder'))
+        ? data.keyId
+        : (clientKey && !clientKey.includes('placeholder') ? clientKey : (data.keyId || 'rzp_test_placeholder'));
+
       setActiveOrderId(data.orderId);
-      setActiveKeyId(data.keyId);
+      setActiveKeyId(effectiveKey);
       setOrderAmountPaise(data.amount || Math.round(finalPayable * 100));
-      setIsSimulation(Boolean(data.isMock || !data.keyId || data.keyId.includes('placeholder')));
+      setIsSimulation(Boolean(data.isMock || !effectiveKey || effectiveKey.includes('placeholder')));
       setIsInitializing(false);
     } catch (err: any) {
       console.error('[Razorpay Init Error]:', err);
@@ -241,10 +336,6 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
     setErrorMessage(null);
 
     try {
-      const targetStatus = booking.status === 'payment_pending'
-        ? 'completed'
-        : (booking.status === 'pending' ? 'confirmed' : booking.status);
-
       const verifyRes = await fetch('/api/razorpay/verify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,27 +343,86 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
           razorpay_order_id: orderId,
           razorpay_payment_id: paymentId,
           razorpay_signature: signature,
-          bookingId: booking.id,
-          customerUid: profile.uid,
-          amount: totalBill,
-          walletDeductAmount: walletDeduction > 0 ? walletDeduction : (booking.walletDeductAmount || 0),
+          bookingId: resolvedBookingId,
+          customerUid: profile?.uid || (booking as any)?.customerId || 'customer',
+          amount: finalPayable,
+          walletDeductAmount: walletDeduction,
           isMock: isMockTxn,
-          status: targetStatus
+          status: booking?.status === 'payment_pending' ? 'completed' : 'confirmed'
         })
       });
 
       const verifyData = await verifyRes.json();
 
-      if (verifyRes.ok && verifyData?.success) {
-        handleFinalSuccess(paymentId, 'Razorpay');
+      if (verifyRes.ok && verifyData.success) {
+        handleFinalSuccess(paymentId, isMockTxn ? 'Razorpay (Simulated)' : 'Razorpay');
       } else {
-        setErrorMessage(verifyData?.error || 'Payment signature verification failed.');
+        if (isMockTxn) {
+          handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
+        } else {
+          setErrorMessage(verifyData.error || 'Payment signature verification failed.');
+        }
         setIsProcessing(false);
       }
     } catch (err: any) {
       console.error('[Razorpay Verify Error]:', err);
-      setErrorMessage('Network error while verifying payment status.');
+      if (isMockTxn) {
+        handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
+      } else {
+        setErrorMessage('Network error while verifying payment status.');
+      }
       setIsProcessing(false);
+    }
+  };
+
+  // Dynamic SDK checkout launcher
+  const openRazorpayCheckout = (keyToUse: string) => {
+    const RazorpayConstructor = (window as any).Razorpay;
+    if (typeof RazorpayConstructor !== 'function') {
+      setIsSimulation(true);
+      return;
+    }
+
+    try {
+      const options = {
+        key: keyToUse,
+        amount: orderAmountPaise,
+        currency: 'INR',
+        name: 'Zomindia Services',
+        description: `${resolvedServiceName} • #${resolvedBookingId.slice(-6).toUpperCase()}`,
+        order_id: activeOrderId,
+        handler: function (response: any) {
+          verifyPayment(
+            response.razorpay_order_id || activeOrderId,
+            response.razorpay_payment_id,
+            response.razorpay_signature,
+            false
+          );
+        },
+        prefill: {
+          name: resolvedCustomerName,
+          contact: resolvedCustomerPhone,
+          email: resolvedCustomerEmail
+        },
+        theme: {
+          color: '#dc2626'
+        },
+        modal: {
+          ondismiss: function () {
+            console.log('[Razorpay] Checkout modal dismissed by user');
+          }
+        }
+      };
+
+      const rzp = new RazorpayConstructor(options);
+      rzp.on('payment.failed', function (response: any) {
+        console.warn('[Razorpay Payment Failed]:', response.error);
+        setErrorMessage(response.error?.description || 'Payment was declined or cancelled.');
+      });
+      rzp.open();
+    } catch (sdkErr: any) {
+      console.error('[Razorpay Launch Error]:', sdkErr);
+      setIsSimulation(true);
     }
   };
 
@@ -289,54 +439,26 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
       return;
     }
 
-    const RazorpayConstructor = (window as any).Razorpay;
-    if (typeof RazorpayConstructor === 'function') {
-      try {
-        const options = {
-          key: activeKeyId,
-          amount: orderAmountPaise,
-          currency: 'INR',
-          name: 'Zomindia Services',
-          description: `${booking.serviceName || 'Home Service'} • Booking #${booking.id.slice(-6).toUpperCase()}`,
-          order_id: activeOrderId,
-          handler: function (response: any) {
-            verifyPayment(
-              response.razorpay_order_id || activeOrderId,
-              response.razorpay_payment_id,
-              response.razorpay_signature,
-              false
-            );
-          },
-          prefill: {
-            name: profile.displayName || profile.fullName || 'Customer',
-            contact: profile.phoneNumber || profile.mobile || '',
-            email: (profile.email && !profile.email.includes('customer@zomindia.com'))
-              ? profile.email
-              : (profile.phoneNumber || profile.mobile ? `${(profile.phoneNumber || profile.mobile || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
-          },
-          theme: {
-            color: '#dc2626'
-          },
-          modal: {
-            ondismiss: function () {
-              console.log('[Razorpay] Checkout modal dismissed');
-            }
-          }
-        };
-
-        const rzp = new RazorpayConstructor(options);
-        rzp.on('payment.failed', function (response: any) {
-          console.warn('[Razorpay Payment Failed]:', response.error);
-          setErrorMessage(response.error?.description || 'Payment was declined or cancelled.');
-        });
-        rzp.open();
-      } catch (sdkErr: any) {
-        console.error('[Razorpay Launch Error]:', sdkErr);
-        setIsSimulation(true);
-      }
+    if (typeof (window as any).Razorpay === 'function') {
+      openRazorpayCheckout(activeKeyId);
     } else {
-      setIsSimulation(true);
+      // Dynamically load checkout.js and launch
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => {
+        openRazorpayCheckout(activeKeyId);
+      };
+      script.onerror = () => {
+        console.warn('Could not load Razorpay SDK dynamically. Falling back to sandbox simulation.');
+        setIsSimulation(true);
+      };
+      document.body.appendChild(script);
     }
+  };
+
+  const handleModalClose = () => {
+    if (onPaymentCancel) onPaymentCancel();
+    onClose();
   };
 
   return (
@@ -347,8 +469,8 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+        onClick={handleModalClose}
+        className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs transition-opacity"
       />
 
       {/* Slide-up Bottom Sheet Panel */}
@@ -376,24 +498,39 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                 </h3>
                 <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
                   <ShieldCheck size={11} className="text-emerald-600" />
-                  100% Secure
+                  PCI-DSS 256-Bit
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Booking #{booking.id.slice(-6).toUpperCase()} • {formatBookingTime(booking.scheduledAt)}
+                {resolvedServiceName} • #{resolvedBookingId.slice(-6).toUpperCase()}
+                {booking?.scheduledAt ? ` • ${formatBookingTime(booking.scheduledAt)}` : ''}
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleModalClose}
             className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
             aria-label="Close payment modal"
           >
             <X size={16} />
           </button>
         </div>
+
+        {/* Booking Details Pill (if provided) */}
+        {bookingDetails && (
+          <div className="px-5 py-2.5 bg-slate-50/90 border-b border-slate-100 grid grid-cols-2 gap-2 text-xs shrink-0">
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <Calendar size={13} className="text-slate-400 shrink-0" />
+              <span className="font-semibold text-slate-800 truncate">{bookingDetails.date} • {bookingDetails.time}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <MapPin size={13} className="text-slate-400 shrink-0" />
+              <span className="font-semibold text-slate-800 truncate">{bookingDetails.address}</span>
+            </div>
+          </div>
+        )}
 
         {/* Amount Pill */}
         <div className="px-5 py-2.5 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between shrink-0">
@@ -431,7 +568,7 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                   <RefreshCw size={11} />
                   Retry
                 </button>
-                {booking.paymentStatus !== 'paid' && booking.paymentMethod !== 'cash' && (
+                {booking && booking.paymentStatus !== 'paid' && booking.paymentMethod !== 'cash' && (
                   <button
                     type="button"
                     onClick={handleSwitchToCOD}
@@ -464,8 +601,8 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
             </div>
           ) : (
             <>
-              {/* Wallet Deduction Option */}
-              {walletBalance > 0 && (
+              {/* Wallet Deduction Option (if profile available) */}
+              {profile && walletBalance > 0 && (
                 <div className="p-3.5 bg-gradient-to-r from-emerald-50/60 to-teal-50/60 border border-emerald-200/80 rounded-2xl flex items-center justify-between shadow-xs">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
@@ -502,8 +639,8 @@ export default function PaymentModal({ booking, profile, onClose, onSuccess }: P
                 </div>
               )}
 
-              {/* Pay After Service (COD) Alternative */}
-              {booking.paymentStatus !== 'paid' && booking.paymentMethod !== 'cash' && (
+              {/* Pay After Service (COD) Alternative (for booking mode) */}
+              {booking && booking.paymentStatus !== 'paid' && booking.paymentMethod !== 'cash' && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <Banknote size={18} className="text-slate-500" />

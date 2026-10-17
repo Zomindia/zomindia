@@ -55,7 +55,7 @@ import {
 } from 'lucide-react';
 import SupportChatModal from './SupportChatModal';
 import PartnerIdentityMarker from './PartnerIdentityMarker';
-import OnlinePaymentGatewayModal, { PaymentSuccessData } from './OnlinePaymentGatewayModal';
+import PaymentModal, { PaymentSuccessData } from './PaymentModal';
 import { reverseGeocode, findNearestIndoreLocality, isBroadIndoreName, INDORE_REFERENCE_POINTS } from '../utils/reverseGeocode';
 import { getSampledIndoreHighDemandAreas } from '../utils/indoreDemandAreas';
 
@@ -2150,8 +2150,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         </div>
       </motion.div>
 
-      {/* Centralized Online Payment Gateway Checkout Modal */}
-      <OnlinePaymentGatewayModal
+      {/* Centralized Razorpay Payment Gateway Checkout Modal */}
+      <PaymentModal
         isOpen={showOnlineGateway}
         amount={onlineBookingAmount || finalPayable}
         serviceName={service.name}

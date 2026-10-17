@@ -31,18 +31,27 @@ jobs:
             echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkWPjfDwAEeQHzfXkLqAAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/drawable/ic_launcher.png
           fi
 
-          # 2. Release Keystore Generation
-          keytool -genkey -v -keystore partner-release.keystore \
-            -alias partner \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass zomindia123 \
-            -keypass zomindia123 \
-            -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
+          # 2. Release Keystore Setup
+          if [ -f "$GITHUB_WORKSPACE/android/keystores/partner-release.keystore" ]; then
+            echo "Using committed partner release keystore..."
+            cp "$GITHUB_WORKSPACE/android/keystores/partner-release.keystore" partner-release.keystore
+          elif [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Decoding release keystore from secrets.KEYSTORE_BASE64..."
+            echo "$KEYSTORE_BASE64" | base64 -d > partner-release.keystore
+          else
+            echo "Generating fallback partner keystore..."
+            keytool -genkey -v -keystore partner-release.keystore \
+              -alias partner \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass zomindia123 \
+              -keypass zomindia123 \
+              -dname "CN=Zomindia Partner, OU=Operations, O=Zomindia Internet Technology, L=Indore, ST=Madhya Pradesh, C=IN"
+          fi
 
           echo "=== PARTNER APK SHA-256 FINGERPRINT ==="
-          keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:"
+          keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:" || true
           echo "========================================"
 
           # 3. Create gradle.properties (Fixes AndroidX requirement)

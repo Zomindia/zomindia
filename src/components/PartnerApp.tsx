@@ -478,6 +478,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     const targetPartnerId = partner?.id || profile.partnerId || activeUid;
 
     const payload = {
+      userId: activeUid,
+      uid: activeUid,
       availabilityStatus: status,
       isAvailable: isOnlineNow,
       isOnline: isOnlineNow,
@@ -784,14 +786,15 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                Admin
              </button>
            )}
-           {/* Quick Partner Help / Support action button */}
+           {/* Quick Partner Help & Helpline Action Button */}
            <button 
              onClick={() => setShowSupportModal(true)}
              aria-label="Partner Support & Helpline"
-             title="Partner Support & Indore Helpline"
-             className="relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-xl transition-all shrink-0 active:scale-95 cursor-pointer"
+             title="Partner Support & Indore Dispatch Helpline"
+             className="flex items-center gap-1.5 px-2.5 py-1.5 text-slate-700 hover:text-blue-700 bg-slate-50 hover:bg-blue-50 border border-slate-200/90 rounded-xl transition-all shrink-0 active:scale-95 cursor-pointer text-xs font-black shadow-2xs"
            >
-             <Headphones size={18} />
+             <Headphones size={15} className="text-blue-600 shrink-0" />
+             <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Help</span>
            </button>
            <button 
              onClick={() => setShowNotificationDrawer(true)}

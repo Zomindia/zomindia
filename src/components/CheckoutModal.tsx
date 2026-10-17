@@ -1,10 +1,11 @@
 /**
  * CheckoutModal Component
- * Re-exports the unified OnlinePaymentGatewayModal checkout component.
+ * Re-exports the unified PaymentModal checkout component.
  */
-export { default as CheckoutModal, default } from './OnlinePaymentGatewayModal';
+export { default as CheckoutModal, default } from './PaymentModal';
 export type { 
-  OnlinePaymentGatewayModalProps as CheckoutModalProps, 
-  OnlinePaymentGatewayModalProps, 
-  PaymentSuccessData 
-} from './OnlinePaymentGatewayModal';
+  PaymentModalProps as CheckoutModalProps, 
+  PaymentModalProps, 
+  PaymentSuccessData,
+  OnlinePaymentGatewayModalProps
+} from './PaymentModal';

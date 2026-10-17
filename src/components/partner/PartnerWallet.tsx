@@ -174,7 +174,9 @@ export default function PartnerWallet({ partner }: Props) {
       }
 
       const orderData = await orderRes.json();
-      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_51HQ7q2Z8yPq9W';
+      const razorpayKey = (orderData?.keyId && !orderData.keyId.includes('placeholder')) 
+        ? orderData.keyId 
+        : (import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder');
 
       const options = {
         key: razorpayKey,

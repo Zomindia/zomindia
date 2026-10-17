@@ -7,7 +7,7 @@ import nodemailer from "nodemailer";
 import PDFDocument from "pdfkit";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import crypto from "crypto";
 import Razorpay from "razorpay";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -196,6 +196,27 @@ async function startServer() {
   app.get("/health", healthHandler);
   app.get("/_ah/health", healthHandler);
   app.get("/api/health", healthHandler);
+
+  // Android Digital Asset Links (DAL) verification endpoint
+  app.get(["/.well-known/assetlinks.json", "/.well-known/assetlinks"], (_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    const pubPath = path.join(process.cwd(), "public", ".well-known", "assetlinks.json");
+    if (existsSync(pubPath)) {
+      try {
+        const content = readFileSync(pubPath, "utf-8");
+        return res.status(200).send(content);
+      } catch (e) {}
+    }
+    const distPath = path.join(process.cwd(), "dist", ".well-known", "assetlinks.json");
+    if (existsSync(distPath)) {
+      try {
+        const content = readFileSync(distPath, "utf-8");
+        return res.status(200).send(content);
+      } catch (e) {}
+    }
+    return res.status(404).json({ error: "assetlinks.json not found" });
+  });
 
   // API Routes
   app.use("/api", serverApiRouter);
@@ -673,6 +694,10 @@ async function startServer() {
           finalAmount = finalAmount || Number(bookingPayload?.totalPrice) || Number(existingData?.totalPrice) || 0;
           finalUserId = bookingPayload?.customerUid || bookingPayload?.userId || existingData?.customerId || existingData?.customerUid || existingData?.userId || finalUserId;
 
+          const commissionRate = 0.20;
+          const platformCommission = Math.round(finalAmount * commissionRate);
+          const partnerShare = Math.max(0, finalAmount - platformCommission);
+
           const updateData: any = {
             paymentStatus: "paid",
             status: resolvedStatus,
@@ -684,6 +709,9 @@ async function startServer() {
             onlinePaymentProvider: "Razorpay",
             paidAt: new Date().toISOString(),
             paidAmount: finalAmount,
+            platformFee: platformCommission,
+            platformCommission: platformCommission,
+            partnerShare: partnerShare,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           };
 
@@ -819,20 +847,25 @@ async function startServer() {
   });
 
   // 3. Official Razorpay Webhook Handler
-  app.post("/api/razorpay/webhook", async (req, res) => {
+  app.post(["/api/razorpay-webhook", "/api/razorpay/webhook"], async (req, res) => {
     try {
-      const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || RAZORPAY_KEY_SECRET;
+      const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET || "").trim();
       const signature = req.headers["x-razorpay-signature"] as string;
 
       if (webhookSecret && signature) {
-        const bodyStr = JSON.stringify(req.body);
-        const expectedSignature = crypto
-          .createHmac("sha256", webhookSecret)
-          .update(bodyStr)
-          .digest("hex");
-        if (expectedSignature !== signature) {
-          console.warn("[Razorpay Webhook] Invalid signature received");
-          return res.status(400).json({ status: "invalid_signature" });
+        try {
+          const bodyStr = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+          const expectedSignature = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(bodyStr)
+            .digest("hex");
+          if (expectedSignature !== signature) {
+            console.warn("[Razorpay Webhook] Invalid signature received");
+            return res.status(400).json({ status: "invalid_signature", message: "Signature verification failed" });
+          }
+        } catch (sigErr: any) {
+          console.warn("[Razorpay Webhook Signature Check Error]:", sigErr.message || sigErr);
+          return res.status(400).json({ status: "invalid_signature", message: "Signature computation error" });
         }
       }
 
@@ -873,7 +906,9 @@ async function startServer() {
               paymentMethod: "razorpay",
               paidAt: new Date().toISOString(),
               paidAmount,
+              platformFee: platformCommission,
               platformCommission,
+              partnerShare,
               transactionId: paymentId || orderId,
               onlinePaymentProvider: "Razorpay",
               razorpayOrderId: orderId,
