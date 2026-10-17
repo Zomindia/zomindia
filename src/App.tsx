@@ -1689,9 +1689,9 @@ If you have any billing questions, or if your refund is delayed, please email us
       <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto pl-1.5 pr-2 sm:pl-3 sm:pr-3 lg:px-8">
           <div className="flex justify-between h-14 sm:h-16 items-center">
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
               <motion.div
-                className="flex items-center cursor-pointer group relative pl-0 pr-1 py-1.5 rounded-2xl transition-all duration-300"
+                className="flex items-center cursor-pointer group relative pl-0 pr-1 py-1.5 rounded-2xl transition-all duration-300 shrink-0"
                 onClick={() => setActiveTab('home')}
                 id="nav-logo"
                 whileHover={{ scale: 1.02 }}
@@ -1706,6 +1706,17 @@ If you have any billing questions, or if your refund is delayed, please email us
                   className="h-9 sm:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
                 />
               </motion.div>
+
+              {/* Mobile Greeting starting cleanly right after the logo container */}
+              {(profile || user || auth.currentUser) && (
+                <div className="flex md:hidden items-center select-none min-w-0">
+                  <span className="text-[11px] font-bold bg-sky-50/80 border border-sky-100/90 px-2.5 py-1 rounded-xl shadow-xs inline-flex items-center">
+                    <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[140px] xs:max-w-[200px]">
+                      {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {renderNavigation()}
@@ -1736,14 +1747,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                       id="nav-green-greeting"
                     >
                       <div className="flex flex-col text-right items-end">
-                        {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                        <span className="text-xs font-bold leading-tight flex items-center gap-1.5 justify-end" id="portal-header-greeter">
-                          <Sparkles size={13} className="text-[#00baf2] animate-pulse shrink-0" />
+                        <span className="text-xs font-bold leading-tight flex items-center justify-end" id="portal-header-greeter">
                           <span className="bg-gradient-to-r from-[#002e6e] via-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
                             {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
                           </span>
                         </span>
-                        {/* IMMUTABLE GREETER BLOCK END */}
                         <span 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1766,16 +1774,8 @@ If you have any billing questions, or if your refund is delayed, please email us
                     </button>
                   </div>
 
-                  {/* Mobile Only: Top Row far-right compact greetings, Indore city pill, and Avatar direct profile trigger */}
+                  {/* Mobile Only: Top Row far-right compact Indore city pill and Avatar direct profile trigger */}
                   <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
-                    {/* IMMUTABLE GREETER BLOCK START - DO NOT MODIFY OR REFACTOR */}
-                    <span className="text-[10px] font-bold bg-sky-50/80 border border-sky-100 px-2 py-1 rounded-xl flex items-center gap-1 shadow-xs">
-                      <Sparkles size={11} className="text-[#00baf2] shrink-0" />
-                      <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[85px] xs:max-w-none">
-                        {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
-                      </span>
-                    </span>
-                    {/* IMMUTABLE GREETER BLOCK END */}
                     <button
                       onClick={() => setIsCitySelectorOpen(true)}
                       className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-1.5 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all shrink-0"
