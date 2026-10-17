@@ -1251,7 +1251,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             className="w-full"
           >
             <Suspense fallback={<LoadingScreen />}>
-              <PartnerPortalLanding onLogin={() => setIsAuthModalOpen(true)} onExploreServices={() => setActiveTab('home')} />
+              <PartnerPortalLanding onLogin={() => setIsAuthModalOpen(true)} />
             </Suspense>
           </motion.div>
         );
@@ -1407,7 +1407,28 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'offers') {
-      return <OffersView profile={profile} onAuthRequired={() => setIsAuthModalOpen(true)} setActiveTab={setActiveTab} />;
+      const isPartnerContext = currentMode === 'partner' || profile?.role === 'partner' || Boolean(profile?.partnerId);
+      return (
+        <OffersView 
+          profile={profile} 
+          onAuthRequired={() => setIsAuthModalOpen(true)} 
+          setActiveTab={(tab) => {
+            if (isPartnerContext) {
+              if (tab === 'home' || tab === 'stats' || tab === 'services' || tab === '/') {
+                setActiveTab('partner');
+              } else if (tab === 'jobs') {
+                setActiveTab('partner');
+                window.location.hash = '#partner?tab=jobs';
+              } else {
+                setActiveTab(tab);
+              }
+            } else {
+              setActiveTab(tab);
+            }
+          }} 
+          context={isPartnerContext ? 'partner' : 'customer'} 
+        />
+      );
     }
 
     if (activeTab === 'profile') {

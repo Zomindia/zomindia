@@ -96,6 +96,7 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       applicableCategories: [],
       dealCategory: 'flat',
       badgeText: 'Fuel Boost',
+      targetAudience: 'partner',
     },
     {
       id: 'static_weekendpro',
@@ -108,6 +109,7 @@ const LOCAL_PROMOTIONS: Record<'customer' | 'partner', any[]> = {
       applicableCategories: [],
       dealCategory: 'festive',
       badgeText: 'Weekend Surge',
+      targetAudience: 'partner',
     }
   ]
 };
@@ -147,6 +149,25 @@ export default function OffersView({
     return null;
   });
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [showRateCardModal, setShowRateCardModal] = useState<boolean>(false);
+  const [selectedRateCardCategory, setSelectedRateCardCategory] = useState<string>('all');
+
+  const partnerRateCards = useMemo(() => [
+    { id: 'ac-1', category: 'Air Conditioner', service: 'Split AC Deep Jet Cleaning & Servicing', customerPrice: 770, partnerPayout: 616, duration: '45 mins' },
+    { id: 'ac-2', category: 'Air Conditioner', service: 'Window AC Foam Wash & Coil Clean', customerPrice: 599, partnerPayout: 479, duration: '40 mins' },
+    { id: 'ac-3', category: 'Air Conditioner', service: 'AC Gas Charging & Valve Replacement', customerPrice: 1850, partnerPayout: 1480, duration: '60 mins' },
+    { id: 'ro-1', category: 'Water Purifier', service: 'Complete RO Servicing & Membrane Flush', customerPrice: 649, partnerPayout: 519, duration: '45 mins' },
+    { id: 'ro-2', category: 'Water Purifier', service: 'RO Sediment & Carbon Filter Replacement', customerPrice: 399, partnerPayout: 319, duration: '30 mins' },
+    { id: 'wm-1', category: 'Washing Machine', service: 'Fully Automatic Washing Machine Service', customerPrice: 499, partnerPayout: 399, duration: '45 mins' },
+    { id: 'wm-2', category: 'Washing Machine', service: 'Semi-Automatic Spin/Wash Diagnostics', customerPrice: 399, partnerPayout: 319, duration: '35 mins' },
+    { id: 'fridge-1', category: 'Refrigerator', service: 'Double Door Refrigerator Repair & Gas Charge', customerPrice: 599, partnerPayout: 479, duration: '50 mins' },
+    { id: 'fridge-2', category: 'Refrigerator', service: 'Single Door Refrigerator Inspection & Thermostat', customerPrice: 449, partnerPayout: 359, duration: '35 mins' },
+    { id: 'micro-1', category: 'Microwave', service: 'Microwave Diagnostics & Heating Repair', customerPrice: 349, partnerPayout: 279, duration: '30 mins' },
+    { id: 'geyser-1', category: 'Geyser', service: 'Geyser Descaling & Element Replacement', customerPrice: 399, partnerPayout: 319, duration: '40 mins' },
+    { id: 'elec-1', category: 'Electrician', service: 'Switchboard / MCB Repair & Installation', customerPrice: 249, partnerPayout: 199, duration: '25 mins' },
+    { id: 'plumb-1', category: 'Plumber', service: 'Tap / Pipe Leakage & Valve Repair', customerPrice: 249, partnerPayout: 199, duration: '30 mins' },
+    { id: 'visit-1', category: 'General', service: 'Standard Minimum Doorstep Inspection / Visit', customerPrice: 195, partnerPayout: 156, duration: '20 mins' },
+  ], []);
 
   const getElegantName = useCallback((name: string) => {
     if (!name) return '';
@@ -156,6 +177,28 @@ export default function OffersView({
     }
     return name;
   }, []);
+
+  const isPartner = useMemo(() => {
+    return context === 'partner' || 
+      profile?.role === 'partner' || 
+      (profile as any)?.currentMode === 'partner' || 
+      (typeof window !== 'undefined' && (
+        window.location.pathname.startsWith('/partner') || 
+        window.location.hash.toLowerCase().includes('partner')
+      ));
+  }, [context, profile]);
+
+  const handleSafeNavigate = useCallback((tab: string) => {
+    if (isPartner) {
+      if (tab === 'home' || tab === 'services' || tab === '/') {
+        // Strictly prevent leaving partner ecosystem: open Rate Card or route to Jobs
+        setSelectedRateCardCategory('all');
+        setShowRateCardModal(true);
+        return;
+      }
+    }
+    setActiveTab(tab);
+  }, [isPartner, setActiveTab]);
 
   useEffect(() => {
     let isMounted = true;
@@ -167,13 +210,14 @@ export default function OffersView({
         if (!isMounted) return;
         const dbPromos = snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
         // Blend db promotions with our premium pre-defined Indore local promotions, filtering duplicate codes
-        const localList = LOCAL_PROMOTIONS[context] || [];
+        const localList = LOCAL_PROMOTIONS[isPartner ? 'partner' : 'customer'] || [];
         const merged = [...dbPromos];
         
         for (const local of localList) {
           if (!merged.some(p => p.code.toLowerCase() === local.code.toLowerCase())) {
             merged.push({
               ...local,
+              targetAudience: local.targetAudience || (isPartner ? 'partner' : 'customer'),
               createdAt: Timestamp.now()
             } as any);
           }
@@ -218,7 +262,7 @@ export default function OffersView({
       if (typeof unsubCategories === "function") unsubCategories();
       if (typeof unsubRedemptions === "function") unsubRedemptions();
     };
-  }, [profile?.uid, context]);
+  }, [profile?.uid, isPartner]);
 
   useEffect(() => {
     if (promotions.length > 0 && categories.length > 0) {
@@ -228,13 +272,13 @@ export default function OffersView({
 
   const visiblePromotions = useMemo(() => {
     return promotions.filter(promo => {
-      if (context === 'partner') {
-        return promo.targetAudience === 'partner';
+      if (isPartner) {
+        return promo.targetAudience === 'partner' || promo.id.startsWith('static_fuel') || promo.id.startsWith('static_weekend');
       } else {
         return promo.targetAudience === 'customer' || !promo.targetAudience || promo.targetAudience === 'all';
       }
     });
-  }, [promotions, context]);
+  }, [promotions, isPartner]);
 
   const filteredPromotions = useMemo(() => {
     return visiblePromotions.filter(promo => {
@@ -720,7 +764,7 @@ export default function OffersView({
         </div>
       ) : null}
 
-      {/* Browse Categories Directory with Quick Action */}
+      {/* Browse Categories Directory / Partner Rate Card Directory */}
       <section className="mt-8 sm:mt-10 bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 shadow-2xs" id="offers-directory">
         <div className="flex items-center justify-between gap-3 mb-3.5">
           <div className="flex items-center gap-2">
@@ -728,15 +772,29 @@ export default function OffersView({
               <Sparkles size={14} />
             </div>
             <h2 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
-              Browse Categories to Redeem Vouchers
+              {isPartner ? 'Technician Payout Rate Cards' : 'Browse Categories to Redeem Vouchers'}
             </h2>
           </div>
-          <button 
-            onClick={() => setActiveTab('home')}
-            className="text-xs font-black text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
-          >
-            View All Services <ArrowRight size={13} />
-          </button>
+          {isPartner ? (
+            <button 
+              id="partner-rate-card-btn"
+              onClick={() => {
+                setSelectedRateCardCategory('all');
+                setShowRateCardModal(true);
+              }}
+              className="text-xs font-black text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+            >
+              View Partner Rate Card <ArrowRight size={13} />
+            </button>
+          ) : (
+            <button 
+              id="customer-services-btn"
+              onClick={() => handleSafeNavigate('home')}
+              className="text-xs font-black text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+            >
+              View All Services <ArrowRight size={13} />
+            </button>
+          )}
         </div>
 
         <div 
@@ -748,7 +806,14 @@ export default function OffersView({
             return (
               <button
                 key={cat.id}
-                onClick={() => setActiveTab('home')}
+                onClick={() => {
+                  if (isPartner) {
+                    setSelectedRateCardCategory(cat.name);
+                    setShowRateCardModal(true);
+                  } else {
+                    handleSafeNavigate('home');
+                  }
+                }}
                 className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/70 hover:border-blue-200 transition-all text-left shrink-0 cursor-pointer group"
                 id={`directory-btn-${cat.id}`}
               >
@@ -847,6 +912,121 @@ export default function OffersView({
                     Automatically applies discount when checking out your next booking.
                   </p>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Partner Rate Card & Payout Modal (Strictly Enclosed Inside Partner App) */}
+      <AnimatePresence>
+        {showRateCardModal && (
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/60 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRateCardModal(false)}
+              className="absolute inset-0"
+            />
+            <motion.div 
+              initial={{ y: '100%', opacity: 0.8 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-3xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[88vh] border border-slate-100"
+            >
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+                    <Sparkles size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                      Partner Rate Card
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        80% Payout
+                      </span>
+                    </h3>
+                    <p className="text-xs text-blue-200/70 font-medium mt-0.5">
+                      Indore Technician Payouts • Guaranteed Instant Wallet Credit
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setShowRateCardModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                  title="Close Rate Card"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
+                {['all', 'Air Conditioner', 'Water Purifier', 'Washing Machine', 'Refrigerator', 'Electrician', 'Plumber'].map(cName => (
+                  <button
+                    key={cName}
+                    onClick={() => setSelectedRateCardCategory(cName)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      selectedRateCardCategory.toLowerCase() === cName.toLowerCase()
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {cName === 'all' ? 'All Services' : cName}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rate Card Table / List */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2.5">
+                {partnerRateCards
+                  .filter(r => selectedRateCardCategory === 'all' || r.category.toLowerCase().includes(selectedRateCardCategory.toLowerCase()) || selectedRateCardCategory.toLowerCase().includes(r.category.toLowerCase()))
+                  .map(rate => (
+                    <div 
+                      key={rate.id}
+                      className="p-3.5 bg-slate-50/70 hover:bg-blue-50/40 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
+                            {rate.category}
+                          </span>
+                          <span className="text-[10px] font-medium text-slate-400">
+                            • {rate.duration}
+                          </span>
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                          {rate.service}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          Cust. Bill: ₹{rate.customerPrice} • Zomindia Fee (20%): ₹{rate.customerPrice - rate.partnerPayout}
+                        </p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-[9px] font-black uppercase text-emerald-600 tracking-wider block">Your Payout</span>
+                        <span className="text-base sm:text-lg font-black text-emerald-700">₹{rate.partnerPayout}</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Modal Footer with Work Queue CTA */}
+              <div className="p-4 bg-white border-t border-slate-100 flex items-center gap-3 shrink-0">
+                <button
+                  onClick={() => {
+                    setShowRateCardModal(false);
+                    handleSafeNavigate('jobs');
+                  }}
+                  className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Open Active Work Queue (Jobs)</span>
+                  <ArrowRight size={14} />
+                </button>
               </div>
             </motion.div>
           </div>

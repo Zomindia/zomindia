@@ -196,13 +196,32 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       setShowNotificationDrawer(true);
       return;
     }
-    // If screen is a top level app tab, use onAppNavigate
-    if (onAppNavigate && (screen === 'admin' || screen === 'home')) {
-       onAppNavigate(screen);
+    // Strictly isolate Partner App: 'home' always maps to partner 'stats' overview
+    if (screen === 'home' || screen === 'stats') {
+      setActiveTab('stats');
+      setTargetBookingId(null);
+      return;
+    }
+    // Prevent routing leaks: intercept any customer paths and keep technician in partner jobs
+    if (screen === 'services' || screen === '/' || screen === 'customer' || screen === 'service-details') {
+      setActiveTab('jobs');
+      setTargetBookingId(null);
+      return;
+    }
+    // Only allow explicit admin escalation if user is master admin
+    if (onAppNavigate && screen === 'admin' && profile.role === 'admin') {
+       onAppNavigate('admin');
        return;
     }
-    setTargetBookingId(targetId);
-    setActiveTab(screen === 'home' ? 'stats' : screen);
+    // Enforce strictly valid partner tabs: 'stats' | 'jobs' | 'wallet' | 'settings' | 'offers' | 'amc-leads'
+    const validPartnerTabs = ['stats', 'jobs', 'wallet', 'settings', 'offers', 'amc-leads'];
+    if (validPartnerTabs.includes(screen)) {
+      setTargetBookingId(targetId);
+      setActiveTab(screen);
+    } else {
+      setActiveTab('stats');
+      setTargetBookingId(null);
+    }
   };
 
   // Real-time listener for partner unread notification count
@@ -773,9 +792,13 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       )}
       {/* App Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center transition-all select-none">
-        <div className="flex flex-col shrink-0 select-none">
+        <div 
+          onClick={() => navigateWithTarget('stats')}
+          className="flex flex-col shrink-0 select-none cursor-pointer group active:scale-95 transition-transform"
+          title="Partner Dashboard (Home)"
+        >
           <img src="/logo-horizontal.png" alt="Zomindia" className="h-8 sm:h-9 w-auto object-contain object-left" referrerPolicy="no-referrer" />
-          <span className="text-[7.5px] text-[#0a2540]/60 font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
+          <span className="text-[7.5px] text-[#0a2540]/60 group-hover:text-blue-700 font-black uppercase tracking-widest leading-none mt-0.5">Partner App</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
            {profile.role === 'admin' && (
