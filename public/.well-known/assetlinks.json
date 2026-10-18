@@ -1,6 +1,8 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.zomindia.twa",
@@ -10,13 +12,14 @@
     }
   },
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.zomindia.partner",
       "sha256_cert_fingerprints": [
-        "7C:EA:D5:61:93:8C:F0:DF:A6:49:8C:0F:BE:F4:54:60:3F:6D:74:16:41:33:B0:5F:23:EB:40:C0:6F:F9:94:CF",
-        "F7:74:C1:25:69:60:DF:AE:B9:94:6A:70:84:31:32:8E:55:7D:5F:A9:8A:20:19:CC:50:84:8C:84:71:A9:AB:21"
+        "7C:EA:D5:61:93:8C:F0:DF:A6:49:8C:0F:BE:F4:54:60:3F:6D:74:16:41:33:B0:5F:23:EB:40:C0:6F:F9:94:CF"
       ]
     }
   }

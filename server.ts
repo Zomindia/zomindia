@@ -198,7 +198,7 @@ async function startServer() {
   app.get("/api/health", healthHandler);
 
   // Android Digital Asset Links (DAL) verification endpoint
-  app.get(["/.well-known/assetlinks.json", "/.well-known/assetlinks"], (_req, res) => {
+  app.get(["/.well-known/assetlinks.json", "/.well-known/assetlinks", "/assetlinks.json", "/assetlinks"], (_req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Cache-Control", "public, max-age=86400");
     const pubPath = path.join(process.cwd(), "public", ".well-known", "assetlinks.json");
