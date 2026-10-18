@@ -79,7 +79,7 @@ export default function ServiceCard({
         </span>
 
         {/* Title: High-Contrast Dark Slate with Smooth Blue Hover Transition */}
-        <h4 className="font-extrabold text-slate-900 text-xs sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200 leading-snug">
+        <h4 className="text-slate-900 font-extrabold text-sm sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200 leading-snug">
           {service.name}
         </h4>
 
@@ -96,7 +96,7 @@ export default function ServiceCard({
             STARTS AT
           </span>
           <div className="flex items-baseline gap-1.5 flex-wrap">
-            <span className="text-emerald-600 font-black text-sm sm:text-base tracking-tight">
+            <span className="text-emerald-600 font-black text-base tracking-tight">
               ₹{service.basePrice}
             </span>
             {originalMrp > service.basePrice && (

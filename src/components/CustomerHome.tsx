@@ -36,6 +36,7 @@ import {
   SkeletonCategoryGrid,
   SkeletonServiceCardGrid,
 } from "./HomeSkeletons";
+import ServiceCard from "./ServiceCard";
 import {
   Wrench,
   Sparkles,
@@ -2017,72 +2018,13 @@ export default function CustomerHome({
                 .filter((s) => s.rating && s.rating >= 4.5)
                 .slice(0, 4)
                 .map((service, idx) => (
-                  <motion.div
+                  <ServiceCard
                     key={service.id}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    whileHover={{ y: -4, scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ duration: 0.2, delay: idx * 0.04 }}
-                    className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-3 sm:p-4 hover:border-blue-300 hover:shadow-lg transition-all duration-300 flex flex-col justify-between text-left group shadow-xs cursor-pointer"
-                    onClick={() => onServiceSelect(service.id)}
-                  >
-                    <div className="flex flex-col w-full min-w-0">
-                      {/* Image Box */}
-                      <div className="w-full aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-3 bg-slate-100 relative shadow-inner">
-                        <img
-                          src={
-                            service.imageURL ||
-                            "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=400"
-                          }
-                          alt={service.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
-                        <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs px-2 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black text-slate-800 shadow-xs flex items-center gap-1 border border-slate-200/50">
-                          <Star size={9} className="text-amber-500 fill-amber-500" />
-                          <span>{service.rating || "4.8"}</span>
-                        </div>
-                      </div>
-
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mb-0.5">
-                        {allCategories.find((c) => c.id === service.categoryId)?.name || "Home Service"}
-                      </span>
-
-                      <h4 className="font-black text-slate-900 text-xs sm:text-base line-clamp-1 group-hover:text-blue-700 transition-colors">
-                        {service.name}
-                      </h4>
-
-                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 mb-2.5 font-medium leading-relaxed">
-                        {service.description}
-                      </p>
-                    </div>
-
-                    {/* Actions & Price */}
-                    <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
-                      <div>
-                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-0.5">
-                          Starts at
-                        </span>
-                        <span className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
-                          ₹{service.basePrice}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onServiceSelect(service.id);
-                        }}
-                        className="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <span>Book</span>
-                        <ArrowRight size={12} className="stroke-[3]" />
-                      </button>
-                    </div>
-                  </motion.div>
+                    service={service}
+                    categoryName={allCategories.find((c) => c.id === service.categoryId)?.name}
+                    onSelect={onServiceSelect}
+                    idx={idx}
+                  />
                 ))
             )}
           </div>

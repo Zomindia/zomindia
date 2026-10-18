@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   collection,
   getDocs,
@@ -28,6 +28,12 @@ import {
   Info,
   Wrench,
   Check,
+  UserCheck,
+  Zap,
+  ChevronUp,
+  ChevronDown,
+  X,
+  BadgePercent,
 } from "lucide-react";
 import BookingModal from "./BookingModal";
 import { LoadingScreen } from "./LoadingIndicator";
@@ -61,7 +67,7 @@ export function ImageCarousel({ images }: { images: string[] }) {
 
   const variants = {
     enter: (direction: number) => ({
-      x: direction > 0 ? 1000 : -1000,
+      x: direction > 0 ? 600 : -600,
       opacity: 0,
     }),
     center: {
@@ -71,18 +77,13 @@ export function ImageCarousel({ images }: { images: string[] }) {
     },
     exit: (direction: number) => ({
       zIndex: 0,
-      x: direction < 0 ? 1000 : -1000,
+      x: direction < 0 ? 600 : -600,
       opacity: 0,
     }),
   };
 
-  const swipeConfidenceThreshold = 10000;
-  const swipePower = (offset: number, velocity: number) => {
-    return Math.abs(offset) * velocity;
-  };
-
   return (
-    <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] md:h-[350px] rounded-[24px] md:rounded-[40px] overflow-hidden mb-6 shadow-md border-2 md:border-4 border-white group touch-none">
+    <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] md:h-[360px] rounded-3xl overflow-hidden shadow-lg border border-slate-200/90 bg-slate-100 group select-none touch-none">
       <AnimatePresence initial={false} custom={direction}>
         <motion.img
           key={index}
@@ -94,50 +95,47 @@ export function ImageCarousel({ images }: { images: string[] }) {
           exit="exit"
           transition={{
             x: { type: "spring", stiffness: 300, damping: 30 },
-            opacity: { duration: 0.2 },
+            opacity: { duration: 0.25 },
           }}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={1}
-          onDragEnd={(e, { offset, velocity }) => {
-            const swipe = swipePower(offset.x, velocity.x);
-
-            if (swipe < -swipeConfidenceThreshold) {
-              paginate(1);
-            } else if (swipe > swipeConfidenceThreshold) {
-              paginate(-1);
-            }
-          }}
-          className="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
           referrerPolicy="no-referrer"
+          loading="lazy"
         />
       </AnimatePresence>
 
       {images.length > 1 && (
         <>
-          <div className="absolute inset-0 flex items-center justify-between px-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute inset-0 flex items-center justify-between px-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
+              type="button"
               onClick={() => paginate(-1)}
-              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 shadow-xl hover:bg-white active:scale-90 transition-all pointer-events-auto"
+              className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-800 shadow-lg hover:bg-white active:scale-90 transition-all cursor-pointer"
+              aria-label="Previous image"
             >
-              <ChevronLeft size={24} />
+              <ChevronLeft size={20} className="stroke-[2.5]" />
             </button>
             <button
+              type="button"
               onClick={() => paginate(1)}
-              className="w-12 h-12 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 shadow-xl hover:bg-white active:scale-90 transition-all pointer-events-auto"
+              className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-800 shadow-lg hover:bg-white active:scale-90 transition-all cursor-pointer"
+              aria-label="Next image"
             >
-              <ChevronRight size={24} />
+              <ChevronRight size={20} className="stroke-[2.5]" />
             </button>
           </div>
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
             {images.map((_, i) => (
               <button
                 key={i}
+                type="button"
                 onClick={() => {
                   setDirection(i > index ? 1 : -1);
                   setIndex(i);
                 }}
-                className={`h-1.5 rounded-full transition-all duration-300 pointer-events-auto ${i === index ? "w-8 bg-white" : "w-2 bg-white/40 hover:bg-white/60"}`}
+                className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                  i === index ? "w-6 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"
+                }`}
+                aria-label={`Go to image ${i + 1}`}
               />
             ))}
           </div>
@@ -165,6 +163,7 @@ export default function ServiceDetails({
   const [currentServiceId, setCurrentServiceId] = useState(serviceId);
   const [loading, setLoading] = useState(true);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isMobileBillOpen, setIsMobileBillOpen] = useState(false);
   const carouselScrollRef = useRef<HTMLDivElement>(null);
 
   // Dynamic Posh Areas Rotation with Smart Local Area Inclusion
@@ -242,7 +241,7 @@ export default function ServiceDetails({
         </p>
         <button
           onClick={onBack}
-          className="bg-blue-700 text-white px-8 py-3 rounded-xl font-bold"
+          className="bg-blue-700 text-white px-8 py-3 rounded-xl font-bold cursor-pointer"
         >
           Back to Home
         </button>
@@ -251,487 +250,487 @@ export default function ServiceDetails({
   }
 
   const serviceImages =
-    service.images || (service.imageURL ? [service.imageURL] : []);
+    service.images && service.images.length > 0
+      ? service.images
+      : service.imageURL
+        ? [service.imageURL]
+        : [];
+
+  const originalMrp =
+    (service as any).originalPrice ||
+    (service as any).mrp ||
+    Math.round(service.basePrice * 1.3);
+  const savingAmount = Math.max(0, originalMrp - service.basePrice);
+  const discountPercent =
+    originalMrp > 0
+      ? Math.max(12, Math.round((savingAmount / originalMrp) * 100))
+      : 23;
+  const ratingValue = Number(service.rating || 4.8).toFixed(1);
+
+  const checklistItems: string[] =
+    service.checklist && service.checklist.length > 0
+      ? service.checklist
+      : service.predefinedTasks && service.predefinedTasks.length > 0
+        ? service.predefinedTasks
+        : service.features && service.features.length > 0
+          ? service.features
+          : [
+              "Complete diagnosis & operational error check",
+              "Deep clean, component inspection & filter wash",
+              "Post-service performance & cooling/function test",
+              "Transparent digital invoice with warranty card",
+            ];
+
+  const handleStartBooking = () => {
+    if (profile) {
+      setIsBookingModalOpen(true);
+    } else {
+      onAuthRequired();
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 pb-4 md:pb-6">
-      {/* Header Sticky */}
+    <div className="min-h-screen bg-slate-50/70 pb-24 lg:pb-12 text-slate-900">
+      {/* Header Sticky Navigation */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="sticky top-16 md:top-24 z-30 transition-all duration-300 px-0 sm:px-6 lg:px-8 sm:py-3"
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="sticky top-16 md:top-24 z-30 px-3 sm:px-6 lg:px-8 py-2.5"
       >
-        <div className="bg-white/85 backdrop-blur-md border-b border-slate-100 sm:border sm:border-slate-100/85 sm:rounded-3xl sm:shadow-lg sm:shadow-slate-100/40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-start transition-all duration-300">
+        <div className="bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-sm max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-slate-500 hover:text-blue-700 font-black text-xs uppercase tracking-[0.18em] transition-all hover:-translate-x-1 py-1.5 cursor-pointer select-none"
+            className="flex items-center gap-1.5 text-slate-600 hover:text-blue-700 font-extrabold text-xs uppercase tracking-wider transition-all hover:-translate-x-1 py-1 cursor-pointer select-none"
           >
-            <ChevronLeft size={15} className="stroke-[2.5]" /> Back to discover
+            <ChevronLeft size={16} className="stroke-[3]" />
+            <span>Back to services</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const shareUrl = window.location.href;
+              const text = `Hi! Check out this *${service.name}* home service on Zomato Home Services for only *₹${service.basePrice}* with free warranty & Zom-Shield insurance: ${shareUrl}`;
+              if (navigator.share) {
+                navigator.share({
+                  title: service.name,
+                  text,
+                  url: shareUrl,
+                }).catch(() => {});
+              } else {
+                window.open(
+                  `https://wa.me/?text=${encodeURIComponent(text)}`,
+                  "_blank"
+                );
+              }
+            }}
+            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+            title="Share service"
+          >
+            <Share2 size={13} />
+            <span className="hidden sm:inline">Share</span>
           </button>
         </div>
       </motion.div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2 md:pt-6 md:pb-3">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: {
-                staggerChildren: 0.12,
-                delayChildren: 0.05,
-              },
-            },
-          }}
-          className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start"
-        >
-          {/* Main Content */}
-          <motion.div
-            variants={{
-              hidden: { opacity: 0, y: 30 },
-              visible: {
-                opacity: 1,
-                y: 0,
-                transition: {
-                  type: "spring",
-                  stiffness: 70,
-                  damping: 15,
-                  duration: 0.6,
-                },
-              },
-            }}
-            className="lg:col-span-8 space-y-4 md:space-y-6"
-          >
-            {/* Hero Info */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Main Left Content Column */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* 1. HERO MEDIA & FLOATING BADGES */}
             <motion.section
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-sm"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start bg-white rounded-3xl p-5 md:p-7 border border-slate-100 shadow-sm">
-                {/* Left side: Title, Description, Pricing, Metadata */}
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="px-3 py-1.5 bg-blue-700 text-white rounded-full text-[9px] font-black uppercase tracking-[0.25em]">
-                      {category?.name || "Expert Service"}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[9px] font-black text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 uppercase tracking-widest">
-                      <Clock size={12} className="text-slate-300" />{" "}
-                      {service.duration || "60 mins"} session
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[9px] font-black text-slate-900 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100 tracking-tighter italic">
-                      <Star
-                        size={12}
-                        fill="currentColor"
-                        className="text-amber-500"
-                      />{" "}
-                      {service.rating || 4.8} rating
-                    </span>
+              {/* Media Container with Zoom & Floating Glassmorphic Badges */}
+              <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] md:h-[370px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-inner border border-slate-200/80 bg-slate-100 group mb-5">
+                {serviceImages.length > 1 ? (
+                  <ImageCarousel images={serviceImages} />
+                ) : (
+                  <img
+                    src={
+                      service.imageURL ||
+                      "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800"
+                    }
+                    alt={service.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                )}
+
+                {/* Floating Glassmorphic Pills (Top Left & Top Right) */}
+                <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
+                  {/* Zomato-Style Emerald Rating Pill */}
+                  <div className="bg-emerald-600/95 backdrop-blur-md text-white font-black text-xs px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-md border border-white/20 select-none">
+                    <Star size={12} className="fill-white text-white shrink-0" />
+                    <span>{ratingValue}</span>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-slate-100 pb-4 w-full">
-                    {service.imageURL && (
-                      <div className="w-full sm:w-80 h-40 sm:h-44 rounded-2xl overflow-hidden shadow-lg shrink-0 border-4 border-white ring-1 ring-slate-150 flex items-center justify-center bg-slate-50 transition-all duration-500 hover:scale-[1.02] hover:shadow-xl group">
-                        <img
-                          src={service.imageURL}
-                          alt={service.name}
-                          className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1 space-y-2">
-                      <h1 className="text-2xl sm:text-3.5xl md:text-4.5xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">
-                        {service.name}
-                      </h1>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4 pt-1">
-                    <button
-                      onClick={() =>
-                        profile ? setIsBookingModalOpen(true) : onAuthRequired()
-                      }
-                      className="bg-blue-700 hover:bg-blue-800 text-white px-8 py-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-700/15 transition-all active:scale-95 flex items-center justify-center gap-2"
-                    >
-                      <Calendar size={14} /> Book Service
-                    </button>
-                    <div className="flex items-center gap-5 px-5 py-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">
-                          Price
-                        </p>
-                        <p className="text-sm font-black text-slate-920 tracking-tight">
-                          ₹{service.basePrice}
-                        </p>
-                      </div>
-                      <div className="w-px h-6 bg-slate-200" />
-                      <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">
-                          Time
-                        </p>
-                        <p className="text-sm font-black text-slate-920 tracking-tight">
-                          {service.duration || "60m"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Clean Service Description */}
-                  <div className="pt-2">
-                    <p className="text-slate-600 text-sm sm:text-base leading-relaxed font-medium">
-                      {service.description}
-                    </p>
+                  {/* Category Badge Pill */}
+                  <div className="bg-indigo-50/95 backdrop-blur-md text-indigo-700 ring-1 ring-indigo-200/80 font-bold text-[11px] px-2.5 py-1 rounded-xl shadow-xs select-none">
+                    {category?.name || "Home Service"}
                   </div>
                 </div>
 
-                {/* Right side: Imagecarousel */}
-                <div className="lg:col-span-5 w-full lg:sticky lg:top-36">
-                  {serviceImages.length > 0 && (
-                    <div className="rounded-3xl overflow-hidden shadow-lg border border-slate-150">
-                      <ImageCarousel images={serviceImages} />
-                    </div>
+                {/* Session Duration Pill (Top Right) */}
+                <div className="absolute top-3 right-3 z-10 bg-slate-900/80 backdrop-blur-md text-white font-bold text-[11px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-xs select-none">
+                  <Clock size={11} className="text-amber-400 shrink-0" />
+                  <span>{service.duration || "45-60 mins"}</span>
+                </div>
+              </div>
+
+              {/* Service Title & Dynamic Price Badge */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <h1 className="text-2xl sm:text-3.5xl font-black text-slate-900 tracking-tight leading-tight">
+                    {service.name}
+                  </h1>
+                </div>
+
+                {/* Dynamic Price Highlight with Strikethrough & Savings Pill */}
+                <div className="flex flex-wrap items-center gap-3 pt-1 pb-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      STARTS AT
+                    </span>
+                    <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight">
+                      ₹{service.basePrice}
+                    </span>
+                    {savingAmount > 0 && (
+                      <span className="text-base sm:text-lg text-slate-400 line-through font-bold">
+                        ₹{originalMrp}
+                      </span>
+                    )}
+                  </div>
+
+                  {savingAmount > 0 && (
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80 font-extrabold text-xs px-3 py-1 rounded-full uppercase tracking-wider shadow-xs">
+                      <BadgePercent size={13} className="stroke-[2.5]" />
+                      <span>Save ₹{savingAmount} ({discountPercent}% OFF)</span>
+                    </span>
                   )}
+                </div>
+
+                {/* Description */}
+                <p className="text-slate-600 text-sm sm:text-base leading-relaxed font-medium">
+                  {service.description}
+                </p>
+
+                {/* Desktop Quick Action */}
+                <div className="hidden lg:flex items-center gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={handleStartBooking}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm py-3 px-6 rounded-xl shadow-md hover:shadow-blue-500/25 active:scale-95 transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Calendar size={15} />
+                    <span>Book Service Now</span>
+                    <ArrowRight size={14} className="stroke-[3]" />
+                  </button>
+
+                  <div className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 font-semibold">
+                    <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                    <span>Free 30-Day Re-service Guarantee</span>
+                  </div>
                 </div>
               </div>
             </motion.section>
 
-            {/* Admin-Driven Service Checklist */}
-            {(() => {
-              const checklistItems: string[] =
-                service.checklist && service.checklist.length > 0
-                  ? service.checklist
-                  : service.predefinedTasks && service.predefinedTasks.length > 0
-                    ? service.predefinedTasks
-                    : service.features && service.features.length > 0
-                      ? service.features
-                      : [
-                          "Complete diagnosis & error check",
-                          "Deep cleaning and filter wash",
-                          "Post-service operational testing",
-                        ];
-
-              return (
-                <div className="space-y-5 my-6">
-                  {/* What's Included (✓) */}
-                  <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
-                          <CheckCircle2 size={16} className="stroke-[2.5]" />
-                        </span>
-                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                          What's Included (✓)
-                        </h3>
-                      </div>
-                      <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
-                        Verified Checklist
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2.5 pt-1">
-                      {checklistItems.map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100/80 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                            <Check size={12} className="stroke-[3]" />
-                          </div>
-                          <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                            {item}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+            {/* 2. INTERACTIVE CHECKLIST & TRUST TILES */}
+            <section className="space-y-5">
+              {/* WHAT'S INCLUDED: Modern List with Emerald Checkmark Discs & Hover Lift */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg ring-1 ring-emerald-200/60">
+                      <CheckCircle2 size={16} className="stroke-[2.5]" />
+                    </span>
+                    <h2 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wider">
+                      What's Included
+                    </h2>
                   </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/70">
+                    Verified Checklist
+                  </span>
+                </div>
 
-                  {/* Zomindia Promise (3 Clean Badges) - Placed directly below the checklist */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center gap-3.5 hover:border-blue-200 transition-colors">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
-                        <ShieldCheck size={20} className="stroke-[2.5]" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {checklistItems.map((item, i) => (
+                    <div
+                      key={i}
+                      className="group/item flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-50/80 hover:bg-white border border-slate-100 hover:border-emerald-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 ring-2 ring-emerald-500/20 flex items-center justify-center shrink-0 group-hover/item:scale-110 transition-transform">
+                        <Check size={14} className="stroke-[3]" />
                       </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 leading-snug">
-                          🛡️ 30-Day Quality Warranty
-                        </h4>
-                        <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
-                          Free rework if issue persists
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center gap-3.5 hover:border-blue-200 transition-colors">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
-                        <Clock size={20} className="stroke-[2.5]" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 leading-snug">
-                          ⏱️ On-Time Doorstep Service
-                        </h4>
-                        <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
-                          Punctual pros with toolkits
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center gap-3.5 hover:border-blue-200 transition-colors">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-                        <Wrench size={20} className="stroke-[2.5]" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 leading-snug">
-                          👨‍🔧 100% Verified Technicians
-                        </h4>
-                        <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
-                          Police & background verified
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Please Note (ℹ️) */}
-                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4.5 sm:p-5 flex items-start gap-3.5 shadow-xs">
-                    <div className="p-1.5 bg-amber-100/90 text-amber-700 rounded-xl shrink-0 mt-0.5">
-                      <Info size={18} className="stroke-[2.5]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        Please Note (ℹ️)
-                      </h4>
-                      <p className="text-xs font-semibold text-amber-900/90 leading-relaxed">
-                        Spare parts & gas refilling cost extra if required (transparent quotation before repair).
+                      <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
+                        {item}
                       </p>
                     </div>
-                  </div>
-
-                  {/* Rate Card List if available */}
-                  {service.priceListPDF && (
-                    <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-white shadow-md">
-                      <div className="flex items-center gap-3 text-center sm:text-left">
-                        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                          <FileText size={18} className="text-white" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-wider">
-                            Rate Card List
-                          </h4>
-                          <p className="text-[11px] text-blue-100 font-medium">
-                            Complete transparency on spares & labor charges.
-                          </p>
-                        </div>
-                      </div>
-                      <a
-                        href={service.priceListPDF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-white text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-slate-100 transition-all shrink-0 active:scale-95 shadow-xs"
-                      >
-                        View Price Card ➔
-                      </a>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              );
-            })()}
-          </motion.div>
+              </div>
 
-          {/* Sidebar */}
-          <motion.div
-            variants={{
-              hidden: { opacity: 0, y: 40 },
-              visible: {
-                opacity: 1,
-                y: 0,
-                transition: {
-                  type: "spring",
-                  stiffness: 60,
-                  damping: 14,
-                  duration: 0.7,
-                },
-              },
-            }}
-            className="lg:col-span-4"
-          >
-            <div className="sticky top-28 space-y-4">
-              {/* Booking Summary Card */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ y: -4 }}
-                transition={{ duration: 0.4 }}
-                className="bg-gradient-to-br from-blue-700 via-indigo-750 to-blue-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden group border border-blue-600/50"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200/90 flex items-center gap-1.5 leading-none">
-                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />{" "}
-                    Booking Summary
-                  </p>
-                </div>
-
-                {/* High Conversion Banner */}
-                <div className="mb-4 p-3.5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1 relative overflow-hidden">
-                  <div className="flex items-center gap-2 text-amber-300 text-xs font-black uppercase tracking-wider animate-pulse">
-                    <Sparkles size={14} className="text-amber-400" /> High
-                    Demand Spot
-                  </div>
-                  <p className="text-[11px] text-blue-100 font-bold leading-normal">
-                    We are currently experiencing high demand in Indore's posh
-                    areas like{" "}
-                    <span className="text-amber-300 font-extrabold">
-                      {randomizedAreas.join(", ")}
-                    </span>
-                    . Lock in your booking now!
-                  </p>
-                </div>
-
-                <div className="space-y-2.5 mb-4">
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
-                    <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
-                      Base Rate
-                    </span>
-                    <span className="font-display font-black text-lg">
-                      ₹{service.basePrice}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
-                    <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
-                      Insurance (Zom-Shield)
-                    </span>
-                    <span className="text-emerald-400 text-xs font-black uppercase tracking-wider flex items-center gap-1">
-                      <ShieldCheck size={13} /> FREE COVER
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2.5">
-                    <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
-                      Convenience Fee
-                    </span>
-                    <span className="text-emerald-400 text-xs font-black uppercase tracking-wider">
-                      ₹0 (WAIVED)
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm font-bold pt-1">
-                    <span className="text-blue-200 uppercase text-[10px] tracking-widest font-black">
-                      Estimated Taxes
-                    </span>
-                    <span className="text-white text-xs font-bold">
-                      Inclusive
-                    </span>
-                  </div>
-                  <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl flex justify-between items-center text-xl font-black mt-2">
-                    <span className="text-emerald-300 uppercase text-[10px] tracking-[0.15em] font-black">
-                      Total Price
-                    </span>
-                    <span className="font-display italic tracking-tight text-white">
-                      ₹{service.basePrice}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-white/10 mb-4">
-                  <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-3">
-                    Immediate Privileges
-                  </p>
-                  <ul className="space-y-2.5">
-                    {[
-                      "100% Verified mastery & KYC cleared partner",
-                      "30-day post-service quality warranty covered",
-                      "24/7 Priority support with real-time tracking",
-                      "Zero cancellation fee if cancelled 2 hours prior",
-                    ].map((item, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-2 text-[11px] font-bold text-slate-200 leading-snug"
-                      >
-                        <div className="p-0.5 bg-emerald-500/20 text-emerald-400 rounded-md shrink-0 mt-0.5">
-                          <CheckCircle2
-                            size={12}
-                            fill="currentColor"
-                            className="fill-emerald-500/10 text-emerald-400"
-                          />
-                        </div>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <button
-                  onClick={() =>
-                    profile ? setIsBookingModalOpen(true) : onAuthRequired()
-                  }
-                  className="w-full bg-white text-indigo-950 hover:bg-amber-300 hover:text-slate-955 py-3.5 rounded-xl font-black text-center text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/20 border border-transparent hover:border-amber-400 cursor-pointer select-none group/btn flex items-center justify-center gap-2"
-                >
-                  Confirm Booking{" "}
-                  <ArrowRight
-                    size={14}
-                    className="group-hover:translate-x-1 transition-transform"
-                  />
-                </button>
-
-                <button
-                  onClick={() => {
-                    const text = `Hi! I am planning to book the *${service.name}* home service on Zomato Home Services. The base price is only *₹${service.basePrice}* with premium insurance completely covered. Let me know what you think!`;
-                    window.open(
-                      `https://wa.me/?text=${encodeURIComponent(text)}`,
-                      "_blank",
-                    );
-                  }}
-                  className="w-full mt-2.5 bg-white/10 hover:bg-white/20 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2"
-                >
-                  <Share2 size={13} /> Share Booking Info
-                </button>
-              </motion.div>
-
-              {/* Trust Indicators */}
-              <div className="bg-white rounded-3xl p-5 border border-slate-100 space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-slate-50 rounded-xl text-slate-900">
-                    <ShieldCheck size={22} />
+              {/* Trust Badges (3-Column Micro-Cards with Soft Gradients & Glow) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* 30-Day Quality Warranty */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/90 to-indigo-50/40 border border-blue-100/90 shadow-xs flex items-center gap-3.5 hover:shadow-md hover:border-blue-300 transition-all duration-300 group">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform">
+                    <ShieldCheck size={20} className="stroke-[2.3]" />
                   </div>
                   <div>
-                    <h4 className="font-black text-slate-900 text-sm uppercase">
-                      Zom-Shield.
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      Premium cover active
+                    <h3 className="text-xs font-black text-slate-900 leading-snug">
+                      30-Day Quality Warranty
+                    </h3>
+                    <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                      Free rework if issue persists
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-slate-50 rounded-xl text-slate-900">
-                    <Clock size={22} />
+
+                {/* On-Time Doorstep Service */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/90 to-yellow-50/40 border border-amber-100/90 shadow-xs flex items-center gap-3.5 hover:shadow-md hover:border-amber-300 transition-all duration-300 group">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/25 group-hover:scale-105 transition-transform">
+                    <Clock size={20} className="stroke-[2.3]" />
                   </div>
                   <div>
-                    <h4 className="font-black text-slate-900 text-sm uppercase">
-                      Priority.
+                    <h3 className="text-xs font-black text-slate-900 leading-snug">
+                      On-Time Doorstep Service
+                    </h3>
+                    <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                      Punctual pros with toolkits
+                    </p>
+                  </div>
+                </div>
+
+                {/* 100% Verified Technicians */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/90 to-teal-50/40 border border-emerald-100/90 shadow-xs flex items-center gap-3.5 hover:shadow-md hover:border-emerald-300 transition-all duration-300 group">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/25 group-hover:scale-105 transition-transform">
+                    <UserCheck size={20} className="stroke-[2.3]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 leading-snug">
+                      100% Verified Experts
+                    </h3>
+                    <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                      Police & background certified
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transparent Pricing Notice */}
+              <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-4 sm:p-4.5 flex items-start gap-3 shadow-xs">
+                <div className="p-1.5 bg-amber-100 text-amber-800 rounded-xl shrink-0 mt-0.5">
+                  <Info size={16} className="stroke-[2.5]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider mb-0.5">
+                    Clear & Transparent Spares Policy
+                  </h4>
+                  <p className="text-xs font-medium text-amber-900/90 leading-relaxed">
+                    Spare parts and consumable fluids cost extra if required. The technician will provide an upfront digital rate-card estimate before beginning any replacement.
+                  </p>
+                </div>
+              </div>
+
+              {/* Rate Card Attachment if present */}
+              {service.priceListPDF && (
+                <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-white shadow-md">
+                  <div className="flex items-center gap-3 text-center sm:text-left">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                      <FileText size={18} className="text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider">
+                        Official Rate Card PDF
+                      </h4>
+                      <p className="text-[11px] text-blue-100 font-medium">
+                        Complete transparency on spare parts & standard labor charges.
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={service.priceListPDF}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-slate-100 transition-all shrink-0 active:scale-95 shadow-xs"
+                  >
+                    View Price Card ➔
+                  </a>
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* 3. ZOMATO-STYLE BILL SUMMARY & GOLD SHIELD (Desktop Sticky Sidebar) */}
+          <div className="lg:col-span-4">
+            <div className="lg:sticky lg:top-28 space-y-4">
+              {/* Receipt Style Bill Card */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-lg space-y-4">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                    Bill Summary
+                  </p>
+                  <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/70">
+                    Guaranteed Pricing
+                  </span>
+                </div>
+
+                {/* Urgent High Demand Mini-Banner */}
+                <div className="p-3 bg-gradient-to-r from-amber-50 via-rose-50 to-amber-50 border border-amber-200/90 rounded-2xl flex items-start gap-2.5 shadow-2xs">
+                  <Sparkles size={16} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                      High Demand in Indore
+                    </p>
+                    <p className="text-[11px] text-amber-800 font-medium leading-tight mt-0.5">
+                      Slots filling rapidly in{" "}
+                      <span className="font-bold underline decoration-amber-400">
+                        {randomizedAreas.slice(0, 2).join(", ")}
+                      </span>
+                      .
+                    </p>
+                  </div>
+                </div>
+
+                {/* Clean Receipt Line Items */}
+                <div className="space-y-2.5 text-xs font-bold text-slate-700 pt-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Service Base Rate</span>
+                    <span className="text-slate-900 font-black">₹{originalMrp}</span>
+                  </div>
+
+                  {savingAmount > 0 && (
+                    <div className="flex justify-between items-center text-emerald-600 font-extrabold">
+                      <span className="flex items-center gap-1">
+                        <span>Instant Discount</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-black">
+                          {discountPercent}% OFF
+                        </span>
+                      </span>
+                      <span>-₹{savingAmount}</span>
+                    </div>
+                  )}
+
+                  {/* ZOM-SHIELD Luxury Gold Gradient Pill */}
+                  <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-slate-600 font-bold">Insurance</span>
+                      <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-xs tracking-wider">
+                        <Sparkles size={10} className="fill-slate-950" />
+                        ZOM-SHIELD
+                      </span>
+                    </span>
+                    <span className="text-emerald-600 font-extrabold">FREE ₹0</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Convenience & Booking Fee</span>
+                    <span className="text-emerald-600 font-extrabold">WAIVED ₹0</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Taxes & Safety Kit</span>
+                    <span className="text-slate-900 font-semibold">Included</span>
+                  </div>
+                </div>
+
+                {/* Dashed Receipt Divider */}
+                <div className="border-t-2 border-dashed border-slate-200 my-2" />
+
+                {/* Bold Final Total */}
+                <div className="flex justify-between items-baseline pt-0.5">
+                  <div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                      To Pay
+                    </span>
+                    <span className="text-2xl font-black text-slate-900 tracking-tight">
+                      ₹{service.basePrice}
+                    </span>
+                  </div>
+                  {savingAmount > 0 && (
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200/60">
+                      You Save ₹{savingAmount}
+                    </span>
+                  )}
+                </div>
+
+                {/* Privileges Checklist */}
+                <div className="p-3 bg-slate-50 rounded-2xl space-y-1.5 text-[11px] font-semibold text-slate-600 border border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <span>30-Day post-service guarantee</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <span>Zero charges if canceled 2 hrs prior</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <span>Live location tracking of technician</span>
+                  </div>
+                </div>
+
+                {/* Desktop Book Button */}
+                <button
+                  type="button"
+                  onClick={handleStartBooking}
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs uppercase tracking-wider py-3.5 px-6 rounded-2xl shadow-lg hover:shadow-blue-500/25 active:scale-95 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer select-none"
+                >
+                  <span>Confirm Booking</span>
+                  <ArrowRight size={14} className="stroke-[3]" />
+                </button>
+              </div>
+
+              {/* Quick Trust Badges */}
+              <div className="bg-white rounded-3xl p-4.5 border border-slate-200/90 shadow-sm space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+                    <ShieldCheck size={18} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 leading-tight">
+                      Zomindia Shield Protection
                     </h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      Instant assignment
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Up to ₹10,000 damage cover active
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                    <Zap size={18} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 leading-tight">
+                      Priority Dispatch
+                    </h4>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Average pro arrives within 60 mins
                     </p>
                   </div>
                 </div>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
 
-        {/* Modern Categories & Services Carousel */}
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-3 pb-3 border-b border-slate-50">
+        {/* 5. ALTERNATIVE SERVICES CAROUSEL */}
+        <div className="mt-8 border-t border-slate-200/90 pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 pb-2 border-b border-slate-100">
             <div>
-              <span className="text-[10px] font-black uppercase text-blue-700 tracking-[0.2em] mb-1 flex items-center gap-1.5">
-                <Sparkles size={12} className="animate-pulse text-amber-500" />{" "}
-                Discover Alternative Solutions
+              <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider mb-1 flex items-center gap-1.5">
+                <Sparkles size={12} className="text-amber-500" />
+                Explore Other Services
               </span>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase font-display">
-                Browse Categories & Services
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Recommended in Indore
               </h3>
             </div>
 
@@ -742,10 +741,10 @@ export default function ServiceDetails({
                   key={cat.id}
                   onClick={() => setCarouselActiveCategoryId(cat.id)}
                   type="button"
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
+                  className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold tracking-wider transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 border ${
                     carouselActiveCategoryId === cat.id
-                      ? "bg-blue-700 border-blue-700 text-white shadow-md shadow-blue-700/15 font-bold"
-                      : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                      ? "bg-blue-700 border-blue-700 text-white shadow-xs font-black"
+                      : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                   }`}
                 >
                   {cat.name}
@@ -755,7 +754,7 @@ export default function ServiceDetails({
           </div>
 
           <div className="relative group/carousel">
-            {/* Left Scroll Navigation Button */}
+            {/* Scroll Navigation Buttons */}
             <button
               onClick={() => {
                 if (carouselScrollRef.current) {
@@ -766,13 +765,12 @@ export default function ServiceDetails({
                 }
               }}
               type="button"
-              className="absolute -left-4 top-[calc(50%-24px)] -translate-y-1/2 z-20 bg-white/95 backdrop-blur shadow-xl border border-slate-100 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-11 h-11 rounded-full items-center justify-center transition-all duration-300 cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100 hover:bg-slate-50"
-              title="Scroll alternative services left"
+              className="absolute -left-3 top-1/2 -translate-y-1/2 z-20 bg-white shadow-md border border-slate-200 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-10 h-10 rounded-full items-center justify-center transition-all cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100"
+              aria-label="Scroll left"
             >
-              <ChevronLeft size={18} className="stroke-[2.5]" />
+              <ChevronLeft size={18} className="stroke-[3]" />
             </button>
 
-            {/* Right Scroll Navigation Button */}
             <button
               onClick={() => {
                 if (carouselScrollRef.current) {
@@ -783,15 +781,15 @@ export default function ServiceDetails({
                 }
               }}
               type="button"
-              className="absolute -right-4 top-[calc(50%-24px)] -translate-y-1/2 z-20 bg-white/95 backdrop-blur shadow-xl border border-slate-100 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-11 h-11 rounded-full items-center justify-center transition-all duration-300 cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100 hover:bg-slate-50"
-              title="Scroll alternative services right"
+              className="absolute -right-3 top-1/2 -translate-y-1/2 z-20 bg-white shadow-md border border-slate-200 text-slate-800 hover:text-blue-700 hover:scale-110 active:scale-95 w-10 h-10 rounded-full items-center justify-center transition-all cursor-pointer hidden md:flex opacity-0 group-hover/carousel:opacity-100"
+              aria-label="Scroll right"
             >
-              <ChevronRight size={18} className="stroke-[2.5]" />
+              <ChevronRight size={18} className="stroke-[3]" />
             </button>
 
             <div
               ref={carouselScrollRef}
-              className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar pb-3 pt-2 scroll-smooth"
+              className="flex gap-4 overflow-x-auto no-scrollbar pb-3 pt-1 scroll-smooth"
             >
               {allServices
                 .filter(
@@ -807,11 +805,11 @@ export default function ServiceDetails({
                       if (onServiceSelect) onServiceSelect(srv.id);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="flex-shrink-0 w-68 sm:w-72 group cursor-pointer"
+                    className="flex-shrink-0 w-64 sm:w-72 group cursor-pointer"
                   >
-                    <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 hover:border-blue-600 hover:shadow-lg transition-all duration-200 flex flex-col justify-between gap-3 shadow-xs">
-                      {/* Top: Image & Price badge */}
-                      <div className="w-full h-32 rounded-xl overflow-hidden relative bg-slate-50 border border-slate-100 shrink-0">
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-3 hover:border-blue-300 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between gap-2.5 shadow-xs">
+                      {/* Thumbnail */}
+                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden relative bg-slate-100 shrink-0">
                         {srv.imageURL ? (
                           <img
                             src={srv.imageURL}
@@ -825,35 +823,35 @@ export default function ServiceDetails({
                             {srv.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
-                        <span className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-slate-900/90 text-white rounded-lg text-[10px] font-extrabold shadow-sm">
-                          ₹{srv.basePrice}
-                        </span>
+                        <div className="absolute top-2 left-2 bg-emerald-600 text-white font-bold text-xs px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                          <Star size={10} className="fill-white text-white shrink-0" />
+                          <span>{Number(srv.rating || 4.8).toFixed(1)}</span>
+                        </div>
                       </div>
 
-                      {/* Content */}
-                      <div className="flex flex-col justify-between flex-1 gap-2">
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-1">
-                            {srv.name}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
-                              ★ {srv.rating || 4.8}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              • {srv.duration || "45-60m"}
-                            </span>
-                          </div>
-                        </div>
+                      {/* Info */}
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                          {srv.name}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 font-medium">
+                          {srv.description}
+                        </p>
+                      </div>
 
-                        <div className="w-full flex items-center justify-between border-t border-slate-100 pt-2.5">
-                          <span className="text-[10px] font-semibold text-slate-400">
-                            Starting price
+                      {/* Price & Action */}
+                      <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-auto">
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase block leading-tight">
+                            STARTS AT
                           </span>
-                          <span className="text-[11px] font-bold text-blue-700 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                            View ➔
+                          <span className="text-sm font-black text-emerald-600">
+                            ₹{srv.basePrice}
                           </span>
                         </div>
+                        <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs py-1 px-3 rounded-lg shadow-sm group-hover:shadow-blue-500/25 transition-all">
+                          Book
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -864,34 +862,147 @@ export default function ServiceDetails({
                   s.categoryId === carouselActiveCategoryId &&
                   s.id !== currentServiceId,
               ).length === 0 && (
-                <div className="w-full py-12 text-center text-slate-450 font-bold text-xs italic bg-slate-50/50 rounded-[32px] border-2 border-dashed border-slate-105 flex flex-col items-center justify-center gap-2">
-                  <span>
-                    ✨ Exploring more services inside{" "}
-                    {categories.find((c) => c.id === carouselActiveCategoryId)
-                      ?.name || "this category"}
-                    ...
-                  </span>
-                  <p className="text-[10px] text-slate-400 not-italic font-medium">
-                    No alternative options are live right now.
-                  </p>
+                <div className="w-full py-10 text-center text-slate-500 font-medium text-xs bg-white rounded-2xl border border-dashed border-slate-200">
+                  No other active services in this category currently.
                 </div>
               )}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Sleek Centered 'End of List' Notice */}
-        <div className="flex items-center justify-center gap-3 my-4 sm:my-5 px-4">
-          <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
-          <span className="text-xs text-slate-400 font-medium tracking-wide text-center flex items-center gap-2 select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
-            You have reached the end of {category?.name || service.name} services
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
-          </span>
-          <div className="h-px bg-slate-200/80 flex-1 max-w-[80px] sm:max-w-[140px]" />
+      {/* 4. STICKY BOTTOM CHECKOUT DOCK (Mobile & Small Screens) */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden backdrop-blur-md bg-white/95 border-t border-slate-200 p-3 shadow-2xl">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+          {/* Left: Total & View Bill Trigger */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                ₹{service.basePrice}
+              </span>
+              {savingAmount > 0 && (
+                <span className="text-xs text-slate-400 line-through font-bold">
+                  ₹{originalMrp}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMobileBillOpen(!isMobileBillOpen)}
+              className="text-[10px] font-black text-blue-700 hover:text-blue-800 uppercase tracking-wider flex items-center gap-0.5 cursor-pointer select-none"
+            >
+              <span>VIEW BILL</span>
+              {isMobileBillOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+            </button>
+          </div>
+
+          {/* Right: CONFIRM BOOKING Pill Button with Scale-Bounce */}
+          <button
+            type="button"
+            onClick={handleStartBooking}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm py-3 px-5 sm:px-6 rounded-2xl shadow-lg hover:shadow-blue-500/25 active:scale-95 transition-all duration-200 flex items-center gap-1.5 cursor-pointer shrink-0 select-none"
+          >
+            <span>CONFIRM BOOKING</span>
+            <ArrowRight size={14} className="stroke-[3]" />
+          </button>
         </div>
       </div>
 
+      {/* Mobile Expandable Bill Details Sheet */}
+      <AnimatePresence>
+        {isMobileBillOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden flex flex-col justify-end">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileBillOpen(false)}
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className="relative bg-white rounded-t-3xl border-t border-slate-200 p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
+            >
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto" />
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                  Bill Breakdown
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileBillOpen(false)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 text-xs font-bold text-slate-700">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Service Base MRP</span>
+                  <span className="text-slate-900 font-black">₹{originalMrp}</span>
+                </div>
+                {savingAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-extrabold">
+                    <span>Instant Discount ({discountPercent}% OFF)</span>
+                    <span>-₹{savingAmount}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1.5">
+                    <span>Insurance Cover</span>
+                    <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full">
+                      ZOM-SHIELD
+                    </span>
+                  </span>
+                  <span className="text-emerald-600 font-extrabold">FREE ₹0</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Convenience & Safety Fee</span>
+                  <span className="text-emerald-600 font-extrabold">WAIVED ₹0</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Taxes</span>
+                  <span className="text-slate-900">Included</span>
+                </div>
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-200 pt-3 flex justify-between items-baseline">
+                <div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                    Total Payable
+                  </span>
+                  <span className="text-2xl font-black text-slate-900">
+                    ₹{service.basePrice}
+                  </span>
+                </div>
+                {savingAmount > 0 && (
+                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60">
+                    You Save ₹{savingAmount}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileBillOpen(false);
+                  handleStartBooking();
+                }}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-sm py-3.5 rounded-2xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <span>Proceed to Book</span>
+                <ArrowRight size={14} className="stroke-[3]" />
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Booking Modal */}
       {isBookingModalOpen && (
         <BookingModal
           service={service}

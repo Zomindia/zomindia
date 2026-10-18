@@ -33,6 +33,7 @@ import { formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import ChatWindow from "./ChatWindow";
 import { ServiceCardSkeleton } from "./LoadingIndicator";
+import ServiceCard from "./ServiceCard";
 import CategoryHeroSlider from "./CategoryHeroSlider";
 import PaymentModal from "./PaymentModal";
 import BookingModal from "./BookingModal";
@@ -3433,61 +3434,19 @@ export default function CustomerDashboard({
               Reset View
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-            {filteredServices.map((service) => (
-              <motion.div
-                layout
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {filteredServices.map((service, idx) => (
+              <ServiceCard
                 key={service.id}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ y: -8 }}
-                className="bg-white border-2 border-slate-50 rounded-[48px] p-8 sm:p-10 shadow-sm hover:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.08)] hover:border-blue-700 transition-all duration-500 group flex flex-col h-full overflow-hidden"
-              >
-                {service.imageURL && (
-                  <div className="w-full h-48 sm:h-56 rounded-[32px] overflow-hidden mb-8 bg-slate-50 shadow-inner group-hover:shadow-2xl transition-all duration-700">
-                    <img
-                      src={service.imageURL}
-                      alt=""
-                      className="w-full h-full object-cover grayscale transition-all duration-1000 group-hover:grayscale-0 group-hover:scale-110"
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                    />
-                  </div>
-                )}
-                <div
-                  onClick={() => onServiceSelect?.(service.id)}
-                  className="flex-1 cursor-pointer"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase italic">
-                      {service.name}
-                    </h3>
-                    <div className="flex items-center gap-1.5 text-amber-500 font-black text-sm bg-amber-50 px-3 py-1 rounded-full">
-                      <Star size={14} fill="currentColor" />{" "}
-                      {service.rating || 4.8}
-                    </div>
-                  </div>
-                  <p className="text-slate-500 text-sm line-clamp-3 mb-10 font-medium leading-relaxed">
-                    {service.description}
-                  </p>
-                </div>
-                <div className="flex justify-between items-center pt-8 border-t border-slate-100 mt-auto">
-                  <div>
-                    <p className="text-[9px] text-slate-300 font-black uppercase tracking-[0.2em] leading-none mb-2 italic">
-                      Operational Base
-                    </p>
-                    <p className="text-3xl font-black text-slate-900 tracking-tighter">
-                      ₹{service.basePrice}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedService(service)}
-                    className="bg-blue-700 text-white px-8 py-5 rounded-[22px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all active:scale-95 shadow-2xl shadow-blue-700/10"
-                  >
-                    Deploy Pro
-                  </button>
-                </div>
-              </motion.div>
+                service={service}
+                categoryName={allCategories.find((c) => c.id === service.categoryId)?.name}
+                onSelect={(id) => {
+                  const s = filteredServices.find((item) => item.id === id) || service;
+                  setSelectedService(s);
+                  if (onServiceSelect) onServiceSelect(id);
+                }}
+                idx={idx}
+              />
             ))}
           </div>
           {filteredServices.length === 0 && (

@@ -1,4 +1,4 @@
-name: Build Zomindia Partner APK
+name: Build Zomindia Partner APK and AAB
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build Pure Android APK
+      - name: Build Pure Android APK and AAB
         run: |
           mkdir -p partner-android/app/src/main/res/drawable
           cd partner-android
@@ -172,8 +172,7 @@ jobs:
           </manifest>
           EOF
 
-          
-# 8. Gradle Wrapper & Assemble Release + Bundle Release
+          # 8. Gradle Wrapper & Assemble Release + Bundle Release
           gradle wrapper --gradle-version 8.5
           chmod +x ./gradlew
           ./gradlew assembleRelease bundleRelease --no-daemon
