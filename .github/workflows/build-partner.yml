@@ -182,7 +182,15 @@ jobs:
           EOF
 
           # 8. Gradle Wrapper & Assemble Release + Bundle Release
-          gradle wrapper --gradle-version 8.5
+          gradle wrapper --gradle-version 8.7
+          mkdir -p gradle/wrapper
+          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
           chmod +x ./gradlew
           ./gradlew assembleRelease bundleRelease --no-daemon
 
