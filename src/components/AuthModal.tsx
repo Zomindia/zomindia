@@ -234,6 +234,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     setError(null);
     const formattedPhone = `+91${cleanPhone}`;
 
+    // Google Play Review Test Credentials bypass
+    if (cleanPhone === '9752170789' || cleanPhone === '1234567890') {
+      setView('otp-entry');
+      setTimer(30);
+      setLoading(false);
+      return;
+    }
+
     try {
       const verifier = getOrCreateRecaptchaVerifier(auth);
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
@@ -291,6 +299,49 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     const code = directOtpCode || otpCode;
     if (code.length !== 6) {
       setError('Please enter the full 6-digit verification code');
+      return;
+    }
+
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if ((cleanPhone === '9752170789' || cleanPhone === '1234567890') && code === '123456') {
+      setLoading(true);
+      setError(null);
+      const testUid = 'partner_vikas_chopra_indore';
+      setVerifiedUid(testUid);
+      try {
+        await setDoc(doc(db, 'users', testUid), {
+          uid: testUid,
+          phoneNumber: `+91${cleanPhone}`,
+          mobile: `+91${cleanPhone}`,
+          displayName: 'Vikas Chopra',
+          fullName: 'Vikas Chopra',
+          role: 'partner',
+          kycStatus: 'approved',
+          approvalStatus: 'approved',
+          city: 'Indore',
+          onboardingComplete: true,
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Test user firestore merge notice:', err);
+      }
+
+      localStorage.setItem('zomindia_partner_session', JSON.stringify({
+        uid: testUid,
+        phoneNumber: `+91${cleanPhone}`,
+        displayName: 'Vikas Chopra',
+        fullName: 'Vikas Chopra',
+        role: 'partner',
+        city: 'Indore',
+        verified: true
+      }));
+
+      setView('success-transition');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+        resetForm();
+      }, 1000);
       return;
     }
 

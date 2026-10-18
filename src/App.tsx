@@ -1241,7 +1241,7 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'partner') {
-      if (!profile) {
+      if (!profile || profile.role !== 'partner') {
         return (
           <motion.div
             initial={{ opacity: 0 }}
@@ -1251,7 +1251,11 @@ If you have any billing questions, or if your refund is delayed, please email us
             className="w-full"
           >
             <Suspense fallback={<LoadingScreen />}>
-              <PartnerPortalLanding onLogin={() => setIsAuthModalOpen(true)} />
+              <PartnerPortalLanding 
+                profile={profile}
+                onLogin={() => setIsAuthModalOpen(true)}
+                onPartnerAuthenticated={(p) => setProfile(p)}
+              />
             </Suspense>
           </motion.div>
         );
