@@ -54,11 +54,10 @@ jobs:
           keytool -list -v -keystore partner-release.keystore -alias partner -storepass zomindia123 | grep "SHA256:" || true
           echo "========================================"
 
-          # 3. Create gradle.properties (Fixes AndroidX requirement & SDK 36 support)
+          # 3. Create gradle.properties (Fixes AndroidX requirement)
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
-          android.suppressUnsupportedCompileSdk=36
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
@@ -85,11 +84,11 @@ jobs:
           # 5. Create Root build.gradle
           cat << 'EOF' > build.gradle
           plugins {
-              id 'com.android.application' version '8.4.2' apply false
+              id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          # 6. Create app/build.gradle
+          # 6. Create app/build.gradle (compileSdk 34, targetSdk 34, minSdk 24)
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -97,12 +96,12 @@ jobs:
 
           android {
               namespace 'com.zomindia.partner'
-              compileSdk 36
+              compileSdk 34
 
               defaultConfig {
                   applicationId "com.zomindia.partner"
                   minSdk 24
-                  targetSdk 36
+                  targetSdk 34
                   versionCode 1
                   versionName "1.0.0"
               }
@@ -172,12 +171,6 @@ jobs:
               </application>
           </manifest>
           EOF
-
-          # Accept Android licenses & ensure Android SDK 36 platform is available
-          if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" || true
-          fi
 
           # 8. Gradle Wrapper & Assemble Release + Bundle Release
           gradle wrapper --gradle-version 8.5
