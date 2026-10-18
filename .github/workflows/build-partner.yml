@@ -172,17 +172,25 @@ jobs:
           </manifest>
           EOF
 
-          # 8. Gradle Wrapper & Assemble Release
-          gradle wrapper --gradle-version 8.5
-          chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          
+# 8. Gradle Wrapper & Assemble Release + Bundle Release
+        gradle wrapper --gradle-version 8.5
+        chmod +x ./gradlew
+        ./gradlew assembleRelease bundleRelease --no-daemon
 
-          # Copy ready-to-use signed APK
-          cp app/build/outputs/apk/release/app-release.apk app-release-signed.apk
-          echo "APK BUILD SUCCESSFUL"
+        # Copy ready-to-use signed APK and AAB
+        cp app/build/outputs/apk/release/app-release.apk app-release-signed.apk
+        cp app/build/outputs/bundle/release/app-release.aab app-release-signed.aab
+        echo "APK AND AAB BUILD SUCCESSFUL"
 
       - name: Upload Partner APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: zomindia-partner-apk
           path: partner-android/app-release-signed.apk
+
+      - name: Upload Partner AAB Artifact (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zomindia-partner-aab
+          path: partner-android/app-release-signed.aab
