@@ -77,7 +77,8 @@ async function testConnection() {
         error.message.includes('offline') ||
         error.message.includes('unavailable') ||
         error.message.includes('Could not reach') ||
-        error.message.includes('Failed to get document because the client is offline')
+        error.message.includes('Failed to get document because the client is offline') ||
+        error.message.includes('INTERNAL ASSERTION FAILED')
       ) {
         // Expected behavior when offline or waiting for initial handshake in sandbox
       } else {

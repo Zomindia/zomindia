@@ -30,6 +30,12 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    const msg = error?.message || '';
+    if (msg.includes('INTERNAL ASSERTION FAILED') || msg.includes('ID: ca9') || msg.includes('ID: b815')) {
+      console.warn('[ErrorBoundary Internal Assertion Notice]:', msg);
+      return;
+    }
+
     console.error('[Enterprise ErrorBoundary Captured]:', error, errorInfo);
 
     // Forward telemetry diagnostic to Firestore system_crashes & beacon

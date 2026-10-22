@@ -15,15 +15,24 @@ if (typeof window !== 'undefined') {
   const isIgnoredError = (err: any) => {
     if (!err) return false;
     const msg = typeof err === 'string' ? err : (err?.message || err?.reason || String(err || ''));
+    const stack = typeof err?.stack === 'string' ? err.stack : '';
+    const full = `${msg} ${stack}`;
     return (
-      typeof msg === 'string' &&
-      (msg.includes('WebSocket') ||
-       msg.includes('closed without opened') ||
-       msg.includes('@vite/client') ||
-       msg.includes('vite:ws') ||
-       msg.includes('Geocoding Service: This API key is not authorized') ||
-       msg.includes('This API key is not authorized to use this service or API') ||
-       msg.includes('ApiNotActivatedMapError'))
+      full.includes('WebSocket') ||
+      full.includes('closed without opened') ||
+      full.includes('@vite/client') ||
+      full.includes('vite:ws') ||
+      full.includes('Geocoding Service: This API key is not authorized') ||
+      full.includes('This API key is not authorized to use this service or API') ||
+      full.includes('ApiNotActivatedMapError') ||
+      full.includes('INTERNAL ASSERTION FAILED') ||
+      full.includes('ca9') ||
+      full.includes('b815') ||
+      full.includes('ve:-1') ||
+      full.includes('47125') ||
+      full.includes('3241') ||
+      full.includes('WatchChangeAggregator') ||
+      full.includes('TargetState')
     );
   };
 

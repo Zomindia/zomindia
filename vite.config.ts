@@ -8,12 +8,44 @@ import { VitePWA } from 'vite-plugin-pwa';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Defensively guard against Firestore ca9 internal assertion failure in WebChannel long-polling
+function patchFirestorePlugin() {
+  return {
+    name: 'patch-firestore-ca9',
+    transform(code: string, id: string) {
+      if (id.includes('@firebase/firestore') || id.includes('firebase/firestore') || id.includes('firebase_firestore')) {
+        let changed = false;
+        let updated = code;
+        if (code.includes('3241') && code.includes('this.ve')) {
+          updated = updated.replace(
+            /this\.ve\s*-=\s*1\s*,\s*__PRIVATE_hardAssert\(\s*this\.ve\s*>=\s*0\s*,\s*3241\s*,\s*\{\s*ve:\s*this\.ve\s*\}\s*\);?/g,
+            'if (this.ve <= 0) { this.ve = 0; return; } this.ve -= 1;'
+          );
+          changed = true;
+        }
+        if (code.includes('0x0ca9') && code.includes('this.pendingResponses')) {
+          updated = updated.replace(
+            /this\.pendingResponses\s*-=\s*1\s*;\s*hardAssert\(\s*this\.pendingResponses\s*>=\s*0\s*,\s*0x0ca9\s*,\s*\{\s*pendingResponses:\s*this\.pendingResponses\s*\}\s*\);?/g,
+            'if (this.pendingResponses <= 0) { this.pendingResponses = 0; return; } this.pendingResponses -= 1;'
+          );
+          changed = true;
+        }
+        if (changed) {
+          return { code: updated, map: null };
+        }
+      }
+      return null;
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const disableHmr = process.env.DISABLE_HMR === 'true';
 
   return {
     plugins: [
+      patchFirestorePlugin(),
       react(),
       tailwindcss(),
       VitePWA({

@@ -244,13 +244,11 @@ async function startServer() {
             serverReceivedAt: new Date().toISOString(),
           });
         }
-      } catch (dbErr: any) {
+      } catch {
         // Suppress Google Cloud ADC permission differences in sandbox preview
-        console.log("[Crash Telemetry Server Buffered]:", payload?.message || "Telemetry logged");
       }
       return res.status(200).json({ success: true, logged: true });
-    } catch (err: any) {
-      console.log("[Crash Telemetry Server Bypass]:", err?.message || err);
+    } catch {
       return res.status(200).json({ success: true, bypassed: true });
     }
   });

@@ -28,19 +28,21 @@ export function SkeletonHeroBanner() {
 /**
  * Skeleton placeholder for the Category Grid items (7 columns on desktop, 4 on mobile)
  */
-export function SkeletonCategoryGrid({ count = 14 }: { count?: number }) {
+export function SkeletonCategoryGrid({ count = 6 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-y-6 sm:gap-y-10 gap-x-2 sm:gap-x-4 items-center justify-items-center relative z-10 w-full">
+    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-3 md:grid-cols-6 sm:gap-3 relative z-10 w-full">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex flex-col items-center w-full select-none">
-          {/* Circular/rounded card placeholder */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-slate-100/90 rounded-[24px] sm:rounded-[30px] flex items-center justify-center mb-2 sm:mb-3 border border-slate-200/60 relative overflow-hidden shadow-sm">
-            {/* Shimmer line */}
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/70 to-transparent pointer-events-none" />
-            <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-slate-200/60 animate-pulse" />
+        <div
+          key={i}
+          className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between min-h-[96px] sm:min-h-[104px] relative overflow-hidden shadow-xs select-none"
+        >
+          {/* Shimmer line */}
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-slate-100 to-transparent pointer-events-none" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 animate-pulse" />
+          <div className="mt-2 space-y-1">
+            <div className="w-16 h-3.5 bg-slate-200/80 rounded-md animate-pulse" />
+            <div className="w-10 h-2.5 bg-slate-100 rounded-md animate-pulse" />
           </div>
-          {/* Text title label line */}
-          <div className="w-12 sm:w-16 h-3 bg-slate-200/80 rounded-full animate-pulse mt-1" />
         </div>
       ))}
     </div>

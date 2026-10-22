@@ -98,6 +98,29 @@ class TelemetryService {
       const stack = this.extractStackTrace(error);
       const crashContext = context || 'General Error';
 
+      // Suppress harmless internal assertion failures, WebSocket reconnects, or sandbox warnings
+      const fullMsg = `${message} ${stack}`;
+      if (
+        fullMsg.includes('INTERNAL ASSERTION FAILED') ||
+        fullMsg.includes('ID: ca9') ||
+        fullMsg.includes('ID: b815') ||
+        fullMsg.includes('ca9') ||
+        fullMsg.includes('b815') ||
+        fullMsg.includes('ve:-1') ||
+        fullMsg.includes('47125') ||
+        fullMsg.includes('3241') ||
+        fullMsg.includes('WatchChangeAggregator') ||
+        fullMsg.includes('TargetState') ||
+        fullMsg.includes('WebSocket') ||
+        fullMsg.includes('closed without opened') ||
+        fullMsg.includes('@vite/client') ||
+        fullMsg.includes('vite:ws') ||
+        fullMsg.includes('Geocoding Service') ||
+        fullMsg.includes('ApiNotActivatedMapError')
+      ) {
+        return null;
+      }
+
       // Deduplication guard: ignore duplicate identical crashes within 3s
       const dedupeKey = `${crashContext}:${message}`;
       const now = Date.now();

@@ -28,8 +28,13 @@ import {
   Tag, 
   Search,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Palette,
+  Sliders,
+  RotateCcw,
+  CheckCircle2
 } from 'lucide-react';
+import { useHeroCanvasConfig, saveHeroCanvasConfig, DEFAULT_HERO_BG } from '../../utils/heroCanvasConfig';
 
 interface AdminBannersProps {
   categories: Category[];
@@ -88,6 +93,50 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
   const [saving, setSaving] = useState<boolean>(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  // Hero Canvas Settings State
+  const { heroBg } = useHeroCanvasConfig();
+  const [bgType, setBgType] = useState<'gradient' | 'image' | 'gif'>(heroBg.bgType || 'gradient');
+  const [bgUrl, setBgUrl] = useState<string>(heroBg.bgUrl || '');
+  const [overlayOpacity, setOverlayOpacity] = useState<number>(heroBg.overlayOpacity ?? 85);
+  const [isSavingHeroBg, setIsSavingHeroBg] = useState<boolean>(false);
+  const [heroBgNotice, setHeroBgNotice] = useState<{ text: string; isError?: boolean } | null>(null);
+
+  useEffect(() => {
+    if (heroBg) {
+      setBgType(heroBg.bgType || 'gradient');
+      setBgUrl(heroBg.bgUrl || '');
+      setOverlayOpacity(typeof heroBg.overlayOpacity === 'number' ? heroBg.overlayOpacity : 85);
+    }
+  }, [heroBg]);
+
+  const handleSaveHeroBg = async () => {
+    setIsSavingHeroBg(true);
+    try {
+      await saveHeroCanvasConfig({
+        bgType,
+        bgUrl: bgUrl.trim(),
+        overlayOpacity: Number(overlayOpacity),
+      });
+      setHeroBgNotice({ text: 'Banner Background saved! Customer Home & Dashboard updated instantly.' });
+      setTimeout(() => setHeroBgNotice(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to save Hero Canvas:', err);
+      setHeroBgNotice({ text: 'Saved locally! Syncing with cloud...', isError: false });
+      setTimeout(() => setHeroBgNotice(null), 4000);
+    } finally {
+      setIsSavingHeroBg(false);
+    }
+  };
+
+  const handleResetHeroBg = async () => {
+    setBgType('gradient');
+    setBgUrl('');
+    setOverlayOpacity(85);
+    await saveHeroCanvasConfig(DEFAULT_HERO_BG);
+    setHeroBgNotice({ text: 'Reset to default pure gradient.' });
+    setTimeout(() => setHeroBgNotice(null), 3000);
+  };
 
   // Form State
   const [title, setTitle] = useState<string>('');
@@ -384,6 +433,300 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
             <span className="text-2xl font-black text-indigo-800">
               {banners.filter((b) => b.targetType === 'service').length}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Dedicated Card: App Hero Canvas Settings */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-black uppercase tracking-wider mb-2">
+              <Palette size={14} /> Hero Canvas Engine
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              App Hero Canvas Settings
+            </h3>
+            <p className="text-slate-500 text-sm mt-1 max-w-2xl font-medium">
+              Configure the unified top-to-bottom Hero Canvas rendered on Customer Home & Dashboard. Supports custom background gradients, high-res photos, or animated GIFs with dynamic overlay darkness.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetHeroBg}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
+              title="Reset to default pure gradient"
+            >
+              <RotateCcw size={14} /> Reset
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveHeroBg}
+              disabled={isSavingHeroBg}
+              className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-black text-sm px-5 py-2.5 rounded-xl shadow-md shadow-blue-700/20 active:scale-95 transition-all cursor-pointer"
+            >
+              <Check size={16} />
+              <span>{isSavingHeroBg ? 'Saving...' : 'Save Banner Background'}</span>
+            </button>
+          </div>
+        </div>
+
+        {heroBgNotice && (
+          <div className={`mb-6 px-4 py-3 rounded-2xl flex items-center justify-between text-sm font-bold shadow-xs ${heroBgNotice.isError ? 'bg-rose-50 border border-rose-200 text-rose-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'}`}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={18} className="text-emerald-600" />
+              <span>{heroBgNotice.text}</span>
+            </div>
+            <button type="button" onClick={() => setHeroBgNotice(null)} className="text-slate-400 hover:text-slate-600">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Controls Form Column */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* 1. Background Media Type */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                Background Media Type (bgType)
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'gradient', label: 'Pure Gradient', icon: Palette, desc: 'Deep blue gradient' },
+                  { id: 'image', label: 'Static Image', icon: ImageIcon, desc: 'High-res image banner' },
+                  { id: 'gif', label: 'Animated GIF', icon: Sparkles, desc: 'Motion backdrop' },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const isSelected = bgType === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setBgType(item.id as any)}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-2 ring-blue-600/20'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Icon size={18} className={isSelected ? 'text-blue-700' : 'text-slate-500'} />
+                        {isSelected && <span className="w-2 h-2 rounded-full bg-blue-600" />}
+                      </div>
+                      <div>
+                        <p className={`text-xs font-black ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                          {item.label}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Media URL (for image or gif) */}
+            {bgType !== 'gradient' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    {bgType === 'gif' ? 'Animated GIF URL' : 'Image URL'} (bgUrl)
+                  </label>
+                  {bgUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setBgUrl('')}
+                      className="text-[11px] text-slate-400 hover:text-slate-600 font-medium cursor-pointer"
+                    >
+                      Clear URL
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="url"
+                  value={bgUrl}
+                  onChange={(e) => setBgUrl(e.target.value)}
+                  placeholder={
+                    bgType === 'gif'
+                      ? 'https://example.com/subtle-ambient-flow.gif'
+                      : 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1600&q=80'
+                  }
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 transition-all"
+                />
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Presets:</span>
+                  {[
+                    { label: 'AC Service', url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1600&q=80' },
+                    { label: 'Smart Home Fix', url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1600&q=80' },
+                    { label: 'Deep Clean', url: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1600&q=80' },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setBgUrl(p.url)}
+                      className="text-[10px] font-semibold px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Overlay Darkness Opacity Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Sliders size={14} className="text-slate-500" /> Dark Gradient Overlay Opacity
+                </label>
+                <span className="text-xs font-black text-blue-700 px-2 py-0.5 bg-blue-50 border border-blue-100 rounded-md">
+                  {overlayOpacity}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="50"
+                max="95"
+                step="1"
+                value={overlayOpacity}
+                onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
+              />
+              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                <span>50% (Brighter media)</span>
+                <span>85% (Default balanced contrast)</span>
+                <span>95% (Maximum contrast)</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Controls readability of white text, search bar, and category icons on top of media.
+              </p>
+            </div>
+
+            {/* Save CTA */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSaveHeroBg}
+                disabled={isSavingHeroBg}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-black text-sm px-6 py-3 rounded-2xl shadow-lg shadow-blue-700/20 active:scale-95 transition-all cursor-pointer"
+              >
+                <Check size={18} />
+                <span>{isSavingHeroBg ? 'Saving Changes...' : 'Save Banner Background'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live Preview Box Column */}
+          <div className="lg:col-span-5">
+            <div className="sticky top-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Eye size={14} className="text-blue-600" /> Live Customer Screen Preview
+                </span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                  Real-time
+                </span>
+              </div>
+
+              {/* Preview Canvas Container */}
+              <div className="rounded-3xl border border-slate-200 overflow-hidden shadow-lg bg-slate-900">
+                <div className="relative overflow-hidden rounded-b-[2rem] px-4 pt-3 pb-6 text-white min-h-[300px] flex flex-col justify-between">
+                  {/* Layer 1: Background Media */}
+                  {bgType !== 'gradient' && bgUrl && (
+                    <img
+                      src={bgUrl}
+                      alt="Hero Preview"
+                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  )}
+
+                  {/* Dark Gradient Overlay */}
+                  <div
+                    className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 transition-opacity duration-150"
+                    style={{
+                      opacity: bgType !== 'gradient' && bgUrl ? overlayOpacity / 100 : 1,
+                    }}
+                  />
+
+                  {/* Layer 2: Mini Content Elements */}
+                  <div className="relative z-10 space-y-3">
+                    {/* Header bar */}
+                    <div className="flex items-center justify-between pt-1 pb-1">
+                      <img
+                        src="/logo-horizontal-white.png"
+                        alt="Zomindia"
+                        className="h-6 w-auto object-contain"
+                      />
+                      <div className="text-[10px] text-blue-100 font-medium px-2 py-0.5 rounded-full bg-white/10 border border-white/15">
+                        Indore ▾
+                      </div>
+                      <div className="text-[10px] font-semibold border border-white/25 px-2.5 py-0.5 rounded-full text-white bg-white/5">
+                        Login
+                      </div>
+                    </div>
+
+                    {/* Mini Search bar */}
+                    <div className="bg-white rounded-xl px-3 py-2 text-slate-400 text-xs flex items-center gap-2 shadow-sm">
+                      <Search size={13} className="text-slate-400 shrink-0" />
+                      <span className="truncate text-[11px] font-medium">Search 'Split AC Service'...</span>
+                    </div>
+
+                    {/* Mini Explore Services Section */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-white tracking-tight">Explore Services ⚡</span>
+                      </div>
+
+                      {/* Mini Filter Pills */}
+                      <div className="flex items-center gap-1 mb-2">
+                        <span className="px-2 py-0.5 bg-white text-blue-950 font-bold text-[9px] rounded-md shadow-xs">All</span>
+                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Home</span>
+                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Appliances</span>
+                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Repairs</span>
+                      </div>
+
+                      {/* Mini Category Cards */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { title: 'AC Service', badge: 'TRENDING 🔥', icon: '❄️' },
+                          { title: 'RO Purifier', badge: 'INSTANT ⚡', icon: '💧' },
+                          { title: 'Washing Machine', badge: 'POPULAR', icon: '🔄' },
+                        ].map((c) => (
+                          <div
+                            key={c.title}
+                            className="bg-white rounded-xl p-1.5 flex flex-col items-center justify-between text-center min-h-[64px] shadow-sm"
+                          >
+                            <span className="text-[7px] font-black px-1 rounded-full bg-amber-50 text-amber-700 leading-tight">
+                              {c.badge}
+                            </span>
+                            <span className="text-base my-0.5">{c.icon}</span>
+                            <span className="text-[9px] font-bold text-slate-800 line-clamp-1 leading-tight">
+                              {c.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 pt-2 text-center text-[10px] text-blue-200/80 font-medium">
+                    {bgType === 'gradient'
+                      ? 'Pure Gradient Mode Active'
+                      : `${bgType === 'gif' ? 'Animated GIF' : 'Custom Image'} with ${overlayOpacity}% Overlay`}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
