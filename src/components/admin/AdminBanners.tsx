@@ -592,20 +592,41 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
               </div>
               <input
                 type="range"
-                min="50"
+                min="0"
                 max="95"
-                step="1"
+                step="5"
                 value={overlayOpacity}
                 onChange={(e) => setOverlayOpacity(Number(e.target.value))}
                 className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
               />
-              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
-                <span>50% (Brighter media)</span>
-                <span>85% (Default balanced contrast)</span>
-                <span>95% (Maximum contrast)</span>
+              <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5">
+                {[
+                  { value: 0, label: '0% (Original Media / No Overlay)' },
+                  { value: 50, label: '50%' },
+                  { value: 85, label: '85% (Default)' },
+                  { value: 95, label: '95%' },
+                ].map((item) => {
+                  const isCur = overlayOpacity === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setOverlayOpacity(item.value)}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        isCur
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
-                Controls readability of white text, search bar, and category icons on top of media.
+                {overlayOpacity === 0
+                  ? 'At 0%, the dark gradient overlay is completely removed. Your background GIF or image renders with 100% full brightness and original saturation.'
+                  : 'Controls readability of white text, search bar, and category icons on top of media.'}
               </p>
             </div>
 
@@ -650,13 +671,15 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
                     />
                   )}
 
-                  {/* Dark Gradient Overlay */}
-                  <div
-                    className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 transition-opacity duration-150"
-                    style={{
-                      opacity: bgType !== 'gradient' && bgUrl ? overlayOpacity / 100 : 1,
-                    }}
-                  />
+                  {/* Dark Gradient Overlay - Completely disabled when overlayOpacity === 0 */}
+                  {bgType === 'gradient' || (bgUrl && overlayOpacity > 0) ? (
+                    <div
+                      className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 transition-opacity duration-150 pointer-events-none"
+                      style={{
+                        opacity: bgType !== 'gradient' && bgUrl ? overlayOpacity / 100 : 1,
+                      }}
+                    />
+                  ) : null}
 
                   {/* Layer 2: Mini Content Elements */}
                   <div className="relative z-10 space-y-3">

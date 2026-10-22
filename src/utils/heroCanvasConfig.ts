@@ -5,7 +5,7 @@ import { db } from '../lib/firebase';
 export interface HeroBgConfig {
   bgType: 'gradient' | 'image' | 'gif';
   bgUrl: string;
-  overlayOpacity: number; // 50 - 95, default 85
+  overlayOpacity: number; // 0 - 95, default 85
 }
 
 export const DEFAULT_HERO_BG: HeroBgConfig = {

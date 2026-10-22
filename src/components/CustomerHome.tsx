@@ -1691,16 +1691,19 @@ export default function CustomerHome({
           />
         )}
 
-        {/* Dark Gradient Overlay */}
-        <div
-          className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96"
-          style={{
-            opacity:
-              heroBg.bgType !== "gradient" && heroBg.bgUrl
-                ? heroBg.overlayOpacity / 100
-                : 1,
-          }}
-        />
+        {/* Dark Gradient Overlay - Disabled when overlayOpacity is 0 for 100% media visibility */}
+        {heroBg.bgType === "gradient" ||
+        (heroBg.bgUrl && (heroBg.overlayOpacity ?? 85) > 0) ? (
+          <div
+            className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 pointer-events-none transition-opacity duration-150"
+            style={{
+              opacity:
+                heroBg.bgType !== "gradient" && heroBg.bgUrl
+                  ? (heroBg.overlayOpacity ?? 85) / 100
+                  : 1,
+            }}
+          />
+        ) : null}
 
         {/* Layer 2: Content Layer */}
         <div className="relative z-10 text-white w-full max-w-5xl mx-auto">
