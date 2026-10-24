@@ -377,16 +377,31 @@ function AssignedTasksMiniMap({
                 <hr className="border-slate-100" />
 
                 {/* Primary Sequential Actions */}
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   {/* CALL button */}
                   <button
                     type="button"
                     disabled={isCalling}
                     onClick={() => onInitiateCall?.(highlightedBooking)}
-                    className="w-1/3 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl flex items-center justify-center gap-1.5 active:scale-95 transition-all outline-none border-0 cursor-pointer disabled:opacity-50"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl flex items-center justify-center gap-1.5 active:scale-95 transition-all outline-none border-0 cursor-pointer disabled:opacity-50"
                   >
                     <Phone size={12} className="fill-white/10 shrink-0" />
                     <span>{isCalling ? "Calling..." : "Call"}</span>
+                  </button>
+
+                  {/* 🧭 Google Maps Navigation Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const destLat = highlightedBooking.lat || (highlightedBooking as any).customerLocation?.lat || 22.7533;
+                      const destLng = highlightedBooking.lng || (highlightedBooking as any).customerLocation?.lng || 75.8937;
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=two_wheeler`, '_blank');
+                    }}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl flex items-center justify-center gap-1.5 active:scale-95 transition-all outline-none border-0 cursor-pointer"
+                    title="Navigate via Google Maps"
+                  >
+                    <Navigation size={12} className="shrink-0" />
+                    <span>Navigate</span>
                   </button>
 
                   {/* Big Sequential Action Button (or "COMPLETE JOB") */}
@@ -1932,6 +1947,20 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                     Admin Direct Allocation • Rejection Disabled
                   </p>
                 </div>
+              )}
+
+              {['assigned', 'confirmed', 'pending_acceptance', 'on_the_way', 'arrived'].includes(booking.status) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const destLat = booking.lat || (booking as any).customerLocation?.lat || 22.7533;
+                    const destLng = booking.lng || (booking as any).customerLocation?.lng || 75.8937;
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=two_wheeler`, '_blank');
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Navigation size={15} /> 🧭 Navigate via Google Maps
+                </button>
               )}
 
               {(booking.status === 'confirmed' || booking.status === 'assigned' || booking.status === 'pending_acceptance') && (

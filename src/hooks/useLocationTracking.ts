@@ -105,6 +105,7 @@ export function useLocationTracking(partnerProfileId: string | undefined, bookin
                     partnerLocation: {
                       lat: latNum,
                       lng: lngNum,
+                      heading: headingVal,
                       updatedAt: Timestamp.now()
                     },
                     heading: headingVal,

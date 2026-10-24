@@ -1329,7 +1329,7 @@ If you have any billing questions, or if your refund is delayed, please email us
             profile={profile}
             onBack={() => setActiveTab('home')}
             onAuthRequired={() => setIsAuthModalOpen(true)}
-            onSuccess={() => setActiveTab('bookings')}
+            onSuccess={(bookingId?: string) => setActiveTab('bookings', bookingId || null)}
             onServiceSelect={handleServiceSelect}
           />
         );
@@ -1401,8 +1401,6 @@ If you have any billing questions, or if your refund is delayed, please email us
               setActiveTab('profile');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            onAuthRequired={() => setIsAuthModalOpen(true)}
-            onOpenCitySelector={() => setIsCitySelectorOpen(true)}
           />
         </motion.div>
       );
@@ -1634,7 +1632,6 @@ If you have any billing questions, or if your refund is delayed, please email us
             setActiveTab('profile');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          onOpenCitySelector={() => setIsCitySelectorOpen(true)}
         />
       </motion.div>
     );
@@ -1692,136 +1689,134 @@ If you have any billing questions, or if your refund is delayed, please email us
           }}
         >
       <NotificationSystem onNavigate={setActiveTab} />
-      {/* Navigation - rendered on secondary customer pages & tabs */}
-      {!(activeTab === 'home' || activeTab === 'bookings') && (
-        <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
-          <div className="max-w-7xl mx-auto pl-1.5 pr-2 sm:pl-3 sm:pr-3 lg:px-8">
-            <div className="flex justify-between h-14 sm:h-16 items-center">
-              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
-                <motion.div
-                  className="flex items-center cursor-pointer group relative pl-0 pr-1 py-1.5 rounded-2xl transition-all duration-300 shrink-0"
-                  onClick={() => setActiveTab('home')}
-                  id="nav-logo"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
-                  {/* Premium backlighting ambient blur glow */}
-                  <div className="absolute inset-0 bg-blue-600/[0.04] rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                  
-                  <Logo 
-                    size={undefined} 
-                    className="h-9 sm:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
-                  />
-                </motion.div>
+      {/* Navigation */}
+      <nav className="relative md:sticky md:top-0 z-50 bg-white/70 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
+        <div className="max-w-7xl mx-auto pl-1.5 pr-2 sm:pl-3 sm:pr-3 lg:px-8">
+          <div className="flex justify-between h-14 sm:h-16 items-center">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+              <motion.div
+                className="flex items-center cursor-pointer group relative pl-0 pr-1 py-1.5 rounded-2xl transition-all duration-300 shrink-0"
+                onClick={() => setActiveTab('home')}
+                id="nav-logo"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              >
+                {/* Premium backlighting ambient blur glow */}
+                <div className="absolute inset-0 bg-blue-600/[0.04] rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                
+                <Logo 
+                  size={undefined} 
+                  className="h-9 sm:h-10 transition-all duration-300 group-hover:drop-shadow-[0_0_10px_rgba(5,12,166,0.3)]" 
+                />
+              </motion.div>
 
-                {/* Mobile Greeting starting cleanly right after the logo container */}
-                {(profile || user || auth.currentUser) && (
-                  <div className="flex md:hidden items-center select-none min-w-0">
-                    <span className="text-[11px] font-bold bg-sky-50/80 border border-sky-100/90 px-2.5 py-1 rounded-xl shadow-xs inline-flex items-center">
-                      <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[140px] xs:max-w-[200px]">
-                        {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
-                      </span>
+              {/* Mobile Greeting starting cleanly right after the logo container */}
+              {(profile || user || auth.currentUser) && (
+                <div className="flex md:hidden items-center select-none min-w-0">
+                  <span className="text-[11px] font-bold bg-sky-50/80 border border-sky-100/90 px-2.5 py-1 rounded-xl shadow-xs inline-flex items-center">
+                    <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[140px] xs:max-w-[200px]">
+                      {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
                     </span>
-                  </div>
-                )}
-              </div>
+                  </span>
+                </div>
+              )}
+            </div>
 
-              {renderNavigation()}
+            {renderNavigation()}
 
-              <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-                {(profile || user || auth.currentUser) ? (
-                  <>
-                    {/* Desktop Only: Standalone Bell Icon */}
-                    <motion.button
-                      onClick={() => setActiveTab('notifications')}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="hidden md:flex relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-50 rounded-full transition-all cursor-pointer"
-                      id="desktop-notifications-bell"
-                    >
-                      <Bell size={22} className="stroke-[2]" />
-                      <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white animate-pulse" />
-                    </motion.button>
-
-                    {/* Desktop Only Trigger & Direct Profile Navigation */}
-                    <div className="hidden md:flex items-center gap-3 relative">
-                      <button
-                        onClick={() => {
-                          setActiveTab('profile');
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
-                        id="nav-green-greeting"
-                      >
-                        <div className="flex flex-col text-right items-end">
-                          <span className="text-xs font-bold leading-tight flex items-center justify-end" id="portal-header-greeter">
-                            <span className="bg-gradient-to-r from-[#002e6e] via-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
-                              {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
-                            </span>
-                          </span>
-                          <span 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsCitySelectorOpen(true);
-                            }}
-                            className="text-slate-400 hover:text-emerald-600 active:scale-95 text-[10px] font-black tracking-widest leading-none mt-1.5 uppercase pr-1 flex items-center gap-0.5 justify-end cursor-pointer transition-all duration-200"
-                            title="Click to change city"
-                          >
-                            📍 INDORE
-                          </span>
-                        </div>
-
-                        <Avatar
-                          photoURL={profile?.photoURL || user?.photoURL}
-                          displayName={profile?.displayName || profile?.fullName || user?.displayName}
-                          email={profile?.email || user?.email}
-                          isPremium={profile?.isPremium}
-                          sizeClass="w-10 h-10 hover:scale-105 active:scale-95 transition-all"
-                        />
-                      </button>
-                    </div>
-
-                    {/* Mobile Only: Top Row far-right compact Indore city pill and Avatar direct profile trigger */}
-                    <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
-                      <button
-                        onClick={() => setIsCitySelectorOpen(true)}
-                        className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-1.5 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all shrink-0"
-                      >
-                        📍 INDORE
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setActiveTab('profile');
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="shrink-0 active:scale-90 transition-all cursor-pointer"
-                        id="mobile-avatar-profile-trigger"
-                        aria-label="Open profile"
-                      >
-                        <Avatar
-                          photoURL={profile?.photoURL || user?.photoURL}
-                          displayName={profile?.displayName || profile?.fullName || user?.displayName}
-                          email={profile?.email || user?.email}
-                          isPremium={profile?.isPremium}
-                          sizeClass="w-9 h-9 sm:w-10 sm:h-10"
-                        />
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setIsAuthModalOpen(true)}
-                    className="bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 active:scale-95"
+            <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+              {(profile || user || auth.currentUser) ? (
+                <>
+                  {/* Desktop Only: Standalone Bell Icon */}
+                  <motion.button
+                    onClick={() => setActiveTab('notifications')}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="hidden md:flex relative p-2 text-slate-500 hover:text-blue-700 hover:bg-slate-50 rounded-full transition-all cursor-pointer"
+                    id="desktop-notifications-bell"
                   >
-                    Login
-                  </button>
-                )}
-              </div>
+                    <Bell size={22} className="stroke-[2]" />
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white animate-pulse" />
+                  </motion.button>
+
+                  {/* Desktop Only Trigger & Direct Profile Navigation */}
+                  <div className="hidden md:flex items-center gap-3 relative">
+                    <button
+                      onClick={() => {
+                        setActiveTab('profile');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
+                      id="nav-green-greeting"
+                    >
+                      <div className="flex flex-col text-right items-end">
+                        <span className="text-xs font-bold leading-tight flex items-center justify-end" id="portal-header-greeter">
+                          <span className="bg-gradient-to-r from-[#002e6e] via-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
+                            {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                          </span>
+                        </span>
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsCitySelectorOpen(true);
+                          }}
+                          className="text-slate-400 hover:text-emerald-600 active:scale-95 text-[10px] font-black tracking-widest leading-none mt-1.5 uppercase pr-1 flex items-center gap-0.5 justify-end cursor-pointer transition-all duration-200"
+                          title="Click to change city"
+                        >
+                          📍 INDORE
+                        </span>
+                      </div>
+
+                      <Avatar
+                        photoURL={profile?.photoURL || user?.photoURL}
+                        displayName={profile?.displayName || profile?.fullName || user?.displayName}
+                        email={profile?.email || user?.email}
+                        isPremium={profile?.isPremium}
+                        sizeClass="w-10 h-10 hover:scale-105 active:scale-95 transition-all"
+                      />
+                    </button>
+                  </div>
+
+                  {/* Mobile Only: Top Row far-right compact Indore city pill and Avatar direct profile trigger */}
+                  <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
+                    <button
+                      onClick={() => setIsCitySelectorOpen(true)}
+                      className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-1.5 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all shrink-0"
+                    >
+                      📍 INDORE
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setActiveTab('profile');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="shrink-0 active:scale-90 transition-all cursor-pointer"
+                      id="mobile-avatar-profile-trigger"
+                      aria-label="Open profile"
+                    >
+                      <Avatar
+                        photoURL={profile?.photoURL || user?.photoURL}
+                        displayName={profile?.displayName || profile?.fullName || user?.displayName}
+                        email={profile?.email || user?.email}
+                        isPremium={profile?.isPremium}
+                        sizeClass="w-9 h-9 sm:w-10 sm:h-10"
+                      />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/10 active:scale-95"
+                >
+                  Login
+                </button>
+              )}
             </div>
           </div>
-        </nav>
-      )}
+        </div>
+      </nav>
 
       {user && !user.emailVerified && user.email && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-3 sm:py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-bold shadow-sm transition-all">

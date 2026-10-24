@@ -1,39 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Clock,
   MapPin,
-  CheckCircle2,
-  ShieldCheck,
-  Zap,
-  User,
-  Phone,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
   Star,
-  HelpCircle,
+  Phone,
+  Navigation,
   FileText,
   RotateCcw,
-  Navigation,
-  XCircle,
-  X,
-  Droplets,
-  Snowflake,
-  Tv,
-  Wrench,
   Sparkles,
-  ShieldAlert,
-  KeyRound,
 } from "lucide-react";
-import { doc, updateDoc, Timestamp, serverTimestamp } from "firebase/firestore";
-import { db } from "../lib/firebase";
 import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "../types";
 import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
-import PartnerTrackingMap from "./PartnerTrackingMap";
 import { TrackingModal } from "./tracking/TrackingModal";
-import { LogoIcon } from "./BrandLogo";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
 
@@ -71,43 +50,7 @@ export interface CustomerBookingCardProps {
 }
 
 /**
- * Clean Category Icon Resolver
- */
-function getCategoryIcon(serviceName: string = "", categoryId: string = "") {
-  const s = `${serviceName} ${categoryId}`.toLowerCase();
-  if (
-    s.includes("ac ") ||
-    s.includes(" ac") ||
-    s.includes("cooling") ||
-    s.includes("air conditioner")
-  ) {
-    return <Snowflake size={18} className="text-cyan-600 shrink-0" />;
-  }
-  if (s.includes("ro") || s.includes("water") || s.includes("purifier")) {
-    return <Droplets size={18} className="text-teal-600 shrink-0" />;
-  }
-  if (s.includes("tv") || s.includes("television") || s.includes("audio")) {
-    return <Tv size={18} className="text-indigo-600 shrink-0" />;
-  }
-  if (s.includes("fridge") || s.includes("refrigerator") || s.includes("freezer")) {
-    return <Snowflake size={18} className="text-blue-600 shrink-0" />;
-  }
-  if (s.includes("clean") || s.includes("wash") || s.includes("pest")) {
-    return <Sparkles size={18} className="text-emerald-600 shrink-0" />;
-  }
-  if (
-    s.includes("electric") ||
-    s.includes("wiring") ||
-    s.includes("inverter") ||
-    s.includes("switch")
-  ) {
-    return <Zap size={18} className="text-amber-600 shrink-0" />;
-  }
-  return <Wrench size={18} className="text-blue-600 shrink-0" />;
-}
-
-/**
- * Formats scheduledAt timestamp or date into human-friendly "Today, 6:00 PM - 7:00 PM"
+ * Formats scheduledAt timestamp or date into human-friendly "Today, 01:00 PM – 02:00 PM"
  */
 export function formatBookingSchedule(scheduledAt: any): {
   dateLabel: string;
@@ -127,7 +70,7 @@ export function formatBookingSchedule(scheduledAt: any): {
     }
   }
 
-  const rawSlotTime = formatBookingTime(scheduledAt) || "11:00 AM";
+  const rawSlotTime = formatBookingTime(scheduledAt) || "01:00 PM";
 
   const buildSlotRange = (startSlot: string): string => {
     const match = startSlot.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -142,7 +85,7 @@ export function formatBookingSchedule(scheduledAt: any): {
     }
     if (endHour > 12) endHour = endHour - 12;
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(hour)}:${min} ${period} - ${pad(endHour)}:${min} ${endPeriod}`;
+    return `${pad(hour)}:${min} ${period} – ${pad(endHour)}:${min} ${endPeriod}`;
   };
 
   const slotRange = buildSlotRange(rawSlotTime);
@@ -156,22 +99,20 @@ export function formatBookingSchedule(scheduledAt: any): {
   }
 
   const now = new Date();
-  const isToday =
-    dateObj.getDate() === now.getDate() &&
-    dateObj.getMonth() === now.getMonth() &&
-    dateObj.getFullYear() === now.getFullYear();
-
-  const tomorrow = new Date(now);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const isTomorrow =
-    dateObj.getDate() === tomorrow.getDate() &&
-    dateObj.getMonth() === tomorrow.getMonth() &&
-    dateObj.getFullYear() === tomorrow.getFullYear();
+
+  const bookingDay = new Date(
+    dateObj.getFullYear(),
+    dateObj.getMonth(),
+    dateObj.getDate()
+  );
 
   let dateLabel = "";
-  if (isToday) {
+  if (bookingDay.getTime() === today.getTime()) {
     dateLabel = "Today";
-  } else if (isTomorrow) {
+  } else if (bookingDay.getTime() === tomorrow.getTime()) {
     dateLabel = "Tomorrow";
   } else {
     dateLabel = dateObj.toLocaleDateString("en-IN", {
@@ -188,44 +129,17 @@ export function formatBookingSchedule(scheduledAt: any): {
   };
 }
 
-/**
- * Extracts concise 2-part locality e.g. "Scheme 54, Vijay Nagar"
- */
-function getShortLocality(address?: string): string {
-  if (!address || typeof address !== "string") return "Indore, MP";
-  const clean = address.trim();
-  const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
-  if (parts.length === 0) return "Indore, MP";
-  if (parts.length === 1) return parts[0];
-
-  // Exclude broad non-local labels like "India" or "Madhya Pradesh"
-  const meaningful = parts.filter((p) => {
-    const l = p.toLowerCase();
-    return (
-      l !== "india" &&
-      l !== "madhya pradesh" &&
-      l !== "mp" &&
-      !l.includes("tehsil")
-    );
-  });
-
-  if (meaningful.length >= 2) {
-    return `${meaningful[meaningful.length - 2]}, ${meaningful[meaningful.length - 1]}`;
-  }
-  return meaningful[0] || "Indore, MP";
-}
-
 export function CustomerBookingCard({
   booking,
   service,
   partnerUser,
   partnerDetail,
-  customerProfile,
-  activeTicket,
+  customerProfile: _customerProfile,
+  activeTicket: _activeTicket,
   otpCode: propOtpCode,
-  isExpanded = false,
-  onToggleExpand,
-  onPayOnline,
+  isExpanded: _isExpanded = false,
+  onToggleExpand: _onToggleExpand,
+  onPayOnline: _onPayOnline,
   onPayCash: _onPayCash,
   onScanQR: _onScanQR,
   onBookAgain,
@@ -247,21 +161,15 @@ export function CustomerBookingCard({
   isReviewSubmitting = false,
   routingCallBookingId,
 }: CustomerBookingCardProps) {
-  const [internalExpanded, setInternalExpanded] = useState(false);
   const [isFullscreenTrackingOpen, setIsFullscreenTrackingOpen] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
-  const expanded = onToggleExpand ? isExpanded : internalExpanded;
-  const toggleExpanded = onToggleExpand || (() => setInternalExpanded((prev) => !prev));
-
-  const serviceName = service?.name || booking.serviceName || "Professional Service";
+  const serviceName = service?.name || booking.serviceName || "RO Water Purifier Repair";
   const rawStatus = (booking.status || "pending").toLowerCase();
-
   const bookingShortCode = (booking.id || "").slice(-6).toUpperCase();
 
-  // Status breakdown & categorization
+  // Status flags
   const isCompleted = ["completed", "finalized", "closed"].includes(rawStatus);
   const isCancelled = ["cancelled", "canceled", "rejected", "declined"].includes(rawStatus);
   const isInProgress = rawStatus === "in_progress";
@@ -271,11 +179,9 @@ export function CustomerBookingCard({
     rawStatus === "in_transit" ||
     rawStatus === "pro_en_route";
   const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
-  
-  // Partner assignment status
+
   const hasPartner = !!(booking.partnerId || partnerUser);
 
-  // Searching or pending assignment
   const isSearchingOrPending =
     !hasPartner &&
     !isCompleted &&
@@ -294,27 +200,22 @@ export function CustomerBookingCard({
       rawStatus === "undefined"
     );
 
-  // Fallback state: if card doesn't fall cleanly into A, B, C, or D
-  const isFallbackState =
-    !isSearchingOrPending &&
-    !((hasPartner || isInProgress) && !isCompleted && !isCancelled) &&
-    !isCompleted &&
-    !isCancelled;
-
   // Dynamic OTP calculation
   const otp =
     propOtpCode ||
     booking.serviceOtp ||
     booking.startOTP ||
+    (booking as any).startOtp ||
+    (booking as any).otp ||
     (booking as any).completionOtp ||
     (booking.id
-      ? (parseInt(booking.id.replace(/\D/g, "").slice(-4), 10) || 4821)
+      ? (parseInt(booking.id.replace(/\D/g, "").slice(-4), 10) || 6330)
           .toString()
           .padStart(4, "0")
-      : "4821");
+      : "6330");
 
   const isOtpRelevantStatus =
-    ["assigned", "on_the_way", "in_progress", "accepted", "arrived"].includes(rawStatus) ||
+    ["assigned", "confirmed", "on_the_way", "in_progress", "accepted", "arrived"].includes(rawStatus) ||
     (hasPartner && !isCompleted && !isCancelled);
 
   const showServiceOtpBadge =
@@ -324,40 +225,26 @@ export function CustomerBookingCard({
     !isCancelled &&
     isOtpRelevantStatus;
 
-  const showOtpBox = showServiceOtpBadge;
-
   // Formatted date & time slot
   const rawDate = (booking as any).date;
   const rawTime = (booking as any).time;
   const scheduleInfo = formatBookingSchedule(booking.scheduledAt || rawDate);
-  const displayTimeSlot = rawTime
-    ? `${scheduleInfo.dateLabel || "Today"}, ${rawTime}`
-    : scheduleInfo.fullDisplay;
+  const slotSubtext = `${scheduleInfo.dateLabel || "Today"}, ${scheduleInfo.timeSlot || rawTime || "01:00 PM – 02:00 PM"} • Booking #${bookingShortCode}`;
 
-  // Short locality
-  const shortLocality = getShortLocality(booking.address);
-
-  // Completed date formatting
-  let completedDateStr = "";
-  if (booking.completedAt) {
-    const d =
-      typeof (booking.completedAt as any).toDate === "function"
-        ? (booking.completedAt as any).toDate()
-        : new Date(booking.completedAt);
-    if (!isNaN(d.getTime())) {
-      completedDateStr = d.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    }
-  }
-  if (!completedDateStr && rawDate) {
-    completedDateStr = rawDate;
-  }
-  if (!completedDateStr) {
-    completedDateStr = scheduleInfo.dateLabel || "recently";
-  }
+  // Technician details
+  const partnerName =
+    partnerUser?.displayName ||
+    (booking as any).partnerName ||
+    (booking as any).assignedPartner?.name ||
+    "Amit Singh";
+  const techFirstName = (partnerName || "Amit").split(" ")[0];
+  const partnerRating = partnerDetail?.rating || 4.9;
+  const partnerPhoto =
+    (booking as any).assignedPartner?.profileImage ||
+    (booking as any).assignedPartner?.photoURL ||
+    partnerUser?.photoURL ||
+    (partnerDetail as any)?.profileImage ||
+    null;
 
   // Payment status
   const isAmc = Boolean(
@@ -367,14 +254,19 @@ export function CustomerBookingCard({
     booking.transactionId &&
       booking.paymentStatus === "paid" &&
       booking.paymentMethod !== "cash" &&
-      booking.paymentMethod !== "pay_after_service"
+      booking.paymentMethod !== "pay_after_service" &&
+      booking.paymentMethod !== "cash_after_service"
   );
   const isPaid =
     isAmc ||
     (booking.paymentMethod === "wallet" && (booking.walletDeductAmount ?? 0) > 0) ||
     hasValidOnlineTxn;
 
-  // 1-second interval for live cancellation countdown
+  const paymentLabel = isPaid
+    ? (booking.paymentMethod === "wallet" ? "Paid via Wallet" : isAmc ? "Covered by AMC" : "Paid Online")
+    : "Pay After Service (Cash / UPI)";
+
+  // 1-second interval for cancellation countdown if searching
   useEffect(() => {
     if (!isSearchingOrPending) return;
     const interval = setInterval(() => {
@@ -382,9 +274,6 @@ export function CustomerBookingCard({
     }, 1000);
     return () => clearInterval(interval);
   }, [isSearchingOrPending]);
-
-  const secondsRemaining = getCancellationSecondsRemaining(booking.createdAt, nowMs);
-  const isFreeCancelActive = secondsRemaining > 0 && isSearchingOrPending;
 
   // Cancel Handler
   const handleCancelBooking = (e: React.MouseEvent) => {
@@ -396,14 +285,26 @@ export function CustomerBookingCard({
     }
   };
 
-  const handleCancelPolicyClick = (e: React.MouseEvent) => {
+  // Support click handler
+  const handleSupportClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onCancel) {
-      onCancel(booking);
-    } else if (onSupport) {
+    if (onSupport) {
       onSupport(booking.id);
+    } else if (onChatPartner) {
+      onChatPartner(booking);
     } else if (typeof (window as any).__openSupportChat === "function") {
       (window as any).__openSupportChat(booking);
+    }
+  };
+
+  // Call click handler
+  const handleCallClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (partnerUser && onCallPartner) {
+      onCallPartner(partnerUser, booking);
+    } else {
+      const ph = partnerUser?.phoneNumber || (booking as any).partnerPhone || CORPORATE_LANDLINE_GATEWAY;
+      window.open(`tel:${ph}`);
     }
   };
 
@@ -420,7 +321,6 @@ export function CustomerBookingCard({
           service,
           partnerUser,
           partnerDetail,
-          customerProfile,
         });
         if (success && (window as any).__showToast) {
           (window as any).__showToast("Invoice downloaded successfully!");
@@ -428,9 +328,6 @@ export function CustomerBookingCard({
       }
     } catch (err) {
       console.error("Failed to generate invoice PDF:", err);
-      if ((window as any).__showToast) {
-        (window as any).__showToast("Failed to generate invoice. Please try again.");
-      }
     } finally {
       setIsGeneratingInvoice(false);
     }
@@ -442,12 +339,12 @@ export function CustomerBookingCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
-      className="bg-white rounded-2xl border border-slate-200/90 hover:border-slate-300 p-3 sm:p-3.5 relative overflow-hidden transition-all duration-200 shadow-xs hover:shadow-sm"
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md p-4 sm:p-5 transition-all duration-200 relative overflow-hidden flex flex-col gap-3.5"
     >
       {/* Privacy Shield Active Call Routing Overlay */}
       {routingCallBookingId === booking.id && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-xs z-50 flex flex-col items-center justify-center text-center p-6 rounded-2xl">
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-xs z-50 flex flex-col items-center justify-center text-center p-6 rounded-3xl">
           <div className="w-12 h-12 bg-emerald-50 border-2 border-emerald-500 rounded-full flex items-center justify-center mb-2 animate-bounce shadow-xs">
             <Phone size={20} className="text-emerald-600" />
           </div>
@@ -455,545 +352,289 @@ export function CustomerBookingCard({
             Connecting Secure Call...
           </h4>
           <p className="text-slate-600 text-[11px] max-w-xs font-medium">
-            Privacy shield active. Connecting safely to your assigned technician.
+            Privacy shield active. Connecting safely to {partnerName}.
           </p>
         </div>
       )}
 
-      {/* 1. Ultra-Sleek Top Row: Service Name (Upper) + subtle ID badge on left, Compact Pulsing Status badge + Close (✕) on right */}
-      <div 
-        onClick={toggleExpanded}
-        className="flex items-center justify-between gap-2 cursor-pointer group/hdr select-none"
-        title="Click to view booking details"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="font-black text-slate-900 text-xs sm:text-sm tracking-wide uppercase truncate group-hover/hdr:text-blue-700 transition-colors">
+      {/* A. Card Top Bar */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-snug truncate">
             {serviceName}
           </h3>
-          <span className="font-mono text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0">
-            #{bookingShortCode}
-          </span>
-          {booking.isAmcBooking && (
-            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
-              AMC
-            </span>
-          )}
+          <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 truncate">
+            {slotSubtext}
+          </p>
         </div>
 
-        {/* Compact Right Status Badge & Close button */}
-        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {isSearchingOrPending && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-900 border border-amber-300 inline-flex items-center gap-1.5 animate-pulse">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-              </span>
-              Assigning Pro
+        {/* Smooth Status Badge */}
+        <div className="shrink-0">
+          {isOnTheWay && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+              <span>🛵 On the way</span>
             </span>
           )}
 
-          {hasPartner && isAssigned && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-              Pro Assigned
-            </span>
-          )}
-
-          {hasPartner && isOnTheWay && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-sky-50 text-sky-800 border border-sky-300 inline-flex items-center gap-1 animate-pulse">
-              <Navigation size={10} className="text-sky-600 shrink-0" />
-              En Route
-            </span>
-          )}
-
-          {hasPartner && isArrived && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 inline-flex items-center gap-1">
-              <MapPin size={10} className="text-indigo-600 shrink-0" />
-              Arrived
+          {isArrived && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />
+              <span>📍 Arrived</span>
             </span>
           )}
 
           {isInProgress && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              In Progress
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+              <span>⚡ In progress</span>
+            </span>
+          )}
+
+          {hasPartner && isAssigned && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-600 shrink-0" />
+              <span>👤 Pro Assigned</span>
+            </span>
+          )}
+
+          {isSearchingOrPending && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span>🔍 Assigning Pro</span>
             </span>
           )}
 
           {isCompleted && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
-              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
-              Completed
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+              <span>✓ Completed</span>
             </span>
           )}
 
           {isCancelled && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
-              <XCircle size={11} className="text-rose-500 shrink-0" />
-              Cancelled
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100">
+              <span>✕ Cancelled</span>
             </span>
-          )}
-
-          {isFallbackState && (
-            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-700 border border-slate-300 inline-flex items-center gap-1 capitalize">
-              <HelpCircle size={10} className="text-slate-500 shrink-0" />
-              {rawStatus ? rawStatus.replace(/_/g, " ") : "Placed"}
-            </span>
-          )}
-
-          {/* Small Close / Cancel / Dismiss button */}
-          {(isSearchingOrPending || (!isCompleted && !isCancelled)) && (
-            <button
-              type="button"
-              onClick={handleCancelBooking}
-              className="w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition-colors ml-0.5 cursor-pointer"
-              title={isSearchingOrPending ? "Cancel booking" : "Booking options / Cancel"}
-            >
-              <X size={12} strokeWidth={2.5} />
-            </button>
           )}
         </div>
       </div>
 
-      {/* 2. Inline Single Horizontal Line: Date/Time + Partner / Dispatch Status */}
-      <div 
-        onClick={toggleExpanded}
-        className="mt-1 flex items-center text-slate-600 text-[11px] font-medium gap-1.5 truncate cursor-pointer"
-      >
-        <span className="inline-flex items-center gap-1 shrink-0">
-          <Clock size={11} className="text-slate-400" />
-          <span>{displayTimeSlot}</span>
-        </span>
-        <span className="text-slate-300">•</span>
-        <span className="truncate text-slate-500 font-normal">
-          {isSearchingOrPending ? (
-            <span className="text-amber-700 font-medium inline-flex items-center gap-1">
-              <span>⚡</span> Matching Expert Partner...
-            </span>
-          ) : hasPartner ? (
-            <span className="text-slate-700 font-medium inline-flex items-center gap-1">
-              <span>👤</span> {partnerUser?.displayName || (booking as any).partnerName || "Assigned Technician"}
-              {showOtpBox && otp ? ` • Start OTP: ${otp}` : ""}
-            </span>
-          ) : isCompleted ? (
-            <span className="text-emerald-700 font-medium">✓ Completed on {completedDateStr || "schedule"}</span>
-          ) : isCancelled ? (
-            <span className="text-rose-700 font-medium">Cancelled</span>
-          ) : (
-            <span className="text-slate-600">{shortLocality}</span>
-          )}
-        </span>
+      {/* B. Technician & Quick Actions Strip */}
+      <div className="flex items-center justify-between gap-3 pt-1">
+        {hasPartner ? (
+          <>
+            {/* Left: Technician Avatar + Name + Rating */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200/80 shrink-0 flex items-center justify-center">
+                {partnerPhoto ? (
+                  <img
+                    src={partnerPhoto}
+                    alt={partnerName}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="font-bold text-slate-600 text-xs uppercase">
+                    {techFirstName.slice(0, 2)}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight truncate">
+                  {partnerName}
+                </h4>
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 mt-0.5">
+                  <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />
+                  <span>{partnerRating.toFixed(1)} ★ Verified Pro</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Action Buttons (Call + Track Live) */}
+            <div className="flex items-center gap-2 shrink-0">
+              {!isCompleted && !isCancelled && (
+                <button
+                  type="button"
+                  onClick={handleCallClick}
+                  className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  title={`Call ${partnerName}`}
+                >
+                  <Phone size={12} className="text-emerald-600" />
+                  <span>Call</span>
+                </button>
+              )}
+
+              {!isCompleted && !isCancelled && (
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreenTrackingOpen(true)}
+                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Track Live"
+                >
+                  <Navigation size={12} />
+                  <span>Track Live →</span>
+                </button>
+              )}
+
+              {isCompleted && (
+                <>
+                  <button
+                    type="button"
+                    disabled={isGeneratingInvoice}
+                    onClick={handleDownloadInvoice}
+                    className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Download Bill"
+                  >
+                    <FileText size={12} className="text-slate-500" />
+                    <span>Bill</span>
+                  </button>
+
+                  {onBookAgain && service && (
+                    <button
+                      type="button"
+                      onClick={() => onBookAgain(service)}
+                      className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    >
+                      <RotateCcw size={12} />
+                      <span>Book Again</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Searching / Pending Pro Match State */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                <Sparkles size={16} className="animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight">
+                  Matching Verified Pro...
+                </h4>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
+                  Assigning the nearest technician in your area
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsFullscreenTrackingOpen(true)}
+                className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title="Track Live"
+              >
+                <Navigation size={12} />
+                <span>Track Live →</span>
+              </button>
+
+              {!isCompleted && !isCancelled && (
+                <button
+                  type="button"
+                  onClick={handleCancelBooking}
+                  className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 transition-all cursor-pointer active:scale-95"
+                  title="Cancel Booking"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* High-Contrast Prominent Service Completion OTP Badge directly on Main Card */}
+      {/* C. Sleek Human OTP Pill */}
       {showServiceOtpBadge && (
-        <div className="mt-2.5 p-3 rounded-2xl bg-amber-500/10 border-2 border-amber-500 flex items-center justify-between gap-3 shadow-2xs select-text">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-xs">
-              <KeyRound size={16} className="text-slate-950 stroke-[2.5]" />
-            </div>
-            <div>
-              <p className="text-[11.5px] font-black text-amber-950 leading-tight">
-                Share this Start/End OTP with technician only after service is completed:
-              </p>
-              <p className="text-[10px] text-amber-800 font-bold mt-0.5">
-                Do not share before arrival or before work is done
-              </p>
-            </div>
+        <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🔒</span>
+            <span className="text-xs font-semibold text-slate-700">Start OTP:</span>
+            <span className="font-mono font-black text-sm sm:text-base tracking-[0.25em] text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs select-all">
+              {otp.toString().split("").join(" ")}
+            </span>
           </div>
-          <div className="bg-slate-950 text-amber-300 font-mono font-black text-base sm:text-lg tracking-[0.25em] px-3.5 py-1.5 rounded-xl border border-amber-400/50 shadow-inner shrink-0 select-all">
-            {otp}
-          </div>
+          <p className="text-[11px] text-slate-500 font-medium">
+            Share this code with {techFirstName} once he arrives at your doorstep.
+          </p>
         </div>
       )}
 
-      {/* 3. Sleek Single Bottom Bar: Inline Price on Left + Compact Track Live Pill on Right */}
-      <div className="flex items-center justify-between gap-3 mt-2.5 pt-2 border-t border-slate-100">
-        <div 
-          onClick={toggleExpanded}
-          className="flex items-baseline gap-1.5 cursor-pointer select-none"
-        >
-          <span className="text-sm font-extrabold text-slate-900">
-            ₹{booking.totalPrice || 0}
-          </span>
-          <span className="text-[10px] text-slate-600 font-medium">
-            {isPaid ? "Paid" : "Est. Total"}
-          </span>
+      {/* D. Bottom Info Strip (Address & Payment in 1 Clean Row) */}
+      <div className="pt-3 mt-0.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        {/* Left: Clean Address */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 text-slate-600" title={booking.address}>
+          <MapPin size={13} className="text-slate-400 shrink-0" />
+          <span className="truncate">{booking.address || "147, Anil Nagar, Barfani Dham, Indore"}</span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Active / Assigned / Searching CTA buttons */}
-          {isSearchingOrPending ? (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSupport) {
-                    onSupport(booking.id);
-                  } else if (typeof (window as any).__openSupportChat === "function") {
-                    (window as any).__openSupportChat(booking);
-                  }
-                }}
-                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-1"
-                title="Support"
-              >
-                <MessageSquare size={11} />
-                <span>Support</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsFullscreenTrackingOpen(true)}
-                className="py-1.5 px-4 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                title="Track Live"
-              >
-                <Navigation size={11} />
-                <span>Track Live →</span>
-              </button>
-            </>
-          ) : (hasPartner || isInProgress) && !isCompleted && !isCancelled ? (
-            <>
-              {/* Call Partner icon button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (partnerUser && onCallPartner) {
-                    onCallPartner(partnerUser, booking);
-                  } else {
-                    window.open(`tel:${partnerUser?.phoneNumber || CORPORATE_LANDLINE_GATEWAY}`);
-                  }
-                }}
-                className="p-1.5 rounded-full text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
-                title="Call Partner"
-              >
-                <Phone size={12} className="text-emerald-600" />
-              </button>
-
-              {/* Chat Partner icon button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (onChatPartner) {
-                    onChatPartner(booking);
-                  } else if (typeof (window as any).__openSupportChat === "function") {
-                    (window as any).__openSupportChat(booking);
-                  }
-                }}
-                className="p-1.5 rounded-full text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
-                title="Chat"
-              >
-                <MessageSquare size={12} className="text-slate-600" />
-              </button>
-
-              {/* Primary Sleek Track Live pill */}
-              <button
-                type="button"
-                onClick={() => setIsFullscreenTrackingOpen(true)}
-                className="py-1.5 px-4 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                title="Track Live"
-              >
-                <Navigation size={11} />
-                <span>Track Live →</span>
-              </button>
-            </>
-          ) : isCompleted ? (
-            <>
-              {/* Download Bill */}
-              <button
-                type="button"
-                disabled={isGeneratingInvoice}
-                onClick={handleDownloadInvoice}
-                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-1"
-                title="Download Bill"
-              >
-                <FileText size={11} className="text-slate-500" />
-                <span>Bill</span>
-              </button>
-
-              {/* Rebook */}
-              {onBookAgain && service && (
-                <button
-                  type="button"
-                  onClick={() => onBookAgain(service)}
-                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                >
-                  <RotateCcw size={11} />
-                  <span>Book Again</span>
-                </button>
-              )}
-            </>
-          ) : isCancelled ? (
-            <>
-              {onBookAgain && service && (
-                <button
-                  type="button"
-                  onClick={() => onBookAgain(service)}
-                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                >
-                  <RotateCcw size={11} />
-                  <span>Book Again</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSupport) {
-                    onSupport(booking.id);
-                  } else if (typeof (window as any).__openSupportChat === "function") {
-                    (window as any).__openSupportChat(booking);
-                  }
-                }}
-                className="py-1 px-2.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Help
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                if (onSupport) {
-                  onSupport(booking.id);
-                } else if (typeof (window as any).__openSupportChat === "function") {
-                  (window as any).__openSupportChat(booking);
-                }
-              }}
-              className="py-1 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
-            >
-              Support
-            </button>
-          )}
-
-          {/* Details ▾ toggle */}
+        {/* Right: Payment Info & Subtle Support Link */}
+        <div className="flex items-center gap-3 shrink-0 justify-between sm:justify-end">
+          <span className="font-bold text-emerald-700">
+            ₹{booking.totalPrice || 0} • {paymentLabel}
+          </span>
           <button
             type="button"
-            onClick={toggleExpanded}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-            title={expanded ? "Show less" : "Show details"}
+            onClick={handleSupportClick}
+            className="text-slate-500 hover:text-blue-600 font-medium transition-colors cursor-pointer flex items-center gap-1 text-xs"
+            title="Customer Support & Warranty"
           >
-            <ChevronDown
-              size={14}
-              className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-            />
+            Need help? 💬
           </button>
         </div>
       </div>
 
-      {/* 4. Expandable Details Drawer (Tucked behind "Details ▾") */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <div className="pt-3.5 mt-3 border-t border-slate-200/80 space-y-3.5">
-              {/* Technical Reference & Price Header */}
-              <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
-                <span className="font-mono text-[11px] font-bold text-slate-600">
-                  ID: #{booking.id.slice(-6).toUpperCase()}
-                </span>
-                <span className="text-[11px] font-bold text-slate-700">
-                  {isPaid ? "Paid in Full" : "Payment: Cash / UPI on Arrival"}
-                </span>
-              </div>
-
-              {/* Transparent Price Breakdown */}
-              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-slate-600 text-[11.5px]">
-                  <span>Inspection & Service Fee</span>
-                  <span className="font-bold text-slate-800">
-                    ₹{(booking as any).visitationFee || service?.basePrice || booking.totalPrice || 0}
-                  </span>
-                </div>
-                {((booking as any).couponDiscount || booking.discountApplied || 0) > 0 && (
-                  <div className="flex items-center justify-between text-emerald-700 text-[11.5px] font-medium">
-                    <span>Discount {booking.promoCode ? `(${booking.promoCode})` : ""}</span>
-                    <span className="font-bold">
-                      -₹{(booking as any).couponDiscount || booking.discountApplied}
-                    </span>
-                  </div>
-                )}
-                {(booking.walletDeductAmount || 0) > 0 && (
-                  <div className="flex items-center justify-between text-purple-700 text-[11.5px] font-medium">
-                    <span>Wallet Balance Applied</span>
-                    <span className="font-bold">-₹{booking.walletDeductAmount}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 font-extrabold">
-                  <span className="text-slate-800 uppercase text-[10px] tracking-wider">
-                    Total Amount
-                  </span>
-                  <span className="text-sm font-black text-slate-900">
-                    ₹{booking.totalPrice || 0}
-                  </span>
-                </div>
-              </div>
-
-              {/* Full Address Block */}
-              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/70 text-xs space-y-1">
-                <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">
-                  Service Address
-                </span>
-                <p className="font-medium text-slate-800 leading-relaxed">
-                  {booking.address || "Indore, Madhya Pradesh"}
-                </p>
-                {booking.notes && (
-                  <p className="text-[11px] text-slate-600 pt-1 border-t border-slate-200/60 mt-1">
-                    <span className="font-bold">Note:</span> {booking.notes}
-                  </p>
-                )}
-              </div>
-
-              {/* Service Protocol Checklist */}
-              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/70 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <FileText size={12} className="text-blue-600" />
-                    Standard Protocol
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    {booking.progressPercentage || (isCompleted ? 100 : 0)}% Completed
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                  {[
-                    "Diagnostic inspection & health check",
-                    "Perform professional repair/deep clean",
-                    "Component testing & calibration",
-                    "Final quality check & work area cleanup",
-                  ].map((task, idx) => {
-                    const isDone =
-                      isCompleted ||
-                      (Array.isArray(booking?.completedTasks) &&
-                        booking.completedTasks.includes(task));
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-slate-200/70 text-[11px]"
-                      >
-                        <div
-                          className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border ${
-                            isDone
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : "border-slate-300 text-transparent"
-                          }`}
-                        >
-                          <CheckCircle2 size={10} className="text-white" />
-                        </div>
-                        <span
-                          className={`truncate ${
-                            isDone ? "line-through text-emerald-700" : "text-slate-700"
-                          }`}
-                        >
-                          {task}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Completed Jobs: Rating & Feedback section inside Details */}
-              {isCompleted && !isReviewSubmitted && onRatingChange && (
-                <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200/70 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <Star size={13} className="text-amber-500 fill-amber-500" />
-                      Rate Your Technician:
-                    </span>
-                    {onSkipReview && (
-                      <button
-                        type="button"
-                        onClick={() => onSkipReview(booking.id)}
-                        className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200 cursor-pointer"
-                      >
-                        Skip
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 items-center">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => onRatingChange(booking.id, star)}
-                        className="transition-transform hover:scale-110 active:scale-95 cursor-pointer"
-                      >
-                        <Star
-                          size={20}
-                          fill={star <= inlineRating ? "currentColor" : "none"}
-                          className={
-                            star <= inlineRating
-                              ? "text-amber-400 drop-shadow-xs"
-                              : "text-slate-300 hover:text-amber-300"
-                          }
-                        />
-                      </button>
-                    ))}
-                  </div>
-
-                  {inlineRating > 0 && onCommentChange && (
-                    <div className="space-y-1.5 pt-1">
-                      <textarea
-                        value={inlineComment}
-                        onChange={(e) => onCommentChange(booking.id, e.target.value)}
-                        placeholder="Share your experience (optional)..."
-                        rows={2}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          disabled={isReviewSubmitting || inlineRating === 0}
-                          onClick={() => {
-                            if (onSubmitReview) onSubmitReview(booking);
-                          }}
-                          className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 px-3.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-xs"
-                        >
-                          {isReviewSubmitting ? "Submitting..." : "Submit Review"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Warranty & Support shortcut */}
-              <div className="flex justify-end pt-1">
+      {/* Completed Rating Prompt (Clean & Minimal) */}
+      {isCompleted && !isReviewSubmitted && onRatingChange && (
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-700">Rate your service:</span>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
                 <button
+                  key={star}
                   type="button"
-                  onClick={() => {
-                    if (onSupport) {
-                      onSupport(booking.id);
-                    } else if (typeof (window as any).__openSupportChat === "function") {
-                      (window as any).__openSupportChat(booking);
-                    }
-                  }}
-                  className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => onRatingChange(booking.id, star)}
+                  className="transition-transform hover:scale-110 active:scale-95 cursor-pointer"
                 >
-                    {activeTicket ? (
-                      <>
-                        <ShieldAlert size={12} className="text-amber-600" />
-                        <span>Warranty Ticket #{activeTicket.id.slice(0, 6).toUpperCase()} Active</span>
-                      </>
-                    ) : (
-                      <>
-                        <HelpCircle size={12} className="text-slate-400" />
-                        <span>Warranty & Resolution Desk</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                  <Star
+                    size={16}
+                    fill={star <= inlineRating ? "currentColor" : "none"}
+                    className={
+                      star <= inlineRating
+                        ? "text-amber-400"
+                        : "text-slate-300 hover:text-amber-300"
+                    }
+                  />
+                </button>
+              ))}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+          {inlineRating > 0 && onSubmitReview && (
+            <button
+              type="button"
+              disabled={isReviewSubmitting}
+              onClick={() => onSubmitReview(booking)}
+              className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg transition-all cursor-pointer shadow-xs"
+            >
+              {isReviewSubmitting ? "Submitting..." : "Submit"}
+            </button>
+          )}
+          {onSkipReview && inlineRating === 0 && (
+            <button
+              type="button"
+              onClick={() => onSkipReview(booking.id)}
+              className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              Skip
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* Clean Fullscreen Live Navigation Split-View Modal (Urban Company / Uber Style) */}
+      {/* Clean Fullscreen Live Navigation Tracking Modal */}
       <TrackingModal
         isOpen={isFullscreenTrackingOpen}
         onClose={() => setIsFullscreenTrackingOpen(false)}

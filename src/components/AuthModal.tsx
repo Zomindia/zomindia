@@ -18,7 +18,9 @@ import {
   ArrowRight, 
   CheckCircle2, 
   AlertCircle,
-  ChevronLeft
+  ChevronLeft,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 
 interface Props {
@@ -747,70 +749,101 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="relative w-full max-w-[400px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative overflow-hidden bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-sm sm:max-w-md w-full mx-auto flex flex-col max-h-[92vh] z-10"
       >
-        {/* Dynamic Header */}
+        {/* 1. Curved Top Hero Banner behind the logo */}
         {view !== 'success-transition' && (
-          <div className="px-6 pt-6 pb-2 flex justify-between items-center bg-white border-b border-neutral-50/50">
-            <div className="flex items-center select-none">
+          <div className="bg-gradient-to-br from-[#071435] via-[#0f2868] to-[#1e1b4b] pt-8 pb-12 px-6 text-center relative shrink-0">
+            {/* Subtle decorative glowing ambient orbs */}
+            <div className="absolute -top-10 -left-10 w-36 h-36 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-8 -right-8 w-40 h-40 bg-cyan-400/25 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-16 bg-blue-500/20 rounded-full blur-xl pointer-events-none" />
+
+            {/* Back button for OTP Entry state */}
+            {view === 'otp-entry' && (
+              <button
+                type="button"
+                onClick={() => setView('phone-entry')}
+                className="absolute top-3.5 left-3.5 z-20 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-all cursor-pointer flex items-center gap-1 text-xs font-semibold pr-3"
+                title="Change phone number"
+              >
+                <ChevronLeft size={16} />
+                <span>Back</span>
+              </button>
+            )}
+
+            {/* Close Button: Clean translucent pill in top-right */}
+            <button 
+              type="button"
+              onClick={onClose}
+              className="absolute top-3.5 right-3.5 z-20 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-all cursor-pointer"
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Top Brand Banner Header */}
+            <div className="flex flex-col items-center justify-center relative z-10 select-none">
               <img 
-                src={LogoHorizontal} 
-                alt="Zomindia brand" 
-                className="h-5 w-auto object-contain object-left"
+                src="/logo-horizontal-white.png" 
+                alt="Zomindia" 
+                className="h-6 sm:h-7 w-auto object-contain opacity-95 mb-1"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+              <span className="text-[10px] font-bold tracking-widest text-blue-200/80 uppercase">
+                India's Trusted Home Services
+              </span>
+            </div>
+
+            {/* 2. Glowing 'Z' Brand Badge that sits on the curve */}
+            <div className="w-16 h-16 rounded-2xl bg-white p-2 shadow-xl ring-4 ring-amber-400/40 mx-auto -mb-8 relative z-10 flex items-center justify-center transform hover:scale-105 transition-all">
+              <img 
+                src={LogoIcon} 
+                alt="Zomindia" 
+                className="w-full h-full object-contain rounded-xl select-none"
                 referrerPolicy="no-referrer"
               />
             </div>
-            
-            <button 
-              onClick={onClose}
-              className="p-1 px-1.5 hover:bg-neutral-50 rounded-xl transition-all font-medium text-neutral-400 text-xs hover:text-neutral-700 flex items-center gap-1"
-            >
-              <X size={12} />
-              <span>close</span>
-            </button>
           </div>
         )}
 
-        <div className="p-6 overflow-y-auto no-scrollbar">
+        {/* Scrollable Content Body */}
+        <div className="overflow-y-auto no-scrollbar">
           <AnimatePresence mode="wait">
             
-            {/* VIEW: Phone Entry (Zomato / Swiggy Clean Single Flow) */}
+            {/* VIEW 1: Phone Entry (Zomato / Swiggy Clean Single Flow) */}
             {view === 'phone-entry' && (
               <motion.div
                 key="phone-entry"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-6 py-2"
+                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
-                <div className="text-center space-y-2">
-                  <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto shadow-md border border-neutral-100 p-1">
-                    <img 
-                      src={LogoIcon} 
-                      alt="zomindia" 
-                      className="w-full h-full object-contain rounded-full"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <h2 className="text-xl font-black tracking-tight text-neutral-900 mt-2">
+                {/* 3. Engaging Typography & Input Section */}
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                     Login or Sign up
                   </h2>
-                  <p className="text-xs text-neutral-500 max-w-[270px] mx-auto leading-relaxed">
+                  <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-6 leading-relaxed">
                     Enter your mobile number to get an OTP for instant access.
                   </p>
                 </div>
 
                 <form onSubmit={handleRequestOTP} className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                    <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                       Enter Mobile Number
                     </label>
-                    <div className="relative">
-                      {/* Flag Code container in input tag */}
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pr-3 border-r border-neutral-100">
-                        <img src="https://flagcdn.com/w20/in.png" alt="India flag" className="w-4 rounded-sm" />
-                        <span className="text-xs font-bold text-neutral-800">+91</span>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all">
+                      {/* Country prefix (+91 with Flag) */}
+                      <div className="font-bold text-slate-800 pr-3 border-r border-slate-200 flex items-center gap-1.5 shrink-0 select-none">
+                        <img src="https://flagcdn.com/w20/in.png" alt="India flag" className="w-4 h-auto rounded-xs shadow-2xs" />
+                        <span className="text-sm font-black text-slate-900">+91</span>
                       </div>
+                      {/* Phone Input */}
                       <input 
                         type="tel"
                         required
@@ -821,42 +854,49 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                           setPhoneNumber(val);
                         }}
                         placeholder="98765 43210"
-                        className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white pl-[84px] pr-4 py-3.5 rounded-2xl outline-none transition-all font-semibold text-sm tracking-widest text-neutral-900"
+                        className="bg-transparent text-slate-900 font-bold tracking-widest text-base sm:text-lg focus:outline-none pl-3 w-full placeholder:text-slate-300 placeholder:font-normal placeholder:tracking-normal"
                       />
                     </div>
                   </div>
 
                   {error && (
-                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed text-left">
                       <AlertCircle size={15} className="shrink-0 mt-0.5" />
                       <span>{error}</span>
                     </div>
                   )}
 
+                  {/* 4. Vibrant "Continue" Action Button */}
                   <button
                     type="submit"
                     disabled={loading || phoneNumber.length < 10}
-                    className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 text-sm shadow-[0_12px_24px_-4px_rgba(5,12,166,0.15)] cursor-pointer"
+                    className="w-full mt-5 py-3.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-800 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                   >
                     {loading ? (
-                      <BrandedButtonSpinner className="w-4 h-4" />
+                      <BrandedButtonSpinner className="w-5 h-5" />
                     ) : (
                       <>
                         <span>Continue</span>
-                        <ArrowRight size={16} />
+                        <ArrowRight size={18} className="transform group-hover:translate-x-1 transition-transform" />
                       </>
                     )}
                   </button>
                 </form>
 
-                <p className="text-center text-[10px] text-neutral-400 font-medium px-2 leading-normal">
-                  By continuing, you agree to zomindia's <span className="text-neutral-700 font-semibold underline cursor-pointer">Terms & Privacy Policy</span>.
+                <p className="text-center text-[10px] text-slate-400 font-medium px-2 pt-1 leading-normal">
+                  By continuing, you agree to Zomindia's <span className="text-blue-700 hover:underline font-semibold cursor-pointer">Terms & Privacy Policy</span>.
                 </p>
 
-                <div className="flex items-center gap-2.5 justify-center text-[10px] text-neutral-400 font-medium px-2 pt-1 leading-normal border-t border-neutral-100/60">
-                  <span>🔒 Secure SSL connection</span>
-                  <span>•</span>
-                  <span>⚡ Instant OTP verification</span>
+                {/* 5. Colorful Micro-Trust Badges */}
+                <div className="flex items-center gap-2 justify-center flex-wrap pt-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-1">
+                    <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
+                    <span>100% Secure SSL</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/60 rounded-full px-2.5 py-1">
+                    <Zap size={12} className="text-amber-500 shrink-0 fill-amber-500" />
+                    <span>Instant OTP</span>
+                  </span>
                 </div>
               </motion.div>
             )}
@@ -868,26 +908,26 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
                 <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Enter Verification Code
+                  </h2>
+                  <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-2 leading-relaxed">
+                    We've sent a 6-digit OTP via SMS to <span className="font-bold text-slate-900">+91 {phoneNumber}</span>
+                  </p>
                   <button 
                     type="button"
                     onClick={() => setView('phone-entry')}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-[#050CA6] uppercase tracking-wider hover:underline"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
                   >
-                    <ChevronLeft size={12} />
-                    <span>Change phone</span>
+                    <ChevronLeft size={13} />
+                    <span>Change phone number</span>
                   </button>
-                  <h2 className="text-lg font-bold text-neutral-900 mt-2 flex items-center gap-2">
-                    <span>Enter Verification Code</span>
-                  </h2>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    We've sent a 6-digit OTP via SMS to <span className="font-bold text-neutral-800">+91 {phoneNumber}</span>
-                  </p>
                 </div>
 
-                <form onSubmit={handleVerifyOTP} className="space-y-6">
+                <form onSubmit={handleVerifyOTP} className="space-y-4 pt-1">
                   {/* Single Unified 6-Digit OTP Input with Visual Box Presentation */}
                   <div className="relative w-full">
                     {/* Underlying single native input for Chrome/Android/iOS WebOTP, auto-fill, and SMS paste bar */}
@@ -906,7 +946,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     />
 
                     {/* Visual 6-box representation synced directly with single unified state */}
-                    <div className="flex justify-between gap-1.5 sm:gap-2 p-1.5 bg-slate-50/50 rounded-2xl border border-slate-100/80 shadow-inner select-none pointer-events-none">
+                    <div className="flex justify-between gap-1.5 sm:gap-2 p-1.5 bg-slate-50 rounded-2xl border-2 border-slate-200 select-none pointer-events-none">
                       {Array.from({ length: 6 }).map((_, idx) => {
                         const digit = otpCode[idx] || '';
                         const isCurrentActive = otpCode.length === idx || (idx === 5 && otpCode.length === 6);
@@ -914,9 +954,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                         return (
                           <div
                             key={idx}
-                            className={`flex-1 h-12 sm:h-14 min-w-0 max-w-[42px] sm:max-w-[48px] bg-white border text-center text-lg sm:text-xl font-bold rounded-xl shadow-md flex items-center justify-center transition-all duration-150 ${
+                            className={`flex-1 h-12 sm:h-14 min-w-0 max-w-[42px] sm:max-w-[48px] bg-white border text-center text-lg sm:text-xl font-black rounded-xl shadow-xs flex items-center justify-center transition-all duration-150 ${
                               isCurrentActive
-                                ? 'border-[#050CA6] ring-4 ring-[#050CA6]/10 shadow-blue-700/5 text-[#050CA6]'
+                                ? 'border-blue-600 ring-4 ring-blue-500/15 text-blue-700 scale-105'
                                 : digit
                                 ? 'border-slate-400 text-slate-900'
                                 : 'border-slate-200 text-slate-400'
@@ -925,7 +965,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                             {digit ? (
                               <span>{digit}</span>
                             ) : (
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                              <span className="w-2 h-2 rounded-full bg-slate-200" />
                             )}
                           </div>
                         );
@@ -934,8 +974,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                   </div>
 
                   {error && (
-                    <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-semibold">
-                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed text-left">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
                       <span>{error}</span>
                     </div>
                   )}
@@ -944,22 +984,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     <button
                       type="submit"
                       disabled={loading || otpCode.length < 6}
-                      className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full mt-5 py-3.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-800 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
-                        <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
+                        <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
                       ) : (
-                        "Verify OTP"
+                        <>
+                          <span>Verify & Continue</span>
+                          <ArrowRight size={18} className="transform group-hover:translate-x-1 transition-transform" />
+                        </>
                       )}
                     </button>
 
-                    <div className="text-center">
+                    <div className="text-center pt-1">
                       <button
                         type="button"
                         disabled={timer > 0 || loading}
                         onClick={handleResendOTP}
-                        className={`text-xs font-extrabold uppercase tracking-wider transition-colors ${
-                          timer > 0 ? 'text-neutral-300' : 'text-[#050CA6] hover:text-[#040980] cursor-pointer'
+                        className={`text-xs font-bold uppercase tracking-wider transition-colors ${
+                          timer > 0 ? 'text-slate-400 cursor-not-allowed' : 'text-blue-700 hover:text-blue-900 hover:underline cursor-pointer'
                         }`}
                       >
                         {timer > 0 ? `Resend code in ${timer}s` : 'Send OTP again'}
@@ -967,6 +1010,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     </div>
                   </div>
                 </form>
+
+                {/* Micro-Trust Badges in OTP view */}
+                <div className="flex items-center gap-2 justify-center flex-wrap pt-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-1">
+                    <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
+                    <span>100% Secure SSL</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/60 rounded-full px-2.5 py-1">
+                    <Zap size={12} className="text-amber-500 shrink-0 fill-amber-500" />
+                    <span>Instant OTP</span>
+                  </span>
+                </div>
               </motion.div>
             )}
 
@@ -977,57 +1032,65 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-neutral-900">
-                    Welcome to zomindia! 🎉
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Welcome to Zomindia! 🎉
                   </h2>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Just a quick step to set up your profile.
+                  <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-4 leading-relaxed">
+                    Just a quick step to complete your profile.
                   </p>
                 </div>
 
-                <form onSubmit={handleRegisterProfile} className="space-y-4">
+                <form onSubmit={handleRegisterProfile} className="space-y-4 text-left">
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                    <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                       Full Name
                     </label>
-                    <input 
-                      type="text"
-                      required
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Jane Doe"
-                      className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                    />
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all">
+                      <input 
+                        type="text"
+                        required
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="e.g. Rahul Sharma"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 ml-1">
+                    <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                       Email Address
                     </label>
-                    <input 
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="jane.doe@example.com"
-                      className="w-full bg-neutral-50 border border-neutral-100 focus:border-[#050CA6] focus:bg-white px-4 py-3 rounded-xl outline-none transition-all font-semibold text-xs text-neutral-900"
-                    />
-                    <p className="mt-1 text-[8px] text-neutral-400">We will send your booking invoices here.</p>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all">
+                      <input 
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="rahul.sharma@example.com"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
+                    <p className="mt-1 text-[10px] text-slate-400 font-medium">We'll send your official service invoices & warranty cards here.</p>
                   </div>
 
-                  <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between text-left">
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50 to-emerald-50 rounded-2xl border border-amber-200/60 flex items-center justify-between text-left">
                     <div className="space-y-0.5">
-                      <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">Welcome Onboard Credit</p>
-                      <p className="text-xs text-neutral-500 font-medium">Get ₹{walletJoiningBonus} welcome bonus in your Zomindia wallet!</p>
+                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                        <span>🎁 Welcome Onboard Credit</span>
+                      </p>
+                      <p className="text-xs text-slate-600 font-semibold">
+                        Get ₹{walletJoiningBonus} welcome bonus instantly in your Zomindia wallet!
+                      </p>
                     </div>
                   </div>
 
                   {error && (
-                    <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-semibold">
-                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
                       <span>{error}</span>
                     </div>
                   )}
@@ -1035,55 +1098,63 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                   <button
                     type="submit"
                     disabled={loading || !displayName.trim()}
-                    className="w-full bg-[#050CA6] text-white p-3.5 rounded-2xl font-bold hover:bg-[#040980] transition-all text-sm shadow-md"
+                    className="w-full mt-4 py-3.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-800 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50"
                   >
                     {loading ? (
-                      <BrandedButtonSpinner className="w-4 h-4 mx-auto" />
+                      <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
                     ) : (
-                      "Create Profile"
+                      <>
+                        <span>Complete Profile & Start</span>
+                        <ArrowRight size={18} className="transform group-hover:translate-x-1 transition-transform" />
+                      </>
                     )}
                   </button>
                 </form>
               </motion.div>
             )}
 
-            {/* VIEW 5: Success Transition State */}
+            {/* VIEW 4: Success Transition State */}
             {view === 'success-transition' && (
               <motion.div
                 key="success-transition"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.05 }}
-                className="text-center py-8 space-y-6"
+                className="text-center py-12 px-6 sm:px-8 space-y-6"
               >
-                <div className="relative flex items-center justify-center mx-auto w-20 h-20">
+                <div className="relative flex items-center justify-center mx-auto w-24 h-24">
                   <motion.div 
-                    animate={{ scale: [1, 1.25, 1], opacity: [0.1, 0.25, 0.1] }}
+                    animate={{ scale: [1, 1.25, 1], opacity: [0.15, 0.35, 0.15] }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    className="absolute inset-0 bg-[#050CA6]/20 rounded-full"
+                    className="absolute inset-0 bg-blue-600/25 rounded-full"
+                  />
+                  <motion.div 
+                    animate={{ scale: [1, 1.15, 1], opacity: [0.2, 0.4, 0.2] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
+                    className="absolute inset-2 bg-amber-400/20 rounded-full"
                   />
                   <motion.div 
                     initial={{ scale: 0.5, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="relative bg-[#050CA6] text-white w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
+                    className="relative bg-gradient-to-br from-blue-700 to-indigo-700 text-white w-16 h-16 rounded-3xl flex items-center justify-center shadow-xl shadow-blue-700/30 ring-4 ring-amber-400/40"
                   >
-                    <CheckCircle2 size={26} />
+                    <CheckCircle2 size={32} className="text-amber-300" />
                   </motion.div>
                 </div>
 
-                <div className="space-y-1">
-                  <h3 className="text-lg font-black text-neutral-900 uppercase tracking-tight">You're Logged In!</h3>
-                  <p className="text-[10px] text-neutral-400 font-extrabold uppercase tracking-widest">
-                    Loading your profile and wallet...
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">You're Logged In!</h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Loading your profile, bookings, and wallet...
                   </p>
                 </div>
 
-                <div className="w-36 bg-neutral-50 h-1 rounded-full overflow-hidden mx-auto border border-neutral-100">
+                <div className="w-44 bg-slate-100 h-1.5 rounded-full overflow-hidden mx-auto border border-slate-200">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: '100%' }}
                     transition={{ duration: 1.2, ease: 'easeInOut' }}
-                    className="h-full bg-gradient-to-r from-[#050CA6] to-indigo-500 rounded-full"
+                    className="h-full bg-gradient-to-r from-blue-700 via-indigo-600 to-amber-400 rounded-full"
                   />
                 </div>
               </motion.div>

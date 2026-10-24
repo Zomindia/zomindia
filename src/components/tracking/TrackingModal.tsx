@@ -429,25 +429,31 @@ export function TrackingModal({
   const displayOtp =
     liveBooking.serviceOtp ||
     liveBooking.startOTP ||
-    (liveBooking as any).completionOtp ||
+    (liveBooking as any).startOtp ||
+    (liveBooking as any).otp ||
     (liveBooking.id
-      ? (parseInt(liveBooking.id.replace(/\D/g, "").slice(-4), 10) || 4821)
+      ? (parseInt(liveBooking.id.replace(/\D/g, "").slice(-4), 10) || 6330)
           .toString()
           .padStart(4, "0")
-      : "4821");
+      : "6330");
 
   const rawStatus = (liveBooking.status || "").toLowerCase();
   const isCompleted = ["completed", "finalized"].includes(rawStatus);
   const isCancelled = rawStatus === "cancelled";
-  const showOtpBadge = !liveBooking.otpVerified && !isCompleted && !isCancelled && Boolean(displayOtp);
+  const showOtpBadge =
+    !liveBooking.otpVerified &&
+    rawStatus !== "in_progress" &&
+    !isCompleted &&
+    !isCancelled &&
+    Boolean(displayOtp);
 
   // Status label
   const statusLabel = useMemo(() => {
-    if (rawStatus === "on_the_way") return "Technician is on the way";
-    if (rawStatus === "arrived") return "Technician has arrived at doorstep";
-    if (rawStatus === "in_progress") return "Service is in progress";
-    if (rawStatus === "assigned") return "Technician assigned & preparing route";
-    return "Technician en-route";
+    if (rawStatus === "on_the_way") return "🛵 Technician is on the way";
+    if (rawStatus === "arrived") return "📍 Technician has arrived at doorstep";
+    if (rawStatus === "in_progress") return "⚡ Service in progress";
+    if (rawStatus === "assigned") return "🛵 Technician assigned & on the way";
+    return "🛵 Technician en-route";
   }, [rawStatus]);
 
   const handleCall = () => {
@@ -543,19 +549,19 @@ export function TrackingModal({
               </div>
             </div>
 
-            {/* 2. Prominent OTP Badge on Tracking Screen */}
+            {/* 2. Prominent Start OTP Badge on Tracking Screen */}
             {showOtpBadge && (
-              <div className="my-2 p-2.5 rounded-2xl bg-amber-500/10 border-2 border-amber-400 flex items-center justify-between gap-2 shadow-2xs">
+              <div className="my-2 p-2.5 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black shrink-0">
                     <KeyRound size={14} className="stroke-[2.5]" />
                   </div>
-                  <p className="text-[11px] font-bold text-amber-950 leading-tight">
-                    Share OTP only after service completion:
+                  <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                    Share Start OTP with partner at doorstep:
                   </p>
                 </div>
-                <div className="bg-slate-950 text-amber-300 font-mono font-black text-base tracking-[0.2em] px-3 py-1 rounded-xl border border-amber-400/40 shrink-0 select-all">
-                  {displayOtp}
+                <div className="bg-white text-blue-700 font-mono font-bold text-sm tracking-[0.2em] px-3 py-1 rounded-xl border border-blue-200/80 shrink-0 select-all">
+                  OTP: {displayOtp}
                 </div>
               </div>
             )}

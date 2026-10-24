@@ -658,7 +658,23 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
 
               {/* Preview Canvas Container */}
               <div className="rounded-3xl border border-slate-200 overflow-hidden shadow-lg bg-slate-900">
-                <div className="relative overflow-hidden rounded-b-[2rem] px-4 pt-3 pb-6 text-white min-h-[300px] flex flex-col justify-between">
+                {/* Header bar (Separated outside Hero Canvas) */}
+                <div className="flex items-center justify-between px-3 py-2 bg-[#071435] backdrop-blur-md shadow-md border-b border-white/10">
+                  <img
+                    src="/logo-horizontal-white.png"
+                    alt="Zomindia"
+                    className="h-5 w-auto object-contain"
+                  />
+                  <div className="text-[10px] text-blue-100 font-medium px-2 py-0.5 rounded-full bg-white/10 border border-white/15">
+                    Scheme 54, Indore ▾
+                  </div>
+                  <div className="text-[10px] font-semibold border border-white/25 px-2.5 py-0.5 rounded-full text-white bg-white/5">
+                    Login
+                  </div>
+                </div>
+
+                {/* Hero Canvas Preview */}
+                <div className="relative overflow-hidden rounded-b-[2rem] px-4 pt-3 pb-6 text-white min-h-[260px] flex flex-col justify-between">
                   {/* Layer 1: Background Media */}
                   {bgType !== 'gradient' && bgUrl && (
                     <img
@@ -682,21 +698,7 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
                   ) : null}
 
                   {/* Layer 2: Mini Content Elements */}
-                  <div className="relative z-10 space-y-3">
-                    {/* Header bar */}
-                    <div className="flex items-center justify-between pt-1 pb-1">
-                      <img
-                        src="/logo-horizontal-white.png"
-                        alt="Zomindia"
-                        className="h-6 w-auto object-contain"
-                      />
-                      <div className="text-[10px] text-blue-100 font-medium px-2 py-0.5 rounded-full bg-white/10 border border-white/15">
-                        Indore ▾
-                      </div>
-                      <div className="text-[10px] font-semibold border border-white/25 px-2.5 py-0.5 rounded-full text-white bg-white/5">
-                        Login
-                      </div>
-                    </div>
+                  <div className="relative z-10 space-y-2.5">
 
                     {/* Mini Search bar */}
                     <div className="bg-white rounded-xl px-3 py-2 text-slate-400 text-xs flex items-center gap-2 shadow-sm">
@@ -704,18 +706,13 @@ export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services
                       <span className="truncate text-[11px] font-medium">Search 'Split AC Service'...</span>
                     </div>
 
-                    {/* Mini Explore Services Section */}
+                    {/* Mini Filter Pills (Directly beneath search, no Explore Services heading) */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-white tracking-tight">Explore Services ⚡</span>
-                      </div>
-
-                      {/* Mini Filter Pills */}
                       <div className="flex items-center gap-1 mb-2">
-                        <span className="px-2 py-0.5 bg-white text-blue-950 font-bold text-[9px] rounded-md shadow-xs">All</span>
-                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Home</span>
-                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Appliances</span>
-                        <span className="px-2 py-0.5 bg-white/15 text-blue-100 text-[9px] rounded-md">Repairs</span>
+                        <span className="px-2.5 py-1 bg-white text-blue-950 font-bold text-[9px] rounded-full shadow-xs">ALL</span>
+                        <span className="px-2.5 py-1 bg-white/15 text-white/90 text-[9px] rounded-full border border-white/20">HOME</span>
+                        <span className="px-2.5 py-1 bg-white/15 text-white/90 text-[9px] rounded-full border border-white/20">APPLIANCES</span>
+                        <span className="px-2.5 py-1 bg-white/15 text-white/90 text-[9px] rounded-full border border-white/20">REPAIRS</span>
                       </div>
 
                       {/* Mini Category Cards */}

@@ -1,23 +1,17 @@
 /**
  * Granular Doorstep Reverse Geocoding Utility for Zomindia
- * 
- * Direct OpenStreetMap Nominatim reverse geocoding as sole primary engine:
- * https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}
- * 
- * - Discards data.display_name completely to prevent broad city/tehsil collapses.
- * - Extracts granular fields directly from data.address:
- *     premise: building / house_number / amenity / office / shop
- *     road: road / pedestrian / street / residential
- *     colony: suburb / neighbourhood / sublocality / sublocality_level_1 / sublocality_level_2
- *     city: city / town / city_district / 'Indore'
- *     postcode: postcode
- * - Formats:
- *     Area / Colony: [colony || road || 'Indore']
- *     Full Address: [premise, road, colony, city, postcode].filter(Boolean).join(', ')
- * - Zero snapping to static landmarks when coordinates are acquired.
+ *
+ * - Strictly preserves raw { lat, lng } coordinates.
+ * - Prioritizes Google Maps Native Geocoder when available.
+ * - OpenStreetMap Nominatim reverse geocoding fallback.
+ * - Swiggy/Zomato Hyper-Local Address Hierarchy:
+ *   MICRO (sublocality_level_2, sublocality_level_3, neighborhood, premise)
+ *   ALWAYS takes strict precedence over MACRO (sublocality_level_1, sublocality).
  */
 
 export interface ReverseGeocodeResult {
+  lat: number;
+  lng: number;
   fullAddress: string;
   area: string;
   premise?: string;
@@ -26,106 +20,131 @@ export interface ReverseGeocodeResult {
   sublocality?: string;
   city?: string;
   postcode?: string;
-  source: 'nominatim' | 'coordinates';
+  source: 'google' | 'nominatim' | 'coordinates';
 }
 
 /**
- * Known reference localities in Indore for high-accuracy proximity mapping
- * when reverse geocoding returns broad municipal fallbacks like 'Indore, 452001'.
+ * Indore Popular Township Smart Alias Dictionary
+ * Maps raw revenue village names to popular Indore residential area names.
  */
-export const INDORE_REFERENCE_POINTS = [
-  { name: "Scheme 54, Vijay Nagar", lat: 22.7533, lng: 75.8937 },
-  { name: "Vijay Nagar", lat: 22.7500, lng: 75.8950 },
-  { name: "Scheme 74, Vijay Nagar", lat: 22.7580, lng: 75.8890 },
-  { name: "Scheme 78", lat: 22.7650, lng: 75.8870 },
-  { name: "Old Palasia", lat: 22.7230, lng: 75.8820 },
-  { name: "New Palasia", lat: 22.7270, lng: 75.8870 },
-  { name: "Mahalaxmi Nagar", lat: 22.7600, lng: 75.9010 },
-  { name: "Nipania", lat: 22.7660, lng: 75.9120 },
-  { name: "Bhawarkua", lat: 22.6890, lng: 75.8650 },
-  { name: "Ganesh Nagar", lat: 22.6930, lng: 75.8720 },
-  { name: "Rajendra Nagar", lat: 22.6750, lng: 75.8300 },
-  { name: "Geeta Bhawan", lat: 22.7180, lng: 75.8840 },
-  { name: "Annapurna", lat: 22.7000, lng: 75.8360 },
-  { name: "Sudama Nagar", lat: 22.6950, lng: 75.8280 },
-  { name: "Bicholi Mardana", lat: 22.7050, lng: 75.9320 },
-  { name: "Saket", lat: 22.7200, lng: 75.8980 },
-  { name: "Shalimar Township", lat: 22.7620, lng: 75.8920 },
-  { name: "Silicon City, Rau", lat: 22.6350, lng: 75.8150 },
-  { name: "Super Corridor", lat: 22.7580, lng: 75.8250 },
-  { name: "Rajwada, Khajuri Bazar", lat: 22.7196, lng: 75.8577 },
-  { name: "Manoramaganj", lat: 22.7160, lng: 75.8800 },
-  { name: "Bengali Square, Kanadia Road", lat: 22.7150, lng: 75.9080 },
-  { name: "Tilak Nagar", lat: 22.7190, lng: 75.8950 },
-  { name: "Chhatribagh", lat: 22.7130, lng: 75.8520 },
-  { name: "LIG Colony", lat: 22.7380, lng: 75.8820 },
-  { name: "Rau", lat: 22.6280, lng: 75.8050 },
-  { name: "Pardesipura", lat: 22.7420, lng: 75.8690 }
-];
+export const INDORE_TOWNSHIP_ALIASES: Record<string, string> = {
+  'kelod hala': 'Singapore Township',
+  'talawali chanda': 'Talawali Chanda',
+  'pipliya kumar': 'Mahalaxmi Nagar',
+  'nipania': 'Nipania',
+  'bicholi mardana': 'Bicholi Mardana',
+  'bicholi hapsi': 'Bicholi Hapsi',
+  'kanadia': 'Kanadia',
+  'lasudia mori': 'Lasudiya Mori',
+  'lasuriamori': 'Lasudiya Mori',
+  'kumedi': 'Super Corridor',
+  'dudhla': 'Dudhia',
+};
+
+/**
+ * Resolves any string against the Indore Township Smart Alias Dictionary (case-insensitive)
+ */
+export function resolveIndoreTownshipAlias(name?: string | null): string | null {
+  if (!name) return null;
+  const clean = name.trim().toLowerCase();
+  for (const [rawKey, targetAlias] of Object.entries(INDORE_TOWNSHIP_ALIASES)) {
+    if (clean === rawKey || clean.includes(rawKey)) {
+      return targetAlias;
+    }
+  }
+  return null;
+}
 
 export const isBroadIndoreName = (str?: string | null): boolean => {
   if (!str) return true;
   const clean = str.trim().toLowerCase();
   return (
     clean === '' ||
-    /^(indore|indore city|indore tehsil|indore district|indore municipal corporation|madhya pradesh|mp|india|452001)$/i.test(clean) ||
-    clean === 'indore city' ||
-    clean === 'indore tehsil' ||
-    clean === 'indore'
+    /^(indore|indore city|indore tehsil|indore district|indore municipal corporation|madhya pradesh|mp|india|452\d{3}|unnamed road)$/i.test(
+      clean
+    )
   );
 };
 
-export function findNearestIndoreLocality(lat: number, lng: number): string {
-  let closest = "Scheme 54, Vijay Nagar";
-  let minDist = Infinity;
-  for (const pt of INDORE_REFERENCE_POINTS) {
-    const dLat = pt.lat - lat;
-    const dLng = pt.lng - lng;
-    const distSq = dLat * dLat + dLng * dLng;
-    if (distSq < minDist) {
-      minDist = distSq;
-      closest = pt.name;
-    }
-  }
-  return closest;
-}
+const isPureHouseNumber = (str?: string | null): boolean => {
+  if (!str) return false;
+  return /^[0-9]+[a-zA-Z0-9\s/-]*$/.test(str.trim()) && str.trim().length <= 10;
+};
 
 /**
  * Granular parser for OpenStreetMap Nominatim jsonv2 payload.
- * Extracts strictly from data.address; completely discards data.display_name.
+ * Evaluates micro-localities (sublocality_level_2, neighbourhood, quarter, residential, housing)
+ * strictly BEFORE macro-localities (sublocality_level_1, sublocality, suburb, city_district, village).
  */
-export function parseNominatimPayload(data: any): ReverseGeocodeResult | null {
+export function parseNominatimPayload(data: any, lat: number, lng: number): ReverseGeocodeResult | null {
   if (!data || !data.address) return null;
   const a = data.address || {};
 
-  const premise = (a.house_number || a.building || a.house_name || a.flat || a.amenity || a.office || a.shop || '').trim();
-  const road = (a.road || a.pedestrian || a.street || a.residential || '').trim();
-  
-  // Extract distinct neighbourhood & suburb tokens
-  const neighbourhood = (a.neighbourhood || a.quarter || a.residential_area || '').trim();
-  const suburb = (a.suburb || a.sublocality || a.sublocality_level_1 || a.sublocality_level_2 || '').trim();
+  const premise = (
+    a.house_number ||
+    a.building ||
+    a.house_name ||
+    a.flat ||
+    a.amenity ||
+    a.office ||
+    a.shop ||
+    ''
+  ).trim();
+  const rawRoad = (a.road || a.pedestrian || a.street || '').trim();
+  const road = isBroadIndoreName(rawRoad) ? '' : rawRoad;
 
-  // Combine neighbourhood & suburb if both present (e.g. "Scheme 54, Vijay Nagar")
-  let colony = '';
-  if (neighbourhood && suburb && neighbourhood.toLowerCase() !== suburb.toLowerCase()) {
-    colony = `${neighbourhood}, ${suburb}`;
-  } else {
-    colony = neighbourhood || suburb || a.city_district || road || '';
+  // Swiggy/Zomato Hyper-Local Hierarchy: micro-localities strictly precede macro-localities
+  const microLocal = (
+    a.sublocality_level_2 ||
+    a.sublocality_level_3 ||
+    a.neighbourhood ||
+    a.quarter ||
+    a.residential ||
+    a.housing ||
+    (!isPureHouseNumber(premise) ? premise : '') ||
+    ''
+  ).trim();
+
+  const macroLocal = (
+    a.sublocality_level_1 ||
+    a.sublocality ||
+    a.suburb ||
+    a.city_district ||
+    a.village ||
+    a.hamlet ||
+    ''
+  ).trim();
+
+  const micro =
+    microLocal && !isBroadIndoreName(microLocal)
+      ? resolveIndoreTownshipAlias(microLocal) || microLocal
+      : '';
+
+  // Only apply macro township alias (like Kelod Hala -> Singapore Township) if micro isn't already a specific colony,
+  // or if macro is a standard ward like Lasudia Mori -> Lasudiya Mori
+  let macro = '';
+  if (macroLocal && !isBroadIndoreName(macroLocal)) {
+    const lowerMacro = macroLocal.toLowerCase();
+    if (micro && lowerMacro.includes('kelod')) {
+      macro = 'Kelod Hala';
+    } else {
+      macro = resolveIndoreTownshipAlias(macroLocal) || macroLocal;
+    }
   }
 
-  // Strictly discard broad municipal collapses
-  if (isBroadIndoreName(colony)) {
-    colony = '';
-  }
+  // INVERT PRECEDENCE (NEVER LET LEVEL-1 ECLIPSE LEVEL-2):
+  const colony = micro
+    ? macro && !micro.toLowerCase().includes(macro.toLowerCase())
+      ? `${micro}, ${macro}`
+      : micro
+    : macro || road;
 
-  const city = (a.city || a.town || a.city_district || 'Indore').trim();
+  const city = (a.city || a.town || 'Indore').trim();
   const postcode = (a.postcode || '').trim();
 
-  // Combine non-empty tokens: [premise, road, colony, city, postcode]
   const rawTokens = [premise, road, colony, city, postcode].filter(Boolean);
   if (rawTokens.length === 0) return null;
 
-  // Deduplicate tokens case-insensitively while preserving hierarchy
   const seen = new Set<string>();
   const cleanTokens: string[] = [];
   for (const token of rawTokens) {
@@ -139,15 +158,22 @@ export function parseNominatimPayload(data: any): ReverseGeocodeResult | null {
   const fullAddress = cleanTokens.join(', ');
   if (!fullAddress) return null;
 
-  const area = colony || road || 'Indore';
+  let area = colony;
+  if (area && !area.toLowerCase().includes(city.toLowerCase())) {
+    area = `${area}, ${city}`;
+  } else if (!area) {
+    area = road ? `${road}, ${city}` : city;
+  }
 
   return {
+    lat,
+    lng,
     fullAddress,
     area,
     premise,
     road,
-    colony,
-    sublocality: colony,
+    colony: colony || macro || road,
+    sublocality: colony || macro || road,
     city,
     postcode,
     source: 'nominatim',
@@ -155,10 +181,172 @@ export function parseNominatimPayload(data: any): ReverseGeocodeResult | null {
 }
 
 /**
- * Direct OpenStreetMap Nominatim reverse geocoder (sole engine).
- * Zero Google Geocoder dependencies, zero authorization warnings, zero premature landmark collapses.
+ * Reverse geocode using Google Maps native Geocoder API (when available in window.google).
+ * Inverted Address Hierarchy (Swiggy / Zomato standard):
+ * - MICRO (Level-2 / Neighborhood): 'sublocality_level_2', 'sublocality_level_3', 'neighborhood', or named 'premise'.
+ * - MACRO (Level-1 / Revenue Ward): 'sublocality_level_1' or 'sublocality'.
+ * - CITY: 'locality' (Indore).
+ * - MICRO MUST ALWAYS TAKE PRECEDENCE OVER MACRO.
+ */
+export async function reverseGeocodeWithGoogle(
+  lat: number,
+  lng: number
+): Promise<ReverseGeocodeResult | null> {
+  if (typeof window === 'undefined') return null;
+  const googleMaps = (window as any).google?.maps;
+  if (!googleMaps || !googleMaps.Geocoder) return null;
+
+  return new Promise((resolve) => {
+    try {
+      const geocoder = new googleMaps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+        if (status !== 'OK' || !results || results.length === 0) {
+          return resolve(null);
+        }
+
+        let premise = '';
+        let road = '';
+        let sublocalityLevel2 = '';
+        let sublocalityLevel3 = '';
+        let neighborhood = '';
+        let sublocalityLevel1 = '';
+        let sublocalityGeneral = '';
+        let locality = '';
+        let postalCode = '';
+
+        // Scan across all returned geocoder results in order of specificity so that if results[0]
+        // is a plus_code or unnamed route, we still capture sublocality_level_2 / neighborhood from results[1..n]
+        for (const resItem of results) {
+          for (const comp of resItem.address_components || []) {
+            const types: string[] = comp.types || [];
+            const name = (comp.long_name || '').trim();
+            if (!name || types.includes('plus_code')) continue;
+
+            if (
+              !premise &&
+              (types.includes('premise') || types.includes('subpremise') || types.includes('building'))
+            ) {
+              premise = name;
+            }
+            if (!road && types.includes('route') && !isBroadIndoreName(name)) {
+              road = name;
+            }
+            if (!sublocalityLevel2 && types.includes('sublocality_level_2') && !isBroadIndoreName(name)) {
+              sublocalityLevel2 = name;
+            }
+            if (!sublocalityLevel3 && types.includes('sublocality_level_3') && !isBroadIndoreName(name)) {
+              sublocalityLevel3 = name;
+            }
+            if (!neighborhood && types.includes('neighborhood') && !isBroadIndoreName(name)) {
+              neighborhood = name;
+            }
+            if (!sublocalityLevel1 && types.includes('sublocality_level_1') && !isBroadIndoreName(name)) {
+              sublocalityLevel1 = name;
+            }
+            if (
+              !sublocalityGeneral &&
+              types.includes('sublocality') &&
+              !types.includes('sublocality_level_2') &&
+              !types.includes('sublocality_level_3') &&
+              !isBroadIndoreName(name)
+            ) {
+              sublocalityGeneral = name;
+            }
+            if (!locality && types.includes('locality')) {
+              locality = name;
+            }
+            if (!postalCode && types.includes('postal_code')) {
+              postalCode = name;
+            }
+          }
+        }
+
+        // Strict Hierarchy Extraction:
+        // MICRO: sublocality_level_2, sublocality_level_3, neighborhood, or named premise
+        const namedPremise = premise && !isPureHouseNumber(premise) && !isBroadIndoreName(premise) ? premise : '';
+        const rawMicro = (sublocalityLevel2 || sublocalityLevel3 || neighborhood || namedPremise || '').trim();
+        // MACRO: sublocality_level_1 or sublocality
+        const rawMacro = (sublocalityLevel1 || sublocalityGeneral || '').trim();
+
+        const micro = rawMicro ? resolveIndoreTownshipAlias(rawMicro) || rawMicro : '';
+
+        let macro = '';
+        if (rawMacro) {
+          const lowerMacro = rawMacro.toLowerCase();
+          // Do not let "Kelod Hala" alias to "Singapore Township" when a distinct micro-colony (e.g. Manoj Nayar Nagar) is present
+          if (micro && lowerMacro.includes('kelod')) {
+            macro = '';
+          } else {
+            macro = resolveIndoreTownshipAlias(rawMacro) || rawMacro;
+          }
+        }
+
+        // INVERT PRECEDENCE (NEVER LET LEVEL-1 ECLIPSE LEVEL-2):
+        const colony = micro
+          ? macro && !micro.toLowerCase().includes(macro.toLowerCase())
+            ? `${micro}, ${macro}`
+            : micro
+          : macro || road;
+
+        const city = locality || 'Indore';
+
+        let area = colony;
+        if (area && !area.toLowerCase().includes(city.toLowerCase())) {
+          area = `${area}, ${city}`;
+        } else if (!area) {
+          area = road ? `${road}, ${city}` : results[0]?.formatted_address || city;
+        }
+
+        const tokens = [premise, road, colony, city, postalCode].filter(Boolean);
+        const seen = new Set<string>();
+        const cleanTokens: string[] = [];
+        for (const t of tokens) {
+          const lower = t.toLowerCase();
+          if (!seen.has(lower)) {
+            seen.add(lower);
+            cleanTokens.push(t);
+          }
+        }
+
+        resolve({
+          lat,
+          lng,
+          fullAddress: cleanTokens.join(', ') || results[0]?.formatted_address || area,
+          area: area || colony || city,
+          premise,
+          road,
+          colony: colony || macro || road,
+          sublocality: colony || macro || road,
+          city,
+          postcode: postalCode,
+          source: 'google',
+        });
+      });
+    } catch (err) {
+      console.warn('[Google Geocoder Notice]: Geocoder error:', err);
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Clean reverse geocoder.
+ * 1. Prioritizes Google Maps native Geocoder if available on client.
+ * 2. Falls back to OpenStreetMap Nominatim with hyper-local hierarchy.
+ * 3. Strictly preserves raw coordinates.
  */
 export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+    try {
+      const googleResult = await reverseGeocodeWithGoogle(lat, lng);
+      if (googleResult && googleResult.fullAddress.trim().length > 0) {
+        return googleResult;
+      }
+    } catch (gErr) {
+      console.warn('[Reverse Geocode Notice]: Google Geocoder fallback to OSM:', gErr);
+    }
+  }
+
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
     const res = await fetch(url, {
@@ -170,31 +358,22 @@ export async function reverseGeocode(lat: number, lng: number): Promise<ReverseG
 
     if (res.ok) {
       const data = await res.json();
-      const parsed = parseNominatimPayload(data);
+      const parsed = parseNominatimPayload(data, lat, lng);
       if (parsed && parsed.fullAddress.trim().length > 0) {
-        // If colony is generic, missing, or broad municipal name, map to the nearest Indore locality by distance
-        if (!parsed.colony || isBroadIndoreName(parsed.colony)) {
-          const nearest = findNearestIndoreLocality(lat, lng);
-          parsed.colony = nearest;
-          parsed.area = nearest;
-        }
-        if (!parsed.area || isBroadIndoreName(parsed.area)) {
-          parsed.area = parsed.colony;
-        }
         return parsed;
       }
     }
   } catch (err) {
-    console.warn('[Reverse Geocode Notice - Non-blocking]:', err);
+    console.warn('[Reverse Geocode Notice]: Nominatim lookup fallback:', err);
   }
 
-  // Fallback: accurately compute closest Indore locality based on physical coordinates
-  const nearestColony = findNearestIndoreLocality(lat, lng);
-  const coordsFormatted = `${nearestColony}, Indore (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+  const coordsFormatted = `Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
   return {
+    lat,
+    lng,
     fullAddress: coordsFormatted,
-    area: nearestColony,
-    colony: nearestColony,
+    area: coordsFormatted,
+    colony: '',
     city: 'Indore',
     source: 'coordinates',
   };

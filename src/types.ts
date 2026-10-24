@@ -367,8 +367,10 @@ export interface Booking {
   paymentIntentId?: string;
   scheduledAt: any; // Firestore Timestamp
   address: string;
+  houseNumber?: string;
   lat?: number;
   lng?: number;
+  customerLocation?: { lat: number; lng: number };
   totalPrice: number; // This will now represent the base price + any approved/added charges
   items?: Array<{ name?: string; title?: string; quantity?: number; price?: number }>;
   additionalCharges?: AdditionalCharge[];

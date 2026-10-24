@@ -22,7 +22,6 @@ import {
   Promotion,
   Booking,
 } from "../types";
-import { useHeroCanvasConfig } from "../utils/heroCanvasConfig";
 import PaymentModal from "./PaymentModal";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
@@ -67,9 +66,7 @@ import {
   RotateCcw,
   PhoneCall,
   Droplets,
-  MapPin,
 } from "lucide-react";
-import Avatar from "./Avatar";
 
 interface Props {
   setActiveTab: (tab: any, arg?: any) => void;
@@ -78,7 +75,6 @@ interface Props {
   onServiceSelect: (id: string) => void;
   initialCategoryId?: string | null;
   onOpenProfileMenu?: () => void;
-  onOpenCitySelector?: () => void;
 }
 
 interface PartnerWithInfo extends PartnerProfile {
@@ -369,28 +365,28 @@ export const getCategoryBadge = (cat: any): { text: string; className: string } 
 
   if (explicitBadge.includes("TREND") || explicitBadge.includes("POPULAR")) {
     return {
-      text: "TRENDING 🔥",
-      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-2xs whitespace-nowrap",
+      text: "TRENDING",
+      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
     };
   }
   if (explicitBadge.includes("INSTANT") || explicitBadge.includes("FAST") || explicitBadge.includes("QUICK")) {
     return {
-      text: "INSTANT ⚡",
-      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-2xs whitespace-nowrap",
+      text: "INSTANT",
+      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
     };
   }
 
   // Demand-based assignment:
   if (name.includes("ac") || name.includes("air conditioner") || name.includes("cooling")) {
     return {
-      text: "TRENDING 🔥",
-      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-2xs whitespace-nowrap",
+      text: "TRENDING",
+      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
     };
   }
   if (name.includes("electric") || name.includes("plumb") || name.includes("emergency") || name.includes("repair")) {
     return {
-      text: "INSTANT ⚡",
-      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-2xs whitespace-nowrap",
+      text: "INSTANT",
+      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
     };
   }
 
@@ -559,49 +555,43 @@ const getCategoryTheme = (categoryName: string) => {
   };
 };
 
-export const getCategoryType = (
+const getCategoryType = (
   categoryName: string,
-): "Home" | "Appliances" | "Repairs" => {
-  const name = (categoryName || "").toLowerCase().trim();
-  if (
-    name.includes("ac") ||
-    name.includes("air conditioner") ||
-    name.includes("purifier") ||
-    name.includes("ro ") ||
-    name.includes("refrigerat") ||
-    name.includes("fridge") ||
-    name.includes("washing") ||
-    name.includes("laundry") ||
-    name.includes("tv") ||
-    name.includes("television") ||
-    name.includes("microwave") ||
-    name.includes("oven") ||
-    name.includes("geyser") ||
-    name.includes("heater") ||
-    name.includes("chimney") ||
-    name.includes("appliance")
-  ) {
-    return "Appliances";
-  }
+): "Home" | "Professional" | "Repair" => {
+  const name = categoryName.toLowerCase().trim();
   if (
     name.includes("repair") ||
-    name.includes("electric") ||
+    name.includes("appliance") ||
+    name.includes("wrench") ||
+    name.includes("ac ") ||
+    name.includes("phone") ||
+    name.includes("electrician") ||
     name.includes("plumb") ||
     name.includes("wiring") ||
     name.includes("switch") ||
-    name.includes("pipe") ||
-    name.includes("leak") ||
-    name.includes("phone") ||
-    name.includes("mobile") ||
     name.includes("device") ||
+    name.includes("gadget") ||
+    name.includes("purifier") ||
+    name.includes("geyser") ||
+    name.includes("heater") ||
+    name.includes("tv") ||
+    name.includes("refrigerat") ||
+    name.includes("fan") ||
+    name.includes("machine")
+  ) {
+    return "Repair";
+  }
+  if (
+    name.includes("cleaning") ||
+    name.includes("paint") ||
     name.includes("carpenter") ||
-    name.includes("pest") ||
-    name.includes("wrench") ||
+    name.includes("house") ||
+    name.includes("wall") ||
     name.includes("drill")
   ) {
-    return "Repairs";
+    return "Home";
   }
-  return "Home";
+  return "Professional";
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -620,7 +610,6 @@ export default function CustomerHome({
   onServiceSelect,
   initialCategoryId,
   onOpenProfileMenu,
-  onOpenCitySelector,
 }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
@@ -655,10 +644,9 @@ export default function CustomerHome({
       setSelectedCategory(null);
     }
   }, [initialCategoryId, allCategories]);
-  const { heroBg } = useHeroCanvasConfig();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryTypeTab, setCategoryTypeTab] = useState<
-    "All" | "Home" | "Appliances" | "Repairs"
+    "All" | "Home" | "Professional" | "Repair"
   >("All");
   const INDORE_TYPEWRITER_SERVICES = useMemo(
     () => [
@@ -764,29 +752,44 @@ export default function CustomerHome({
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({});
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
-  const [zomatoActiveBooking, setZomatoActiveBooking] = useState<Booking | null>(null);
-  const [zomatoBookingDismissedId, setZomatoBookingDismissedId] = useState<string | null>(null);
-  const [tickerDismissed, setTickerDismissed] = useState<boolean>(false);
-  const [spotlightDismissed, setSpotlightDismissed] = useState<boolean>(false);
-
-  const [recentCardDismissed, setRecentCardDismissed] =
-    useState<boolean>(false);
+  const [isPillDismissed, setIsPillDismissed] = useState(false);
   const [bookingPartner, setBookingPartner] = useState<{
     name: string;
     id: string;
+    phone?: string;
   } | null>(null);
-  const [showPaymentModalForHome, setShowPaymentModalForHome] =
-    useState<Booking | null>(null);
-  const [showHomePaymentQR, setShowHomePaymentQR] = useState<boolean>(false);
-  const [homeQrCodeValue, setHomeQrCodeValue] = useState<string>("");
-  const [paymentHasError, setPaymentHasError] = useState<boolean>(false);
 
-  // Home card & force-review popup rating states
-  const [homeRating, setHomeRating] = useState<number>(0);
-  const [homeComment, setHomeComment] = useState<string>("");
-  const [isSubmittingHomeReview, setIsSubmittingHomeReview] = useState<boolean>(false);
+  const hasActiveBooking = Boolean(
+    activeBooking &&
+      ["assigned", "on_the_way", "arrived", "in_progress"].includes(
+        (activeBooking.status || "").toLowerCase()
+      )
+  );
+  const isPillVisible = hasActiveBooking && !isPillDismissed;
+
+  useEffect(() => {
+    if (activeBooking?.status) {
+      setIsPillDismissed(false);
+    }
+  }, [activeBooking?.id, activeBooking?.status]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("zomini-pill-visibility", {
+        detail: { isPillVisible },
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("zomini-pill-visibility", {
+          detail: { isPillVisible: false },
+        })
+      );
+    };
+  }, [isPillVisible]);
+
+  // Force-review popup rating states
   const [ratedBookings, setRatedBookings] = useState<Record<string, boolean>>({});
-
   const [showForceFeedbackPopup, setShowForceFeedbackPopup] = useState<boolean>(false);
   const [popupWizardStep, setPopupWizardStep] = useState<number>(1);
   const [popupRatingPartner, setPopupRatingPartner] = useState<number>(0);
@@ -795,48 +798,6 @@ export default function CustomerHome({
   const [popupRatingZomIndia, setPopupRatingZomIndia] = useState<number>(0);
   const [popupComment, setPopupComment] = useState<string>("");
   const [isSubmittingPopupReview, setIsSubmittingPopupReview] = useState<boolean>(false);
-
-  const submitCardReview = async () => {
-    if (!activeBooking || !profile) return;
-    if (homeRating < 1 || homeRating > 5) {
-      alert("Please select a star rating first!");
-      return;
-    }
-    
-    try {
-      setIsSubmittingHomeReview(true);
-      
-      const reviewData = {
-        bookingId: activeBooking.id,
-        customerId: profile.uid,
-        partnerId: activeBooking.partnerId || "",
-        serviceId: activeBooking.serviceId,
-        rating: homeRating,
-        comment: homeComment,
-        createdAt: Timestamp.now(),
-        ratingDetails: {
-          partner: homeRating,
-          process: homeRating,
-          safety: homeRating,
-          zomindia: homeRating,
-        }
-      };
-      
-      await addDoc(collection(db, "reviews"), reviewData);
-      
-      setRatedBookings(prev => ({ ...prev, [activeBooking.id]: true }));
-      setRecentCardDismissed(true);
-      setTickerDismissed(true);
-      localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
-      
-      setHomeRating(0);
-      setHomeComment("");
-    } catch (err) {
-      console.error("Error submitting card rating:", err);
-    } finally {
-      setIsSubmittingHomeReview(false);
-    }
-  };
 
   const submitPopupReview = async () => {
     if (!activeBooking || !profile) return;
@@ -864,8 +825,6 @@ export default function CustomerHome({
       await addDoc(collection(db, "reviews"), reviewData);
       
       setRatedBookings(prev => ({ ...prev, [activeBooking.id]: true }));
-      setRecentCardDismissed(true);
-      setTickerDismissed(true);
       localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
       setShowForceFeedbackPopup(false);
       
@@ -888,26 +847,9 @@ export default function CustomerHome({
     else if (stepNum === 3) setPopupRatingSafety(ratingVal);
     else if (stepNum === 4) setPopupRatingZomIndia(ratingVal);
 
-    // Dynamic auto-advance to the next step after a light visual feedback lock-delay
     setTimeout(() => {
       setPopupWizardStep((prev) => Math.min(prev + 1, 5));
     }, 350);
-  };
-
-  const handleCloseCard = () => {
-    if (!activeBooking) return;
-    
-    const isCompletedAndPaid = ["completed", "finalized", "closed"].includes(activeBooking.status) && activeBooking.paymentStatus === "paid";
-    const hasAlreadyRated = ratedBookings[activeBooking.id] || localStorage.getItem(`dismissed_ticker_${activeBooking.id}`) === "true";
-    
-    if (isCompletedAndPaid && !hasAlreadyRated) {
-      setPopupWizardStep(1);
-      setShowForceFeedbackPopup(true);
-    } else {
-      setRecentCardDismissed(true);
-      setTickerDismissed(true);
-      localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
-    }
   };
 
   useEffect(() => {
@@ -928,8 +870,14 @@ export default function CustomerHome({
             name:
               userData?.displayName ||
               partnerData.companyName ||
-              "Expert Partner",
+              "Amit Singh",
             id: activeBooking.partnerId,
+            phone:
+              userData?.phoneNumber ||
+              userData?.mobile ||
+              partnerData?.phoneNumber ||
+              (activeBooking as any).partnerPhone ||
+              "",
           });
         }
       } catch (e) {
@@ -945,37 +893,9 @@ export default function CustomerHome({
       : null;
   }, [activeBooking, allServices]);
 
-  const bookingCategory = useMemo(() => {
-    return bookingService
-      ? allCategories.find((c) => c.id === bookingService.categoryId)
-      : null;
-  }, [bookingService, allCategories]);
-
-  const bookingCategoryIconName = bookingCategory?.icon || "sparkles";
-  const BookingIcon = getCategoryIcon(bookingCategoryIconName);
-
-  const formattedDate = useMemo(() => {
-    if (!activeBooking) return "";
-    const bookingDate =
-      activeBooking.scheduledAt?.toDate?.() ||
-      (activeBooking.scheduledAt
-        ? new Date(activeBooking.scheduledAt)
-        : new Date());
-    return (
-      bookingDate.toLocaleDateString([], {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }) +
-      " @ " +
-      formatTime12Hour(bookingDate)
-    );
-  }, [activeBooking]);
-
   useEffect(() => {
     if (!profile?.uid) {
       setActiveBooking(null);
-      setZomatoActiveBooking(null);
       return;
     }
     let isMounted = true;
@@ -995,16 +915,11 @@ export default function CustomerHome({
 
     const processBookings = () => {
       if (!isMounted) return;
-      const allowedStatuses = [
-        "pending",
-        "pending_acceptance",
-        "confirmed",
+      const pillStatuses = [
         "assigned",
         "on_the_way",
         "arrived",
         "in_progress",
-        "payment_pending",
-        "pending_parts",
       ];
       const allDocs = Array.from(bookingsMap.values());
       allDocs.sort((a, b) => {
@@ -1013,30 +928,12 @@ export default function CustomerHome({
         return timeB - timeA;
       });
 
-      // 1. Active banner booking
-      const activeBannerList = allDocs.filter((b) => allowedStatuses.includes(b.status || ""));
-      if (activeBannerList.length > 0) {
-        const booking = activeBannerList[0];
-        setActiveBooking(booking);
-        const isDismissed =
-          localStorage.getItem(`dismissed_ticker_${booking.id}`) === "true";
-        setTickerDismissed(isDismissed);
-        setRecentCardDismissed(isDismissed);
-      } else {
-        setActiveBooking(null);
-        setTickerDismissed(false);
-        setRecentCardDismissed(false);
-      }
-
-      // 2. Zomato active overlay card
-      const activeOverlay = allDocs.find((b) => {
-        const s = (b.status || "").toLowerCase();
-        return s !== "completed" && s !== "cancelled" && s !== "finalized" && s !== "closed";
-      });
-      setZomatoActiveBooking(activeOverlay || null);
+      const activePillBooking = allDocs.find((b) =>
+        pillStatuses.includes((b.status || "").toLowerCase())
+      );
+      setActiveBooking(activePillBooking || null);
     };
 
-    // Primary query: customerUid (canonical standard)
     const q1 = query(
       collection(db, "bookings"),
       where("customerUid", "==", profile.uid)
@@ -1056,7 +953,6 @@ export default function CustomerHome({
     );
     unsubscribes.push(unsub1);
 
-    // Resilient Fallback query: legacy customerId
     const q2 = query(
       collection(db, "bookings"),
       where("customerId", "==", profile.uid)
@@ -1085,30 +981,6 @@ export default function CustomerHome({
       unsubscribes.forEach((u) => u());
     };
   }, [profile?.uid]);
-
-  const getZomatoStatusText = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "Booking Received";
-      case "pending_acceptance":
-        return "Assigning Expert Partner";
-      case "confirmed":
-      case "assigned":
-        return "Partner is assigned";
-      case "on_the_way":
-        return "Partner is arriving";
-      case "arrived":
-        return "Partner has arrived";
-      case "in_progress":
-        return "Service in progress";
-      case "payment_pending":
-        return "Payment pending";
-      case "pending_parts":
-        return "Awaiting parts";
-      default:
-        return status.replace("_", " ");
-    }
-  };
 
   useEffect(() => {
     const q = query(collection(db, "promotions"), where("active", "==", true));
@@ -1555,7 +1427,14 @@ export default function CustomerHome({
               service={selectedService}
               profile={profile}
               onClose={() => setSelectedService(null)}
-              onSuccess={() => setActiveTab("home")}
+              onSuccess={(bookingId?: string) => {
+                setSelectedService(null);
+                if (bookingId) {
+                  setActiveTab("bookings", bookingId);
+                } else {
+                  setActiveTab("bookings");
+                }
+              }}
             />
           )}
 
@@ -1676,143 +1555,83 @@ export default function CustomerHome({
 
   return (
     <div className="pb-28 sm:pb-16 w-full">
-      {/* Unified Top-to-Bottom Hero Canvas */}
-      <section className="relative overflow-hidden rounded-b-[2.5rem] px-4 pt-3 pb-8 shadow-2xl transition-all mb-6">
-        {/* Layer 1: Background Media */}
-        {heroBg.bgType !== "gradient" && heroBg.bgUrl && (
-          <img
-            src={heroBg.bgUrl}
-            alt="Hero BG"
-            className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
-            loading="eager"
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = "none";
-            }}
-          />
-        )}
+      {/* Soft semi-transparent backdrop overlay when search is active */}
+      {searchQuery.trim().length > 0 && (
+        <div
+          onClick={() => setSearchQuery("")}
+          className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-40"
+          aria-hidden="true"
+        />
+      )}
 
-        {/* Dark Gradient Overlay - Disabled when overlayOpacity is 0 for 100% media visibility */}
-        {heroBg.bgType === "gradient" ||
-        (heroBg.bgUrl && (heroBg.overlayOpacity ?? 85) > 0) ? (
-          <div
-            className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 pointer-events-none transition-opacity duration-150"
-            style={{
-              opacity:
-                heroBg.bgType !== "gradient" && heroBg.bgUrl
-                  ? (heroBg.overlayOpacity ?? 85) / 100
-                  : 1,
-            }}
-          />
-        ) : null}
-
-        {/* Layer 2: Content Layer */}
-        <div className="relative z-10 text-white w-full max-w-5xl mx-auto">
-          {/* Top Header Bar */}
-          <div className="flex items-center justify-between gap-3 pt-1 pb-3">
-            {/* White horizontal logo */}
-            <div
-              onClick={() => {
-                if (setActiveTab) setActiveTab("home");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              className="flex items-center cursor-pointer select-none shrink-0 group"
-            >
-              <img
-                src="/logo-horizontal-white.png"
-                alt="Zomindia"
-                className="h-8 w-auto object-contain transition-transform group-hover:scale-105"
-              />
-            </div>
-
-            {/* Location Dropdown: Scheme 54, Vijay Nagar, Indore ▾ */}
+      {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
+      <div 
+        className={
+          isScrolled 
+            ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
+            : "relative z-50 w-full max-w-5xl mx-auto mt-2 px-3 sm:px-6 transition-all"
+        }
+      >
+        <div className="w-full max-w-5xl mx-auto relative z-50 flex items-center gap-2.5">
+          {/* ONLY when sticky/fixed, a prominent Zomindia brand icon appears on the left */}
+          {isScrolled && (
             <button
               type="button"
-              onClick={() => {
-                if (onOpenCitySelector) onOpenCitySelector();
-                else if (onOpenProfileMenu) onOpenProfileMenu();
-              }}
-              className="flex items-center gap-1.5 text-blue-100 hover:text-white font-medium text-xs sm:text-sm cursor-pointer transition-colors max-w-[210px] sm:max-w-xs truncate select-none bg-transparent border-0 p-0"
-              title="Scheme 54, Vijay Nagar, Indore - Click to change"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="shrink-0 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+              title="Back to top"
+              aria-label="Back to top"
             >
-              <MapPin size={15} className="text-yellow-400 shrink-0" />
-              <span className="truncate">Scheme 54, Vijay Nagar, Indore ▾</span>
+              <img
+                src="/icon-512.png"
+                alt="Zomindia"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
+              />
             </button>
+          )}
 
-            {/* Login / Profile button on top-right */}
-            <div className="flex items-center gap-2 shrink-0">
-              {profile ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onOpenProfileMenu) onOpenProfileMenu();
-                    else if (setActiveTab) setActiveTab("profile");
-                  }}
-                  className="flex items-center gap-2 text-white hover:opacity-90 transition-opacity cursor-pointer"
-                  title="Open Profile"
-                >
-                  <Avatar
-                    photoURL={profile?.photoURL}
-                    displayName={profile?.displayName || profile?.fullName}
-                    email={profile?.email}
-                    sizeClass="w-8 h-8 sm:w-9 sm:h-9 border border-white/30"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onAuthRequired) onAuthRequired();
-                  }}
-                  className="border border-white/20 text-white hover:bg-white/10 rounded-full px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
-                >
-                  Login
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Floating Search Bar */}
-          <div className="w-full relative mb-4">
-            <div
-              className="relative flex items-center h-12 bg-white text-slate-800 rounded-2xl shadow-lg border-0 px-4 py-2 mt-4 focus-within:ring-2 focus-within:ring-blue-400/30"
-              onTouchStartCapture={(e) => e.stopPropagation()}
+          {/* Search Input Container - Flexes to fill full width */}
+          <div className="relative z-50 flex-1 min-w-0">
+            <div 
+              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 px-3"
+              onTouchStartCapture={(e) => e.stopPropagation()} 
               onMouseDownCapture={(e) => e.stopPropagation()}
             >
-            <div className="text-slate-400 flex items-center shrink-0 mr-2.5">
-              <Search size={18} className="stroke-[2.2]" />
+              <div className="text-slate-400 focus-within:text-blue-600 flex items-center shrink-0 mr-2">
+                <Search size={18} className="stroke-[2.2]" />
+              </div>
+
+              <input
+                type="text"
+                inputMode="text"
+                enterKeyHint="search"
+                placeholder={currentPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery.trim().length > 0 ? "pr-20" : "pr-10"}`}
+              />
+
+              {searchQuery.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X size={15} />
+                </button>
+              )}
+
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                aria-label="Search"
+              >
+                <Search className="w-4 h-4" />
+              </button>
             </div>
 
-            <input
-              type="text"
-              inputMode="text"
-              enterKeyHint="search"
-              placeholder={currentPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery.trim().length > 0 ? "pr-20" : "pr-10"}`}
-            />
-
-            {searchQuery.trim().length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-12 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 cursor-pointer"
-                aria-label="Clear search"
-              >
-                <X size={15} />
-              </button>
-            )}
-
-            <button
-              type="submit"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-9 w-9 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
-              aria-label="Search"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Search Results Dropdown - High Elevation */}
+          {/* Search Results Dropdown - High Elevation & App-like Styling */}
           <AnimatePresence>
             {searchQuery.trim().length > 0 && (
               <motion.div
@@ -1820,10 +1639,10 @@ export default function CustomerHome({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.98 }}
                 transition={{ duration: 0.18 }}
-                className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,46,110,0.3)] border border-slate-200/90 overflow-hidden z-[80] text-left text-slate-800"
+                className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[75vh] overflow-y-auto text-left"
               >
                 {filteredSearchResults.length > 0 ? (
-                  <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100 p-2 overscroll-contain">
+                  <div className="divide-y divide-slate-100 p-2 overscroll-contain">
                     {filteredSearchResults.map((service) => {
                       const category = allCategories.find((c) => c.id === service.categoryId);
                       return (
@@ -1900,295 +1719,12 @@ export default function CustomerHome({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* Active Ongoing Booking Bar (Slim Minimal Pill, shown only when an active booking exists) */}
-        {activeBooking && !recentCardDismissed && (
-          <div className="w-full max-w-5xl mx-auto mb-4">
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md text-white">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-white truncate">
-                    Active Booking: {activeBooking.serviceName || "Appliance Service"}
-                  </p>
-                  <p className="text-[11px] text-blue-200 font-medium truncate">
-                    Technician assigned • Tap to track live
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab("bookings", activeBooking.id)}
-                className="px-3.5 py-1.5 rounded-xl bg-white text-blue-950 font-bold text-xs shrink-0 cursor-pointer shadow-sm hover:bg-blue-50 transition-colors"
-              >
-                Track
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Explore Services & Filter Pills */}
-        <div className="w-full relative z-20 mt-6" id="categories-grid">
-          {/* Section Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-4 mb-2.5 pb-2 border-b border-white/10 relative z-10">
-            <div>
-              <h3 className="text-white font-bold tracking-tight text-lg">
-                Explore Services ⚡
-              </h3>
-            </div>
-          </div>
-
-          {/* Category Tabs: ALL, HOME, APPLIANCES, REPAIRS */}
-          <div className="mb-3.5 pb-0.5 relative z-10">
-            <div className="overflow-x-auto no-scrollbar whitespace-nowrap flex gap-2 py-1 w-full">
-              {(["All", "Home", "Appliances", "Repairs"] as const).map(
-                (tab) => {
-                  const isActive = categoryTypeTab === tab;
-                  return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setCategoryTypeTab(tab)}
-                      className={`px-3.5 sm:px-4 py-1.5 rounded-xl text-[11px] sm:text-xs select-none cursor-pointer tracking-wider uppercase transition-all whitespace-nowrap active:scale-95 duration-200 ${
-                        isActive
-                          ? "bg-white text-blue-950 font-bold shadow-sm"
-                          : "bg-white/10 text-blue-100 hover:bg-white/20 border border-white/15 backdrop-blur-xs font-medium"
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  );
-                },
-              )}
-            </div>
-          </div>
-
-          {/* Service Categories Grid: grid-cols-3 gap-2 sm:gap-2.5 */}
-          {loading && categories.length === 0 ? (
-            <SkeletonCategoryGrid count={14} />
-          ) : (
-            <motion.div
-              layout
-              className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-2.5 items-stretch relative z-10 min-h-[110px]"
-            >
-              <AnimatePresence mode="popLayout">
-                {categories
-                  .filter((cat) => {
-                    if (categoryTypeTab !== "All") {
-                      const type = getCategoryType(cat.name);
-                      if (type !== categoryTypeTab) return false;
-                    }
-                    return true;
-                  })
-                  .map((cat) => {
-                    const Icon = resolveCategoryIcon(cat.icon, cat.name);
-                    const badge = getCategoryBadge(cat);
-                    const isFailedIcon = failedIcons[cat.id];
-                    const hasValidIconURL =
-                      cat.iconURL &&
-                      cat.iconURL.trim() !== "" &&
-                      cat.iconURL.includes("/") &&
-                      !isFailedIcon;
-
-                    return (
-                      <motion.button
-                        key={cat.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: -10 }}
-                        viewport={{ once: true }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 320,
-                          damping: 26,
-                          layout: { duration: 0.25 },
-                        }}
-                        whileHover={{ 
-                          y: -2,
-                          transition: { type: "spring", stiffness: 400, damping: 15 }
-                        }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={(e) => {
-                          setSelectedCategory(cat);
-                          e.currentTarget.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className="group relative flex flex-col items-center justify-between bg-white border border-slate-150/80 rounded-2xl p-2 sm:p-2.5 shadow-md hover:shadow-lg active:scale-95 transition-all w-full cursor-pointer focus:outline-none min-h-[105px] sm:min-h-[115px] text-center"
-                      >
-                        {/* Micro Badge Slot */}
-                        <div className="w-full flex justify-end h-4 mb-0.5 pointer-events-none">
-                          {badge && (
-                            <span className={badge.className}>
-                              {badge.text}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Icon / Image Slot */}
-                        <div
-                          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 overflow-hidden my-1"
-                        >
-                          {hasValidIconURL ? (
-                            <img
-                              src={cat.iconURL}
-                              alt={cat.name}
-                              width={36}
-                              height={36}
-                              className="w-6 h-6 sm:w-7 sm:h-7 object-contain transition-transform duration-200 group-hover:scale-110"
-                              referrerPolicy="no-referrer"
-                              onError={() => {
-                                setFailedIcons((prev) => ({
-                                  ...prev,
-                                  [cat.id]: true,
-                                }));
-                              }}
-                            />
-                          ) : (
-                            <Icon
-                              size={20}
-                              className="sm:size-[22px] stroke-[1.8] text-slate-400 transition-transform duration-200 group-hover:scale-110"
-                            />
-                          )}
-                        </div>
-
-                        {/* Category Title: Clean Modern Slate, text-[11px] sm:text-xs leading-tight line-clamp-2 max-w-[90%] */}
-                        <span className="text-slate-800 font-semibold text-[11px] sm:text-xs text-center leading-tight line-clamp-2 max-w-[90%] select-none group-hover:text-blue-700 transition-colors">
-                          {cat.name}
-                        </span>
-                      </motion.button>
-                    );
-                  })}
-              </AnimatePresence>
-
-              {/* Empty state overlay inside grid */}
-              {categories.filter((cat) => {
-                if (categoryTypeTab !== "All") {
-                  const type = getCategoryType(cat.name);
-                  if (type !== categoryTypeTab) return false;
-                }
-                return true;
-              }).length === 0 && (
-                <div className="col-span-full py-8 text-center w-full bg-white/5 rounded-2xl border border-dashed border-white/20 p-4 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">
-                    No Services Found
-                  </span>
-                  <p className="text-xs text-blue-100 mt-1">
-                    Try selecting another category tab above.
-                  </p>
-                </div>
-              )}
-
-              <motion.button
-                layout
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ 
-                  y: -2,
-                  transition: { type: "spring", stiffness: 400, damping: 15 }
-                }}
-                whileTap={{ scale: 0.95 }}
-                className="group relative flex flex-col items-center justify-between bg-white border border-slate-150/80 rounded-2xl p-2 sm:p-2.5 shadow-md hover:shadow-lg active:scale-95 transition-all w-full cursor-pointer focus:outline-none min-h-[105px] sm:min-h-[115px] text-center"
-                onClick={() => {
-                  const detailsSec =
-                    document.getElementById("categories-grid");
-                  if (detailsSec) {
-                    window.scrollTo({
-                      top:
-                        detailsSec.offsetTop + detailsSec.offsetHeight + 100,
-                      behavior: "smooth",
-                    });
-                  }
-                }}
-              >
-                <div className="w-full h-4 mb-0.5" />
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 overflow-hidden my-1">
-                  <div className="flex gap-1 items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                  </div>
-                </div>
-                <span className="text-slate-800 font-semibold text-[11px] sm:text-xs text-center leading-tight line-clamp-2 max-w-[90%] select-none group-hover:text-blue-700 transition-colors">
-                  More
-                </span>
-              </motion.button>
-            </motion.div>
-          )}
-        </div>
-        </div>
-      </section>
-
-      {/* Sticky Top Bar on scroll */}
-      {isScrolled && (
-        <div 
-          className="fixed top-0 left-0 right-0 z-50 w-full bg-blue-950/95 backdrop-blur-md px-4 py-2.5 shadow-md border-b border-blue-900/50 transition-all"
-          style={{
-            WebkitBackdropFilter: "blur(12px)",
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div className="w-full max-w-5xl mx-auto relative flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              className="shrink-0 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
-              title="Back to top"
-              aria-label="Back to top"
-            >
-              <img
-                src="/icon-512.png"
-                alt="Zomindia"
-                className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0"
-              />
-            </button>
-
-            <div className="relative flex-1 min-w-0">
-              <div 
-                className="relative flex items-center h-10 bg-white rounded-xl shadow-md border-0 px-3"
-                onTouchStartCapture={(e) => e.stopPropagation()} 
-                onMouseDownCapture={(e) => e.stopPropagation()}
-              >
-                <div className="text-slate-400 flex items-center shrink-0 mr-2">
-                  <Search size={16} className="stroke-[2.2]" />
-                </div>
-                <input
-                  type="text"
-                  inputMode="text"
-                  enterKeyHint="search"
-                  placeholder={currentPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full py-1.5 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery.trim().length > 0 ? "pr-18" : "pr-8"}`}
-                />
-                {searchQuery.trim().length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-10 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all active:scale-90 cursor-pointer"
-                    aria-label="Clear search"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
-                  aria-label="Search"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Placeholder spacer when fixed to prevent layout jump */}
+      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0" aria-hidden="true" />}
 
       {/* Main Container */}
       <motion.div
@@ -2196,8 +1732,204 @@ export default function CustomerHome({
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 pt-1 pb-4 sm:pt-2 sm:pb-6 relative z-20"
+        className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 mt-2.5 sm:mt-3 pb-4 sm:pb-6 relative z-10"
       >
+        {/* Categories Grid */}
+        <motion.section
+          layout="position"
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-6 animate-fade-in relative z-10"
+          id="categories-grid"
+        >
+          <div className="bg-white rounded-[28px] sm:rounded-[36px] border border-slate-100/90 shadow-xs pt-3 sm:pt-4 px-3.5 sm:px-8 pb-5 sm:pb-7 relative overflow-hidden group">
+            {/* Ambient gradient backdrops */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none -translate-y-12 translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-sky-50/20 to-slate-50/10 rounded-full blur-3xl pointer-events-none translate-y-12 -translate-x-12 transition-transform duration-1000 group-hover:scale-110" />
+
+            {/* Category Tabs: ALL, HOME, PROFESSIONAL, REPAIR */}
+            <div className="mb-3 sm:mb-4 relative z-10">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                {(["All", "Home", "Professional", "Repair"] as const).map(
+                  (tab) => {
+                    const isActive = categoryTypeTab === tab;
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setCategoryTypeTab(tab)}
+                        className={
+                          isActive
+                            ? "bg-slate-900 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-sm transition-all shrink-0 cursor-pointer"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs px-3.5 py-1.5 rounded-full transition-all shrink-0 cursor-pointer"
+                        }
+                      >
+                        {tab}
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+            </div>
+
+            {/* Service Categories Grid */}
+            {loading && categories.length === 0 ? (
+              <SkeletonCategoryGrid count={14} />
+            ) : (
+              <motion.div
+                layout
+                className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3.5 items-stretch relative z-10 min-h-[140px]"
+              >
+                <AnimatePresence mode="popLayout">
+                  {categories
+                    .filter((cat) => {
+                      if (categoryTypeTab !== "All") {
+                        const type = getCategoryType(cat.name);
+                        if (type !== categoryTypeTab) return false;
+                      }
+                      return true;
+                    })
+                    .map((cat, i) => {
+                      const Icon = resolveCategoryIcon(cat.icon, cat.name);
+                      const tileStyle = getCategoryTileStyle(cat.name);
+                      const badge = getCategoryBadge(cat);
+                      const isFailedIcon = failedIcons[cat.id];
+                      const hasValidIconURL =
+                        cat.iconURL &&
+                        cat.iconURL.trim() !== "" &&
+                        cat.iconURL.includes("/") &&
+                        !isFailedIcon;
+
+                      return (
+                        <motion.button
+                          key={cat.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -12 }}
+                          viewport={{ once: true }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 300,
+                            damping: 25,
+                            layout: { duration: 0.3 },
+                          }}
+                          whileHover={{ 
+                            y: -3,
+                            transition: { type: "spring", stiffness: 400, damping: 15 }
+                          }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={(e) => {
+                            setSelectedCategory(cat);
+                            e.currentTarget.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="group relative flex flex-col items-center justify-between bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all w-full cursor-pointer focus:outline-none min-h-[135px] sm:min-h-[145px] text-center"
+                        >
+                          {/* Top Badge Slot (Positioned neatly at the top of each card without overlapping content) */}
+                          <div className="w-full flex justify-end h-5 mb-1 pointer-events-none">
+                            {badge && (
+                              <span className={badge.className}>
+                                {badge.text}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Existing Centered Fixed-Height Image/Icon Container Slot */}
+                          <div
+                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 border ${tileStyle.bg} ${tileStyle.text} ${tileStyle.border} ${tileStyle.hoverBg} overflow-hidden my-auto`}
+                          >
+                            {hasValidIconURL ? (
+                              <img
+                                src={cat.iconURL}
+                                alt={cat.name}
+                                width={48}
+                                height={48}
+                                className="w-8 h-8 sm:w-9 sm:h-9 object-contain transition-transform duration-200 group-hover:scale-110"
+                                referrerPolicy="no-referrer"
+                                onError={() => {
+                                  setFailedIcons((prev) => ({
+                                    ...prev,
+                                    [cat.id]: true,
+                                  }));
+                                }}
+                              />
+                            ) : (
+                              <Icon
+                                size={24}
+                                className="sm:size-[26px] stroke-[2] transition-transform duration-200 group-hover:scale-110"
+                              />
+                            )}
+                          </div>
+
+                          {/* Category Title: Clean Modern Slate, No Ellipsis/Cutoffs, line-clamp-2 with break-words */}
+                          <span
+                            className="text-slate-800 font-semibold text-xs sm:text-sm text-center leading-snug line-clamp-2 break-words w-full mt-2 select-none group-hover:text-blue-700 transition-colors"
+                          >
+                            {cat.name}
+                          </span>
+                        </motion.button>
+                      );
+                    })}
+                </AnimatePresence>
+
+                {/* Empty state overlay inside grid */}
+                {categories.filter((cat) => {
+                  if (categoryTypeTab !== "All") {
+                    const type = getCategoryType(cat.name);
+                    if (type !== categoryTypeTab) return false;
+                  }
+                  return true;
+                }).length === 0 && (
+                  <div className="col-span-full py-12 text-center w-full bg-slate-50/50 rounded-3xl border border-dashed border-slate-200/60 p-6 flex flex-col items-center justify-center">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      No Services Found
+                    </span>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Try selecting another category tab above.
+                    </p>
+                  </div>
+                )}
+
+                <motion.button
+                  layout
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ 
+                    y: -3,
+                    transition: { type: "spring", stiffness: 400, damping: 15 }
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                  className="group relative flex flex-col items-center justify-between bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all w-full cursor-pointer focus:outline-none min-h-[135px] sm:min-h-[145px] text-center"
+                  onClick={() => {
+                    const detailsSec =
+                      document.getElementById("categories-grid");
+                    if (detailsSec) {
+                      window.scrollTo({
+                        top:
+                          detailsSec.offsetTop + detailsSec.offsetHeight + 100,
+                        behavior: "smooth",
+                      });
+                    }
+                  }}
+                >
+                  <div className="w-full h-5 mb-1" />
+                  <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all duration-200 shadow-2xs border bg-slate-100 text-slate-600 border-slate-200/70 group-hover:bg-slate-200/80 group-hover:scale-105 overflow-hidden my-auto">
+                    <div className="flex gap-1 items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
+                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
+                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
+                    </div>
+                  </div>
+                  <span className="text-slate-800 font-semibold text-xs sm:text-sm text-center leading-snug line-clamp-2 break-words w-full mt-2 select-none group-hover:text-blue-700 transition-colors">
+                    More
+                  </span>
+                </motion.button>
+              </motion.div>
+            )}
+          </div>
+        </motion.section>
 
         {/* Consolidated Offers Auto-Slider Banner (Single card with indicator dots) */}
         <section
@@ -2822,17 +2554,6 @@ export default function CustomerHome({
           </div>
         </section>
 
-        {showPaymentModalForHome && profile && (
-          <PaymentModal
-            booking={showPaymentModalForHome}
-            profile={profile}
-            onClose={() => setShowPaymentModalForHome(null)}
-            onSuccess={() => {
-              setShowPaymentModalForHome(null);
-            }}
-          />
-        )}
-
         {/* Force review feedback popup with skip option */}
         <AnimatePresence>
           {showForceFeedbackPopup && activeBooking && (
@@ -2877,7 +2598,6 @@ export default function CustomerHome({
                   <button
                     type="button"
                     onClick={() => {
-                      setRecentCardDismissed(true);
                       localStorage.setItem(`dismissed_ticker_${activeBooking.id}`, "true");
                       setShowForceFeedbackPopup(false);
                     }}
@@ -3182,54 +2902,91 @@ export default function CustomerHome({
         </AnimatePresence>
       </motion.div>
 
-      <AnimatePresence>
-        {zomatoActiveBooking && (zomatoBookingDismissedId !== zomatoActiveBooking.id) && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -50, scale: 0.95 }}
-            transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="fixed top-24 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md bg-[#0a2540]/95 backdrop-blur-md text-white py-2 px-3.5 rounded-full shadow-xl border border-white/10 z-[110000] overflow-hidden flex items-center justify-between gap-3"
-            id="zomato-active-booking-overlay"
-          >
-            {/* Pulse glow background */}
-            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent pointer-events-none animate-pulse" />
-            
-            <div className="relative z-10 flex items-center gap-2.5 flex-1 min-w-0">
-              <div className="bg-emerald-500/15 p-1.5 rounded-full text-emerald-400 shrink-0 border border-emerald-500/20">
-                <Zap className="w-3.5 h-3.5 animate-bounce" />
+      {/* Sleek Floating Bottom Pill (Swiggy / Zomato Style) */}
+      {hasActiveBooking && !isPillDismissed && activeBooking && (
+        <div className="fixed bottom-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-40 mx-auto">
+          <div className="bg-white/80 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/10 rounded-2xl p-3 flex items-center justify-between gap-2.5 transition-all animate-in slide-in-from-bottom duration-300">
+            {/* Left Section: Live Status & Partner Info */}
+            <div
+              onClick={() => setActiveTab("bookings", activeBooking.id)}
+              className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+            >
+              <div className="relative w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                <span className="text-base leading-none select-none">
+                  {activeBooking.status === "on_the_way"
+                    ? "🛵"
+                    : activeBooking.status === "arrived"
+                      ? "📍"
+                      : activeBooking.status === "in_progress"
+                        ? "🔧"
+                        : "👨‍🔧"}
+                </span>
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white" />
+                </span>
               </div>
-              <div className="text-left font-sans min-w-0 flex-1">
-                <h4 className="text-[11px] font-extrabold tracking-tight text-white line-clamp-1 leading-normal">
-                  {allServices.find((s) => s.id === zomatoActiveBooking?.serviceId)?.name || (zomatoActiveBooking as any)?.serviceName || "Service Booking"}
-                </h4>
-                <p className="text-[10px] font-bold text-[#22c55e] uppercase tracking-wider flex items-center gap-1.5 leading-none mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-ping shrink-0" />
-                  {getZomatoStatusText(zomatoActiveBooking.status)}
+
+              <div className="min-w-0 flex-1 text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-900 truncate">
+                    {activeBooking.status === "on_the_way"
+                      ? "Partner on the way"
+                      : activeBooking.status === "arrived"
+                        ? "Partner at doorstep"
+                        : activeBooking.status === "in_progress"
+                          ? "Service in progress"
+                          : "Partner assigned"}
+                  </span>
+                  {(activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp) &&
+                    activeBooking.status !== "in_progress" && (
+                      <span className="shrink-0 bg-slate-100 border border-slate-200 text-slate-800 font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-md">
+                        OTP: {activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp}
+                      </span>
+                    )}
+                </div>
+                <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">
+                  {bookingPartner?.name || (activeBooking as any).partnerName || "Amit Singh"} •{" "}
+                  {bookingService?.name || (activeBooking as any).serviceName || "RO Water Purifier Repair"}
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-center gap-2 shrink-0">
+
+            {/* Right Section: Quick Actions */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {(bookingPartner?.phone || (activeBooking as any).partnerPhone) && (
+                <a
+                  href={`tel:${bookingPartner?.phone || (activeBooking as any).partnerPhone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
+                  title="Call Partner"
+                >
+                  <PhoneCall size={14} />
+                </a>
+              )}
               <button
-                onClick={() => setActiveTab("bookings", zomatoActiveBooking.id)}
-                className="bg-[#22c55e] hover:bg-[#1eb050] text-[#0a2540] text-[10px] font-black py-1.5 px-3 rounded-full transition duration-150 flex items-center gap-1 shadow-md cursor-pointer uppercase tracking-wider border-0"
+                type="button"
+                onClick={() => setActiveTab("bookings", activeBooking.id)}
+                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs flex items-center gap-1 transition-all cursor-pointer shrink-0"
               >
-                Track
-                <ArrowRight className="w-3 h-3" />
+                <span>Track</span>
+                <ArrowRight size={13} />
               </button>
-              
               <button
-                onClick={() => setZomatoBookingDismissedId(zomatoActiveBooking.id)}
-                className="w-6 h-6 rounded-full border border-white/10 hover:border-white/25 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsPillDismissed(true);
+                }}
+                className="w-6 h-6 rounded-full hover:bg-slate-200/60 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors cursor-pointer text-xs shrink-0 ml-1"
                 title="Dismiss"
               >
-                <X size={11} className="stroke-[2.5]" />
+                ✕
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
       <ZomatoPageEndMarker pageName="Zomindia Home" isDark={false} />
       <PWAUpdateRegister />
     </div>

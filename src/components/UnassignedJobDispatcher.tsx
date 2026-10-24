@@ -78,10 +78,10 @@ function getDisplayLocality(address?: string, lat?: number | null, lng?: number 
   if (address && address.trim().length > 0) {
     const parts = address.split(',').map(s => s.trim()).filter(Boolean);
     if (parts.length > 0) {
-      if (parts.length > 1 && /^[0-9#]/.test(parts[0])) {
+      if (parts.length > 1 && /^(flat|house|plot|shop|room|floor|no\.?|[0-9#])/i.test(parts[0])) {
         return parts[1];
       }
-      return parts[0].slice(0, 26);
+      return parts[0].slice(0, 32);
     }
   }
   if (typeof lat === 'number' && typeof lng === 'number') {

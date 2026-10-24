@@ -3275,27 +3275,18 @@ function BookingManager({
                         <MapPin size={14} /> Live Signal Monitor
                       </label>
                     </div>
-                    <PartnerTrackingMap
-                      partnerId={
-                        bookings.find((b) => b.id === managingStatusBookingId)
-                          ?.partnerId!
-                      }
-                      bookingLocation={
-                        bookings.find((b) => b.id === managingStatusBookingId)
-                          ?.lat &&
-                        bookings.find((b) => b.id === managingStatusBookingId)
-                          ?.lng
-                          ? {
-                              lat: bookings.find(
-                                (b) => b.id === managingStatusBookingId,
-                              )!.lat!,
-                              lng: bookings.find(
-                                (b) => b.id === managingStatusBookingId,
-                              )!.lng!,
-                            }
-                          : undefined
-                      }
-                    />
+                    {(() => {
+                      const activeMgmtBooking = bookings.find((b) => b.id === managingStatusBookingId);
+                      const loc = (activeMgmtBooking as any)?.customerLocation || (activeMgmtBooking?.lat && activeMgmtBooking?.lng ? { lat: activeMgmtBooking.lat, lng: activeMgmtBooking.lng } : undefined);
+                      return (
+                        <PartnerTrackingMap
+                          partnerId={activeMgmtBooking?.partnerId}
+                          booking={activeMgmtBooking}
+                          bookingId={activeMgmtBooking?.id}
+                          bookingLocation={loc}
+                        />
+                      );
+                    })()}
                   </div>
                 )}
 

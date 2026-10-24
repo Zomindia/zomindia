@@ -164,28 +164,38 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+          className="relative overflow-hidden bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-sm sm:max-w-md w-full mx-auto flex flex-col max-h-[92vh] z-10"
         >
-          {/* Header */}
-          <div className="bg-gradient-to-br from-[#002e6e] to-[#001f4d] p-6 text-white text-center relative">
+          {/* Curved Top Hero Banner */}
+          <div className="bg-gradient-to-br from-[#071435] via-[#0f2868] to-[#1e1b4b] pt-8 pb-12 px-6 text-center relative shrink-0">
+            <div className="absolute -top-10 -left-10 w-36 h-36 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-8 -right-8 w-40 h-40 bg-cyan-400/25 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-16 bg-blue-500/20 rounded-full blur-xl pointer-events-none" />
+
             {onClose && (
               <button
+                type="button"
                 onClick={onClose}
-                className="absolute top-4 right-4 p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                className="absolute top-3.5 right-3.5 z-20 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-all cursor-pointer"
                 aria-label="Close modal"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             )}
-            <div className="w-12 h-12 mx-auto mb-3 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
-              <img src={LogoIcon} alt="Zomindia" className="w-7 h-7 object-contain" />
+
+            {/* Glowing 'Z' Brand Badge */}
+            <div className="w-16 h-16 rounded-2xl bg-white p-2 shadow-xl ring-4 ring-amber-400/40 mx-auto -mb-8 relative z-10 flex items-center justify-center transform hover:scale-105 transition-all">
+              <img src={LogoIcon} alt="Zomindia" className="w-full h-full object-contain rounded-xl select-none" />
             </div>
-            <h2 className="text-xl font-bold">Welcome to Zomindia! 🎉</h2>
-            <p className="text-xs text-white/80 mt-1">Please enter your name & email to complete your registration</p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <form onSubmit={handleSubmit} className="pt-10 pb-6 px-6 sm:px-8 space-y-4 overflow-y-auto no-scrollbar">
+            <div className="text-center mb-2">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Welcome to Zomindia! 🎉</h2>
+              <p className="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">Please enter your name & email to complete your registration</p>
+            </div>
+
             {error && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs font-semibold">
                 <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-500" />
@@ -194,7 +204,7 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                 Full Name
               </label>
               <div className="relative">
@@ -205,13 +215,13 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#002e6e] focus:ring-2 focus:ring-[#002e6e]/10 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl text-sm font-semibold text-slate-900 outline-none transition-all"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                 Email Address
               </label>
               <div className="relative">
@@ -222,24 +232,24 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="e.g. rahul@example.com"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:border-[#002e6e] focus:ring-2 focus:ring-[#002e6e]/10 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl text-sm font-semibold text-slate-900 outline-none transition-all"
                 />
               </div>
               <p className="text-[10px] text-slate-400 mt-1 ml-1">Invoices and booking confirmations will be sent here.</p>
             </div>
 
-            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-3">
-              <Sparkles size={18} className="text-emerald-600 shrink-0" />
+            <div className="p-3.5 bg-gradient-to-r from-amber-50 to-emerald-50 rounded-2xl border border-amber-200/60 flex items-center gap-3">
+              <Sparkles size={18} className="text-amber-600 shrink-0" />
               <div className="text-xs">
-                <p className="font-bold text-emerald-800">₹100 Welcome Bonus</p>
-                <p className="text-emerald-600 text-[11px]">Credited instantly to your Zomindia wallet upon completion!</p>
+                <p className="font-bold text-amber-900">₹100 Welcome Bonus</p>
+                <p className="text-slate-600 text-[11px]">Credited instantly to your Zomindia wallet upon completion!</p>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={loading || !fullName.trim() || !email.trim()}
-              className="w-full py-3.5 bg-[#002e6e] hover:bg-[#002456] disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-lg shadow-[#002e6e]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full mt-4 py-3.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-800 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50"
             >
               {loading ? <BrandedButtonSpinner className="w-5 h-5" /> : 'Complete Registration'}
             </button>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Telemetry } from '../services/telemetry';
 
 export type PermissionStateValue = 'prompt' | 'granted' | 'denied' | 'unsupported';
 
@@ -14,12 +13,11 @@ export function useGeolocation() {
   // Sync / query the current geolocation permission status
   const queryPermission = useCallback(async (): Promise<PermissionStateValue> => {
     if (typeof window === 'undefined' || !navigator.permissions || !navigator.permissions.query) {
-      return 'prompt'; // Fallback
+      return 'prompt';
     }
     
     try {
       const result = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
-      
       const mapState = (state: string): PermissionStateValue => {
         if (state === 'granted') return 'granted';
         if (state === 'denied') return 'denied';
@@ -27,16 +25,11 @@ export function useGeolocation() {
       };
 
       setPermissionState(mapState(result.state));
-
       result.onchange = () => {
-        const newState = mapState(result.state);
-        setPermissionState(newState);
-        Telemetry.addBreadcrumb('native', `Geolocation permission changed to ${newState}`);
+        setPermissionState(mapState(result.state));
       };
-
       return mapState(result.state);
-    } catch (err) {
-      console.warn("navigator.permissions.query failed or is unsupported for 'geolocation':", err);
+    } catch {
       return 'prompt';
     }
   }, []);
@@ -45,144 +38,54 @@ export function useGeolocation() {
     queryPermission();
   }, [queryPermission]);
 
-  // High Accuracy Request with Fallback to Standard Accuracy and Indore default fallback
+  // Clean, lean getCurrentLocation returning real GPS coordinates
   const getCurrentLocation = useCallback(
-    async (customOptions?: { enableHighAccuracy?: boolean; timeout?: number }) => {
+    async (options?: { enableHighAccuracy?: boolean; timeout?: number }) => {
       setIsFetching(true);
       setError(null);
-      Telemetry.addBreadcrumb('native', 'getCurrentLocation requested', {
-        enableHighAccuracy: customOptions?.enableHighAccuracy ?? true,
-      });
-
-      // Prevent GPS requests while Name & Email onboarding modal is visible
-      if (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) {
-        console.info('[Geolocation Native Bypass]: Onboarding modal visible, suppressing GPS and returning default Indore coordinates.');
-        setIsFetching(false);
-        return DEFAULT_INDORE_COORDS;
-      }
-
-      // Verify permissions before invoking native GPS bridges
-      let currentPerm: PermissionStateValue = 'prompt';
-      try {
-        currentPerm = await queryPermission();
-      } catch (e) {
-        console.warn("[Geolocation Native Bypass]: Permission query error:", e);
-      }
-
-      if (currentPerm === 'denied') {
-        setIsFetching(false);
-        setShowBlockedModal(true);
-        const errMsg = "Location permission is blocked. Using default Indore coordinates.";
-        setError(errMsg);
-        console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
-        Telemetry.addBreadcrumb('native', 'Location permission denied, using Indore fallback');
-        return DEFAULT_INDORE_COORDS;
-      }
-
-      if (typeof window !== 'undefined' && (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE) {
-        setIsFetching(false);
-        Telemetry.addBreadcrumb('native', 'Geolocation paused during onboarding modal');
-        return DEFAULT_INDORE_COORDS;
-      }
 
       if (typeof window === 'undefined' || !navigator.geolocation) {
         setIsFetching(false);
-        const errMsg = "Geolocation is not supported by your browser or WebView.";
+        const errMsg = "Geolocation is not supported by your device.";
         setError(errMsg);
-        console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
-        Telemetry.addBreadcrumb('native', 'Geolocation not supported, using Indore fallback');
         return DEFAULT_INDORE_COORDS;
       }
 
       return new Promise<{ lat: number; lng: number }>((resolve) => {
-        const highAccuracyOptions: PositionOptions = {
-          enableHighAccuracy: customOptions?.enableHighAccuracy ?? true,
-          timeout: customOptions?.timeout ?? 10000,
+        const geoOptions: PositionOptions = {
+          enableHighAccuracy: options?.enableHighAccuracy ?? true,
+          timeout: options?.timeout ?? 10000,
           maximumAge: 0,
         };
 
-        const successCallback = (position: GeolocationPosition) => {
-          setPermissionState('granted');
-          setIsFetching(false);
-          const lat = position?.coords?.latitude;
-          const lng = position?.coords?.longitude;
-          if (typeof lat === 'number' && !isNaN(lat) && typeof lng === 'number' && !isNaN(lng)) {
-            Telemetry.addBreadcrumb('native', 'Geolocation resolved successfully', {
-              lat: Number(lat.toFixed(4)),
-              lng: Number(lng.toFixed(4)),
-            });
-            resolve({ lat, lng });
-          } else {
-            Telemetry.addBreadcrumb('native', 'Geolocation returned NaN coordinates, using Indore fallback');
-            resolve(DEFAULT_INDORE_COORDS);
-          }
-        };
-
-        const fallbackAndErrorCallback = (err: GeolocationPositionError) => {
-          console.warn(`[Geolocation Native Bypass] High accuracy failed (code ${err?.code}): ${err?.message}. Trying fallback...`);
-          Telemetry.addBreadcrumb('native', `Geolocation high accuracy failed (code ${err?.code}), attempting fallback`);
-          
-          if (err && err.code === err.PERMISSION_DENIED) {
-            setPermissionState('denied');
-            setShowBlockedModal(true);
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setPermissionState('granted');
             setIsFetching(false);
-            const errMsg = "Location permission was denied. Falling back to Indore coordinates.";
-            setError(errMsg);
-            console.warn(`[Geolocation Native Bypass]: ${errMsg}`);
-            Telemetry.addBreadcrumb('native', 'Geolocation permission denied by user');
-            resolve(DEFAULT_INDORE_COORDS);
-            return;
-          }
-
-          // Fallback to low accuracy
-          const lowAccuracyOptions: PositionOptions = {
-            enableHighAccuracy: false,
-            timeout: 15000,
-            maximumAge: 60000,
-          };
-
-          try {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                setPermissionState('granted');
-                setIsFetching(false);
-                const lat = pos?.coords?.latitude;
-                const lng = pos?.coords?.longitude;
-                if (typeof lat === 'number' && !isNaN(lat) && typeof lng === 'number' && !isNaN(lng)) {
-                  Telemetry.addBreadcrumb('native', 'Geolocation low accuracy fallback succeeded');
-                  resolve({ lat, lng });
-                } else {
-                  Telemetry.addBreadcrumb('native', 'Geolocation low accuracy returned NaN, using Indore');
-                  resolve(DEFAULT_INDORE_COORDS);
-                }
-              },
-              (fallbackErr) => {
-                setIsFetching(false);
-                console.warn("[Geolocation Native Bypass]: Both high & standard accuracy failed. Falling back to Indore:", fallbackErr);
-                setError("Location request timed out. Using default Indore coordinates.");
-                Telemetry.addBreadcrumb('native', 'Geolocation both accuracy attempts timed out, defaulting to Indore');
-                resolve(DEFAULT_INDORE_COORDS);
-              },
-              lowAccuracyOptions
-            );
-          } catch (err: any) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            if (typeof lat === 'number' && !isNaN(lat) && typeof lng === 'number' && !isNaN(lng)) {
+              resolve({ lat, lng });
+            } else {
+              resolve(DEFAULT_INDORE_COORDS);
+            }
+          },
+          (err) => {
             setIsFetching(false);
-            console.warn("[Geolocation Native Bypass]: Location fallback bridge exception caught:", err);
-            Telemetry.addBreadcrumb('native', 'Geolocation bridge exception caught, defaulting to Indore');
+            if (err.code === err.PERMISSION_DENIED) {
+              setPermissionState('denied');
+              setShowBlockedModal(true);
+              setError("Location permission denied. Please allow location access.");
+            } else {
+              setError("Unable to retrieve GPS position.");
+            }
             resolve(DEFAULT_INDORE_COORDS);
-          }
-        };
-
-        try {
-          navigator.geolocation.getCurrentPosition(successCallback, fallbackAndErrorCallback, highAccuracyOptions);
-        } catch (err: any) {
-          console.warn("[Geolocation Native Bypass]: Error invoking native GPS bridge:", err);
-          Telemetry.addBreadcrumb('native', 'Native GPS bridge threw exception', { error: String(err?.message || err) });
-          fallbackAndErrorCallback(err as any);
-        }
+          },
+          geoOptions
+        );
       });
     },
-    [queryPermission]
+    []
   );
 
   return {

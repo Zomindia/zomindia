@@ -43,15 +43,12 @@ import { CustomerBookingCard } from "./CustomerBookingCard";
 import { WarrantySupportModal } from "./WarrantySupportModal";
 import SupportChatModal from "./SupportChatModal";
 import CancellationModal from "./CancellationModal";
-import Avatar from "./Avatar";
 import {
   formatCategoryShortLabel,
   getCategoryTileStyle,
   resolveCategoryIcon,
   getCategoryBadge,
-  getCategoryType,
 } from "./CustomerHome";
-import { useHeroCanvasConfig } from "../utils/heroCanvasConfig";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
@@ -476,13 +473,11 @@ function RescheduleSector({ booking, onReschedule }: RescheduleSectorProps) {
 }
 
 interface Props {
-  profile: UserProfile | null;
+  profile: UserProfile;
   onServiceSelect?: (serviceId: string) => void;
   initialExpandedBookingId?: string | null;
   setActiveTab?: (tab: string, arg?: string | null) => void;
   onOpenProfileMenu?: () => void;
-  onAuthRequired?: () => void;
-  onOpenCitySelector?: () => void;
 }
 
 const BookingStatusTracker = ({ status }: { status: Booking["status"] }) => {
@@ -575,8 +570,6 @@ export default function CustomerDashboard({
   initialExpandedBookingId,
   setActiveTab,
   onOpenProfileMenu,
-  onAuthRequired,
-  onOpenCitySelector,
 }: Props) {
   // Scroll state for sticky search bar (Zomato Pattern)
   const [isScrolled, setIsScrolled] = useState(false);
@@ -607,9 +600,7 @@ export default function CustomerDashboard({
   const [allActiveServices, setAllActiveServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const { heroBg } = useHeroCanvasConfig();
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
-  const [categoryTypeTab, setCategoryTypeTab] = useState<"All" | "Home" | "Appliances" | "Repairs">("All");
 
   // Payment scanner and history search/filters states
   const [isPaymentScannerOpen, setIsPaymentScannerOpen] = useState(false);
@@ -1875,298 +1866,22 @@ export default function CustomerDashboard({
   }
 
   return (
-    <div className="w-full pb-8 sm:pb-12">
-      {/* Unified Top-to-Bottom Hero Canvas */}
-      <section className="relative overflow-hidden rounded-b-[2.5rem] px-4 pt-3 pb-8 shadow-2xl transition-all mb-6">
-        {/* Layer 1: Background Media */}
-        {heroBg.bgType !== "gradient" && heroBg.bgUrl && (
-          <img
-            src={heroBg.bgUrl}
-            alt="Hero BG"
-            className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
-            loading="eager"
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = "none";
-            }}
-          />
-        )}
-
-        {/* Dark Gradient Overlay - Disabled when overlayOpacity is 0 for 100% media visibility */}
-        {heroBg.bgType === "gradient" ||
-        (heroBg.bgUrl && (heroBg.overlayOpacity ?? 85) > 0) ? (
-          <div
-            className="absolute inset-0 bg-gradient-to-b from-[#071435]/92 via-[#0f2868]/88 to-[#09173e]/96 pointer-events-none transition-opacity duration-150"
-            style={{
-              opacity:
-                heroBg.bgType !== "gradient" && heroBg.bgUrl
-                  ? (heroBg.overlayOpacity ?? 85) / 100
-                  : 1,
-            }}
-          />
-        ) : null}
-
-        {/* Layer 2: Content Layer */}
-        <div className="relative z-10 text-white w-full max-w-7xl mx-auto">
-          {/* Top Header Bar */}
-          <div className="flex items-center justify-between gap-3 pt-1 pb-3">
-            {/* White horizontal logo */}
-            <div
-              onClick={() => {
-                if (setActiveTab) setActiveTab("home");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              className="flex items-center cursor-pointer select-none shrink-0 group"
-            >
-              <img
-                src="/logo-horizontal-white.png"
-                alt="Zomindia"
-                className="h-8 w-auto object-contain transition-transform group-hover:scale-105"
-              />
-            </div>
-
-            {/* Location Dropdown: Scheme 54, Vijay Nagar, Indore ▾ */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenCitySelector) onOpenCitySelector();
-                else if (onOpenProfileMenu) onOpenProfileMenu();
-              }}
-              className="flex items-center gap-1.5 text-blue-100 hover:text-white font-medium text-xs sm:text-sm cursor-pointer transition-colors max-w-[210px] sm:max-w-xs truncate select-none bg-transparent border-0 p-0"
-              title="Scheme 54, Vijay Nagar, Indore - Click to change"
-            >
-              <MapPin size={15} className="text-yellow-400 shrink-0" />
-              <span className="truncate">Scheme 54, Vijay Nagar, Indore ▾</span>
-            </button>
-
-            {/* Login / Profile button on top-right */}
-            <div className="flex items-center gap-2 shrink-0">
-              {profile ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onOpenProfileMenu) onOpenProfileMenu();
-                    else if (setActiveTab) setActiveTab("profile");
-                  }}
-                  className="flex items-center gap-2 text-white hover:opacity-90 transition-opacity cursor-pointer"
-                  title="Open Profile"
-                >
-                  <Avatar
-                    photoURL={profile?.photoURL}
-                    displayName={profile?.displayName || profile?.fullName}
-                    email={profile?.email}
-                    sizeClass="w-8 h-8 sm:w-9 sm:h-9 border border-white/30"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onAuthRequired) onAuthRequired();
-                  }}
-                  className="border border-white/20 text-white hover:bg-white/10 rounded-full px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
-                >
-                  Login
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Floating Search Bar */}
-          <div className="w-full relative mb-4">
-            <div className="relative flex items-center h-12 bg-white text-slate-800 rounded-2xl shadow-lg border-0 px-4 py-2 mt-4 focus-within:ring-2 focus-within:ring-blue-400/30">
-            <div className="text-slate-400 flex items-center shrink-0 mr-2.5">
-              <Search size={18} className="stroke-[2.2]" />
-            </div>
-            <input
-              type="text"
-              inputMode="search"
-              enterKeyHint="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search AC, RO, Fridge repair..."
-              className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery ? "pr-20" : "pr-10"}`}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-12 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full shrink-0 cursor-pointer transition-all active:scale-90"
-                aria-label="Clear search"
-              >
-                <X size={15} />
-              </button>
-            )}
-
-            <button
-              type="submit"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-9 w-9 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
-              aria-label="Search"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Quick Live Search Results Dropdown when typing */}
-          {searchQuery.trim().length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,46,110,0.25)] border border-slate-200/90 overflow-hidden z-[90] max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 text-left overscroll-contain text-slate-800">
-              {filteredServices.length > 0 ? (
-                filteredServices.slice(0, 6).map((service) => (
-                  <div
-                    key={service.id}
-                    onClick={() => {
-                      if (onServiceSelect) onServiceSelect(service.id);
-                      setSearchQuery("");
-                    }}
-                    className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <ServiceThumbnail service={service} size="sm" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate">{service.name}</p>
-                        <p className="text-[10px] text-slate-500 truncate">{service.description}</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-xs font-black text-[#002e6e]">₹{service.basePrice}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-4 text-center text-xs text-slate-500 font-medium">
-                  No services found for "{searchQuery}"
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Explore Services & Filter Pills */}
-        <div className="w-full relative z-20 mt-6" id="dashboard-explore-services">
-          {/* Section Header */}
-          <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-white/10 relative z-10">
-            <h3 className="text-white font-bold tracking-tight text-lg">
-              Explore Services ⚡
-            </h3>
-          </div>
-
-          {/* Category Tabs: ALL, HOME, APPLIANCES, REPAIRS */}
-          <div className="mb-3.5 pb-0.5 relative z-10">
-            <div className="overflow-x-auto no-scrollbar whitespace-nowrap flex gap-2 py-1 w-full">
-              {(["All", "Home", "Appliances", "Repairs"] as const).map(
-                (tab) => {
-                  const isActive = categoryTypeTab === tab;
-                  return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setCategoryTypeTab(tab)}
-                      className={`px-3.5 sm:px-4 py-1.5 rounded-xl text-[11px] sm:text-xs select-none cursor-pointer tracking-wider uppercase transition-all whitespace-nowrap active:scale-95 duration-200 ${
-                        isActive
-                          ? "bg-white text-blue-950 font-bold shadow-sm"
-                          : "bg-white/10 text-blue-100 hover:bg-white/20 border border-white/15 backdrop-blur-xs font-medium"
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  );
-                },
-              )}
-            </div>
-          </div>
-
-          {/* Floating Bento Cards Grid: grid-cols-3 gap-2 sm:gap-2.5 */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-2.5 items-stretch relative z-10 min-h-[110px]">
-            {allCategories
-              .filter((cat) => {
-                if (categoryTypeTab !== "All") {
-                  const type = getCategoryType(cat.name);
-                  if (type !== categoryTypeTab) return false;
-                }
-                return true;
-              })
-              .map((cat) => {
-                const Icon = resolveCategoryIcon(cat.icon, cat.name);
-                const badge = getCategoryBadge(cat);
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => {
-                      if (setActiveTab) {
-                        setActiveTab("home", cat.id);
-                      } else {
-                        setActiveCategoryFilter(cat.id);
-                      }
-                    }}
-                    className="group relative flex flex-col items-center justify-between bg-white border border-slate-150/80 rounded-2xl p-2 sm:p-2.5 shadow-md hover:shadow-lg active:scale-95 transition-all w-full cursor-pointer focus:outline-none min-h-[105px] sm:min-h-[115px] text-center"
-                  >
-                    {/* Micro Badge Slot */}
-                    <div className="w-full flex justify-end h-4 mb-0.5 pointer-events-none">
-                      {badge && (
-                        <span className={badge.className}>
-                          {badge.text}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Icon / Image Slot */}
-                    <div
-                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 overflow-hidden my-1"
-                    >
-                      {cat.iconURL ? (
-                        <img
-                          src={cat.iconURL}
-                          alt={cat.name}
-                          className="w-6 h-6 sm:w-7 sm:h-7 object-contain transition-transform duration-200 group-hover:scale-110"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <Icon
-                          size={20}
-                          className="sm:size-[22px] stroke-[1.8] text-slate-400 transition-transform duration-200 group-hover:scale-110"
-                        />
-                      )}
-                    </div>
-
-                    {/* Category Title: Clean Modern Slate, text-[11px] sm:text-xs leading-tight line-clamp-2 max-w-[90%] */}
-                    <span className="text-slate-800 font-semibold text-[11px] sm:text-xs text-center leading-tight line-clamp-2 max-w-[90%] select-none group-hover:text-blue-700 transition-colors">
-                      {cat.name}
-                    </span>
-                  </button>
-                );
-              })}
-          </div>
-
-          {/* Empty state overlay inside grid */}
-          {allCategories.filter((cat) => {
-            if (categoryTypeTab !== "All") {
-              const type = getCategoryType(cat.name);
-              if (type !== categoryTypeTab) return false;
-            }
-            return true;
-          }).length === 0 && (
-            <div className="col-span-full py-8 text-center w-full bg-white/5 rounded-2xl border border-dashed border-white/20 p-4 flex flex-col items-center justify-center mt-3">
-              <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">
-                No Services Found
-              </span>
-              <p className="text-xs text-blue-100 mt-1">
-                Try selecting another category tab above.
-              </p>
-            </div>
-          )}
-        </div>
-        </div>
-      </section>
-
-      {/* Sticky Top Bar on scroll */}
-      {isScrolled && (
-        <div 
-          className="fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2 shadow-sm border-b border-slate-200/80 transition-all"
-          style={{
-            WebkitBackdropFilter: "blur(12px)",
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div className="max-w-7xl mx-auto flex items-center gap-2.5 w-full">
+    <div className="max-w-7xl mx-auto px-4 pt-1.5 pb-8 sm:pt-2 sm:pb-12">
+      {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
+      <div 
+        className={
+          isScrolled
+            ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
+            : "w-full max-w-7xl mx-auto mt-2 mb-2 px-4 sm:px-6 transition-all"
+        }
+        style={{
+          WebkitBackdropFilter: "blur(12px)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <div className="max-w-7xl mx-auto flex items-center gap-2.5 w-full">
+          {/* ONLY when sticky/fixed, a prominent Zomindia brand icon appears on the left */}
+          {isScrolled && (
             <button
               type="button"
               onClick={() => {
@@ -2180,48 +1895,83 @@ export default function CustomerDashboard({
               <img
                 src="/icon-512.png"
                 alt="Zomindia"
-                className="h-8 w-8 sm:h-9 sm:w-9 object-contain shrink-0"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
               />
             </button>
+          )}
 
-            <div className="relative flex-1 min-w-0">
-              <div 
-                className="relative flex items-center h-10 bg-slate-50 border border-slate-200/80 rounded-xl shadow-xs px-3 focus-within:ring-2 focus-within:ring-blue-400/30 focus-within:bg-white"
-              >
-                <div className="text-slate-400 flex items-center shrink-0 mr-2">
-                  <Search size={16} className="stroke-[2.2]" />
-                </div>
-                <input
-                  type="text"
-                  inputMode="search"
-                  enterKeyHint="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search AC, RO, Fridge repair..."
-                  className={`w-full py-1.5 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery ? "pr-18" : "pr-8"}`}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-10 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full shrink-0 cursor-pointer transition-all active:scale-90"
-                    aria-label="Clear search"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
-                  aria-label="Search"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
+          {/* Search bar input - Flexes to fill available width */}
+          <div className="relative flex-1 min-w-0">
+            <div 
+              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-2xs transition-all duration-200 px-3"
+            >
+              <div className="text-slate-400 focus-within:text-blue-600 shrink-0 mr-2">
+                <Search size={16} className="stroke-[2.2]" />
               </div>
+              <input
+                type="text"
+                inputMode="search"
+                enterKeyHint="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search AC, RO, Fridge repair..."
+                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery ? "pr-20" : "pr-10"}`}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full shrink-0 cursor-pointer transition-all active:scale-90"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                aria-label="Search"
+              >
+                <Search className="w-4 h-4" />
+              </button>
             </div>
+
+            {/* Quick Live Search Results Dropdown when typing */}
+            {searchQuery.trim().length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,46,110,0.25)] border border-slate-200/90 overflow-hidden z-[90] max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 text-left overscroll-contain">
+                {filteredServices.length > 0 ? (
+                  filteredServices.slice(0, 6).map((service) => (
+                    <div
+                      key={service.id}
+                      onClick={() => {
+                        if (onServiceSelect) onServiceSelect(service.id);
+                        setSearchQuery("");
+                      }}
+                      className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <ServiceThumbnail service={service} size="sm" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate">{service.name}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{service.description}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-black text-[#002e6e]">₹{service.basePrice}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                    No services found for "{searchQuery}"
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Placeholder spacer when fixed to prevent layout jump */}
       {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0 mb-2" aria-hidden="true" />}
@@ -2967,7 +2717,8 @@ export default function CustomerDashboard({
                                   booking.transactionId &&
                                     booking.paymentStatus === "paid" &&
                                     booking.paymentMethod !== "cash" &&
-                                    booking.paymentMethod !== "pay_after_service"
+                                    booking.paymentMethod !== "pay_after_service" &&
+                                    booking.paymentMethod !== "cash_after_service"
                                 );
                                 const isPaidBooking =
                                   isAmc ||
@@ -3250,7 +3001,8 @@ export default function CustomerDashboard({
                                       booking.transactionId &&
                                         booking.paymentStatus === "paid" &&
                                         booking.paymentMethod !== "cash" &&
-                                        booking.paymentMethod !== "pay_after_service"
+                                        booking.paymentMethod !== "pay_after_service" &&
+                                        booking.paymentMethod !== "cash_after_service"
                                     );
                                     const isPaidBooking =
                                       isAmc ||
@@ -3459,7 +3211,73 @@ export default function CustomerDashboard({
             </div>
           )}
 
+          {/* Discovery Grid */}
+          <div className="mb-16">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                  <Sparkles size={16} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+                  Explore Services
+                </h3>
+              </div>
+            </div>
 
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3.5 items-stretch">
+              {allCategories.map((cat) => {
+                const Icon = resolveCategoryIcon(cat.icon, cat.name);
+                const tileStyle = getCategoryTileStyle(cat.name);
+                const badge = getCategoryBadge(cat);
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => {
+                      if (setActiveTab) {
+                        setActiveTab("home", cat.id);
+                      } else {
+                        setActiveCategoryFilter(cat.id);
+                      }
+                    }}
+                    className="group relative flex flex-col items-center justify-between bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all w-full cursor-pointer focus:outline-none min-h-[135px] sm:min-h-[145px] text-center active:scale-97"
+                  >
+                    {/* Top Badge Slot (Positioned neatly at the top of each card without overlapping content) */}
+                    <div className="w-full flex justify-end h-5 mb-1 pointer-events-none">
+                      {badge && (
+                        <span className={badge.className}>
+                          {badge.text}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Existing Centered Fixed-Height Image/Icon Container Slot */}
+                    <div
+                      className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 border ${tileStyle.bg} ${tileStyle.text} ${tileStyle.border} ${tileStyle.hoverBg} overflow-hidden my-auto`}
+                    >
+                      {cat.iconURL ? (
+                        <img
+                          src={cat.iconURL}
+                          alt={cat.name}
+                          className="w-8 h-8 sm:w-9 sm:h-9 object-contain transition-transform duration-200 group-hover:scale-110"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <Icon
+                          size={24}
+                          className="sm:size-[26px] stroke-[2] transition-transform duration-200 group-hover:scale-110"
+                        />
+                      )}
+                    </div>
+
+                    {/* Category Title: Clean Modern Slate, No Ellipsis/Cutoffs, line-clamp-2 with break-words */}
+                    <span className="text-slate-800 font-semibold text-xs sm:text-sm text-center leading-snug line-clamp-2 break-words w-full mt-2 select-none group-hover:text-blue-700 transition-colors">
+                      {cat.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           </div>
         )}
 
@@ -3789,10 +3607,15 @@ export default function CustomerDashboard({
             service={selectedService}
             profile={profile}
             onClose={() => setSelectedService(null)}
-            onSuccess={() => {
+            onSuccess={(bookingId?: string) => {
               setSelectedService(null);
-              setExpandedBookingId(null);
-              if (setActiveTab) setActiveTab("home");
+              if (bookingId) {
+                setExpandedBookingId(bookingId);
+                if (setActiveTab) setActiveTab("bookings", bookingId);
+              } else {
+                setExpandedBookingId(null);
+                if (setActiveTab) setActiveTab("bookings");
+              }
             }}
           />
         )}

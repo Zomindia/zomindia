@@ -16,6 +16,7 @@ import {
   Star,
   Maximize2,
   ArrowLeft,
+  Share2,
   X,
 } from "lucide-react";
 
@@ -307,14 +308,15 @@ function MapCanvas({
       <RoutePolyline path={routePath} />
 
       {/* Static Destination Marker: Red rounded badge with home pin */}
+      {/* Blue Home Pin: Exact Customer Doorstep (customerLocation) */}
       {destCoords && (
         <AdvancedMarker position={destCoords}>
           <div className="relative flex flex-col items-center select-none">
-            <div className="w-8 h-8 rounded-xl bg-[#E11D48] border-2 border-white shadow-md flex items-center justify-center text-white">
+            <div className="w-9 h-9 rounded-2xl bg-blue-600 border-2 border-white shadow-xl flex items-center justify-center text-white ring-4 ring-blue-500/20">
               <span className="text-base leading-none">🏠</span>
             </div>
             {!isMini && (
-              <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+              <div className="mt-1 bg-blue-950 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
                 Doorstep
               </div>
             )}
@@ -327,20 +329,20 @@ function MapCanvas({
         <AdvancedMarker position={partnerLocation}>
           <div className="relative flex flex-col items-center select-none cursor-pointer">
             <div
-              className="relative w-11 h-11 rounded-full bg-white shadow-xl border-2 border-blue-600 flex items-center justify-center text-xl transition-transform duration-500 ease-out"
+              className="relative w-11 h-11 rounded-full bg-emerald-500 shadow-xl border-2 border-white ring-4 ring-emerald-500/20 flex items-center justify-center text-xl transition-all duration-700 ease-out"
               style={{
                 transform: `rotate(${Math.round(effectiveBearing)}deg)`,
               }}
               title={`Bearing: ${Math.round(effectiveBearing)}°`}
             >
               {/* Directional arrow needle indicator at top edge oriented forward */}
-              <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
+              <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-emerald-800" />
               {/* Vehicle icon */}
               <span className="text-lg leading-none select-none">🛵</span>
             </div>
             {!isMini && (
               <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
-                Technician
+                Live Pro
               </div>
             )}
           </div>
@@ -381,6 +383,9 @@ export default function PartnerTrackingMap({
   const [eta, setEta] = useState<string>("~2 mins");
   const [distance, setDistance] = useState<string>("");
   const [destCoords, setDestCoords] = useState<{ lat: number; lng: number }>(() => {
+    if (booking?.customerLocation?.lat && booking?.customerLocation?.lng) {
+      return { lat: Number(booking.customerLocation.lat), lng: Number(booking.customerLocation.lng) };
+    }
     if (typeof customerLat === "number" && typeof customerLng === "number") {
       return { lat: customerLat, lng: customerLng };
     }
@@ -388,7 +393,7 @@ export default function PartnerTrackingMap({
       return bookingLocation;
     }
     if (typeof booking?.lat === "number" && typeof booking?.lng === "number") {
-      return { lat: booking.lat, lng: booking.lng };
+      return { lat: Number(booking.lat), lng: Number(booking.lng) };
     }
     return DEFAULT_INDORE_DESTINATION;
   });
@@ -414,8 +419,15 @@ export default function PartnerTrackingMap({
   const bookingLat = bookingLocation?.lat ?? (typeof booking?.lat === "number" ? booking.lat : undefined);
   const bookingLng = bookingLocation?.lng ?? (typeof booking?.lng === "number" ? booking.lng : undefined);
 
-  // Directly resolve destination coordinates from customerLat/customerLng or bookingLocation props with fallback to DEFAULT_INDORE_DESTINATION
+  // Directly resolve destination coordinates from customerLocation, customerLat/customerLng or bookingLocation
   useEffect(() => {
+    if (booking?.customerLocation?.lat && booking?.customerLocation?.lng) {
+      setDestCoords({
+        lat: Number(booking.customerLocation.lat),
+        lng: Number(booking.customerLocation.lng)
+      });
+      return;
+    }
     if (typeof customerLat === "number" && typeof customerLng === "number") {
       setDestCoords((prev) => {
         if (prev && prev.lat === customerLat && prev.lng === customerLng) return prev;
@@ -431,7 +443,7 @@ export default function PartnerTrackingMap({
       return;
     }
     setDestCoords(DEFAULT_INDORE_DESTINATION);
-  }, [customerLat, customerLng, bookingLat, bookingLng]);
+  }, [booking, customerLat, customerLng, bookingLat, bookingLng]);
 
   // Firestore real-time coordinate synchronization
   useEffect(() => {
@@ -448,6 +460,20 @@ export default function PartnerTrackingMap({
           if (!isMounted) return;
           if (snap.exists()) {
             const data = snap.data();
+
+            // Lock destination to customerLocation from live Firestore stream
+            if (data?.customerLocation && typeof data.customerLocation.lat === "number" && typeof data.customerLocation.lng === "number") {
+              setDestCoords({
+                lat: data.customerLocation.lat,
+                lng: data.customerLocation.lng
+              });
+            } else if (typeof data?.lat === "number" && typeof data?.lng === "number") {
+              setDestCoords({
+                lat: data.lat,
+                lng: data.lng
+              });
+            }
+
             const bLoc = data?.partnerLocation;
             if (
               bLoc &&
@@ -577,6 +603,39 @@ export default function PartnerTrackingMap({
       (window as any).__showToast(`Calling (${cleanNumber})...`);
     }
     window.open(`tel:${cleanNumber}`, "_self");
+  };
+
+  const handleShareTracking = async () => {
+    const targetBookingId = bookingId || booking?.id || '';
+    const shareUrl = typeof window !== 'undefined' 
+      ? `${window.location.origin}/?track=${encodeURIComponent(targetBookingId)}`
+      : '';
+    const shareTitle = `Live Tracking: ${serviceName || 'Zomindia Service'}`;
+    const shareText = `Track technician live on Zomindia. ETA: ${eta || '~2 mins'}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl
+        });
+        return;
+      } catch (err) {}
+    }
+
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+        if (typeof (window as any).__showToast === "function") {
+          (window as any).__showToast("Live tracking link copied to clipboard!");
+        }
+      }
+    } catch (e) {
+      if (typeof (window as any).__showToast === "function") {
+        (window as any).__showToast(`Tracking: #${targetBookingId.slice(0, 6)}`);
+      }
+    }
   };
 
   const handleDefaultChat = () => {
@@ -737,22 +796,32 @@ export default function PartnerTrackingMap({
                     </div>
                   </div>
 
-                  {/* Direct Action Buttons: [ 📞 Call Pro ] and [ 💬 Chat ] */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Direct Action Buttons: [ 📞 Call Partner ], [ 🔗 Share Live Tracking ], [ 💬 Chat ] */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={handleDefaultCall}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
-                      title="Call Professional"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
+                      title="Call Partner"
                     >
                       <Phone size={13} className="fill-white" />
-                      <span className="hidden sm:inline">Call Pro</span>
+                      <span>Call Partner</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleShareTracking}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
+                      title="Share Live Tracking"
+                    >
+                      <Share2 size={13} className="text-white" />
+                      <span className="hidden sm:inline">Share</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleDefaultChat}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all cursor-pointer"
                       title="Live Chat"
                     >
                       <MessageSquare size={13} className="fill-white" />

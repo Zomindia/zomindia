@@ -3273,8 +3273,12 @@ Structure:
     res.sendFile(path.join(process.cwd(), "public", "robots.txt"));
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    (!process.env.VITE_DEV_SERVER && existsSync(path.join(process.cwd(), "dist", "index.html")));
+
+  // Vite middleware for development; Static file serving for production
+  if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { 
@@ -3302,31 +3306,28 @@ Structure:
     });
   }
 
-  const defaultPort = 3000;
-  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+  // Cloud Run assigns PORT (e.g. 8080). Default to 3000 if not specified.
+  const targetPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-  // Primary server binding on port 3000 (standard reverse proxy port)
-  app.listen(defaultPort, "0.0.0.0", () => {
-    console.log(`Server is LIVE on port ${defaultPort}`);
+  // Primary server binding on target port (ensures Cloud Run deployment health checks succeed)
+  const primaryServer = app.listen(targetPort, "0.0.0.0", () => {
+    console.log(`Server is LIVE on port ${targetPort} (mode: ${isProduction ? "production" : "development"})`);
   });
 
-  // Dual-port ingress support: If deployed to Cloud Run where process.env.PORT is injected (e.g. 8080)
-  // and differs from 3000, also bind to it so Cloud Run's rollout health probes succeed immediately.
-  if (envPort && envPort !== defaultPort) {
+  primaryServer.on("error", (err: any) => {
+    console.error(`[Server Error] Failed to bind to port ${targetPort}:`, err);
+  });
+
+  // Dual-port ingress: If targetPort is not 3000, also listen on 3000 if available
+  if (targetPort !== 3000) {
     try {
-      const crServer = app.listen(envPort, "0.0.0.0", () => {
-        console.log(`Cloud Run ingress listener LIVE on port ${envPort}`);
+      const p3000Server = app.listen(3000, "0.0.0.0", () => {
+        console.log(`Secondary listener active on port 3000`);
       });
-      crServer.on("error", (err: any) => {
-        if (err.code === "EADDRINUSE") {
-          console.log(`[Info] Port ${envPort} is handled by proxy in current environment.`);
-        } else {
-          console.warn(`[Warning] Port ${envPort} listener notice:`, err.message);
-        }
+      p3000Server.on("error", () => {
+        // Non-blocking if port 3000 is used by container proxy
       });
-    } catch (e: any) {
-      console.log(`[Info] Ingress port ${envPort} already bound:`, e.message);
-    }
+    } catch {}
   }
 }
 

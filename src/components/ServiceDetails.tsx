@@ -45,7 +45,7 @@ interface ServiceDetailsProps {
   profile: UserProfile | null;
   onBack: () => void;
   onAuthRequired: () => void;
-  onSuccess: () => void;
+  onSuccess: (bookingId?: string) => void;
   onServiceSelect?: (id: string) => void;
 }
 
@@ -1008,9 +1008,9 @@ export default function ServiceDetails({
           service={service}
           profile={profile}
           onClose={() => setIsBookingModalOpen(false)}
-          onSuccess={() => {
+          onSuccess={(bookingId?: string) => {
             setIsBookingModalOpen(false);
-            onSuccess();
+            onSuccess(bookingId);
           }}
         />
       )}
