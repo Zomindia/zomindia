@@ -13,6 +13,7 @@ import { Booking, Service, UserProfile, PartnerProfile, SupportTicket } from "..
 import { formatBookingTime } from "../utils/formatTime";
 import { generateInvoicePDF } from "../utils/generateInvoicePDF";
 import { TrackingModal } from "./tracking/TrackingModal";
+import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
 
@@ -546,6 +547,23 @@ export function CustomerBookingCard({
         )}
       </div>
 
+      {/* Live Mini Map Preview for Active Partner Bookings */}
+      {hasPartner && !isCompleted && !isCancelled && (isOnTheWay || isAssigned || isArrived || isInProgress) && (
+        <PartnerTrackingMap
+          variant="mini"
+          heightClassName="h-40 sm:h-44"
+          booking={booking}
+          customerLat={booking.customerLocation?.lat || (booking as any).coords?.lat || booking.lat}
+          customerLng={booking.customerLocation?.lng || (booking as any).coords?.lng || booking.lng}
+          bookingLocation={booking.customerLocation || (booking as any).coords}
+          destinationAddress={booking.address || (booking as any).fullAddress}
+          partnerId={booking.partnerId || (booking as any).assignedPartnerId}
+          bookingId={booking.id}
+          serviceName={serviceName}
+          onExpand={() => setIsFullscreenTrackingOpen(true)}
+        />
+      )}
+
       {/* C. Sleek Human OTP Pill */}
       {showServiceOtpBadge && (
         <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -641,6 +659,12 @@ export function CustomerBookingCard({
         booking={booking}
         partnerUser={partnerUser}
         serviceName={serviceName}
+        customerLat={booking.customerLocation?.lat || (booking as any).coords?.lat || booking.lat}
+        customerLng={booking.customerLocation?.lng || (booking as any).coords?.lng || booking.lng}
+        bookingLocation={booking.customerLocation || (booking as any).coords}
+        destinationAddress={booking.address || (booking as any).fullAddress}
+        partnerId={booking.partnerId || (booking as any).assignedPartnerId}
+        bookingId={booking.id}
         onCallPartner={() => {
           if (partnerUser && onCallPartner) {
             onCallPartner(partnerUser, booking);

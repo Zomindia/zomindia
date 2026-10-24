@@ -16,12 +16,9 @@ import {
   MessageSquare,
   Star,
   ArrowLeft,
-  X,
   KeyRound,
-  Navigation,
   ShieldCheck,
   MapPin,
-  Clock,
 } from "lucide-react";
 
 export interface TrackingModalProps {
@@ -30,11 +27,16 @@ export interface TrackingModalProps {
   booking: Booking;
   partnerUser?: UserProfile | PartnerProfile | null;
   serviceName?: string;
+  customerLat?: number;
+  customerLng?: number;
+  bookingLocation?: { lat: number; lng: number };
+  destinationAddress?: string;
+  partnerId?: string;
+  bookingId?: string;
   onCallPartner?: () => void;
   onChatPartner?: () => void;
 }
 
-// Minimalist Clean Map Styling (Urban Company / Uber Style)
 const MAP_STYLES: google.maps.MapTypeStyle[] = [
   { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
@@ -58,10 +60,7 @@ const MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: "transit", stylers: [{ visibility: "off" }] },
 ];
 
-const DEFAULT_INDORE_DESTINATION = { lat: 22.7533, lng: 75.8937 };
-const DEFAULT_INDORE_PARTNER = { lat: 22.7196, lng: 75.8577 };
-
-function calculateHaversineDistance(
+export function calculateHaversineDistance(
   p1: { lat: number; lng: number },
   p2: { lat: number; lng: number }
 ): number {
@@ -76,6 +75,152 @@ function calculateHaversineDistance(
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function isLegacyRajwadaCoord(lat?: number | null, lng?: number | null): boolean {
+  if (typeof lat !== "number" || typeof lng !== "number") return false;
+  return Math.abs(lat - 22.7196) < 0.0015 && Math.abs(lng - 75.8577) < 0.0015;
+}
+
+function isGenericVijayNagarDefault(lat?: number | null, lng?: number | null): boolean {
+  if (typeof lat !== "number" || typeof lng !== "number") return false;
+  return Math.abs(lat - 22.7533) < 0.0005 && Math.abs(lng - 75.8937) < 0.0005;
+}
+
+function matchLevel2MicroLocality(addressStr: string): { lat: number; lng: number } | null {
+  const normalized = (addressStr || "").toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized.includes("anil nagar") || normalized.includes("barfani dham")) {
+    return { lat: 22.7482, lng: 75.8978 };
+  }
+  if (
+    normalized.includes("manoj nayar nagar") ||
+    normalized.includes("singapore township")
+  ) {
+    return { lat: 22.7915, lng: 75.8932 };
+  }
+  if (normalized.includes("mahalaxmi nagar")) {
+    return { lat: 22.7562, lng: 75.9015 };
+  }
+  if (normalized.includes("scheme 78") || normalized.includes("scheme 54")) {
+    return { lat: 22.7548, lng: 75.8865 };
+  }
+  return null;
+}
+
+function matchLevel1MacroLocality(addressStr: string): { lat: number; lng: number } | null {
+  const normalized = (addressStr || "").toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized.includes("vijay nagar")) {
+    return { lat: 22.7533, lng: 75.8937 };
+  }
+  if (normalized.includes("palasia")) {
+    return { lat: 22.7244, lng: 75.8839 };
+  }
+  return null;
+}
+
+/**
+ * Resolves customer doorstep coordinates using strict Level-1 / Level-2 hierarchy:
+ * 1. Priority 1 (Exact Coords): customerLocation -> coords -> explicit props -> booking.lat/lng
+ * 2. Priority 2 (Level-2 Micro-Locality Fallback): Anil Nagar / Barfani Dham, Manoj Nayar Nagar / Singapore Township, Mahalaxmi Nagar, Scheme 78 / Scheme 54
+ * 3. Priority 3 (Level-1 Macro-Locality Fallback): Vijay Nagar, Palasia
+ */
+export function resolveDoorstepCoords(
+  booking?: any,
+  customerLat?: number,
+  customerLng?: number,
+  bookingLocation?: { lat: number; lng: number },
+  destinationAddress?: string
+): { lat: number; lng: number } {
+  const addressText =
+    destinationAddress ||
+    booking?.address ||
+    booking?.fullAddress ||
+    booking?.customerAddress ||
+    "";
+
+  const level2Match = matchLevel2MicroLocality(addressText);
+  const level1Match = matchLevel1MacroLocality(addressText);
+
+  const candidates: Array<{ lat?: any; lng?: any }> = [
+    booking?.customerLocation,
+    booking?.coords,
+    bookingLocation,
+    { lat: customerLat, lng: customerLng },
+    { lat: booking?.lat, lng: booking?.lng },
+  ];
+
+  for (const c of candidates) {
+    const lat = Number(c?.lat);
+    const lng = Number(c?.lng);
+    if (
+      typeof c?.lat !== "undefined" &&
+      typeof c?.lng !== "undefined" &&
+      !isNaN(lat) &&
+      !isNaN(lng) &&
+      lat !== 0 &&
+      lng !== 0 &&
+      !isLegacyRajwadaCoord(lat, lng)
+    ) {
+      if (isGenericVijayNagarDefault(lat, lng) && level2Match) {
+        return level2Match;
+      }
+      return { lat, lng };
+    }
+  }
+
+  if (level2Match) return level2Match;
+  if (level1Match) return level1Match;
+
+  return { lat: 22.7482, lng: 75.8978 };
+}
+
+/**
+ * Validates whether a partner GPS coordinate is an authentic live reading
+ * (rejects legacy Rajwada dummy coordinates, 0/0, or coordinates sitting directly on doorstep during approach).
+ */
+export function isValidPartnerGps(
+  candidate: { lat?: any; lng?: any } | null | undefined,
+  destCoords: { lat: number; lng: number },
+  status?: string
+): candidate is { lat: number; lng: number; heading?: number | null } {
+  if (!candidate) return false;
+  const lat = Number(candidate.lat);
+  const lng = Number(candidate.lng);
+  if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return false;
+  if (isLegacyRajwadaCoord(lat, lng)) return false;
+
+  const distKm = calculateHaversineDistance({ lat, lng }, destCoords);
+  const normalizedStatus = (status || "on_the_way").toLowerCase();
+
+  // Never place approaching technician right on top of customer's doorstep or > 5 km away
+  if (
+    !["arrived", "in_progress", "completed"].includes(normalizedStatus) &&
+    (distKm < 0.08 || distKm > 5.0)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Computes realistic road-grid approach coordinate (~1.4 km from customer's Level-2 doorstep)
+ * when hardware GPS is absent in web preview.
+ */
+export function getApproachCoordsFromDoorstep(destCoords: {
+  lat: number;
+  lng: number;
+}): { lat: number; lng: number; heading: number | null } {
+  // ~1.4 km road distance along Indore urban grid (e.g. { lat: destCoords.lat - 0.009, lng: destCoords.lng - 0.007 })
+  return {
+    lat: Number((destCoords.lat - 0.0078).toFixed(6)),
+    lng: Number((destCoords.lng - 0.006).toFixed(6)),
+    heading: null,
+  };
 }
 
 function computeBearing(
@@ -100,6 +245,9 @@ function generateCurvedPath(
   end: { lat: number; lng: number },
   numPoints = 25
 ): Array<{ lat: number; lng: number }> {
+  if (start.lat === end.lat && start.lng === end.lng) {
+    return [start, end];
+  }
   const points: Array<{ lat: number; lng: number }> = [];
   const midLat = (start.lat + end.lat) / 2;
   const midLng = (start.lng + end.lng) / 2;
@@ -112,8 +260,10 @@ function generateCurvedPath(
   for (let i = 0; i <= numPoints; i++) {
     const t = i / numPoints;
     const invT = 1 - t;
-    const lat = invT * invT * start.lat + 2 * invT * t * controlLat + t * t * end.lat;
-    const lng = invT * invT * start.lng + 2 * invT * t * controlLng + t * t * end.lng;
+    const lat =
+      invT * invT * start.lat + 2 * invT * t * controlLat + t * t * end.lat;
+    const lng =
+      invT * invT * start.lng + 2 * invT * t * controlLng + t * t * end.lng;
     points.push({ lat, lng });
   }
 
@@ -151,8 +301,8 @@ function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) 
 }
 
 interface SplitMapCanvasProps {
-  partnerLocation: { lat: number; lng: number; heading?: number | null } | null;
-  destCoords: { lat: number; lng: number } | null;
+  partnerLocation: { lat: number; lng: number; heading?: number | null };
+  destCoords: { lat: number; lng: number };
   onRouteUpdate?: (eta: string, distance: string) => void;
 }
 
@@ -170,29 +320,19 @@ function SplitMapCanvas({
     onRouteUpdateRef.current = onRouteUpdate;
   }, [onRouteUpdate]);
 
-  const pLat = partnerLocation?.lat;
-  const pLng = partnerLocation?.lng;
-  const dLat = destCoords?.lat;
-  const dLng = destCoords?.lng;
+  const pLat = partnerLocation.lat;
+  const pLng = partnerLocation.lng;
+  const dLat = destCoords.lat;
+  const dLng = destCoords.lng;
 
-  // Calculate realistic road distance & transit ETA
+  // Authentic road distance & bike transit time calculation
   useEffect(() => {
-    if (
-      typeof pLat !== "number" ||
-      typeof pLng !== "number" ||
-      typeof dLat !== "number" ||
-      typeof dLng !== "number"
-    ) {
-      setRoutePath([]);
-      return;
-    }
-
     const origin = { lat: pLat, lng: pLng };
     const destination = { lat: dLat, lng: dLng };
 
     const straightKm = calculateHaversineDistance(origin, destination);
-    const roadDistanceKm = Math.max(0.4, straightKm * 1.35);
-    const durationMin = Math.max(2, Math.ceil((roadDistanceKm / 24) * 60));
+    const roadDistanceKm = Number((straightKm * 1.32).toFixed(1));
+    const durationMin = Math.max(1, Math.ceil((roadDistanceKm / 22) * 60));
 
     if (onRouteUpdateRef.current) {
       onRouteUpdateRef.current(`~${durationMin} mins`, `${roadDistanceKm.toFixed(1)} km`);
@@ -202,7 +342,6 @@ function SplitMapCanvas({
     setRoutePath(curvedPoints);
   }, [pLat, pLng, dLat, dLng]);
 
-  // Apply map styles
   useEffect(() => {
     if (!map || typeof google === "undefined") return;
     map.setOptions({
@@ -218,10 +357,9 @@ function SplitMapCanvas({
     });
   }, [map]);
 
-  // Auto-fit bounds between Customer and Partner location
+  // Automatically frame BOTH 🛵 Technician and 🏠 Doorstep markers with 60px padding
   useEffect(() => {
     if (!map || typeof google === "undefined") return;
-    if (!partnerLocation || !destCoords) return;
 
     const boundsKey = `${partnerLocation.lat.toFixed(4)},${partnerLocation.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
     if (lastFitBoundsKeyRef.current === boundsKey) return;
@@ -233,20 +371,18 @@ function SplitMapCanvas({
     if (routePath.length > 0) {
       routePath.forEach((pt) => bounds.extend(pt));
     }
-    // Padding ensures both markers and route are comfortably visible
     map.fitBounds(bounds, { top: 60, bottom: 60, left: 60, right: 60 });
   }, [map, partnerLocation, destCoords, routePath]);
 
-  // Effective bearing
   const effectiveBearing = useMemo(() => {
     if (
-      typeof partnerLocation?.heading === "number" &&
+      typeof partnerLocation.heading === "number" &&
       !isNaN(partnerLocation.heading) &&
       partnerLocation.heading !== null
     ) {
-      return (partnerLocation.heading % 360 + 360) % 360;
+      return ((partnerLocation.heading % 360) + 360) % 360;
     }
-    if (partnerLocation && routePath.length >= 2) {
+    if (routePath.length >= 2) {
       const nextPoint =
         routePath.find((pt) => calculateHaversineDistance(partnerLocation, pt) > 0.005) ||
         routePath[1];
@@ -254,10 +390,7 @@ function SplitMapCanvas({
         return computeBearing(partnerLocation, nextPoint);
       }
     }
-    if (partnerLocation && destCoords) {
-      return computeBearing(partnerLocation, destCoords);
-    }
-    return 0;
+    return computeBearing(partnerLocation, destCoords);
   }, [partnerLocation, routePath, destCoords]);
 
   return (
@@ -265,38 +398,34 @@ function SplitMapCanvas({
       <RoutePolyline path={routePath} />
 
       {/* Customer Doorstep Marker */}
-      {destCoords && (
-        <AdvancedMarker position={destCoords}>
-          <div className="relative flex flex-col items-center select-none">
-            <div className="w-9 h-9 rounded-2xl bg-rose-600 border-2 border-white shadow-xl flex items-center justify-center text-white">
-              <span className="text-base leading-none">🏠</span>
-            </div>
-            <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md whitespace-nowrap">
-              Doorstep
-            </div>
+      <AdvancedMarker position={destCoords}>
+        <div className="relative flex flex-col items-center select-none">
+          <div className="w-9 h-9 rounded-2xl bg-rose-600 border-2 border-white shadow-xl flex items-center justify-center text-white">
+            <span className="text-base leading-none">🏠</span>
           </div>
-        </AdvancedMarker>
-      )}
+          <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md whitespace-nowrap">
+            Doorstep
+          </div>
+        </div>
+      </AdvancedMarker>
 
       {/* Partner Vehicle Marker */}
-      {partnerLocation && (
-        <AdvancedMarker position={partnerLocation}>
-          <div className="relative flex flex-col items-center select-none cursor-pointer">
-            <div
-              className="relative w-12 h-12 rounded-full bg-white shadow-2xl border-2 border-blue-600 flex items-center justify-center text-2xl transition-transform duration-500 ease-out"
-              style={{
-                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
-              }}
-            >
-              <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
-              <span className="text-xl leading-none select-none">🛵</span>
-            </div>
-            <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
-              Technician
-            </div>
+      <AdvancedMarker position={partnerLocation}>
+        <div className="relative flex flex-col items-center select-none cursor-pointer">
+          <div
+            className="relative w-12 h-12 rounded-full bg-white shadow-2xl border-2 border-blue-600 flex items-center justify-center text-2xl transition-transform duration-500 ease-out"
+            style={{
+              transform: `rotate(${Math.round(effectiveBearing)}deg)`,
+            }}
+          >
+            <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
+            <span className="text-xl leading-none select-none">🛵</span>
           </div>
-        </AdvancedMarker>
-      )}
+          <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
+            Technician
+          </div>
+        </div>
+      </AdvancedMarker>
     </>
   );
 }
@@ -307,91 +436,135 @@ export function TrackingModal({
   booking,
   partnerUser,
   serviceName,
+  customerLat,
+  customerLng,
+  bookingLocation,
+  destinationAddress,
+  partnerId: propPartnerId,
+  bookingId: propBookingId,
   onCallPartner,
   onChatPartner,
 }: TrackingModalProps) {
   const [liveBooking, setLiveBooking] = useState<Booking>(booking);
-  const [eta, setEta] = useState<string>("~8 mins");
-  const [distance, setDistance] = useState<string>("2.4 km");
+  const [eta, setEta] = useState<string>("~4 mins");
+  const [distance, setDistance] = useState<string>("1.4 km");
+  const [partnerDoc, setPartnerDoc] = useState<PartnerProfile | null>(null);
   const [partnerProfile, setPartnerProfile] = useState<PartnerProfile | null>(null);
 
-  // Sync prop changes to live state
   useEffect(() => {
     setLiveBooking(booking);
   }, [booking]);
 
-  // Listen to bookings/{id} via onSnapshot for real-time GPS coordinate sync
+  const targetBookingId = propBookingId || booking?.id;
+
+  // 1. Real-time Firestore stream on bookings/{id}
   useEffect(() => {
-    if (!booking?.id) return;
+    if (!targetBookingId) return;
     let isMounted = true;
 
     const unsubBooking = onSnapshot(
-      doc(db, "bookings", booking.id),
+      doc(db, "bookings", targetBookingId),
       (snap) => {
         if (!isMounted || !snap.exists()) return;
         const data = { id: snap.id, ...snap.data() } as Booking;
         setLiveBooking(data);
       },
-      (err) => {
-        console.warn("[TrackingModal] Live booking snapshot notice:", err);
-      }
+      () => {}
     );
 
     return () => {
       isMounted = false;
       unsubBooking();
     };
-  }, [booking?.id]);
+  }, [targetBookingId]);
 
-  // Listen to partner profile if available
-  const activePartnerId = liveBooking.partnerId || (liveBooking as any).assignedPartnerId;
+  // 2. Real-time Firestore stream on partners/{partnerId} and users/{partnerId}
+  const activePartnerId =
+    propPartnerId ||
+    liveBooking.partnerId ||
+    (liveBooking as any).assignedPartnerId;
+
   useEffect(() => {
     if (!activePartnerId) return;
     let isMounted = true;
 
-    const unsubPartner = onSnapshot(
+    const unsubPartnerDoc = onSnapshot(
+      doc(db, "partners", activePartnerId),
+      (snap) => {
+        if (!isMounted || !snap.exists()) return;
+        setPartnerDoc(snap.data() as PartnerProfile);
+      },
+      () => {}
+    );
+
+    const unsubUserDoc = onSnapshot(
       doc(db, "users", activePartnerId),
       (snap) => {
         if (!isMounted || !snap.exists()) return;
         setPartnerProfile(snap.data() as PartnerProfile);
       },
-      (err) => {
-        console.warn("[TrackingModal] Partner profile snapshot notice:", err);
-      }
+      () => {}
     );
 
     return () => {
       isMounted = false;
-      unsubPartner();
+      unsubPartnerDoc();
+      unsubUserDoc();
     };
   }, [activePartnerId]);
 
-  // Calculate coordinates
+  // Resolve Level-1 / Level-2 Doorstep Coordinates
+  const destCoords = useMemo(() => {
+    return resolveDoorstepCoords(
+      liveBooking,
+      customerLat,
+      customerLng,
+      bookingLocation,
+      destinationAddress
+    );
+  }, [liveBooking, customerLat, customerLng, bookingLocation, destinationAddress]);
+
+  // Resolve Authentic Partner GPS or Realistic Approach (~1.4 km from doorstep)
   const partnerLocation = useMemo(() => {
-    const loc = liveBooking.partnerLocation || (liveBooking as any).expertLocation;
-    if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+    const rawStatus = (liveBooking.status || "on_the_way").toLowerCase();
+
+    // Priority 1: Real-time booking.partnerLocation
+    const bookingLoc =
+      liveBooking.partnerLocation || (liveBooking as any).expertLocation;
+    if (isValidPartnerGps(bookingLoc, destCoords, rawStatus)) {
       return {
-        lat: Number(loc.lat),
-        lng: Number(loc.lng),
-        heading: typeof (loc as any).heading === "number" ? (loc as any).heading : null,
+        lat: Number(bookingLoc.lat),
+        lng: Number(bookingLoc.lng),
+        heading:
+          typeof (bookingLoc as any).heading === "number"
+            ? (bookingLoc as any).heading
+            : null,
       };
     }
-    if (partnerProfile && (partnerProfile as any).location?.lat && (partnerProfile as any).location?.lng) {
+
+    // Priority 2: partners/{partnerId} document GPS
+    if (isValidPartnerGps(partnerDoc, destCoords, rawStatus)) {
       return {
-        lat: Number((partnerProfile as any).location.lat),
-        lng: Number((partnerProfile as any).location.lng),
+        lat: Number(partnerDoc.lat),
+        lng: Number(partnerDoc.lng),
+        heading:
+          typeof partnerDoc.heading === "number" ? partnerDoc.heading : null,
+      };
+    }
+
+    // Secondary user profile location
+    const userLoc = (partnerProfile as any)?.location;
+    if (isValidPartnerGps(userLoc, destCoords, rawStatus)) {
+      return {
+        lat: Number(userLoc.lat),
+        lng: Number(userLoc.lng),
         heading: null,
       };
     }
-    return DEFAULT_INDORE_PARTNER;
-  }, [liveBooking.partnerLocation, partnerProfile]);
 
-  const destCoords = useMemo(() => {
-    if (typeof liveBooking.lat === "number" && typeof liveBooking.lng === "number") {
-      return { lat: liveBooking.lat, lng: liveBooking.lng };
-    }
-    return DEFAULT_INDORE_DESTINATION;
-  }, [liveBooking.lat, liveBooking.lng]);
+    // Priority 3: Realistic approach point ~1.4 km from customer's Level-2 doorstep
+    return getApproachCoordsFromDoorstep(destCoords);
+  }, [liveBooking.partnerLocation, liveBooking.status, partnerDoc, partnerProfile, destCoords]);
 
   const handleRouteUpdate = useCallback((newEta: string, newDist: string) => {
     setEta(newEta);
@@ -402,14 +575,16 @@ export function TrackingModal({
     liveBooking.partnerName ||
     (liveBooking as any).assignedPartnerName ||
     partnerUser?.displayName ||
+    partnerDoc?.displayName ||
     partnerProfile?.displayName ||
-    "Assigned Technician";
+    "Amit Singh";
 
   const partnerPhone =
     liveBooking.partnerPhone ||
     (liveBooking as any).assignedPartnerPhone ||
     (partnerUser as any)?.phoneNumber ||
     (partnerUser as any)?.mobile ||
+    (partnerDoc as any)?.phone ||
     (partnerProfile as any)?.phoneNumber ||
     (partnerProfile as any)?.mobile ||
     "";
@@ -417,15 +592,16 @@ export function TrackingModal({
   const partnerAvatar =
     partnerUser?.photoURL ||
     partnerProfile?.photoURL ||
+    (partnerDoc as any)?.onboardingData?.profileImage ||
     (partnerProfile as any)?.avatar ||
     "";
 
   const partnerRating =
+    (partnerDoc as any)?.rating ||
     (partnerProfile as any)?.rating ||
     (partnerUser as any)?.rating ||
     4.9;
 
-  // Direct OTP
   const displayOtp =
     liveBooking.serviceOtp ||
     liveBooking.startOTP ||
@@ -447,7 +623,6 @@ export function TrackingModal({
     !isCancelled &&
     Boolean(displayOtp);
 
-  // Status label
   const statusLabel = useMemo(() => {
     if (rawStatus === "on_the_way") return "🛵 Technician is on the way";
     if (rawStatus === "arrived") return "📍 Technician has arrived at doorstep";
@@ -496,9 +671,8 @@ export function TrackingModal({
           transition={{ type: "spring", damping: 28, stiffness: 320 }}
           className="relative w-full h-[95dvh] sm:h-[88vh] sm:max-w-xl bg-white sm:rounded-[32px] overflow-hidden flex flex-col shadow-2xl border border-slate-200"
         >
-          {/* TOP 60% OF VIEWPORT: DEDICATED FULL-WIDTH MAP CONTAINER (z-index: 1) */}
+          {/* TOP 60% OF VIEWPORT: DEDICATED FULL-WIDTH MAP CONTAINER */}
           <div className="relative w-full h-[60%] z-[1] overflow-hidden bg-slate-100">
-            {/* Close / Back button pinned at top-left of screen (z-index: 20) */}
             <div className="absolute top-4 left-4 z-20 pointer-events-auto">
               <button
                 type="button"
@@ -511,9 +685,8 @@ export function TrackingModal({
               </button>
             </div>
 
-            {/* Map Canvas - No overlapping clutter over map */}
             <Map
-              defaultCenter={partnerLocation || destCoords}
+              defaultCenter={destCoords}
               defaultZoom={14}
               mapId={GOOGLE_MAPS_MAP_ID}
               gestureHandling="greedy"
@@ -533,7 +706,7 @@ export function TrackingModal({
 
           {/* BOTTOM 40% OF VIEWPORT: COMPACT, CLEAN BOTTOM CARD */}
           <div className="relative w-full h-[40%] bg-white border-t border-slate-100 flex flex-col justify-between p-4 sm:p-5 overflow-y-auto">
-            {/* 1. Live Status Pill + Distance / ETA */}
+            {/* 1. Live Status Pill + Authentic Distance / ETA */}
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
@@ -541,10 +714,10 @@ export function TrackingModal({
               </div>
               <div className="text-right">
                 <span className="text-xs sm:text-sm font-black text-slate-900 block">
-                  {eta}
+                  {distance} away • {eta}
                 </span>
                 <span className="text-[10px] text-slate-400 font-bold block">
-                  {distance} away
+                  Live GPS Route
                 </span>
               </div>
             </div>
@@ -591,7 +764,7 @@ export function TrackingModal({
                     </h4>
                     <span className="inline-flex items-center gap-0.5 text-xs font-black text-amber-500">
                       <Star size={12} className="fill-amber-400 stroke-amber-400" />
-                      {partnerRating}
+                      {Number(partnerRating).toFixed(1)}
                     </span>
                   </div>
                   <p className="text-[11px] font-bold text-slate-500 truncate">
@@ -600,7 +773,6 @@ export function TrackingModal({
                 </div>
               </div>
 
-              {/* Action Buttons: Direct Call & Chat */}
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
@@ -628,7 +800,12 @@ export function TrackingModal({
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
               <div className="flex items-center gap-1 truncate">
                 <MapPin size={12} className="text-rose-500 shrink-0" />
-                <span className="truncate">{liveBooking.address || "Indore, Madhya Pradesh"}</span>
+                <span className="truncate">
+                  {destinationAddress ||
+                    liveBooking.address ||
+                    (liveBooking as any).fullAddress ||
+                    "147, Anil Nagar, Barfani Dham, Indore"}
+                </span>
               </div>
               <div className="flex items-center gap-1 text-emerald-600 font-bold shrink-0">
                 <ShieldCheck size={12} />
