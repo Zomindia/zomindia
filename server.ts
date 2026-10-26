@@ -3273,9 +3273,11 @@ Structure:
     res.sendFile(path.join(process.cwd(), "public", "robots.txt"));
   });
 
+  const distPath = path.join(process.cwd(), "dist");
+  const distIndexHtml = path.join(distPath, "index.html");
+  const rootIndexHtml = path.join(process.cwd(), "index.html");
   const isProduction =
-    process.env.NODE_ENV === "production" ||
-    (!process.env.VITE_DEV_SERVER && existsSync(path.join(process.cwd(), "dist", "index.html")));
+    process.env.NODE_ENV === "production" && existsSync(distIndexHtml);
 
   // Vite middleware for development; Static file serving for production
   if (!isProduction) {
@@ -3290,7 +3292,6 @@ Structure:
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use((req, res, next) => {
       const url = req.url;
       if (url.includes('sw.js') || url.includes('registerSW.js') || url.includes('manifest.webmanifest') || url.includes('manifest.json')) {
@@ -3302,7 +3303,12 @@ Structure:
     });
     app.use(express.static(distPath));
     app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const targetHtml = existsSync(distIndexHtml) ? distIndexHtml : rootIndexHtml;
+      res.sendFile(targetHtml, (err) => {
+        if (err && !res.headersSent) {
+          res.status(200).send(readFileSync(rootIndexHtml, "utf-8"));
+        }
+      });
     });
   }
 

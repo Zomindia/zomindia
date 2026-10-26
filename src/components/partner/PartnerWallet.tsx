@@ -15,13 +15,15 @@ import {
   Calendar,
   Lock
 } from 'lucide-react';
-import { PartnerProfile, EarningsHistory } from '../../types';
+import { PartnerProfile, EarningsHistory, Booking, UserProfile } from '../../types';
 import { collection, query, orderBy, onSnapshot, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 
 interface Props {
   partner: PartnerProfile | null;
+  profile?: UserProfile | null;
+  bookings?: Booking[];
 }
 
 const loadRazorpayScript = () => {
@@ -38,7 +40,7 @@ const loadRazorpayScript = () => {
   });
 };
 
-export default function PartnerWallet({ partner }: Props) {
+export default function PartnerWallet({ partner, profile, bookings = [] }: Props) {
   const [history, setHistory] = useState<EarningsHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -48,11 +50,15 @@ export default function PartnerWallet({ partner }: Props) {
   const [clearingDigital, setClearingDigital] = useState(false);
 
   useEffect(() => {
-    if (!partner?.id) return;
+    const partnerDocId = partner?.id || partner?.userId || profile?.uid;
+    if (!partnerDocId) {
+      setLoading(false);
+      return;
+    }
     let isMounted = true;
     
     const q = query(
-      collection(db, 'partners', partner.id, 'earningsHistory'), 
+      collection(db, 'partners', partnerDocId, 'earningsHistory'), 
       orderBy('createdAt', 'desc')
     );
 
@@ -74,7 +80,7 @@ export default function PartnerWallet({ partner }: Props) {
       isMounted = false;
       unsubscribe();
     };
-  }, [partner?.id]);
+  }, [partner?.id, partner?.userId, profile?.uid]);
 
   const isKycVerified = partner?.kycStatus === 'verified' || partner?.kycStatus === 'approved';
   let isGracePeriodExpired = false;
@@ -95,8 +101,21 @@ export default function PartnerWallet({ partner }: Props) {
     isGracePeriodExpired = Date.now() > targetMs;
   }
 
-  // Net withdrawable earnings
-  const rawEarnings = Number(partner?.totalEarnings || 0);
+  // Completed bookings net 80% partner share
+  const completedNetEarnings = bookings
+    .filter(b => b.status === 'completed' || b.status === 'finalized')
+    .reduce((sum, b) => {
+      const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+      return sum + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
+    }, 0);
+
+  // Net withdrawable earnings (Real Wallet Balance)
+  const rawEarnings = Number(
+    profile?.walletBalance ??
+    (partner as any)?.walletBalance ??
+    (partner?.totalEarnings && partner.totalEarnings > 0 ? partner.totalEarnings : completedNetEarnings) ??
+    0
+  );
   const unsettledCash = Number(partner?.unsettledCashInHand || 0);
 
   // Time since last cash collection

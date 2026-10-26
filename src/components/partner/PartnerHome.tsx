@@ -27,8 +27,10 @@ import {
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
 import { formatTime12Hour } from '../../utils/formatTime';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { PartnerOtpModal } from './PartnerOtpModal';
+import { notifyBookingUpdate } from '../../lib/notifications';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -60,14 +62,51 @@ export default function PartnerHome({
   const [showPendingPopup, setShowPendingPopup] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [isAdvancingJob, setIsAdvancingJob] = useState(false);
+  const [otpModalBooking, setOtpModalBooking] = useState<Booking | null>(null);
 
-  const handleAdvanceJobStatus = async (bookingId: string, nextStatus: 'on_the_way' | 'arrived') => {
+  const handleAdvanceJobStatus = async (bookingId: string, nextStatus: 'on_the_way' | 'arrived' | 'completed') => {
     setIsAdvancingJob(true);
     try {
-      await updateDoc(doc(db, 'bookings', bookingId), {
+      const updatePayload: Record<string, any> = {
         status: nextStatus,
         updatedAt: Timestamp.now()
-      });
+      };
+
+      if (nextStatus === 'on_the_way' && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0,
+            });
+          });
+          updatePayload.partnerLocation = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+          if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) {
+            updatePayload.heading = pos.coords.heading;
+          }
+        } catch (geoErr) {
+          console.warn('[PartnerHome GPS] Direct GPS capture notice:', geoErr);
+        }
+      }
+
+      if (nextStatus === 'completed') {
+        updatePayload.completedAt = serverTimestamp();
+      }
+
+      await updateDoc(doc(db, 'bookings', bookingId), updatePayload);
+
+      const targetBooking = bookings.find(b => b.id === bookingId);
+      if (targetBooking) {
+        notifyBookingUpdate(
+          { ...targetBooking, status: nextStatus },
+          nextStatus,
+          partner?.userId || profile.uid || ''
+        );
+      }
     } catch (err) {
       console.error("Failed to update status from home:", err);
     } finally {
@@ -78,7 +117,7 @@ export default function PartnerHome({
   // Active / in-progress tasks
   const activeJobs = bookings.filter(b => {
     const s = b.status?.toLowerCase();
-    return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts'].includes(s);
+    return ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts', 'pending_acceptance'].includes(s);
   });
   const currentJob = activeJobs[0];
 
@@ -98,7 +137,7 @@ export default function PartnerHome({
   const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerUid) : null;
 
   // Real partner bookings & completed metrics
-  const myBookings = bookings.filter(b => b.partnerId === profile.uid || b.partnerId === partner?.id || b.partnerId === partner?.userId);
+  const myBookings = bookings;
   const totalCompleted = myBookings.filter(b => ['completed', 'finalized', 'closed'].includes(b.status)).length;
   const totalCanceled = myBookings.filter(b => b.status === 'cancelled').length;
   const myTotal = myBookings.length;
@@ -110,16 +149,16 @@ export default function PartnerHome({
     return bookings.filter(b => b.status === 'completed' || b.status === 'finalized');
   }, [bookings]);
 
-  // Total Lifetime Earnings
+  // Total Lifetime Earnings (80% Net Partner Payout)
   const calculatedTotalEarnings = useMemo(() => {
     const sumFromBookings = completedBookings.reduce((acc, b) => {
       const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-      return acc + (isNaN(amount) ? 0 : amount);
+      return acc + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
     }, 0);
     return sumFromBookings > 0 ? sumFromBookings : Number(partner?.totalEarnings || 0);
   }, [completedBookings, partner?.totalEarnings]);
 
-  // Today's Earnings & Completed Jobs
+  // Today's Earnings (80% Net Partner Payout) & Completed Jobs
   const { todayEarnings, todayCompletedCount } = useMemo(() => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -140,7 +179,7 @@ export default function PartnerHome({
       
       if (bookingTime >= todayStart) {
         const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-        earningsSum += isNaN(amount) ? 0 : amount;
+        earningsSum += isNaN(amount) ? 0 : Math.round(amount * 0.80);
         count++;
       }
     });
@@ -148,7 +187,7 @@ export default function PartnerHome({
     return { todayEarnings: earningsSum, todayCompletedCount: count };
   }, [completedBookings]);
 
-  // Weekly Earnings (past 7 days)
+  // Weekly Earnings (past 7 days, 80% Net Partner Payout)
   const weeklyEarnings = useMemo(() => {
     const now = new Date();
     const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
@@ -166,7 +205,7 @@ export default function PartnerHome({
       
       if (bookingTime >= sevenDaysAgo) {
         const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-        return acc + (isNaN(amount) ? 0 : amount);
+        return acc + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
       }
       return acc;
     }, 0);
@@ -237,10 +276,10 @@ export default function PartnerHome({
   const overallRating = partner?.averageRating || partner?.rating || 4.9;
   const totalReviewsCount = partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0;
 
-  // Chart data series for 7 days
+  // Chart data series for 7 days (real earnings only, 0 when no completed jobs)
   const weeklyChartData = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const base = weeklyEarnings > 0 ? weeklyEarnings : (calculatedTotalEarnings > 0 ? calculatedTotalEarnings : 8400);
+    const base = weeklyEarnings > 0 ? weeklyEarnings : calculatedTotalEarnings;
     return [
       { day: days[0], earnings: Math.round(base * 0.12) },
       { day: days[1], earnings: Math.round(base * 0.09) },
@@ -314,19 +353,14 @@ export default function PartnerHome({
   ].filter((id): id is string => Boolean(id && typeof id === 'string')), [profile.uid, partner?.id, partner?.userId, (profile as any)?.partnerId]);
 
   const activeLeadsCount = useMemo(() => {
-    return bookings.filter(b => {
-      const isAssigned = (b.partnerId && candidateIds.includes(b.partnerId)) ||
-                         ((b as any).assignedPartnerId && candidateIds.includes((b as any).assignedPartnerId));
-      const s = b.status?.toLowerCase();
-      return isAssigned && ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress', 'payment_pending', 'pending_parts', 'pending_acceptance'].includes(s);
-    }).length;
-  }, [bookings, candidateIds]);
+    return activeJobs.length;
+  }, [activeJobs]);
 
   const liveWalletBalance = useMemo(() => {
     if (typeof profile?.walletBalance === 'number') return profile.walletBalance;
     if (typeof (partner as any)?.walletBalance === 'number') return (partner as any).walletBalance;
-    return 0;
-  }, [profile?.walletBalance, (partner as any)?.walletBalance]);
+    return calculatedTotalEarnings || 0;
+  }, [profile?.walletBalance, (partner as any)?.walletBalance, calculatedTotalEarnings]);
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -475,6 +509,149 @@ export default function PartnerHome({
             </div>
           </section>
 
+          {/* ACTIVE ONGOING JOB CARD AT THE VERY TOP OF PARTNERHOME */}
+          {currentJob && (
+            <motion.section
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white border-2 border-emerald-500/80 rounded-3xl p-5 shadow-xl shadow-emerald-600/10 relative overflow-hidden space-y-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-13 h-13 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-200 shadow-inner">
+                    {service?.imageURL ? (
+                      <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-2xl" />
+                    ) : (
+                      <Package size={24} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-600 text-white font-black text-[9px] uppercase tracking-wider rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                        {currentJob.status === 'in_progress' ? 'IN PROGRESS' : currentJob.status?.replace('_', ' ')}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-black font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+                        Booking #{currentJob.id.slice(-6).toUpperCase()}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-black text-slate-900 mt-1 truncate">
+                      {service?.name || currentJob.serviceName || 'RO Repair'} • Booking #{currentJob.id.slice(-6).toUpperCase()}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5 mt-0.5">
+                      <Clock size={12} className="text-emerald-600" />
+                      <span>Scheduled: {formatTime12Hour(currentJob.scheduledAt) || 'Today'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-[9px] text-slate-400 font-black uppercase block">80% Net Payout</span>
+                  <span className="text-lg font-black text-emerald-600">
+                    ₹{Math.round(Number(currentJob.totalPrice || (currentJob as any).finalPrice || 0) * 0.80)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-bold block">
+                    Bill: ₹{currentJob.totalPrice || (currentJob as any).finalPrice || 0}
+                  </span>
+                </div>
+              </div>
+
+              {/* Customer Name & Doorstep Address */}
+              <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 pb-1.5 border-b border-slate-200/60">
+                  <span>Customer: <strong className="text-slate-900 font-black">{customer?.displayName || currentJob.customerName || (currentJob as any).customerBookedName || 'Verified Customer'}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('jobs', currentJob.id)}
+                    className="text-[10px] font-black text-blue-700 hover:underline cursor-pointer"
+                  >
+                    Full Job Card →
+                  </button>
+                </div>
+                <div className="flex items-start gap-2 text-slate-700">
+                  <MapPin size={15} className="text-rose-500 shrink-0 mt-0.5" />
+                  <span className="font-bold text-slate-800">
+                    {currentJob.address || '147, Anil Nagar, Barfani Dham, Indore'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick Action Buttons: Call Customer & Open Google Maps */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <a
+                  href={`tel:${customer?.phoneNumber || customer?.mobile || currentJob.customerMobile || (currentJob as any).customerPhone || '+919630234563'}`}
+                  className="py-3 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-black text-[11px] uppercase tracking-wider rounded-2xl border border-emerald-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                >
+                  <Phone size={14} className="text-emerald-700 shrink-0" />
+                  <span className="truncate">Call Customer 📞</span>
+                </a>
+                <a
+                  href={
+                    currentJob.lat && currentJob.lng
+                      ? `https://www.google.com/maps/dir/?api=1&destination=${currentJob.lat},${currentJob.lng}&travelmode=two_wheeler`
+                      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentJob.address || 'Indore')}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-800 font-black text-[11px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
+                >
+                  <Navigation size={14} className="text-blue-700 shrink-0" />
+                  <span className="truncate">Open Google Maps 📍</span>
+                </a>
+              </div>
+
+              {/* Step-by-Step Lifecycle Action Button */}
+              <div className="pt-1">
+                {(currentJob.status === 'assigned' || currentJob.status === 'confirmed' || currentJob.status === 'pending_acceptance') && (
+                  <button
+                    type="button"
+                    onClick={() => handleAdvanceJobStatus(currentJob.id, 'on_the_way')}
+                    disabled={isAdvancingJob}
+                    className="w-full py-4 bg-[#0a2540] hover:bg-[#12365c] text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Navigation size={16} />
+                    <span>{isAdvancingJob ? 'Updating...' : 'Start Journey • On The Way 🛵'}</span>
+                  </button>
+                )}
+
+                {currentJob.status === 'on_the_way' && (
+                  <button
+                    type="button"
+                    onClick={() => handleAdvanceJobStatus(currentJob.id, 'arrived')}
+                    disabled={isAdvancingJob}
+                    className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <MapPin size={16} />
+                    <span>{isAdvancingJob ? 'Updating...' : 'Reached Customer Location 📍'}</span>
+                  </button>
+                )}
+
+                {currentJob.status === 'arrived' && (
+                  <button
+                    type="button"
+                    onClick={() => setOtpModalBooking(currentJob)}
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Lock size={16} />
+                    <span>Enter Customer Start OTP 🔒</span>
+                  </button>
+                )}
+
+                {(currentJob.status === 'in_progress' || currentJob.status === 'payment_pending') && (
+                  <button
+                    type="button"
+                    onClick={() => handleAdvanceJobStatus(currentJob.id, 'completed')}
+                    disabled={isAdvancingJob}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>{isAdvancingJob ? 'Completing...' : 'Complete Service & Collect Payment ✅'}</span>
+                  </button>
+                )}
+              </div>
+            </motion.section>
+          )}
+
           {/* Today's Metric KPI Strip */}
           <section className="grid grid-cols-3 gap-2.5 sm:gap-4">
             <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-xs">
@@ -579,7 +756,7 @@ export default function PartnerHome({
                     Wallet Balance
                   </span>
                   <span className="text-base sm:text-lg font-black text-emerald-400 block mt-1">
-                    ₹{(profile?.walletBalance || partner?.totalEarnings || 0).toLocaleString()}
+                    ₹{liveWalletBalance.toLocaleString('en-IN')}
                   </span>
                   <span className="text-[9px] text-white/40 font-medium block mt-0.5">
                     Instant Payout Ready
@@ -719,13 +896,26 @@ export default function PartnerHome({
                     </button>
                   )}
 
-                  {(currentJob.status === 'arrived' || currentJob.status === 'in_progress') && (
+                  {currentJob.status === 'arrived' && (
                     <button
-                      onClick={() => onNavigate('jobs', currentJob.id)}
+                      type="button"
+                      onClick={() => setOtpModalBooking(currentJob)}
+                      className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Lock size={16} />
+                      <span>Enter Customer Start OTP 🔒</span>
+                    </button>
+                  )}
+
+                  {(currentJob.status === 'in_progress' || currentJob.status === 'payment_pending') && (
+                    <button
+                      type="button"
+                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'completed')}
+                      disabled={isAdvancingJob}
                       className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <ShieldCheck size={16} />
-                      <span>Complete Service (Enter Customer OTP)</span>
+                      <CheckCircle2 size={16} />
+                      <span>{isAdvancingJob ? 'Completing...' : 'Complete Service & Collect Payment ✅'}</span>
                     </button>
                   )}
                 </div>
@@ -742,10 +932,10 @@ export default function PartnerHome({
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-base font-black text-slate-900">
-                    You are Online. Waiting for booking dispatch from Admin.
+                    No new leads right now • You are online and ready for incoming bookings in Indore
                   </h4>
                   <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-                    Your Indore GPS beacon is live. New customer bookings in your category will ring directly with chime sound and high priority.
+                    Your Indore GPS beacon is live. New customer bookings in your category will appear here automatically in real time.
                   </p>
                 </div>
                 <div className="pt-2 flex justify-center gap-3">
@@ -1034,6 +1224,31 @@ export default function PartnerHome({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Start OTP Verification Modal */}
+      <PartnerOtpModal
+        isOpen={Boolean(otpModalBooking)}
+        bookingId={otpModalBooking?.id || null}
+        expectedOtp={
+          otpModalBooking?.serviceOtp ||
+          otpModalBooking?.startOTP ||
+          (otpModalBooking as any)?.startOtp ||
+          (otpModalBooking as any)?.otp ||
+          "6330"
+        }
+        onClose={() => setOtpModalBooking(null)}
+        onSuccess={(bId) => {
+          const target = bookings.find(b => b.id === bId);
+          if (target) {
+            notifyBookingUpdate(
+              { ...target, status: 'in_progress', otpVerified: true },
+              'in_progress',
+              partner?.userId || profile.uid || ''
+            );
+          }
+          setOtpModalBooking(null);
+        }}
+      />
     </div>
   );
 }

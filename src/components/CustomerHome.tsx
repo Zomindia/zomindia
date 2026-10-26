@@ -167,13 +167,16 @@ export const formatCategoryShortLabel = (name: string): string => {
     return "AC Service";
   }
   if (lower.includes("refrigerat") || lower.includes("fridge")) {
-    return "Fridge";
+    return "Refrigerator";
   }
   if (lower.includes("washing")) {
     return "Washing Machine";
   }
   if (lower.includes("purifier") || lower.includes("ro ")) {
     return "RO Purifier";
+  }
+  if (lower.includes("electronic")) {
+    return "Electronics";
   }
   if (lower.includes("tv") || lower.includes("television") || lower.includes("audio")) {
     return "TV & Audio";
@@ -212,9 +215,11 @@ export const formatCategoryShortLabel = (name: string): string => {
     return "Carpentry";
   }
   return name
+    .replace(/\(.*?\)/g, "")
     .replace(/Repair\s*&\s*Service/gi, "")
     .replace(/Repair\s*and\s*Service/gi, "")
     .replace(/Services?/gi, "")
+    .replace(/Repair/gi, "")
     .trim() || name;
 };
 
@@ -366,13 +371,13 @@ export const getCategoryBadge = (cat: any): { text: string; className: string } 
   if (explicitBadge.includes("TREND") || explicitBadge.includes("POPULAR")) {
     return {
       text: "TRENDING",
-      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
+      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
     };
   }
   if (explicitBadge.includes("INSTANT") || explicitBadge.includes("FAST") || explicitBadge.includes("QUICK")) {
     return {
       text: "INSTANT",
-      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
+      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
     };
   }
 
@@ -380,179 +385,17 @@ export const getCategoryBadge = (cat: any): { text: string; className: string } 
   if (name.includes("ac") || name.includes("air conditioner") || name.includes("cooling")) {
     return {
       text: "TRENDING",
-      className: "bg-orange-50 text-orange-600 border border-orange-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
+      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
     };
   }
   if (name.includes("electric") || name.includes("plumb") || name.includes("emergency") || name.includes("repair")) {
     return {
       text: "INSTANT",
-      className: "bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-[10px] font-bold rounded-full px-2 py-0.5 shadow-2xs",
+      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
     };
   }
 
   return null;
-};
-
-const getCategoryIcon = (iconName: string): any => {
-  if (!iconName) return Sparkles;
-  return resolveCategoryIcon(iconName);
-};
-
-const getCategoryIconColor = (iconName: string): string => {
-  if (!iconName) return "text-slate-600";
-  const name = iconName.toLowerCase().trim();
-  const map: Record<string, string> = {
-    sparkles: "text-rose-500",
-    wrench: "text-blue-500",
-    smartphone: "text-slate-700",
-    paintbucket: "text-amber-500",
-    plug: "text-emerald-500",
-    wind: "text-cyan-500",
-    scissors: "text-pink-500",
-    tv: "text-indigo-500",
-    brush: "text-orange-500",
-    hammer: "text-slate-500",
-  };
-  return map[name] || "text-slate-600";
-};
-
-const CATEGORY_THEMES: Record<
-  string,
-  {
-    iconColor: string;
-    bgClass: string;
-    borderClass: string;
-    shadowClass: string;
-    hoverBg: string;
-    activeIconColor: string;
-    textHoverColor: string;
-    badgeColor?: string;
-    badgeText?: string;
-  }
-> = {
-  cleaning: {
-    iconColor: "text-rose-500 bg-rose-50/50",
-    bgClass: "group-hover:bg-rose-500/[0.04] group-hover:border-rose-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(244,63,94,0.15)]",
-    hoverBg: "bg-rose-500/[0.08] shadow-[0_4px_12px_rgba(244,63,94,0.12)]",
-    activeIconColor: "text-rose-600",
-    textHoverColor: "group-hover:text-rose-700",
-    badgeText: "Popular",
-    badgeColor: "bg-rose-50 text-rose-600 border-rose-100",
-  },
-  repairs: {
-    iconColor: "text-blue-500 bg-blue-50/50",
-    bgClass: "group-hover:bg-blue-500/[0.04] group-hover:border-blue-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(59,130,246,0.15)]",
-    hoverBg: "bg-blue-500/[0.08] shadow-[0_4px_12px_rgba(59,130,246,0.12)]",
-    activeIconColor: "text-blue-600",
-    textHoverColor: "group-hover:text-blue-700",
-    badgeText: "Instant",
-    badgeColor: "bg-blue-50 text-blue-600 border-blue-100",
-  },
-  appliance: {
-    iconColor: "text-emerald-500 bg-emerald-50/50",
-    bgClass:
-      "group-hover:bg-emerald-500/[0.04] group-hover:border-emerald-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(16,185,129,0.15)]",
-    hoverBg: "bg-emerald-500/[0.08] shadow-[0_4px_12px_rgba(16,185,129,0.12)]",
-    activeIconColor: "text-emerald-600",
-    textHoverColor: "group-hover:text-emerald-700",
-  },
-  painting: {
-    iconColor: "text-amber-500 bg-amber-50/50",
-    bgClass: "group-hover:bg-amber-500/[0.04] group-hover:border-amber-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(245,158,11,0.15)]",
-    hoverBg: "bg-amber-500/[0.08] shadow-[0_4px_12px_rgba(245,158,11,0.12)]",
-    activeIconColor: "text-amber-600",
-    textHoverColor: "group-hover:text-amber-700",
-    badgeText: "Premium",
-    badgeColor: "bg-amber-50 text-amber-700 border-amber-100",
-  },
-  beauty: {
-    iconColor: "text-pink-500 bg-pink-50/50",
-    bgClass: "group-hover:bg-pink-500/[0.04] group-hover:border-pink-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(236,72,153,0.15)]",
-    hoverBg: "bg-pink-500/[0.08] shadow-[0_4px_12px_rgba(236,72,153,0.12)]",
-    activeIconColor: "text-pink-600",
-    textHoverColor: "group-hover:text-pink-700",
-    badgeText: "Salon",
-    badgeColor: "bg-pink-50 text-pink-600 border-pink-100",
-  },
-  "appliance repair": {
-    iconColor: "text-emerald-500 bg-emerald-50/50",
-    bgClass:
-      "group-hover:bg-emerald-500/[0.04] group-hover:border-emerald-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(16,185,129,0.15)]",
-    hoverBg: "bg-emerald-500/[0.08] shadow-[0_4px_12px_rgba(16,185,129,0.12)]",
-    activeIconColor: "text-emerald-600",
-    textHoverColor: "group-hover:text-emerald-700",
-  },
-  "phone repair": {
-    iconColor: "text-slate-700 bg-slate-100/50",
-    bgClass: "group-hover:bg-slate-500/[0.04] group-hover:border-slate-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(71,85,105,0.15)]",
-    hoverBg: "bg-slate-500/[0.08] shadow-[0_4px_12px_rgba(71,85,105,0.12)]",
-    activeIconColor: "text-slate-900",
-    textHoverColor: "group-hover:text-slate-900",
-  },
-  "ac repair": {
-    iconColor: "text-cyan-500 bg-cyan-50/50",
-    bgClass: "group-hover:bg-cyan-500/[0.04] group-hover:border-cyan-400/40",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(6,182,212,0.15)]",
-    hoverBg: "bg-cyan-500/[0.08] shadow-[0_4px_12px_rgba(6,182,212,0.12)]",
-    activeIconColor: "text-cyan-600",
-    textHoverColor: "group-hover:text-cyan-700",
-    badgeText: "Trending",
-    badgeColor: "bg-cyan-50 text-cyan-600 border-cyan-100",
-  },
-};
-
-const getCategoryTheme = (categoryName: string) => {
-  const name = categoryName.toLowerCase().trim();
-  const theme = CATEGORY_THEMES[name];
-  if (theme) return theme;
-
-  if (name.includes("cleaning")) return CATEGORY_THEMES["cleaning"];
-  if (
-    name.includes("ac") ||
-    name.includes("air conditioner") ||
-    name.includes("cooling")
-  )
-    return CATEGORY_THEMES["ac repair"];
-  if (
-    name.includes("repair") ||
-    name.includes("wrench") ||
-    name.includes("service")
-  )
-    return CATEGORY_THEMES["repairs"];
-  if (name.includes("appliance")) return CATEGORY_THEMES["appliance"];
-  if (name.includes("paint")) return CATEGORY_THEMES["painting"];
-  if (
-    name.includes("beauty") ||
-    name.includes("salon") ||
-    name.includes("spa") ||
-    name.includes("parlour")
-  )
-    return CATEGORY_THEMES["beauty"];
-
-  return {
-    iconColor: "text-slate-600 bg-slate-50/50",
-    bgClass: "group-hover:bg-slate-500/[0.03] group-hover:border-slate-300",
-    borderClass: "border-slate-100/80",
-    shadowClass: "group-hover:shadow-[0_20px_35px_-8px_rgba(148,163,184,0.15)]",
-    hoverBg: "bg-slate-500/[0.08] shadow-[0_4px_12px_rgba(148,163,184,0.12)]",
-    activeIconColor: "text-slate-800",
-    textHoverColor: "group-hover:text-blue-700",
-  };
 };
 
 const getCategoryType = (
@@ -592,15 +435,6 @@ const getCategoryType = (
     return "Home";
   }
   return "Professional";
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  Cleaning: "text-rose-500 bg-rose-50",
-  Repairs: "text-blue-500 bg-blue-50",
-  Appliance: "text-emerald-500 bg-emerald-50",
-  Painting: "text-amber-500 bg-amber-50",
-  Beauty: "text-pink-500 bg-pink-50",
-  "AC Repair": "text-cyan-500 bg-cyan-50",
 };
 
 export default function CustomerHome({
@@ -1748,26 +1582,31 @@ export default function CustomerHome({
 
             {/* Category Tabs: ALL, HOME, PROFESSIONAL, REPAIR */}
             <div className="mb-3 sm:mb-4 relative z-10">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                {(["All", "Home", "Professional", "Repair"] as const).map(
-                  (tab) => {
-                    const isActive = categoryTypeTab === tab;
-                    return (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setCategoryTypeTab(tab)}
-                        className={
-                          isActive
-                            ? "bg-slate-900 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-sm transition-all shrink-0 cursor-pointer"
-                            : "bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs px-3.5 py-1.5 rounded-full transition-all shrink-0 cursor-pointer"
-                        }
-                      >
-                        {tab}
-                      </button>
-                    );
-                  },
-                )}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-0.5">
+                {(
+                  [
+                    { id: "All", label: "✨ All" },
+                    { id: "Home", label: "🏠 Home" },
+                    { id: "Professional", label: "💼 Professional" },
+                    { id: "Repair", label: "🔧 Repair" },
+                  ] as const
+                ).map((tab) => {
+                  const isActive = categoryTypeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setCategoryTypeTab(tab.id)}
+                      className={
+                        isActive
+                          ? "bg-slate-900 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-md shadow-slate-900/20 ring-1 ring-slate-900 flex items-center gap-1.5 shrink-0 active:scale-95 transition-all duration-150 cursor-pointer"
+                          : "bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-semibold text-xs px-3.5 py-1.5 rounded-full border border-slate-250 shadow-2xs hover:border-slate-400 flex items-center gap-1.5 shrink-0 active:scale-95 transition-all duration-150 cursor-pointer"
+                      }
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1777,7 +1616,7 @@ export default function CustomerHome({
             ) : (
               <motion.div
                 layout
-                className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 sm:gap-3.5 items-stretch relative z-10 min-h-[140px]"
+                className="grid grid-cols-4 sm:grid-cols-6 gap-x-2 gap-y-4 my-3 px-1 relative z-10"
               >
                 <AnimatePresence mode="popLayout">
                   {categories
@@ -1788,7 +1627,7 @@ export default function CustomerHome({
                       }
                       return true;
                     })
-                    .map((cat, i) => {
+                    .map((cat) => {
                       const Icon = resolveCategoryIcon(cat.icon, cat.name);
                       const tileStyle = getCategoryTileStyle(cat.name);
                       const badge = getCategoryBadge(cat);
@@ -1813,11 +1652,6 @@ export default function CustomerHome({
                             damping: 25,
                             layout: { duration: 0.3 },
                           }}
-                          whileHover={{ 
-                            y: -3,
-                            transition: { type: "spring", stiffness: 400, damping: 15 }
-                          }}
-                          whileTap={{ scale: 0.97 }}
                           onClick={(e) => {
                             setSelectedCategory(cat);
                             e.currentTarget.scrollIntoView({
@@ -1825,28 +1659,22 @@ export default function CustomerHome({
                               block: "start",
                             });
                           }}
-                          className="group relative flex flex-col items-center justify-between bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all w-full cursor-pointer focus:outline-none min-h-[135px] sm:min-h-[145px] text-center"
+                          className="group relative flex flex-col items-center justify-start p-1 bg-transparent border-0 shadow-none cursor-pointer active:scale-95 transition-all duration-200 select-none focus:outline-none"
                         >
-                          {/* Top Badge Slot (Positioned neatly at the top of each card without overlapping content) */}
-                          <div className="w-full flex justify-end h-5 mb-1 pointer-events-none">
+                          {/* Swiggy/Zomato Icon Avatar (The Hero Element) */}
+                          <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-slate-50 to-slate-100/90 border border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:scale-105 transition-all duration-200 flex items-center justify-center p-2.5 overflow-visible">
                             {badge && (
                               <span className={badge.className}>
                                 {badge.text}
                               </span>
                             )}
-                          </div>
-
-                          {/* Existing Centered Fixed-Height Image/Icon Container Slot */}
-                          <div
-                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 border ${tileStyle.bg} ${tileStyle.text} ${tileStyle.border} ${tileStyle.hoverBg} overflow-hidden my-auto`}
-                          >
                             {hasValidIconURL ? (
                               <img
                                 src={cat.iconURL}
                                 alt={cat.name}
                                 width={48}
                                 height={48}
-                                className="w-8 h-8 sm:w-9 sm:h-9 object-contain transition-transform duration-200 group-hover:scale-110"
+                                className="w-full h-full object-contain drop-shadow-xs transition-transform duration-200 group-hover:scale-110"
                                 referrerPolicy="no-referrer"
                                 onError={() => {
                                   setFailedIcons((prev) => ({
@@ -1857,17 +1685,15 @@ export default function CustomerHome({
                               />
                             ) : (
                               <Icon
-                                size={24}
-                                className="sm:size-[26px] stroke-[2] transition-transform duration-200 group-hover:scale-110"
+                                size={28}
+                                className={`w-full h-full object-contain drop-shadow-xs transition-transform duration-200 group-hover:scale-110 ${tileStyle.text}`}
                               />
                             )}
                           </div>
 
-                          {/* Category Title: Clean Modern Slate, No Ellipsis/Cutoffs, line-clamp-2 with break-words */}
-                          <span
-                            className="text-slate-800 font-semibold text-xs sm:text-sm text-center leading-snug line-clamp-2 break-words w-full mt-2 select-none group-hover:text-blue-700 transition-colors"
-                          >
-                            {cat.name}
+                          {/* Typography (Clean, Centered, No Cramping) */}
+                          <span className="mt-2 text-slate-800 font-semibold text-[11px] sm:text-xs leading-snug line-clamp-2 max-w-[76px] sm:max-w-[88px] text-center select-none">
+                            {formatCategoryShortLabel(cat.name)}
                           </span>
                         </motion.button>
                       );
@@ -1896,12 +1722,7 @@ export default function CustomerHome({
                   layout
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ 
-                    y: -3,
-                    transition: { type: "spring", stiffness: 400, damping: 15 }
-                  }}
-                  whileTap={{ scale: 0.97 }}
-                  className="group relative flex flex-col items-center justify-between bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all w-full cursor-pointer focus:outline-none min-h-[135px] sm:min-h-[145px] text-center"
+                  className="group relative flex flex-col items-center justify-start p-1 bg-transparent border-0 shadow-none cursor-pointer active:scale-95 transition-all duration-200 select-none focus:outline-none"
                   onClick={() => {
                     const detailsSec =
                       document.getElementById("categories-grid");
@@ -1914,15 +1735,14 @@ export default function CustomerHome({
                     }
                   }}
                 >
-                  <div className="w-full h-5 mb-1" />
-                  <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all duration-200 shadow-2xs border bg-slate-100 text-slate-600 border-slate-200/70 group-hover:bg-slate-200/80 group-hover:scale-105 overflow-hidden my-auto">
+                  <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-2xl sm:rounded-3xl bg-slate-100 border border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:scale-105 transition-all duration-200 flex items-center justify-center p-2.5 overflow-visible">
                     <div className="flex gap-1 items-center justify-center">
                       <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
                       <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
                       <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
                     </div>
                   </div>
-                  <span className="text-slate-800 font-semibold text-xs sm:text-sm text-center leading-snug line-clamp-2 break-words w-full mt-2 select-none group-hover:text-blue-700 transition-colors">
+                  <span className="mt-2 text-slate-800 font-semibold text-[11px] sm:text-xs leading-snug line-clamp-2 max-w-[76px] sm:max-w-[88px] text-center select-none">
                     More
                   </span>
                 </motion.button>

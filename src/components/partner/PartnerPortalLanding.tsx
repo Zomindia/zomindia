@@ -40,6 +40,7 @@ import { doc, setDoc, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { getOrCreateRecaptchaVerifier } from '../../lib/recaptcha';
 import { LogoIcon, LogoHorizontal } from '../BrandLogo';
+import PartnerApp from '../PartnerApp';
 
 interface Props {
   onLogin?: () => void;
@@ -129,82 +130,13 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
   const [regLoading, setRegLoading] = useState<boolean>(false);
   const [regError, setRegError] = useState<string | null>(null);
 
-  // Dashboard Stats & State
-  const [todayEarnings, setTodayEarnings] = useState<number>(2450);
-  const [walletBalance, setWalletBalance] = useState<number>(4820);
-  const [completedJobsCount, setCompletedJobsCount] = useState<number>(3);
+  // Real Firestore-backed stats (0 when no completed jobs)
+  const [todayEarnings, setTodayEarnings] = useState<number>(0);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [completedJobsCount, setCompletedJobsCount] = useState<number>(0);
 
-  // Customer Leads List in Indore
-  const [leads, setLeads] = useState<Lead[]>([
-    {
-      id: 'lead-ind-01',
-      category: 'Air Conditioner',
-      title: 'Split AC Deep Jet Cleaning & Pressure Wash',
-      customerName: 'Rohit Sharma',
-      customerPhone: '+91 98260 12345',
-      address: 'Flat 304, Silver Crest Apartment, Scheme 54',
-      landmark: 'Near Sayaji Hotel, Vijay Nagar, Indore',
-      distance: '2.1 km away',
-      duration: '45 mins',
-      payout: 650,
-      customerPrice: 850,
-      status: 'available',
-      otpCode: '4821',
-      scope: ['Indoor coil foam wash', 'Outdoor condenser high pressure jet', 'Gas leak test'],
-      isSurge: true
-    },
-    {
-      id: 'lead-ind-02',
-      category: 'Refrigerator',
-      title: 'Double Door Refrigerator Cooling Diagnostics',
-      customerName: 'Priya Verma',
-      customerPhone: '+91 97531 67890',
-      address: 'House 12-B, Sector C, New Palasia',
-      landmark: 'Behind 56 Dukan, Indore',
-      distance: '3.4 km away',
-      duration: '40 mins',
-      payout: 550,
-      customerPrice: 720,
-      status: 'available',
-      otpCode: '5932',
-      scope: ['Thermostat sensor check', 'Defrost heater test', 'Relay capacitor inspect'],
-      isSurge: false
-    },
-    {
-      id: 'lead-ind-03',
-      category: 'Washing Machine',
-      title: 'Fully Automatic Top-Load Drum Vibration Fix',
-      customerName: 'Amit Patel',
-      customerPhone: '+91 94250 88991',
-      address: 'Plot 45, Scheme 78, Part II',
-      landmark: 'Near Prestige Institute, Indore',
-      distance: '1.8 km away',
-      duration: '50 mins',
-      payout: 520,
-      customerPrice: 680,
-      status: 'available',
-      otpCode: '8143',
-      scope: ['Suspension rod balance', 'Drain pump filter clean', 'Belt tension tune'],
-      isSurge: false
-    },
-    {
-      id: 'lead-ind-04',
-      category: 'Water Purifier',
-      title: 'Complete RO Membrane & Sediment Filter Service',
-      customerName: 'Deepak Gupta',
-      customerPhone: '+91 99770 44321',
-      address: '38, Sudama Nagar, Main Road',
-      landmark: 'Opposite Footi Kothi, Indore',
-      distance: '5.2 km away',
-      duration: '35 mins',
-      payout: 480,
-      customerPrice: 620,
-      status: 'available',
-      otpCode: '3291',
-      scope: ['TDS testing & calibration', 'Membrane flush', 'Carbon pre-filter replacement'],
-      isSurge: true
-    }
-  ]);
+  // Purged hardcoded dummy leads array (connected to real Firestore via PartnerApp)
+  const [leads, setLeads] = useState<Lead[]>([]);
 
   // Lead OTP Modal State
   const [activeOtpLead, setActiveOtpLead] = useState<Lead | null>(null);
@@ -571,9 +503,22 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
   };
 
   // =========================================================================
-  // RENDER VIEW A: CLEAN LIGHT THEME PRO DASHBOARD (When Logged In)
+  // RENDER VIEW A: REAL FIRESTORE PARTNER DASHBOARD (When Logged In)
   // =========================================================================
   if (partnerSession) {
+    const activePartnerProfile = profile || {
+      uid: partnerSession.uid,
+      displayName: partnerSession.displayName || 'Vikas Chopra',
+      phoneNumber: partnerSession.phone,
+      role: 'partner',
+      city: partnerSession.city || 'Indore',
+      kycStatus: 'approved',
+      approvalStatus: 'approved',
+    };
+    return <PartnerApp profile={activePartnerProfile as any} />;
+  }
+
+  if (false as boolean) {
     return (
       <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-600 selection:text-white pb-24">
         {/* Floating Toast Notification */}

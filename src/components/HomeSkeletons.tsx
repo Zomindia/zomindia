@@ -28,21 +28,18 @@ export function SkeletonHeroBanner() {
 /**
  * Skeleton placeholder for the Category Grid items (7 columns on desktop, 4 on mobile)
  */
-export function SkeletonCategoryGrid({ count = 6 }: { count?: number }) {
+export function SkeletonCategoryGrid({ count = 12 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-3 md:grid-cols-6 sm:gap-3 relative z-10 w-full">
+    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5 sm:gap-3.5 my-3 relative z-10 w-full">
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between min-h-[96px] sm:min-h-[104px] relative overflow-hidden shadow-xs select-none"
+          className="flex flex-col items-center justify-start p-2 sm:p-2.5 rounded-2xl bg-slate-50/80 border border-slate-150 shadow-sm relative overflow-hidden select-none"
         >
           {/* Shimmer line */}
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-slate-100 to-transparent pointer-events-none" />
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 animate-pulse" />
-          <div className="mt-2 space-y-1">
-            <div className="w-16 h-3.5 bg-slate-200/80 rounded-md animate-pulse" />
-            <div className="w-10 h-2.5 bg-slate-100 rounded-md animate-pulse" />
-          </div>
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white border border-slate-100 animate-pulse" />
+          <div className="mt-1.5 w-14 h-3 bg-slate-200/80 rounded-md animate-pulse" />
         </div>
       ))}
     </div>

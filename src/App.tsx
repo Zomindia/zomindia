@@ -1241,7 +1241,7 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'partner') {
-      if (!profile || profile.role !== 'partner') {
+      if (!profile || (profile.role !== 'partner' && profile.role !== 'admin' && !profile.partnerId)) {
         return (
           <motion.div
             initial={{ opacity: 0 }}
