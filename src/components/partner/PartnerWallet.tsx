@@ -48,6 +48,12 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
   const [showDigitalClearModal, setShowDigitalClearModal] = useState(false);
   const [digitalClearAmount, setDigitalClearAmount] = useState<string>('');
   const [clearingDigital, setClearingDigital] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const notify = (text: string, type: 'success' | 'error' = 'success') => {
+    setBannerMessage({ text, type });
+    setTimeout(() => setBannerMessage(null), 4500);
+  };
 
   useEffect(() => {
     const partnerDocId = partner?.id || partner?.userId || profile?.uid;
@@ -103,20 +109,20 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
 
   // Completed bookings net 80% partner share
   const completedNetEarnings = bookings
-    .filter(b => b.status === 'completed' || b.status === 'finalized')
+    .filter(b => b.status === 'completed')
     .reduce((sum, b) => {
       const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
       return sum + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
     }, 0);
 
-  // Net withdrawable earnings (Real Wallet Balance)
-  const rawEarnings = Number(
-    profile?.walletBalance ??
-    (partner as any)?.walletBalance ??
-    (partner?.totalEarnings && partner.totalEarnings > 0 ? partner.totalEarnings : completedNetEarnings) ??
-    0
+  // Net withdrawable earnings strictly calculated from completed jobs (80% partner share) and verified partner totalEarnings
+  const rawEarnings = Math.max(
+    0,
+    Number(
+      (partner?.totalEarnings && partner.totalEarnings > 0 ? partner.totalEarnings : completedNetEarnings) ?? 0
+    )
   );
-  const unsettledCash = Number(partner?.unsettledCashInHand || 0);
+  const unsettledCash = Math.max(0, Number(partner?.unsettledCashInHand || 0));
 
   // Time since last cash collection
   let isOlderThan24h = false;
@@ -138,12 +144,12 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
     e.preventDefault();
     if (!partner) return;
     if (isGracePeriodExpired) {
-      alert("KYC submission required to unlock payouts.");
+      notify("KYC submission required to unlock payouts.", 'error');
       return;
     }
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0 || amount > rawEarnings) {
-      alert(`Invalid withdraw amount. Withdrawable limit is ₹${rawEarnings}`);
+      notify(`Invalid withdraw amount. Withdrawable limit is ₹${rawEarnings}`, 'error');
       return;
     }
     
@@ -154,7 +160,7 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         status: 'pending',
         createdAt: Timestamp.now()
       });
-      alert('Withdrawal request submitted successfully! Admin will process this soon.');
+      notify('Withdrawal request submitted successfully! Admin will process this soon.', 'success');
       setShowWithdraw(false);
       setWithdrawAmount('');
     } catch (err) {
@@ -165,15 +171,17 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
   const handleDigitalCashClearance = async () => {
     const amt = parseFloat(digitalClearAmount || String(unsettledCash));
     if (!amt || amt <= 0 || amt > unsettledCash) {
-      alert(`Please enter a valid amount up to ₹${unsettledCash}`);
+      notify(`Please enter a valid amount up to ₹${unsettledCash}`, 'error');
       return;
     }
 
     setClearingDigital(true);
     try {
       const scriptOk = await loadRazorpayScript();
-      if (!scriptOk) {
-        throw new Error("Razorpay SDK could not be loaded. Check your internet connection.");
+      if (!scriptOk || typeof (window as any).Razorpay !== 'function') {
+        notify("Online payment gateway is not configured. Please contact support or settle cash with Admin.", 'error');
+        setClearingDigital(false);
+        return;
       }
 
       // 1. Create order
@@ -187,15 +195,22 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         })
       });
 
-      if (!orderRes.ok) {
-        const errJson = await orderRes.json().catch(() => ({}));
-        throw new Error(errJson.error || "Failed to initiate online deposit order");
-      }
+      const orderData = await orderRes.json().catch(() => ({}));
+      const razorpayKey = orderData?.keyId || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || '';
+      const isRealKey = Boolean(
+        razorpayKey &&
+        !String(razorpayKey).includes('placeholder') &&
+        String(razorpayKey).startsWith('rzp_') &&
+        !orderData?.isMock &&
+        orderData?.orderId &&
+        !String(orderData.orderId).startsWith('order_mock_')
+      );
 
-      const orderData = await orderRes.json();
-      const razorpayKey = (orderData?.keyId && !orderData.keyId.includes('placeholder')) 
-        ? orderData.keyId 
-        : (import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder');
+      if (!orderRes.ok || !orderData?.success || !isRealKey) {
+        notify(orderData?.error || "Online payment gateway is not configured. Please contact support or settle cash with Admin.", 'error');
+        setClearingDigital(false);
+        return;
+      }
 
       const options = {
         key: razorpayKey,
@@ -216,6 +231,9 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         },
         handler: async (response: any) => {
           try {
+            if (!response?.razorpay_order_id || !response?.razorpay_payment_id || !response?.razorpay_signature) {
+              throw new Error("Payment verification failed: Missing cryptographic signature from gateway.");
+            }
             const clearRes = await fetch('/api/partner/clear-cash-online', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -234,12 +252,12 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
             }
 
             const resJson = await clearRes.json();
-            alert(`Success! ₹${amt} deposited. 80% share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`);
+            notify(`Success! ₹${amt} deposited. 80% share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`, 'success');
             setShowDigitalClearModal(false);
             setDigitalClearAmount('');
           } catch (vErr: any) {
             console.error("Verification error:", vErr);
-            alert("Digital clearance failed: " + (vErr.message || "Please contact support"));
+            notify("Digital clearance failed: " + (vErr.message || "Please contact support"), 'error');
           } finally {
             setClearingDigital(false);
           }
@@ -248,19 +266,30 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on('payment.failed', (resp: any) => {
-        alert("Payment failed: " + (resp.error?.description || "Transaction cancelled"));
+        notify("Payment failed: " + (resp.error?.description || "Transaction cancelled"), 'error');
         setClearingDigital(false);
       });
       rzp.open();
     } catch (err: any) {
       console.error("Digital clearance initiation failed:", err);
-      alert(err.message || "Could not start digital cash clearance");
+      notify(err.message || "Could not start digital cash clearance", 'error');
       setClearingDigital(false);
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 relative">
+      {bannerMessage && (
+        <div
+          className={`px-4 py-3 rounded-2xl text-xs font-bold shadow-lg ${
+            bannerMessage.type === 'error'
+              ? 'bg-rose-600 text-white'
+              : 'bg-emerald-600 text-white'
+          }`}
+        >
+          {bannerMessage.text}
+        </div>
+      )}
       {/* 1. PROMINENT RED ALERT CARD (When cash is owed) */}
       {unsettledCash > 0 && (
         <section className="bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 rounded-3xl p-6 text-white shadow-xl shadow-rose-600/20 relative overflow-hidden">

@@ -551,7 +551,7 @@ router.post("/bookings", async (req: any, res: any) => {
         phoneNumber: initialPhone,
         photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${customerId}`,
         referralCode: "ZOMINDORE",
-        walletBalance: 1000,
+        walletBalance: 0,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
       userDoc = await userRef.get();
@@ -1209,14 +1209,25 @@ router.post("/bookings/:bookingId/add-charge", async (req: any, res: any) => {
  */
 
 // POST /api/payment/phonepe/verify-and-confirm
-// Confirms PhonePe transaction & clears outstanding balances
+// Confirms PhonePe transaction & clears outstanding balances with strict cryptographic verification
 router.post("/payment/phonepe/verify-and-confirm", async (req: any, res: any) => {
   try {
-    const { bookingId, customerId, merchantTransactionId, phonepeTransactionId } = req.body;
+    const { bookingId, customerId, merchantTransactionId, phonepeTransactionId, signature, payloadBase64 } = req.body;
 
     const txnId = merchantTransactionId || phonepeTransactionId;
-    if (!bookingId || !txnId) {
-      return res.status(400).json({ error: "Missing verification criteria: bookingId, merchantTransactionId" });
+    if (!bookingId || !txnId || !signature || !payloadBase64) {
+      return res.status(400).json({ error: "Missing verification criteria: bookingId, merchantTransactionId, signature, payloadBase64" });
+    }
+
+    const saltKey = (process.env.PHONEPE_SALT_KEY || "").trim();
+    const saltIndex = (process.env.PHONEPE_SALT_INDEX || "1").trim();
+    if (!saltKey) {
+      return res.status(503).json({ success: false, error: "Payment gateway secret missing on server. Verification rejected." });
+    }
+
+    const expectedChecksum = crypto.createHash("sha256").update(`${payloadBase64}/pg/v1/status${saltKey}`).digest("hex") + `###${saltIndex}`;
+    if (expectedChecksum !== signature) {
+      return res.status(400).json({ success: false, error: "Payment verification failed: Invalid cryptographic signature" });
     }
 
     const db = getDb();

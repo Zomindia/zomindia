@@ -1,9 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, WalletTransaction } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { Wallet, CreditCard, ArrowDownLeft, ArrowUpRight, Copy, Share2 } from 'lucide-react';
+
+const isCorruptMockTransaction = (tx: any): boolean => {
+  const payId = String(tx?.paymentId || '').trim();
+  const refId = String(tx?.referenceId || '').trim();
+  const ordId = String(tx?.orderId || '').trim();
+  const reason = String(tx?.reason || '').toLowerCase();
+  return (
+    payId.startsWith('pay_sim_') ||
+    payId.startsWith('pay_mock_') ||
+    payId.startsWith('sim_pay_') ||
+    refId.startsWith('pay_sim_') ||
+    refId.startsWith('pay_mock_') ||
+    refId.startsWith('sim_pay_') ||
+    ordId.startsWith('order_mock_') ||
+    reason.includes('mock') ||
+    tx?.isMock === true
+  );
+};
+
+const loadRazorpayScript = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (typeof (window as any).Razorpay === 'function') {
+      resolve(true);
+      return;
+    }
+    const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(true));
+      existingScript.addEventListener('error', () => resolve(false));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 export default function WalletView({ profile, setActiveTab }: { profile: UserProfile, setActiveTab?: (tab: any) => void }) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -12,15 +50,30 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
   const [copied, setCopied] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasSanitizedRef = useRef(false);
 
   const displayMessage = (msg: string, isError = false) => {
-    if (isError) setErrorMessage(msg);
-    else setSuccessMessage(msg);
+    if (isError) {
+      setErrorMessage(msg);
+      setSuccessMessage(null);
+    } else {
+      setSuccessMessage(msg);
+      setErrorMessage(null);
+    }
     setTimeout(() => {
       setSuccessMessage(null);
       setErrorMessage(null);
-    }, 4000);
+    }, 4500);
   };
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    fetch('/api/wallet/sanitize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: profile.uid })
+    }).catch(() => {});
+  }, [profile?.uid]);
 
   useEffect(() => {
     let isMounted = true;
@@ -30,15 +83,50 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
     );
     const unsubscribe = onSnapshot(
       q,
-      (snap) => {
+      async (snap) => {
         if (!isMounted) return;
-        const txs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WalletTransaction));
-        txs.sort((a, b) => {
+        const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WalletTransaction & Record<string, any>));
+        const corruptDocs = allDocs.filter(isCorruptMockTransaction);
+        const genuineDocs = allDocs.filter(tx => !isCorruptMockTransaction(tx));
+
+        genuineDocs.sort((a, b) => {
           const timeA = typeof (a.createdAt as any)?.toMillis === 'function' ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0));
           const timeB = typeof (b.createdAt as any)?.toMillis === 'function' ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0));
           return timeB - timeA;
         });
-        setTransactions(txs);
+        setTransactions(genuineDocs);
+
+        // Purge any corrupt mock transactions and recalculate authentic user wallet balance
+        if (corruptDocs.length > 0 || !hasSanitizedRef.current) {
+          hasSanitizedRef.current = true;
+          for (const badTx of corruptDocs) {
+            try {
+              await deleteDoc(doc(db, 'walletTransactions', badTx.id));
+            } catch {
+              // Handled by backend sanitation or admin rules
+            }
+          }
+
+          const verifiedBalance = Math.max(
+            0,
+            genuineDocs.reduce((acc, tx) => {
+              if (tx.status && tx.status !== 'completed') return acc;
+              const amt = Number(tx.amount) || 0;
+              return tx.type === 'credit' ? acc + amt : acc - amt;
+            }, 0)
+          );
+
+          const currentProfileBalance = Number(profile.walletBalance || 0);
+          if (corruptDocs.length > 0 || (genuineDocs.length === 0 && currentProfileBalance > 0) || currentProfileBalance !== verifiedBalance) {
+            try {
+              await updateDoc(doc(db, 'users', profile.uid), {
+                walletBalance: verifiedBalance
+              });
+            } catch {
+              // Handled by backend /api/wallet/sanitize
+            }
+          }
+        }
       },
       (err) => {
         if (!isMounted) return;
@@ -50,7 +138,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
       isMounted = false;
       if (typeof unsubscribe === "function") unsubscribe();
     };
-  }, [profile.uid]);
+  }, [profile.uid, profile.walletBalance]);
 
   const handleTopup = async () => {
     const amount = Number(topupAmount);
@@ -77,20 +165,38 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
         })
       });
 
-      const orderData = await orderRes.json();
-      if (!orderData?.success) {
-        throw new Error(orderData?.error || "Failed to create payment order");
-      }
-
-      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || orderData.keyId;
+      const orderData = await orderRes.json().catch(() => ({}));
+      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || orderData?.keyId;
       const isRealKey = Boolean(
         clientKey &&
-        !clientKey.includes('placeholder') &&
-        (clientKey.startsWith('rzp_') || !orderData.isMock)
+        !String(clientKey).includes('placeholder') &&
+        String(clientKey).startsWith('rzp_') &&
+        !orderData?.isMock &&
+        orderData?.orderId &&
+        !String(orderData.orderId).startsWith('order_mock_')
       );
 
+      if (!orderRes.ok || !orderData?.success || !isRealKey) {
+        displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
+        setLoading(false);
+        return;
+      }
+
+      const sdkLoaded = await loadRazorpayScript();
+      const RazorpayConstructor = (window as any).Razorpay;
+      if (!sdkLoaded || typeof RazorpayConstructor !== 'function') {
+        displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
+        setLoading(false);
+        return;
+      }
+
       // Function to post verified payment details to /api/add-funds
-      const submitVerification = async (verifyPayload: any) => {
+      const submitVerification = async (verifyPayload: {
+        razorpay_order_id: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+        paymentId: string;
+      }) => {
         const addFundsRes = await fetch('/api/add-funds', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -101,7 +207,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           })
         });
         const addFundsData = await addFundsRes.json();
-        if (addFundsData.success) {
+        if (addFundsRes.ok && addFundsData.success) {
           setTopupAmount('');
           displayMessage("Wallet recharged successfully via Razorpay!");
         } else {
@@ -109,71 +215,59 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
         }
       };
 
-      const RazorpayConstructor = (window as any).Razorpay;
-
-      // If Razorpay SDK is loaded and we have valid credentials, open the standard Razorpay checkout modal
-      if (isRealKey && typeof RazorpayConstructor === 'function') {
-        const options = {
-          key: clientKey,
-          amount: orderData.amount || Math.round(amount * 100),
-          currency: 'INR',
-          name: 'Zomindia Wallet Recharge',
-          description: `Add ₹${amount} to Wallet Balance`,
-          order_id: orderData.orderId,
-          handler: async function (response: any) {
-            try {
-              await submitVerification({
-                razorpay_order_id: response.razorpay_order_id || orderData.orderId,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                paymentId: response.razorpay_payment_id,
-                isMock: false
-              });
-            } catch (verErr: any) {
-              console.error("[Razorpay Wallet Add Funds Error]:", verErr);
-              displayMessage("Error processing verified payment: " + verErr.message, true);
+      const options = {
+        key: clientKey,
+        amount: orderData.amount || Math.round(amount * 100),
+        currency: 'INR',
+        name: 'Zomindia Wallet Recharge',
+        description: `Add ₹${amount} to Wallet Balance`,
+        order_id: orderData.orderId,
+        handler: async function (response: any) {
+          try {
+            if (!response?.razorpay_order_id || !response?.razorpay_payment_id || !response?.razorpay_signature) {
+              displayMessage("Payment verification failed: Incomplete gateway signature.", true);
+              return;
             }
-          },
-          prefill: {
-            name: profile.fullName || 'Customer',
-            contact: profile.mobile || profile.phoneNumber || '',
-            email: (profile.email && !profile.email.includes('customer@zomindia.com'))
-              ? profile.email
-              : (profile.mobile || profile.phoneNumber ? `${(profile.mobile || profile.phoneNumber || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
-          },
-          theme: {
-            color: '#1d4ed8'
-          },
-          modal: {
-            ondismiss: function () {
-              setLoading(false);
-            }
+            await submitVerification({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              paymentId: response.razorpay_payment_id
+            });
+          } catch (verErr: any) {
+            console.error("[Razorpay Wallet Add Funds Error]:", verErr);
+            displayMessage("Error processing verified payment: " + verErr.message, true);
+          } finally {
+            setLoading(false);
           }
-        };
+        },
+        prefill: {
+          name: profile.fullName || 'Customer',
+          contact: profile.mobile || profile.phoneNumber || '',
+          email: (profile.email && !profile.email.includes('customer@zomindia.com'))
+            ? profile.email
+            : (profile.mobile || profile.phoneNumber ? `${(profile.mobile || profile.phoneNumber || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
+        },
+        theme: {
+          color: '#1d4ed8'
+        },
+        modal: {
+          ondismiss: function () {
+            setLoading(false);
+          }
+        }
+      };
 
-        const rzp = new RazorpayConstructor(options);
-        rzp.on('payment.failed', function (resp: any) {
-          console.warn('[Razorpay Topup Failed]:', resp.error);
-          displayMessage(resp.error?.description || "Payment was declined.", true);
-          setLoading(false);
-        });
-        rzp.open();
-        return;
-      }
-
-      // Fallback sandbox simulation mode when testing without live keys
-      const mockPayId = `pay_sim_${Date.now()}`;
-      await submitVerification({
-        razorpay_order_id: orderData.orderId,
-        razorpay_payment_id: mockPayId,
-        razorpay_signature: 'mock_signature',
-        paymentId: mockPayId,
-        isMock: true
+      const rzp = new RazorpayConstructor(options);
+      rzp.on('payment.failed', function (resp: any) {
+        console.warn('[Razorpay Topup Failed]:', resp.error);
+        displayMessage(resp.error?.description || "Payment was declined.", true);
+        setLoading(false);
       });
+      rzp.open();
     } catch (err: any) {
       console.error("[Wallet Top-up Error]:", err);
-      displayMessage("Failed to initiate payment: " + (err.message || "Network error"), true);
-    } finally {
+      displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
       setLoading(false);
     }
   };
@@ -210,6 +304,15 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
       setApplyingCode(false);
     }
   };
+
+  const verifiedBalance = Math.max(
+    0,
+    transactions.reduce((acc, tx) => {
+      if (tx.status && tx.status !== 'completed') return acc;
+      const amt = Number(tx.amount) || 0;
+      return tx.type === 'credit' ? acc + amt : acc - amt;
+    }, 0)
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:py-16 relative">
@@ -253,7 +356,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-widest font-bold text-white/50">Current Balance</p>
-                <div className="text-4xl font-bold font-display tracking-tight">₹{profile.walletBalance || 0}</div>
+                <div className="text-4xl font-bold font-display tracking-tight">₹{verifiedBalance}</div>
               </div>
             </div>
 

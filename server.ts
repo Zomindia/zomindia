@@ -484,7 +484,7 @@ async function startServer() {
   // ==========================================
 
   // 1. Create Order Endpoint (POST /api/razorpay/create-order)
-  app.post(["/api/razorpay/create-order"], async (req, res) => {
+  app.post(["/api/razorpay/create-order", "/api/create-razorpay-order", "/api/payment/create-order"], async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const {
@@ -494,7 +494,6 @@ async function startServer() {
         receipt,
         customerName,
         customerPhone,
-        customerEmail,
         serviceName
       } = req.body || {};
 
@@ -506,103 +505,66 @@ async function startServer() {
         });
       }
 
+      if (!razorpayClient || !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET || RAZORPAY_KEY_ID.includes("placeholder")) {
+        return res.status(503).json({
+          success: false,
+          error: "Online payment gateway is not configured. Please contact support or pay via cash."
+        });
+      }
+
       // Razorpay expects amount in smallest currency sub-units (paise for INR)
       const amountInPaise = Math.round(numAmount * 100);
       const orderReceipt = receipt || `rcpt_${bookingId ? String(bookingId).slice(-8) : Date.now()}`;
 
-      // Check if official credentials exist
-      if (razorpayClient && RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
-        try {
-          const options = {
-            amount: amountInPaise,
-            currency: (currency || "INR").toUpperCase(),
-            receipt: orderReceipt,
-            notes: {
-              bookingId: bookingId || "DIRECT",
-              customerName: customerName || "Customer",
-              customerPhone: customerPhone || "",
-              serviceName: serviceName || "Zomindia Service"
-            }
-          };
-
-          const order = await razorpayClient.orders.create(options);
-
-          if (bookingId && db) {
-            try {
-              await db.collection("bookings").doc(bookingId).set({
-                paymentIntentId: order.id,
-                razorpayOrderId: order.id,
-                paymentMethod: "razorpay",
-                razorpayInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-              }, { merge: true });
-            } catch (dbErr: any) {
-              // Non-blocking in sandbox container mode
-            }
+      try {
+        const options = {
+          amount: amountInPaise,
+          currency: (currency || "INR").toUpperCase(),
+          receipt: orderReceipt,
+          notes: {
+            bookingId: bookingId || "DIRECT",
+            customerName: customerName || "Customer",
+            customerPhone: customerPhone || "",
+            serviceName: serviceName || "Zomindia Service"
           }
+        };
 
-          return res.status(200).json({
-            success: true,
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            keyId: RAZORPAY_KEY_ID,
-            isMock: false
-          });
-        } catch (apiErr: any) {
-          const authFailed =
-            apiErr?.error?.code === "BAD_REQUEST_ERROR" ||
-            apiErr?.error?.description?.includes("Authentication failed") ||
-            apiErr?.statusCode === 400 ||
-            apiErr?.statusCode === 401;
+        const order = await razorpayClient.orders.create(options);
 
-          if (authFailed) {
-            console.warn(
-              "[Razorpay Notice]: Gateway test credentials could not be authenticated. Using seamless sandbox simulation mode."
-            );
-            // Disable faulty client for future orders in this session
-            razorpayClient = null;
-          } else {
-            console.warn("[Razorpay API Notice]:", apiErr?.error?.description || apiErr.message);
+        if (bookingId && db) {
+          try {
+            await db.collection("bookings").doc(bookingId).set({
+              paymentIntentId: order.id,
+              razorpayOrderId: order.id,
+              paymentMethod: "razorpay",
+              razorpayInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          } catch (dbErr: any) {
+            // Non-blocking in sandbox container mode
           }
-          // Graceful fallback to simulation if live call fails
         }
-      }
 
-      // Simulation / Test fallback when keys are unconfigured or authentication fails
-      const mockOrderId = `order_mock_${bookingId ? String(bookingId).slice(-6) : Date.now()}`;
-      if (bookingId && db) {
-        try {
-          await db.collection("bookings").doc(bookingId).set({
-            paymentIntentId: mockOrderId,
-            razorpayOrderId: mockOrderId,
-            paymentMethod: "razorpay",
-            razorpayInitiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        } catch (err: any) {
-          // Non-blocking in sandbox container mode
-        }
+        return res.status(200).json({
+          success: true,
+          orderId: order.id,
+          amount: order.amount,
+          currency: order.currency,
+          keyId: RAZORPAY_KEY_ID,
+          isMock: false
+        });
+      } catch (apiErr: any) {
+        console.warn("[Razorpay API Error]:", apiErr?.error?.description || apiErr.message);
+        return res.status(503).json({
+          success: false,
+          error: "Online payment gateway is not configured. Please contact support or pay via cash."
+        });
       }
-
-      return res.status(200).json({
-        success: true,
-        orderId: mockOrderId,
-        amount: amountInPaise,
-        currency: "INR",
-        keyId: "rzp_test_placeholder",
-        isMock: true
-      });
     } catch (err: any) {
-      console.warn("[Razorpay Create Order Notice]:", err.message || err);
-      const fallbackOrderId = `order_mock_${Date.now()}`;
-      return res.status(200).json({
-        success: true,
-        orderId: fallbackOrderId,
-        amount: Math.round(Number(req.body?.amount || 100) * 100),
-        currency: "INR",
-        keyId: "rzp_test_placeholder",
-        isMock: true
+      console.warn("[Razorpay Create Order Error]:", err.message || err);
+      return res.status(503).json({
+        success: false,
+        error: "Online payment gateway is not configured. Please contact support or pay via cash."
       });
     }
   });
@@ -610,15 +572,16 @@ async function startServer() {
   // Razorpay Gateway Config
   app.get(["/api/razorpay/config"], (_req, res) => {
     res.setHeader("Content-Type", "application/json");
+    const isConfigured = Boolean(razorpayClient && RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET && !RAZORPAY_KEY_ID.includes("placeholder"));
     res.json({
-      success: true,
-      keyId: razorpayClient && RAZORPAY_KEY_ID ? RAZORPAY_KEY_ID : "rzp_test_placeholder",
-      isMock: !razorpayClient || !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET
+      success: isConfigured,
+      keyId: isConfigured ? RAZORPAY_KEY_ID : "",
+      isMock: false
     });
   });
 
   // 2. Verify Payment Endpoint (POST /api/razorpay/verify-payment)
-  app.post(["/api/razorpay/verify-payment"], async (req, res) => {
+  app.post(["/api/razorpay/verify-payment", "/api/verify-razorpay-payment", "/api/payment/verify"], async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
       const {
@@ -634,42 +597,45 @@ async function startServer() {
         status: requestedStatus
       } = req.body || {};
 
-      const resolvedBookingId = bookingId || bookingPayload?.id || bookingPayload?.bookingId || razorpay_order_id || `bk_${Date.now()}`;
+      if (!RAZORPAY_KEY_SECRET) {
+        return res.status(503).json({
+          success: false,
+          error: "Payment gateway secret missing on server. Verification rejected."
+        });
+      }
 
-      const orderId = razorpay_order_id || bookingPayload?.razorpayOrderId || `ORD_${Date.now()}`;
-      const paymentId = razorpay_payment_id || `PAY_${Date.now()}`;
-
-      // Check if simulation / test mode
-      const isSimulation =
+      if (
         isMock === true ||
-        String(orderId).startsWith("order_mock_") ||
-        String(paymentId).startsWith("pay_mock_") ||
-        String(paymentId).startsWith("pay_sim_") ||
+        !razorpay_order_id ||
+        !razorpay_payment_id ||
+        !razorpay_signature ||
         razorpay_signature === "mock_signature" ||
-        !RAZORPAY_KEY_SECRET ||
-        !razorpayClient;
-
-      let isSignatureValid = false;
-
-      if (isSimulation) {
-        isSignatureValid = true;
-      } else if (RAZORPAY_KEY_SECRET && razorpay_order_id && razorpay_payment_id && razorpay_signature) {
-        try {
-          const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-          const expectedSignature = crypto
-            .createHmac("sha256", RAZORPAY_KEY_SECRET)
-            .update(body)
-            .digest("hex");
-          isSignatureValid = expectedSignature === razorpay_signature;
-        } catch (sigErr: any) {
-          console.warn("[Razorpay Signature Notice]:", sigErr.message || sigErr);
-          isSignatureValid = false;
-        }
+        String(razorpay_order_id).startsWith("order_mock_") ||
+        String(razorpay_payment_id).startsWith("pay_sim_") ||
+        String(razorpay_payment_id).startsWith("pay_mock_")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Invalid or simulated payment credentials rejected"
+        });
       }
 
-      if (!isSignatureValid) {
-        return res.status(400).json({ success: false, error: "Invalid Razorpay payment signature" });
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expectedSignature = crypto
+        .createHmac("sha256", RAZORPAY_KEY_SECRET)
+        .update(body)
+        .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Invalid cryptographic signature"
+        });
       }
+
+      const resolvedBookingId = bookingId || bookingPayload?.id || bookingPayload?.bookingId || razorpay_order_id;
+      const orderId = razorpay_order_id;
+      const paymentId = razorpay_payment_id;
 
       let finalAmount = typeof amount === "number" ? amount : 0;
       let finalUserId = customerUid || "system";
@@ -1189,19 +1155,43 @@ async function startServer() {
         return res.status(500).json({ error: "Database not initialized" });
       }
 
-      // Verify Razorpay HMAC signature if credentials are configured
-      const secret = process.env.RAZORPAY_KEY_SECRET;
-      if (secret && razorpay_order_id && razorpay_payment_id && razorpay_signature) {
-        const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-        const expectedSignature = crypto
-          .createHmac("sha256", secret)
-          .update(body.toString())
-          .digest("hex");
+      // Strict Razorpay HMAC signature verification
+      const secret = (process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET || "").trim();
+      if (!secret) {
+        return res.status(503).json({
+          success: false,
+          error: "Payment gateway secret missing on server. Cash clearance rejected."
+        });
+      }
 
-        if (expectedSignature !== razorpay_signature) {
-          console.error("[Partner Digital Clearance] Razorpay signature mismatch:", { expectedSignature, razorpay_signature });
-          return res.status(400).json({ error: "Invalid Razorpay payment signature" });
-        }
+      if (
+        !razorpay_order_id ||
+        !razorpay_payment_id ||
+        !razorpay_signature ||
+        String(razorpay_order_id).startsWith("order_mock_") ||
+        String(razorpay_payment_id).startsWith("pay_sim_") ||
+        String(razorpay_payment_id).startsWith("pay_mock_") ||
+        razorpay_signature === "mock_signature" ||
+        razorpay_signature === "verified_online"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Missing or invalid cryptographic signature"
+        });
+      }
+
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expectedSignature = crypto
+        .createHmac("sha256", secret)
+        .update(body.toString())
+        .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        console.error("[Partner Digital Clearance] Razorpay signature mismatch");
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Invalid cryptographic signature"
+        });
       }
 
       const depositAmt = Math.round(Number(amount));
@@ -2553,74 +2543,202 @@ Structure:
     }
   });
 
+  const isCorruptMockTxData = (tx: any): boolean => {
+    const payId = String(tx?.paymentId || "").trim();
+    const refId = String(tx?.referenceId || "").trim();
+    const ordId = String(tx?.orderId || "").trim();
+    const reason = String(tx?.reason || "").toLowerCase();
+    return (
+      payId.startsWith("pay_sim_") ||
+      payId.startsWith("pay_mock_") ||
+      payId.startsWith("sim_pay_") ||
+      refId.startsWith("pay_sim_") ||
+      refId.startsWith("pay_mock_") ||
+      refId.startsWith("sim_pay_") ||
+      ordId.startsWith("order_mock_") ||
+      reason.includes("mock") ||
+      tx?.isMock === true
+    );
+  };
+
+  const sanitizeCorruptedWalletLedgers = async (targetUserId?: string) => {
+    if (!db) return { deletedCount: 0, updatedUsers: 0 };
+    let deletedCount = 0;
+    let updatedUsers = 0;
+    try {
+      const txQuery = targetUserId
+        ? db.collection("walletTransactions").where("userId", "==", targetUserId)
+        : db.collection("walletTransactions");
+      const snap = await txQuery.get();
+      const affectedUserIds = new Set<string>();
+      if (targetUserId) affectedUserIds.add(targetUserId);
+
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data() || {};
+        if (data.userId) affectedUserIds.add(String(data.userId));
+        if (isCorruptMockTxData(data)) {
+          await docSnap.ref.delete();
+          deletedCount++;
+        }
+      }
+
+      // If running global startup sanitation, also check users with non-zero walletBalance
+      if (!targetUserId) {
+        const usersSnap = await db.collection("users").get();
+        for (const uDoc of usersSnap.docs) {
+          const uData = uDoc.data() || {};
+          if (Number(uData.walletBalance || 0) > 0) {
+            affectedUserIds.add(uDoc.id);
+          }
+        }
+      }
+
+      for (const uid of affectedUserIds) {
+        const userTxSnap = await db.collection("walletTransactions").where("userId", "==", uid).get();
+        let verifiedBalance = 0;
+        for (const txDoc of userTxSnap.docs) {
+          const tx = txDoc.data() || {};
+          if (isCorruptMockTxData(tx)) {
+            await txDoc.ref.delete();
+            deletedCount++;
+            continue;
+          }
+          if (tx.status && tx.status !== "completed") continue;
+          const amt = Number(tx.amount) || 0;
+          verifiedBalance += tx.type === "credit" ? amt : -amt;
+        }
+        verifiedBalance = Math.max(0, verifiedBalance);
+
+        const userRef = db.collection("users").doc(uid);
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+          const currentBal = Number(userDoc.data()?.walletBalance || 0);
+          if (currentBal !== verifiedBalance) {
+            await userRef.update({
+              walletBalance: verifiedBalance,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            updatedUsers++;
+          }
+        }
+      }
+    } catch (err: any) {
+      // Non-blocking in container sandbox mode
+    }
+    return { deletedCount, updatedUsers };
+  };
+
+  // Run automated startup wallet ledger sanitation
+  setTimeout(() => {
+    sanitizeCorruptedWalletLedgers().catch(() => {});
+  }, 2500);
+
+  app.post("/api/wallet/sanitize", async (req, res) => {
+    try {
+      const { userId } = req.body || {};
+      const result = await sanitizeCorruptedWalletLedgers(userId ? String(userId) : undefined);
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      return res.json({ success: true, deletedCount: 0, updatedUsers: 0 });
+    }
+  });
+
   app.post("/api/add-funds", async (req, res) => {
     try {
-      const { 
-        paymentId, 
-        amount, 
-        userId, 
-        orderId, 
-        merchantTransactionId,
+      const {
+        amount,
+        userId,
         razorpay_payment_id,
         razorpay_order_id,
-        razorpay_signature,
-        isMock
+        razorpay_signature
       } = req.body || {};
 
       const numAmount = Number(amount);
       if (!numAmount || isNaN(numAmount) || numAmount <= 0 || !userId) {
-        return res.status(400).json({ error: "Missing or invalid parameters" });
+        return res.status(400).json({ success: false, error: "Missing or invalid parameters" });
       }
 
-      const effectivePaymentId = razorpay_payment_id || paymentId || merchantTransactionId || `pay_${Date.now()}`;
-      const effectiveOrderId = razorpay_order_id || orderId || `order_${Date.now()}`;
-
-      // Check if this is a simulation / test payment
-      const isSimulation =
-        isMock === true ||
-        String(effectiveOrderId).startsWith("order_mock_") ||
-        String(effectivePaymentId).startsWith("pay_mock_") ||
-        String(effectivePaymentId).startsWith("pay_sim_") ||
-        String(effectivePaymentId).startsWith("sim_pay_") ||
-        razorpay_signature === "mock_signature" ||
-        !RAZORPAY_KEY_SECRET ||
-        !razorpayClient;
-
-      let isSignatureValid = false;
-
-      if (isSimulation) {
-        isSignatureValid = true;
-      } else if (RAZORPAY_KEY_SECRET && razorpay_order_id && razorpay_payment_id && razorpay_signature) {
-        try {
-          const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-          const expectedSignature = crypto
-            .createHmac("sha256", RAZORPAY_KEY_SECRET)
-            .update(body)
-            .digest("hex");
-          isSignatureValid = expectedSignature === razorpay_signature;
-        } catch (sigErr: any) {
-          console.warn("[Razorpay Add Funds Signature Error]:", sigErr.message || sigErr);
-          isSignatureValid = false;
-        }
+      if (!RAZORPAY_KEY_SECRET) {
+        return res.status(503).json({
+          success: false,
+          error: "Payment gateway secret missing on server. Top-up rejected."
+        });
       }
 
-      if (!isSignatureValid) {
-        return res.status(400).json({ success: false, error: "Invalid Razorpay payment signature" });
+      if (
+        !razorpay_order_id ||
+        !razorpay_payment_id ||
+        !razorpay_signature ||
+        String(razorpay_order_id).startsWith("order_mock_") ||
+        String(razorpay_payment_id).startsWith("pay_sim_") ||
+        String(razorpay_payment_id).startsWith("pay_mock_") ||
+        String(razorpay_payment_id).startsWith("sim_pay_") ||
+        razorpay_signature === "mock_signature"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Invalid cryptographic signature"
+        });
+      }
+
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expectedSignature = crypto
+        .createHmac("sha256", RAZORPAY_KEY_SECRET)
+        .update(body)
+        .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        return res.status(400).json({
+          success: false,
+          error: "Payment verification failed: Invalid cryptographic signature"
+        });
       }
 
       if (!db) {
-        return res.json({ success: true, newBalance: numAmount, isSimulated: true });
+        return res.status(503).json({
+          success: false,
+          error: "Database service unavailable. Top-up rejected."
+        });
+      }
+
+      // Check for duplicate replay attacks before updating balance
+      const existingPaymentSnap = await db
+        .collection("walletTransactions")
+        .where("paymentId", "==", razorpay_payment_id)
+        .limit(1)
+        .get();
+
+      if (!existingPaymentSnap.empty) {
+        return res.status(409).json({
+          success: false,
+          error: "Duplicate payment ID: Transaction has already been processed"
+        });
+      }
+
+      const existingRefSnap = await db
+        .collection("walletTransactions")
+        .where("referenceId", "==", razorpay_payment_id)
+        .limit(1)
+        .get();
+
+      if (!existingRefSnap.empty) {
+        return res.status(409).json({
+          success: false,
+          error: "Duplicate payment reference: Transaction has already been processed"
+        });
       }
 
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
-      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      if (!userDoc.exists) {
+        return res.status(404).json({ success: false, error: "User not found" });
+      }
 
       const currentBalance = Number(userDoc.data()?.walletBalance || 0);
       const newBalance = currentBalance + numAmount;
-      
+
       const batch = db.batch();
-      
+
       // Atomically increment user's walletBalance
       batch.update(userRef, {
         walletBalance: admin.firestore.FieldValue.increment(numAmount),
@@ -2632,33 +2750,24 @@ Structure:
       batch.set(txRef, {
         userId,
         amount: numAmount,
-        type: 'credit',
-        reason: 'Wallet Top-up via Razorpay',
-        paymentId: effectivePaymentId,
-        referenceId: effectivePaymentId,
-        orderId: effectiveOrderId,
-        status: 'completed',
+        type: "credit",
+        reason: "Wallet Top-up via Razorpay",
+        paymentId: razorpay_payment_id,
+        referenceId: razorpay_payment_id,
+        orderId: razorpay_order_id,
+        status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       await batch.commit();
 
-      res.json({ success: true, newBalance, paymentId: effectivePaymentId });
+      return res.json({ success: true, newBalance, paymentId: razorpay_payment_id });
     } catch (err: any) {
-      const isPermErr =
-        err?.code === 7 ||
-        (typeof err?.message === "string" &&
-          (err.message.includes("PERMISSION_DENIED") ||
-            err.message.includes("Missing or insufficient permissions") ||
-            err.message.includes("permission_denied")));
-
-      if (isPermErr) {
-        console.info(`[Add Funds] Handled in sandbox mode for user ${req.body?.userId}`);
-        return res.json({ success: true, newBalance: Number(req.body?.amount || 0), isSimulated: true });
-      }
-
       console.error("Add funds error:", err);
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Payment verification failed"
+      });
     }
   });
 
