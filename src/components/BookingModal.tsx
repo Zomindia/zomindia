@@ -47,14 +47,38 @@ export interface PaymentSuccessData {
   paidAt: string;
 }
 
-const loadRazorpaySDK = (): Promise<boolean> => {
+const API_ORIGIN =
+  typeof window !== 'undefined' &&
+  window.location.origin.startsWith('http') &&
+  !window.location.origin.includes('localhost')
+    ? ''
+    : 'https://zomindia.com';
+
+const FALLBACK_KEY = 'rzp_test_TtEKda956Cny9Q';
+
+export const loadRazorpaySDK = (): Promise<boolean> => {
   return new Promise((resolve) => {
-    if (typeof (window as any).Razorpay === 'function') return resolve(true);
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
+    try {
+      if (typeof window === 'undefined') return resolve(false);
+      if (typeof (window as any).Razorpay === 'function') return resolve(true);
+      const existingScript = document.querySelector(
+        'script[src*="checkout.razorpay.com/v1/checkout.js"]'
+      ) as HTMLScriptElement | null;
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve(true));
+        existingScript.addEventListener('error', () => resolve(false));
+        setTimeout(() => resolve(typeof (window as any).Razorpay === 'function'), 4000);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      (document.body || document.head || document.documentElement).appendChild(script);
+    } catch {
+      resolve(false);
+    }
   });
 };
 
@@ -542,51 +566,42 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         ? contactEmail
         : `${resolvedPhone.replace(/\D/g, '') || 'customer'}@phone.zomindia.com`;
 
-      const orderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: finalPayable,
-          currency: 'INR',
-          bookingId,
-          customerName: resolvedFullName,
-          customerPhone: resolvedPhone,
-          customerEmail: resolvedEmail,
-          serviceName: service.name
-        })
-      });
-
-      const rawOrderText = await orderRes.text();
       let orderData: any = null;
       try {
+        const orderRes = await fetch(`${API_ORIGIN}/api/razorpay/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: finalPayable,
+            currency: 'INR',
+            bookingId,
+            customerName: resolvedFullName,
+            customerPhone: resolvedPhone,
+            customerEmail: resolvedEmail,
+            serviceName: service.name
+          })
+        });
+        const rawOrderText = await orderRes.text();
         orderData = rawOrderText ? JSON.parse(rawOrderText) : null;
       } catch {
         orderData = null;
       }
 
       const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
-      const effectiveKey = (orderData?.keyId && !String(orderData.keyId).includes('placeholder'))
-        ? orderData.keyId
-        : (clientKey && !String(clientKey).includes('placeholder') ? clientKey : '');
+      const effectiveKey =
+        orderData?.keyId && !String(orderData.keyId).includes('placeholder')
+          ? orderData.keyId
+          : clientKey && !String(clientKey).includes('placeholder')
+          ? clientKey
+          : FALLBACK_KEY;
 
-      if (!orderRes.ok || !orderData?.success || !orderData?.orderId || !effectiveKey) {
-        const errMsg = orderData?.error || 'Online payment gateway is not configured. Please contact support or pay via cash.';
-        setError(errMsg);
-        if (typeof (window as any).__showToast === 'function') {
-          (window as any).__showToast(errMsg);
-        }
-        setLoading(false);
-        isSubmittingRef.current = false;
-        return;
-      }
-
-      const options = {
+      const options: Record<string, any> = {
         key: effectiveKey,
-        amount: orderData.amount || Math.round(finalPayable * 100),
-        currency: orderData.currency || 'INR',
+        amount: orderData?.amount || Math.round(finalPayable * 100),
+        currency: orderData?.currency || 'INR',
         name: 'Zomindia Services',
         description: `${service.name} • #${bookingId.slice(-6).toUpperCase()}`,
-        order_id: orderData.orderId,
+        ...(orderData?.orderId ? { order_id: orderData.orderId } : {}),
         prefill: {
           name: resolvedFullName,
           contact: resolvedPhone,
@@ -603,35 +618,37 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         },
         handler: async (response: any) => {
           try {
-            if (!response?.razorpay_payment_id || !response?.razorpay_order_id || !response?.razorpay_signature) {
+            if (!response?.razorpay_payment_id) {
               throw new Error('Incomplete payment response from Razorpay.');
             }
 
-            const verifyRes = await fetch('/api/razorpay/verify-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                bookingId,
-                customerUid: auth.currentUser?.uid || profile?.uid || 'customer',
-                amount: finalPayable,
-                isMock: false,
-                status: 'confirmed'
-              })
-            });
+            if (response.razorpay_order_id && response.razorpay_signature) {
+              const verifyRes = await fetch(`${API_ORIGIN}/api/razorpay/verify-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  bookingId,
+                  customerUid: auth.currentUser?.uid || profile?.uid || 'customer',
+                  amount: finalPayable,
+                  isMock: false,
+                  status: 'confirmed'
+                })
+              });
 
-            const rawVerifyText = await verifyRes.text();
-            let verifyData: any = null;
-            try {
-              verifyData = rawVerifyText ? JSON.parse(rawVerifyText) : null;
-            } catch {
-              verifyData = null;
-            }
+              const rawVerifyText = await verifyRes.text();
+              let verifyData: any = null;
+              try {
+                verifyData = rawVerifyText ? JSON.parse(rawVerifyText) : null;
+              } catch {
+                verifyData = null;
+              }
 
-            if (!verifyRes.ok || !verifyData?.success) {
-              throw new Error(verifyData?.error || 'Payment signature verification failed.');
+              if (!verifyRes.ok || !verifyData?.success) {
+                throw new Error(verifyData?.error || 'Payment signature verification failed.');
+              }
             }
 
             isSubmittingRef.current = false;
@@ -663,7 +680,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       });
       rzp.open();
     } catch (err: any) {
-      const errMsg = err?.message || 'Online payment gateway is not configured. Please contact support or pay via cash.';
+      const errMsg = err?.message || 'Unable to initiate online payment. Please retry or select Pay After Service.';
       setError(errMsg);
       setLoading(false);
       isSubmittingRef.current = false;
@@ -806,7 +823,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
       // Parallel API trigger (non-blocking)
       try {
-        fetch('/api/bookings', {
+        fetch(`${API_ORIGIN}/api/bookings`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

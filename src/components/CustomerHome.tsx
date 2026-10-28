@@ -22,7 +22,6 @@ import {
   Promotion,
   Booking,
 } from "../types";
-import PaymentModal from "./PaymentModal";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
 import { formatTime12Hour, isValidCustomerService } from "../utils/formatters";

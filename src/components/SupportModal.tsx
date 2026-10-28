@@ -360,10 +360,19 @@ export const SupportModal: React.FC<SupportModalProps> = ({
     partnerDetail?.rating || (booking as any)?.partnerRating || 4.9;
   const startOtp = String(
     (booking as any)?.startOtp ||
+      booking?.startOTP ||
       (booking as any)?.otp ||
       (booking as any)?.serviceOtp ||
       "6330"
   );
+  const dynamicEta = (booking as any)?.eta || "~10-15 mins";
+  const customerDisplayName =
+    customerProfile?.fullName ||
+    customerProfile?.displayName ||
+    (booking as any)?.customerName ||
+    (booking as any)?.customerBookedName ||
+    auth.currentUser?.displayName ||
+    "ji";
 
   const paymentMethodRaw = String(
     (booking as any)?.paymentMethod || (booking as any)?.paymentMode || "cash"
@@ -414,7 +423,7 @@ export const SupportModal: React.FC<SupportModalProps> = ({
       id: "welcome-1",
       senderId: "support-agent",
       senderName: "Zomindia Priority Support",
-      text: `Namaste ji! Zomindia Indore Priority Desk me aapka swagat hai. Main aapki booking #${shortBookingId} (${serviceName}) ke liye yahan hu. Aap Hindi, Hinglish ya English me apna sawal pooch sakte hain 😊`,
+      text: `Namaste ${customerDisplayName !== "ji" ? `${customerDisplayName} ji` : "ji"}! Zomindia Indore Priority Desk me aapka swagat hai. Main aapki booking #${shortBookingId} (${serviceName}) ke liye yahan hu. Aap Hindi, Hinglish ya English me apna sawal pooch sakte hain 😊`,
       createdAt: new Date(),
       isAi: true,
     };
@@ -455,109 +464,85 @@ export const SupportModal: React.FC<SupportModalProps> = ({
     } catch {
       setMessages([initialWelcome]);
     }
-  }, [bookingId, isOpen, serviceName, shortBookingId]);
+  }, [bookingId, isOpen, serviceName, shortBookingId, customerDisplayName]);
 
   // Smart Multilingual (Hindi, Hinglish & English) NLP Engine & Live Booking Telemetry
   const getAssistantReply = (userQuery: string): string => {
     const q = userQuery.trim().toLowerCase();
     const isHindi = detectHindiOrHinglish(q);
+    const respectfulName =
+      customerDisplayName && customerDisplayName !== "ji"
+        ? `${customerDisplayName} ji`
+        : "ji";
 
-    // 1. Start OTP / Verification Code Query
+    // 1. Start OTP / Verification Code Query ("otp", "code", "pin", "ओटीपी")
     if (matchesIntent(q, OTP_PATTERNS)) {
-      if (isHindi) {
-        return `Aapka Start OTP: 🔒 **${startOtp}** hai. Yeh OTP technician ${partnerName} ke aapke ghar pahunchne ke baad hi unke sath share karein.`;
-      }
-      return `Aapka Start OTP: 🔒 **${startOtp}** hai. Yeh OTP technician ${partnerName} ke aapke ghar pahunchne ke baad hi unke sath share karein.`;
+      return `Aapka Start OTP: 🔒 ${startOtp} hai. Yeh OTP doorstep par partner ke aane ke baad hi share karein.`;
     }
 
-    // 2. Reschedule / Timing Change
+    // 2. Reschedule / Timing Change ("time badalna", "kal aana", "reschedule", "समय बदलना")
     if (matchesIntent(q, RESCHEDULE_PATTERNS)) {
       if (isHindi) {
-        return `Aap bilkul free (₹0 fee) me service ka time badal sakte hain! Upar diye gaye 'Reschedule Visit' chip par tap karein aur apni manpasand date aur time slot choose kar lein 📅.`;
+        return `Namaste ${respectfulName}! Aap bilkul free (₹0 fee) me apni ${serviceName} (#${shortBookingId}) ka time badal sakte hain. Kripya upar diye gaye 'Reschedule Visit' chip par tap karein aur apni manpasand date aur time slot choose kar lein 📅.`;
       }
-      return `You can reschedule your service time for FREE (₹0 fee)! Tap the 'Reschedule Visit' chip above and choose your preferred date and time slot 📅.`;
+      return `You can reschedule your ${serviceName} (#${shortBookingId}) visit for FREE (₹0 fee)! Simply tap the 'Reschedule Visit' chip above to pick a new date and time slot 📅.`;
     }
 
-    // 3. Cancellation & 100% Refund
+    // 3. Cancellation & 100% Refund ("cancel", "nahi chahiye", "refund", "रद्द")
     if (matchesIntent(q, CANCEL_PATTERNS)) {
       if (isHindi) {
-        return `Technician ke aane se pehle cancel karna bilkul FREE (₹0 fee) hai. Agar aapne online ₹${bookingTotal} pay kiye the, toh turant 100% refund ho jayenge. Cancellation ke liye upar 'Cancellation & Refund' button par click karein.`;
+        return `Partner (${partnerName}) ke doorstep par aane se pehle cancel karna bilkul FREE (₹0 cancellation fee) hai. Agar aapne ₹${bookingTotal} online pay kiye hain, toh 100% instant refund milega. 1-tap cancel karne ke liye upar 'Cancellation & Refund' chip par tap karein.`;
       }
-      return `Cancelling before the technician arrives is 100% FREE (₹0 fee). If you paid ₹${bookingTotal} online, you will get an instant 100% refund. Click the 'Cancellation & Refund' button above to proceed.`;
+      return `Cancelling before ${partnerName} arrives at your doorstep has a ₹0 fee! If you paid ₹${bookingTotal} online, a 100% instant refund is initiated immediately. Tap the 'Cancellation & Refund' chip above for 1-tap cancellation.`;
     }
 
-    // 4. ETA / Live Location / Partner Query
+    // 4. ETA / Live Location / Partner Query ("kab aayega", "kaha hai", "kitna time", "eta", "status", "कब आएगा")
     if (matchesIntent(q, ETA_PATTERNS)) {
-      if (isHindi) {
-        if (rawStatus === "on_the_way" || rawStatus === "in_transit") {
-          return `Namaste ji! Aapke ${serviceName} ke liye verified pro ${partnerName} nikal chuke hain aur lagbhag 10–15 minute me aapke doorstep par honge. Aap booking card par live GPS bhi track kar sakte hain 🛵.`;
-        }
-        if (rawStatus === "arrived") {
-          return `Namaste! ${partnerName} aapke doorstep par pahunch chuke hain. Kripya service shuru karne ke liye unhe Start OTP (${startOtp}) share kar dijiye 🚪.`;
-        }
-        if (rawStatus === "in_progress") {
-          return `${partnerName} abhi aapke yahan ${serviceName} ka kaam kar rahe hain. Kisi bhi zaroorat par Indore Desk aapke sath hai.`;
-        }
-        if (rawStatus === "pending" && !hasPartner) {
-          return `Hum aapke area me sabse kareebi specialist ko match kar rahe hain. 5–10 minute me pro assign ho jayega.`;
-        }
-        return `Namaste ji! Aapke ${serviceName} ke liye verified pro ${partnerName} nikal chuke hain aur lagbhag 10–15 minute me aapke doorstep par honge. Aap booking card par live GPS bhi track kar sakte hain 🛵.`;
-      } else {
-        if (rawStatus === "on_the_way" || rawStatus === "in_transit") {
-          return `Namaste! Verified pro ${partnerName} (${partnerRating.toFixed(1)}★) is on the way for your ${serviceName} and will reach your doorstep in ~10–15 minutes. You can also track live GPS on your booking card 🛵.`;
-        }
-        if (rawStatus === "arrived") {
-          return `Namaste! ${partnerName} has arrived at your doorstep. Please share your Start OTP (${startOtp}) with them to begin the service 🚪.`;
-        }
-        if (rawStatus === "in_progress") {
-          return `${partnerName} is currently performing your ${serviceName}. Our Indore Desk is right here with you if you need anything.`;
-        }
-        if (rawStatus === "pending" && !hasPartner) {
-          return `We are matching the closest verified specialist in your area. A pro will be assigned within 5–10 minutes.`;
-        }
-        return `Verified pro ${partnerName} (${partnerRating.toFixed(1)}★) is assigned for your ${serviceName} and will reach your doorstep (${bookingAddress}) in ~10–15 minutes. You can track live GPS on your booking card 🛵.`;
+      if (rawStatus === "arrived") {
+        return `Namaste ${respectfulName}! Aapke ${serviceName} (#${shortBookingId}) ke verified pro ${partnerName} (${partnerRating.toFixed(1)}★) aapke doorstep (${bookingAddress}) par pahunch chuke hain. Kripya service shuru karne ke liye Start OTP 🔒 ${startOtp} share karein 🚪.`;
       }
+      if (rawStatus === "in_progress") {
+        return `Namaste ${respectfulName}! Verified pro ${partnerName} (${partnerRating.toFixed(1)}★) abhi aapke doorstep par ${serviceName} (#${shortBookingId}) ka kaam kar rahe hain 🛠️.`;
+      }
+      if (rawStatus === "pending" && !hasPartner) {
+        return `Namaste ${respectfulName}! Aapke ${serviceName} (#${shortBookingId}) ke liye Indore area me sabse kareebi verified specialist assign kiya ja raha hai (ETA ${dynamicEta}). Aap booking card par live GPS status dekh sakte hain 🛵.`;
+      }
+      return `Namaste ${respectfulName}! Aapke ${serviceName} (#${shortBookingId}) ke liye verified pro ${partnerName} (${partnerRating.toFixed(1)}★) nikal chuke hain (Status: ${rawStatus.replace(/_/g, " ")}) aur lagbhag ${dynamicEta} me aapke doorstep (${bookingAddress}) par honge. Aap booking card par live GPS bhi track kar sakte hain 🛵.`;
     }
 
     // 5. Calling & Direct Support
     if (matchesIntent(q, CALL_PATTERNS)) {
-      if (isHindi) {
-        return `Aap upar bane black **'Call Desk'** button se hamare Indore Support Desk par turant baat kar sakte hain, ya booking card par bane Call button se seedhe ${partnerName} ko call kar sakte hain 📞.`;
-      }
-      return `Aap upar bane black **'Call Desk'** button se hamare Indore Support Desk par turant baat kar sakte hain, ya booking card par bane Call button se seedhe ${partnerName} ko call kar sakte hain 📞.`;
+      return `Namaste ${respectfulName}! Aap upar bane 'Call Desk' button se hamare Indore Priority Desk par turant baat kar sakte hain, ya booking card se seedhe partner ${partnerName} (${partnerRating.toFixed(1)}★) ko call kar sakte hain 📞.`;
     }
 
-    // 6. Price / Bill / Payment Method
+    // 6. Pricing / Bill / Payment Method ("kitne paise", "bill", "rate", "cost")
     if (matchesIntent(q, PRICE_PATTERNS)) {
       if (isHindi) {
-        return `Aapke #${shortBookingId} (${serviceName}) ka kul bill ₹${bookingTotal} hai (${
-          isPaidOnline ? "Paid Online" : "Pay After Service via Cash ya UPI"
-        }). Koi extra ya hidden charge nahi hai.`;
+        return `Aapki booking #${shortBookingId} (${serviceName}) ka kul bill ₹${bookingTotal} hai (${
+          isPaidOnline ? "Paid Online ✅" : "Cash / UPI on visit"
+        }). Isme visiting aur service charge shamil hai, koi hidden charge nahi hai.`;
       }
-      return `Aapke #${shortBookingId} (${serviceName}) ka kul bill ₹${bookingTotal} hai (${
-        isPaidOnline ? "Paid Online" : "Pay After Service via Cash ya UPI"
-      }). Koi extra ya hidden charge nahi hai.`;
+      return `Here is the bill breakdown for #${shortBookingId} (${serviceName}): Total Payable is ₹${bookingTotal} (${
+        isPaidOnline ? "Paid Online ✅" : "Pay After Service via Cash / UPI"
+      }) with ₹0 hidden charges.`;
     }
 
     // 7. Warranty / Complaints / Rework
     if (matchesIntent(q, WARRANTY_PATTERNS)) {
-      if (isHindi) {
-        return `Aapki har booking Zomindia ki 30-Day Free Rework Guarantee ke sath aati hai. Agar kaam me koi dikkat aayi hai, toh Indore Priority Desk aapke liye free re-visit arrange karega 🛡️.`;
-      }
-      return `Aapki har booking Zomindia ki 30-Day Free Rework Guarantee ke sath aati hai. Agar kaam me koi dikkat aayi hai, toh Indore Priority Desk aapke liye free re-visit arrange karega 🛡️.`;
+      return `Aapki booking #${shortBookingId} (${serviceName}) Zomindia ki 30-Day Free Rework Guarantee ke sath surakshit hai. Kisi bhi dikkat par hamara Indore Priority Desk free re-visit arrange karega 🛡️.`;
     }
 
-    // 8. Greetings & Small Talk
+    // 8. Greetings ("namaste", "ram ram", "hi", "hello")
     if (matchesIntent(q, GREETING_PATTERNS)) {
-      return `Namaste ji! Zomindia Indore Priority Desk me aapka swagat hai. Main aapki booking #${shortBookingId} (${serviceName}) ke liye yahan hu. Bataiye aaj aapki kya sahayata kar sakta hu? 😊`;
+      return `Namaste ${respectfulName}! Ram Ram 🙏 Zomindia Indore Priority Desk me aapka swagat hai. Aapki booking #${shortBookingId} (${serviceName} • ₹${bookingTotal}) ke liye verified pro ${partnerName} (${partnerRating.toFixed(1)}★) assigned hain. Bataiye main aapki kya sahayata kar sakta hu? 😊`;
     }
 
-    // Contextual Fallback (Hindi/Hinglish vs English)
+    // Contextual Fallback
     if (isHindi) {
-      return `Namaste ji! Aapki booking #${shortBookingId} (${serviceName} • ₹${bookingTotal}) ke liye verified pro ${partnerName} (${partnerRating.toFixed(1)}★) aapke address (${bookingAddress}) ke liye assigned hain. Aapka Start OTP 🔒 **${startOtp}** hai. Turant sahayata ke liye upar **'Call Desk'** ya **'WhatsApp Help'** par tap karein 🙏.`;
+      return `Namaste ${respectfulName}! Aapki booking #${shortBookingId} (${serviceName} • ₹${bookingTotal}) ke liye verified pro ${partnerName} (${partnerRating.toFixed(1)}★) assigned hain (ETA: ${dynamicEta}). Aapka Start OTP: 🔒 ${startOtp} hai. Turant madad ke liye upar 'Call Desk' ya 'WhatsApp Help' par tap karein 🙏.`;
     }
 
-    return `Thank you! Our Indore Priority Desk has received your message for #${shortBookingId} (${serviceName} • ₹${bookingTotal}). Verified pro ${partnerName} (${partnerRating.toFixed(1)}★, Start OTP: 🔒 **${startOtp}**) is assigned for ${bookingAddress}. Tap **'Call Desk'** or **'WhatsApp Help'** above for instant live assistance.`;
+    return `Namaste ${respectfulName}! For your booking #${shortBookingId} (${serviceName} • ₹${bookingTotal}), verified pro ${partnerName} (${partnerRating.toFixed(1)}★) is assigned (Status: ${rawStatus.replace(/_/g, " ")}, ETA: ${dynamicEta}). Aapka Start OTP: 🔒 ${startOtp} hai. Tap 'Call Desk' or 'WhatsApp Help' above for instant assistance.`;
   };
 
   const appendAndPersistMessage = async (textToSend: string) => {

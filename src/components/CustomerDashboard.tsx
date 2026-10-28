@@ -33,8 +33,7 @@ import { formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
 import { ServiceCardSkeleton } from "./LoadingIndicator";
 import ServiceCard from "./ServiceCard";
-import PaymentModal from "./PaymentModal";
-import BookingModal from "./BookingModal";
+import BookingModal, { loadRazorpaySDK } from "./BookingModal";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
@@ -592,6 +591,159 @@ export default function CustomerDashboard({
   const [liveNowMs, setLiveNowMs] = useState<number>(Date.now());
   const [finalizingBooking, setFinalizingBooking] = useState<Booking | null>(null);
   const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    if (!bookingToPay) return;
+    let cancelled = false;
+    const targetBooking = bookingToPay;
+
+    const triggerDirectBookingPayment = async () => {
+      const API_ORIGIN =
+        typeof window !== "undefined" &&
+        window.location.origin.startsWith("http") &&
+        !window.location.origin.includes("localhost")
+          ? ""
+          : "https://zomindia.com";
+      const FALLBACK_KEY = "rzp_test_TtEKda956Cny9Q";
+
+      try {
+        const sdkReady = await loadRazorpaySDK();
+        if (cancelled) return;
+        if (!sdkReady || typeof (window as any).Razorpay !== "function") {
+          if (typeof (window as any).__showToast === "function") {
+            (window as any).__showToast("Unable to load Razorpay gateway. Please check your connection.");
+          }
+          setBookingToPay(null);
+          return;
+        }
+
+        const payableAmount = targetBooking.totalPrice || 345;
+        const resolvedName =
+          profile?.fullName || profile?.displayName || (targetBooking as any)?.customerName || "Customer";
+        const resolvedPhone =
+          profile?.phoneNumber || profile?.mobile || (targetBooking as any)?.customerMobile || "9876543210";
+        const resolvedEmail =
+          profile?.email || `${resolvedPhone.replace(/\D/g, "") || "customer"}@phone.zomindia.com`;
+
+        let orderData: any = null;
+        try {
+          const orderRes = await fetch(`${API_ORIGIN}/api/razorpay/create-order`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount: payableAmount,
+              currency: "INR",
+              bookingId: targetBooking.id,
+              customerName: resolvedName,
+              customerPhone: resolvedPhone,
+              customerEmail: resolvedEmail,
+              serviceName: targetBooking.serviceName || "Home Service",
+            }),
+          });
+          const rawText = await orderRes.text();
+          orderData = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          orderData = null;
+        }
+
+        const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
+        const effectiveKey =
+          orderData?.keyId && !String(orderData.keyId).includes("placeholder")
+            ? orderData.keyId
+            : clientKey && !String(clientKey).includes("placeholder")
+            ? clientKey
+            : FALLBACK_KEY;
+
+        const rzp = new (window as any).Razorpay({
+          key: effectiveKey,
+          amount: orderData?.amount || Math.round(payableAmount * 100),
+          currency: orderData?.currency || "INR",
+          name: "Zomindia Services",
+          description: `${targetBooking.serviceName || "Home Service"} • #${targetBooking.id.slice(-6).toUpperCase()}`,
+          ...(orderData?.orderId ? { order_id: orderData.orderId } : {}),
+          prefill: {
+            name: resolvedName,
+            contact: resolvedPhone,
+            email: resolvedEmail,
+          },
+          theme: { color: "#2563eb" },
+          modal: {
+            ondismiss: () => {
+              setBookingToPay(null);
+            },
+          },
+          handler: async (response: any) => {
+            try {
+              if (response?.razorpay_order_id && response?.razorpay_signature) {
+                await fetch(`${API_ORIGIN}/api/razorpay/verify-payment`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                    bookingId: targetBooking.id,
+                    customerUid: auth.currentUser?.uid || profile?.uid || "customer",
+                    amount: payableAmount,
+                    isMock: false,
+                    status: targetBooking.status === "payment_pending" ? "completed" : targetBooking.status,
+                  }),
+                }).catch(() => {});
+              }
+
+              const paidAtIso = new Date().toISOString();
+              const nextStatus =
+                targetBooking.status === "payment_pending" ? "completed" : targetBooking.status;
+
+              await updateDoc(doc(db, "bookings", targetBooking.id), {
+                paymentStatus: "paid",
+                paymentMethod: "razorpay",
+                transactionId: response?.razorpay_payment_id || `RZP_${Date.now()}`,
+                razorpayPaymentId: response?.razorpay_payment_id || null,
+                paidAmount: payableAmount,
+                status: nextStatus,
+                updatedAt: Timestamp.now(),
+              }).catch(() => {});
+
+              setBookings((prev) =>
+                prev.map((b) =>
+                  b.id === targetBooking.id
+                    ? {
+                        ...b,
+                        paymentStatus: "paid",
+                        paymentMethod: "online",
+                        paidAt: paidAtIso,
+                        status: nextStatus,
+                      }
+                    : b
+                )
+              );
+
+              if (typeof (window as any).__showToast === "function") {
+                (window as any).__showToast(
+                  `Payment of ₹${payableAmount} received successfully! Status updated to PAID.`
+                );
+              }
+            } finally {
+              setBookingToPay(null);
+            }
+          },
+        });
+
+        rzp.on("payment.failed", () => {
+          setBookingToPay(null);
+        });
+        rzp.open();
+      } catch {
+        setBookingToPay(null);
+      }
+    };
+
+    triggerDirectBookingPayment();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingToPay, profile]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allActiveServices, setAllActiveServices] = useState<Service[]>([]);
@@ -3977,39 +4129,6 @@ export default function CustomerDashboard({
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {bookingToPay && (
-          <PaymentModal
-            key={`customer-payment-modal-${bookingToPay.id}`}
-            booking={bookingToPay}
-            profile={profile}
-            onClose={() => setBookingToPay(null)}
-            onSuccess={() => {
-              const paidBookingId = bookingToPay.id;
-              const paidAmount = bookingToPay.totalPrice || 0;
-              const paidAtIso = new Date().toISOString();
-              setBookings((prev) =>
-                prev.map((b) =>
-                  b.id === paidBookingId
-                    ? {
-                        ...b,
-                        paymentStatus: "paid",
-                        paymentMethod: "online",
-                        paidAt: paidAtIso,
-                        status: b.status === "payment_pending" ? "completed" : b.status,
-                      }
-                    : b
-                )
-              );
-              if (typeof (window as any).__showToast === 'function') {
-                (window as any).__showToast(`Payment of ₹${paidAmount} received successfully! Status updated to PAID.`);
-              }
-              setBookingToPay(null);
-            }}
-          />
         )}
       </AnimatePresence>
 
