@@ -31,17 +31,14 @@ import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
 import { formatBookingTime } from "../utils/formatTime";
 import { motion, AnimatePresence } from "motion/react";
-import ChatWindow from "./ChatWindow";
 import { ServiceCardSkeleton } from "./LoadingIndicator";
 import ServiceCard from "./ServiceCard";
 import PaymentModal from "./PaymentModal";
 import BookingModal from "./BookingModal";
-import AiSupportChat from "./AiSupportChat";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
-import { WarrantySupportModal } from "./WarrantySupportModal";
-import SupportChatModal from "./SupportChatModal";
+import { SupportModal } from "./SupportModal";
 import CancellationModal from "./CancellationModal";
 import {
   formatCategoryShortLabel,
@@ -586,7 +583,7 @@ export default function CustomerDashboard({
   const [expandedTrackerId, setExpandedTrackerId] = useState<string | null>(null);
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
   const [routingCallBookingId, setRoutingCallBookingId] = useState<string | null>(null);
-  const [activeBookingChat, setActiveBookingChat] = useState<Booking | null>(null);
+  const [activeSupportBooking, setActiveSupportBooking] = useState<Booking | null>(null);
   const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(null);
 
   // Modal and action states
@@ -609,7 +606,6 @@ export default function CustomerDashboard({
   const [showAllHistory, setShowAllHistory] = useState(false);
 
   // Support and warranty ticket states
-  const [selectedSupportBooking, setSelectedSupportBooking] = useState<Booking | null>(null);
   const [supportTickets, setSupportTickets] = useState<Record<string, SupportTicket>>({});
 
   // Rating & review states
@@ -803,7 +799,7 @@ export default function CustomerDashboard({
   const handleInitiateSupport = (bookingId: string) => {
     const found = bookings.find((b) => b.id === bookingId);
     if (found) {
-      setActiveBookingChat(found);
+      setActiveSupportBooking(found);
     }
   };
 
@@ -811,13 +807,13 @@ export default function CustomerDashboard({
   useEffect(() => {
     (window as any).__openSupportChat = (bookingOrId: Booking | string) => {
       if (typeof bookingOrId === "object" && bookingOrId !== null) {
-        setActiveBookingChat(bookingOrId);
+        setActiveSupportBooking(bookingOrId);
       } else if (typeof bookingOrId === "string") {
         const found = bookings.find((b) => b.id === bookingOrId);
         if (found) {
-          setActiveBookingChat(found);
+          setActiveSupportBooking(found);
         } else {
-          setActiveBookingChat({
+          setActiveSupportBooking({
             id: bookingOrId,
             serviceName: "Zomindia Service",
             totalPrice: 345,
@@ -1867,114 +1863,38 @@ export default function CustomerDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 pt-1.5 pb-8 sm:pt-2 sm:pb-12">
-      {/* Dynamic Sticky/Fixed Search Bar (Zomato Pattern) */}
-      <div 
-        className={
-          isScrolled
-            ? "fixed top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-md px-4 py-2.5 shadow-sm border-b border-slate-100 transition-all"
-            : "w-full max-w-7xl mx-auto mt-2 mb-2 px-4 sm:px-6 transition-all"
-        }
-        style={{
-          WebkitBackdropFilter: "blur(12px)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center gap-2.5 w-full">
-          {/* ONLY when sticky/fixed, a prominent Zomindia brand icon appears on the left */}
-          {isScrolled && (
-            <button
-              type="button"
-              onClick={() => {
-                if (setActiveTab) setActiveTab('home');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="shrink-0 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
-              title="Go to Home"
-              aria-label="Zomindia Home"
-            >
-              <img
-                src="/icon-512.png"
-                alt="Zomindia"
-                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
-              />
-            </button>
-          )}
-
-          {/* Search bar input - Flexes to fill available width */}
-          <div className="relative flex-1 min-w-0">
-            <div 
-              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-2xs transition-all duration-200 px-3"
-            >
-              <div className="text-slate-400 focus-within:text-blue-600 shrink-0 mr-2">
-                <Search size={16} className="stroke-[2.2]" />
-              </div>
-              <input
-                type="text"
-                inputMode="search"
-                enterKeyHint="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search AC, RO, Fridge repair..."
-                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-sm placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery ? "pr-20" : "pr-10"}`}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full shrink-0 cursor-pointer transition-all active:scale-90"
-                  aria-label="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              )}
-
-              <button
-                type="submit"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
-                aria-label="Search"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick Live Search Results Dropdown when typing */}
-            {searchQuery.trim().length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-2 bg-white/98 backdrop-blur-xl rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,46,110,0.25)] border border-slate-200/90 overflow-hidden z-[90] max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 text-left overscroll-contain">
-                {filteredServices.length > 0 ? (
-                  filteredServices.slice(0, 6).map((service) => (
-                    <div
-                      key={service.id}
-                      onClick={() => {
-                        if (onServiceSelect) onServiceSelect(service.id);
-                        setSearchQuery("");
-                      }}
-                      className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/60 transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <ServiceThumbnail service={service} size="sm" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 truncate">{service.name}</p>
-                          <p className="text-[10px] text-slate-500 truncate">{service.description}</p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-xs font-black text-[#002e6e]">₹{service.basePrice}</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-4 text-center text-xs text-slate-500 font-medium">
-                    No services found for "{searchQuery}"
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+      {/* Clean My Bookings Top Header */}
+      <div className="flex items-center justify-between pt-2 pb-4 sm:pb-6">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            My Bookings
+          </h1>
+          {(() => {
+            const liveActiveCount = activeBookings.filter((b) =>
+              [
+                "pending",
+                "assigned",
+                "confirmed",
+                "on_the_way",
+                "arrived",
+                "in_progress",
+                "payment_pending",
+                "pending_parts",
+              ].includes(b.status)
+            ).length;
+            return (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#002e6e] border border-blue-200/80 shadow-2xs">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    liveActiveCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                  }`}
+                />
+                <span>{liveActiveCount} Active</span>
+              </span>
+            );
+          })()}
         </div>
       </div>
-
-      {/* Placeholder spacer when fixed to prevent layout jump */}
-      {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0 mb-2" aria-hidden="true" />}
 
 
 
@@ -2135,7 +2055,7 @@ export default function CustomerDashboard({
                     onPayCash={(b) => handlePayWithCashByCustomer(b)}
                     onScanQR={() => setIsPaymentScannerOpen(true)}
                     onCallPartner={(_p, b) => handleInitiateCall(b)}
-                    onChatPartner={(b) => setActiveBookingChat(b)}
+                    onChatPartner={(b) => setActiveSupportBooking(b)}
                     onDownloadInvoice={handleDownloadInvoice}
                     onSupport={(id) => handleInitiateSupport(id)}
                     onBookAgain={(srv) => {
@@ -2162,27 +2082,6 @@ export default function CustomerDashboard({
           </p>
         </div>
       )}
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8 px-2 sm:px-0">
-        <button
-          type="button"
-          onClick={() => {
-            if (onOpenProfileMenu) {
-              onOpenProfileMenu();
-            } else {
-              window.dispatchEvent(new CustomEvent('open-profile-menu'));
-            }
-          }}
-          className="flex items-center gap-2 select-none group cursor-pointer hover:opacity-80 active:scale-98 transition-all text-left"
-          title="Open Profile Menu"
-          aria-label="Open Profile Menu"
-        >
-          <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold text-slate-400 group-hover:text-blue-600 uppercase tracking-[0.15em] transition-colors">
-            Hey {(profile?.displayName || "Customer").split(" ")[0]}, what are you looking for today?
-          </span>
-        </button>
-      </div>
 
       {/* Active High-Visibility Status Ticker - Deactivated and Merged into top console */}
       {false && activeBookings.some((b) =>
@@ -2497,7 +2396,7 @@ export default function CustomerDashboard({
                           {/* Direct action panel for assigned partner */}
                           <div className="flex gap-3">
                             <button
-                              onClick={() => setActiveBookingChat(booking)}
+                              onClick={() => setActiveSupportBooking(booking)}
                               className="flex-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
                             >
                               <MessageSquare
@@ -3166,7 +3065,7 @@ export default function CustomerDashboard({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveBookingChat(booking);
+                                    setActiveSupportBooking(booking);
                                   }}
                                   className="w-10 h-10 bg-blue-600 text-white hover:bg-blue-700 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
                                   title="Chat with Partner"
@@ -3621,17 +3520,33 @@ export default function CustomerDashboard({
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {activeBookingChat && (
-          <SupportChatModal
-            key={`active-booking-chat-${activeBookingChat.id}`}
-            isOpen={!!activeBookingChat}
-            booking={activeBookingChat}
-            otherUser={activeBookingChat.partnerId ? partners[activeBookingChat.partnerId] || null : null}
-            onClose={() => setActiveBookingChat(null)}
-          />
-        )}
-      </AnimatePresence>
+      <SupportModal
+        isOpen={!!activeSupportBooking}
+        booking={activeSupportBooking}
+        service={activeSupportBooking ? services[activeSupportBooking.serviceId] : undefined}
+        partnerUser={
+          activeSupportBooking && activeSupportBooking.partnerId
+            ? partners[activeSupportBooking.partnerId] || null
+            : null
+        }
+        partnerDetail={
+          activeSupportBooking && activeSupportBooking.partnerId
+            ? partnerDetails[activeSupportBooking.partnerId] || null
+            : null
+        }
+        customerProfile={profile}
+        activeTicket={
+          activeSupportBooking ? supportTickets[activeSupportBooking.id] || null : null
+        }
+        onTicketCreated={(t) => {
+          if (activeSupportBooking) {
+            setSupportTickets((prev) => ({ ...prev, [activeSupportBooking.id]: t }));
+          }
+        }}
+        onReschedule={handleReschedule}
+        onCancelBooking={handleCancelBooking}
+        onClose={() => setActiveSupportBooking(null)}
+      />
 
       <AnimatePresence>
         {cancellingBooking && (
@@ -3642,7 +3557,7 @@ export default function CustomerDashboard({
             booking={cancellingBooking}
             onConfirmCancel={handleConfirmCancel}
             secondsRemaining={getCancellationSecondsRemaining(cancellingBooking.createdAt, liveNowMs)}
-            onOpenSupport={(b) => setActiveBookingChat(b)}
+            onOpenSupport={(b) => setActiveSupportBooking(b)}
           />
         )}
       </AnimatePresence>
@@ -4108,33 +4023,6 @@ export default function CustomerDashboard({
           />
         )}
       </AnimatePresence>
-
-      {/* 30-Day Service Guarantee & Warranty Support Modal */}
-      <WarrantySupportModal
-        isOpen={!!selectedSupportBooking}
-        onClose={() => setSelectedSupportBooking(null)}
-        booking={selectedSupportBooking}
-        service={selectedSupportBooking ? services[selectedSupportBooking.serviceId] : undefined}
-        partnerUser={
-          selectedSupportBooking && selectedSupportBooking.partnerId
-            ? partners[selectedSupportBooking.partnerId] || null
-            : null
-        }
-        partnerDetail={
-          selectedSupportBooking && selectedSupportBooking.partnerId
-            ? partnerDetails[selectedSupportBooking.partnerId] || null
-            : null
-        }
-        customerProfile={profile}
-        activeTicket={
-          selectedSupportBooking ? supportTickets[selectedSupportBooking.id] || null : null
-        }
-        onTicketCreated={(t) => {
-          if (selectedSupportBooking) {
-            setSupportTickets((prev) => ({ ...prev, [selectedSupportBooking.id]: t }));
-          }
-        }}
-      />
     </div>
   );
 }

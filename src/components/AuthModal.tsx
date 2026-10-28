@@ -11,7 +11,6 @@ import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, ge
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
-import { LogoIcon, LogoHorizontal } from './BrandLogo';
 import { 
   X, 
   Smartphone, 
@@ -751,9 +750,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         animate={{ opacity: 1, scale: 1, y: 0 }}
         className="relative overflow-hidden bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-sm sm:max-w-md w-full mx-auto flex flex-col max-h-[92vh] z-10"
       >
-        {/* 1. Curved Top Hero Banner behind the logo */}
+        {/* 1. Top Hero Branding Banner */}
         {view !== 'success-transition' && (
-          <div className="bg-gradient-to-br from-[#071435] via-[#0f2868] to-[#1e1b4b] pt-8 pb-12 px-6 text-center relative shrink-0">
+          <div className="bg-gradient-to-br from-[#071435] via-[#0f2868] to-[#1e1b4b] py-6 sm:py-7 px-6 text-center relative shrink-0 overflow-hidden">
             {/* Subtle decorative glowing ambient orbs */}
             <div className="absolute -top-10 -left-10 w-36 h-36 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
             <div className="absolute -bottom-8 -right-8 w-40 h-40 bg-cyan-400/25 rounded-full blur-2xl pointer-events-none" />
@@ -787,7 +786,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
               <img 
                 src="/logo-horizontal-white.png" 
                 alt="Zomindia" 
-                className="h-6 sm:h-7 w-auto object-contain opacity-95 mb-1"
+                className="h-7 sm:h-8 w-auto object-contain opacity-95 mb-1.5"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
                 }}
@@ -795,16 +794,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
               <span className="text-[10px] font-bold tracking-widest text-blue-200/80 uppercase">
                 India's Trusted Home Services
               </span>
-            </div>
-
-            {/* 2. Glowing 'Z' Brand Badge that sits on the curve */}
-            <div className="w-16 h-16 rounded-2xl bg-white p-2 shadow-xl ring-4 ring-amber-400/40 mx-auto -mb-8 relative z-10 flex items-center justify-center transform hover:scale-105 transition-all">
-              <img 
-                src={LogoIcon} 
-                alt="Zomindia" 
-                className="w-full h-full object-contain rounded-xl select-none"
-                referrerPolicy="no-referrer"
-              />
             </div>
           </div>
         )}
@@ -820,7 +809,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
+                className="pt-6 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
                 {/* 3. Engaging Typography & Input Section */}
                 <div>
@@ -908,7 +897,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
+                className="pt-6 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -1032,7 +1021,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="pt-10 pb-6 px-6 sm:px-8 text-center space-y-4"
+                className="pt-6 pb-6 px-6 sm:px-8 text-center space-y-4"
               >
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
