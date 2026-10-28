@@ -35,7 +35,7 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-dotenv.config();
+dotenv.config({ override: true });
 
 let firebaseConfig: any = {};
 try {
@@ -506,8 +506,9 @@ async function startServer() {
       }
 
       if (!razorpayClient || !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET || RAZORPAY_KEY_ID.includes("placeholder")) {
-        return res.status(503).json({
+        return res.status(200).json({
           success: false,
+          gatewayUnavailable: true,
           error: "Online payment gateway is not configured. Please contact support or pay via cash."
         });
       }
@@ -554,16 +555,17 @@ async function startServer() {
           isMock: false
         });
       } catch (apiErr: any) {
-        console.warn("[Razorpay API Error]:", apiErr?.error?.description || apiErr.message);
-        return res.status(503).json({
+        console.error("[Razorpay Order Creation Error]:", apiErr?.error || apiErr?.message || apiErr);
+        return res.status(200).json({
           success: false,
+          gatewayUnavailable: true,
           error: "Online payment gateway is not configured. Please contact support or pay via cash."
         });
       }
     } catch (err: any) {
-      console.warn("[Razorpay Create Order Error]:", err.message || err);
-      return res.status(503).json({
+      return res.status(200).json({
         success: false,
+        gatewayUnavailable: true,
         error: "Online payment gateway is not configured. Please contact support or pay via cash."
       });
     }
@@ -598,7 +600,7 @@ async function startServer() {
       } = req.body || {};
 
       if (!RAZORPAY_KEY_SECRET) {
-        return res.status(503).json({
+        return res.status(400).json({
           success: false,
           error: "Payment gateway secret missing on server. Verification rejected."
         });
@@ -1158,7 +1160,7 @@ async function startServer() {
       // Strict Razorpay HMAC signature verification
       const secret = (process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET || "").trim();
       if (!secret) {
-        return res.status(503).json({
+        return res.status(400).json({
           success: false,
           error: "Payment gateway secret missing on server. Cash clearance rejected."
         });
@@ -2659,7 +2661,7 @@ Structure:
       }
 
       if (!RAZORPAY_KEY_SECRET) {
-        return res.status(503).json({
+        return res.status(400).json({
           success: false,
           error: "Payment gateway secret missing on server. Top-up rejected."
         });
@@ -2695,7 +2697,7 @@ Structure:
       }
 
       if (!db) {
-        return res.status(503).json({
+        return res.status(400).json({
           success: false,
           error: "Database service unavailable. Top-up rejected."
         });

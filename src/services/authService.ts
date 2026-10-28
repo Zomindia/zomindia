@@ -19,10 +19,22 @@ import { UserProfile, UserRole } from '../types';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 
 /**
- * Signs out the current authenticated user.
+ * Signs out the current authenticated user and performs a complete session teardown.
  */
 export async function signOutUser(): Promise<void> {
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } finally {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem('zomindia_partner_session');
+      localStorage.removeItem('zomindia_current_mode');
+      localStorage.removeItem('zomindia_last_active_tab');
+      localStorage.removeItem('partner_session');
+      localStorage.removeItem('zomindia_user_role');
+      localStorage.setItem('zomindia_current_mode', 'customer');
+      localStorage.setItem('zomindia_last_active_tab', 'home');
+    }
+  }
 }
 
 /**

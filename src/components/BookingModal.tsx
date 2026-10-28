@@ -36,9 +36,27 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
-import PaymentModal, { PaymentSuccessData } from './PaymentModal';
 import { reverseGeocode, isBroadIndoreName } from '../utils/reverseGeocode';
 import DoorstepPinPickerModal from './DoorstepPinPickerModal';
+
+export interface PaymentSuccessData {
+  txnId: string;
+  method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'online' | 'razorpay';
+  provider: string;
+  amount: number;
+  paidAt: string;
+}
+
+const loadRazorpaySDK = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (typeof (window as any).Razorpay === 'function') return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 interface Props {
   service: Service;
@@ -211,8 +229,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const [activeAmc, setActiveAmc] = useState<AMC | null>(savedState?.activeAmc || null);
   const [useAmc, setUseAmc] = useState<boolean>(savedState?.useAmc ?? false);
 
-  // Online gateway state
-  const [showOnlineGateway, setShowOnlineGateway] = useState<boolean>(false);
+  // Local auth modal state
   const [showLocalLogin, setShowLocalLogin] = useState<boolean>(false);
 
   // Loading & error
@@ -496,6 +513,163 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     } catch {}
   };
 
+  // Direct 1-Tap Official Razorpay Standard Checkout Trigger
+  const initiateDirectRazorpayCheckout = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const sdkLoaded = await loadRazorpaySDK();
+      if (!sdkLoaded || typeof (window as any).Razorpay !== 'function') {
+        const msg = 'Unable to load Razorpay payment gateway. Please check your connection or choose Pay After Service.';
+        setError(msg);
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(msg);
+        }
+        setLoading(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      const bookingId = draftBookingIdRef.current || doc(collection(db, 'bookings')).id;
+      draftBookingIdRef.current = bookingId;
+
+      const resolvedFullName = profile?.fullName || profile?.displayName || auth.currentUser?.displayName || 'Customer';
+      const resolvedPhone = contactPhone || profile?.phoneNumber || profile?.mobile || '9876543210';
+      const resolvedEmail = (contactEmail && !contactEmail.includes('customer@zomindia.com'))
+        ? contactEmail
+        : `${resolvedPhone.replace(/\D/g, '') || 'customer'}@phone.zomindia.com`;
+
+      const orderRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: finalPayable,
+          currency: 'INR',
+          bookingId,
+          customerName: resolvedFullName,
+          customerPhone: resolvedPhone,
+          customerEmail: resolvedEmail,
+          serviceName: service.name
+        })
+      });
+
+      const rawOrderText = await orderRes.text();
+      let orderData: any = null;
+      try {
+        orderData = rawOrderText ? JSON.parse(rawOrderText) : null;
+      } catch {
+        orderData = null;
+      }
+
+      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
+      const effectiveKey = (orderData?.keyId && !String(orderData.keyId).includes('placeholder'))
+        ? orderData.keyId
+        : (clientKey && !String(clientKey).includes('placeholder') ? clientKey : '');
+
+      if (!orderRes.ok || !orderData?.success || !orderData?.orderId || !effectiveKey) {
+        const errMsg = orderData?.error || 'Online payment gateway is not configured. Please contact support or pay via cash.';
+        setError(errMsg);
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(errMsg);
+        }
+        setLoading(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      const options = {
+        key: effectiveKey,
+        amount: orderData.amount || Math.round(finalPayable * 100),
+        currency: orderData.currency || 'INR',
+        name: 'Zomindia Services',
+        description: `${service.name} • #${bookingId.slice(-6).toUpperCase()}`,
+        order_id: orderData.orderId,
+        prefill: {
+          name: resolvedFullName,
+          contact: resolvedPhone,
+          email: resolvedEmail
+        },
+        theme: {
+          color: '#2563eb'
+        },
+        modal: {
+          ondismiss: () => {
+            setLoading(false);
+            isSubmittingRef.current = false;
+          }
+        },
+        handler: async (response: any) => {
+          try {
+            if (!response?.razorpay_payment_id || !response?.razorpay_order_id || !response?.razorpay_signature) {
+              throw new Error('Incomplete payment response from Razorpay.');
+            }
+
+            const verifyRes = await fetch('/api/razorpay/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                bookingId,
+                customerUid: auth.currentUser?.uid || profile?.uid || 'customer',
+                amount: finalPayable,
+                isMock: false,
+                status: 'confirmed'
+              })
+            });
+
+            const rawVerifyText = await verifyRes.text();
+            let verifyData: any = null;
+            try {
+              verifyData = rawVerifyText ? JSON.parse(rawVerifyText) : null;
+            } catch {
+              verifyData = null;
+            }
+
+            if (!verifyRes.ok || !verifyData?.success) {
+              throw new Error(verifyData?.error || 'Payment signature verification failed.');
+            }
+
+            isSubmittingRef.current = false;
+            await handleBooking({
+              txnId: response.razorpay_payment_id,
+              method: 'razorpay',
+              provider: 'Razorpay',
+              amount: finalPayable,
+              paidAt: new Date().toISOString()
+            });
+          } catch (verifyErr: any) {
+            const verifyMsg = verifyErr?.message || 'Payment verification failed. Please contact support if amount was debited.';
+            setError(verifyMsg);
+            if (typeof (window as any).__showToast === 'function') {
+              (window as any).__showToast(verifyMsg);
+            }
+            setLoading(false);
+            isSubmittingRef.current = false;
+          }
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', (response: any) => {
+        const failMsg = response?.error?.description || 'Payment was declined or cancelled. You can retry or select Pay After Service.';
+        setError(failMsg);
+        setLoading(false);
+        isSubmittingRef.current = false;
+      });
+      rzp.open();
+    } catch (err: any) {
+      const errMsg = err?.message || 'Online payment gateway is not configured. Please contact support or pay via cash.';
+      setError(errMsg);
+      setLoading(false);
+      isSubmittingRef.current = false;
+    }
+  };
+
   // Primary Checkout Trigger
   const handlePrimaryCheckoutClick = () => {
     setError(null);
@@ -517,7 +691,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         setError("Please sign in to proceed with online payment.");
         return;
       }
-      setShowOnlineGateway(true);
+      initiateDirectRazorpayCheckout();
       return;
     }
 
@@ -1204,39 +1378,17 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         </div>
       </motion.div>
 
-      {/* Online Gateway Modal */}
-      {showOnlineGateway && (
-        <PaymentModal
-          key="booking-online-gateway"
-          booking={{
-            id: draftBookingIdRef.current || `temp_${Date.now()}`,
-            serviceId: service.id,
-            serviceName: service.name,
-            totalPrice: finalPayable,
-            address: displayAddressString,
-            scheduledSlot: `${date} @ ${formatTime12Hour(time)}`,
-            scheduledAt: new Date(`${date}T${time}`),
-            status: 'pending',
-            paymentStatus: 'unpaid',
-            customerUid: profile?.uid || 'guest',
-            createdAt: new Date(),
-          } as any}
-          profile={profile}
-          onClose={() => setShowOnlineGateway(false)}
-          onSuccess={(paymentData?: PaymentSuccessData) => {
-            setShowOnlineGateway(false);
-            handleBooking(paymentData);
-          }}
-        />
-      )}
-
       {/* Auth Modal if user needs to sign in */}
       <AuthModal
         isOpen={showLocalLogin}
         onClose={() => setShowLocalLogin(false)}
         onSuccess={() => {
           setShowLocalLogin(false);
-          handleBooking();
+          if (paymentOption === 'online' && finalPayable > 0 && !useAmc) {
+            initiateDirectRazorpayCheckout();
+          } else {
+            handleBooking();
+          }
         }}
       />
 

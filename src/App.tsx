@@ -744,6 +744,22 @@ export default function App() {
         setProfile(null);
         setHasActiveArrival(false);
         setPartnerApplication(null);
+        setCurrentModeState('customer');
+        setActiveTabState((prevTab) => {
+          if (
+            prevTab === 'partner' ||
+            (typeof window !== 'undefined' && (
+              window.location.pathname.startsWith('/partner') ||
+              window.location.hash.toLowerCase().includes('partner')
+            ))
+          ) {
+            if (typeof window !== 'undefined') {
+              window.history.pushState(null, '', '/');
+            }
+            return 'home';
+          }
+          return prevTab;
+        });
         setLoading(false);
       }
     });
@@ -1052,7 +1068,18 @@ export default function App() {
 
   const renderContentInner = () => {
     if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
-      return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
+      return (
+        <PartnerApp 
+          profile={profile} 
+          onNavigate={(tab) => setActiveTab(tab as any)}
+          onLogout={() => {
+            setProfile(null);
+            setCurrentModeState('customer');
+            setActiveTabState('home');
+            window.history.pushState(null, '', '/');
+          }}
+        />
+      );
     }
 
     const handleServiceSelect = (id: string) => {
@@ -1260,7 +1287,18 @@ If you have any billing questions, or if your refund is delayed, please email us
           </motion.div>
         );
       }
-      return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} />;
+      return (
+        <PartnerApp 
+          profile={profile} 
+          onNavigate={(tab) => setActiveTab(tab as any)}
+          onLogout={() => {
+            setProfile(null);
+            setCurrentModeState('customer');
+            setActiveTabState('home');
+            window.history.pushState(null, '', '/');
+          }}
+        />
+      );
     }
 
     if (activeTab === 'partner-signup') {
@@ -1381,7 +1419,19 @@ If you have any billing questions, or if your refund is delayed, please email us
         return <AdminDashboard profile={profile} setActiveTab={setActiveTab} initialAdminTab="bookings" />;
       }
       if (profile.role === 'partner') {
-        return <PartnerApp profile={profile} onNavigate={(tab) => setActiveTab(tab as any)} initialTab="jobs" />;
+        return (
+          <PartnerApp 
+            profile={profile} 
+            onNavigate={(tab) => setActiveTab(tab as any)} 
+            initialTab="jobs"
+            onLogout={() => {
+              setProfile(null);
+              setCurrentModeState('customer');
+              setActiveTabState('home');
+              window.history.pushState(null, '', '/');
+            }}
+          />
+        );
       }
       return (
         <motion.div

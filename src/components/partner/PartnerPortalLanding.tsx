@@ -15,18 +15,13 @@ import {
   X,
   Phone,
   User,
-  Power,
-  Navigation,
-  PhoneCall,
   Star,
   CheckCircle2,
   AlertCircle,
   Briefcase,
-  LogOut,
   Clock,
   ArrowUpRight,
   Shield,
-  HelpCircle,
   Calendar,
   FileCheck,
   CreditCard,
@@ -39,7 +34,7 @@ import { auth, db } from '../../lib/firebase';
 import { doc, setDoc, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { getOrCreateRecaptchaVerifier } from '../../lib/recaptcha';
-import { LogoIcon, LogoHorizontal } from '../BrandLogo';
+import { signOutUser } from '../../services/authService';
 import PartnerApp from '../PartnerApp';
 
 interface Props {
@@ -47,24 +42,6 @@ interface Props {
   onExploreServices?: () => void;
   profile?: any;
   onPartnerAuthenticated?: (partnerProfile: any) => void;
-}
-
-interface Lead {
-  id: string;
-  category: string;
-  title: string;
-  customerName: string;
-  customerPhone: string;
-  address: string;
-  landmark: string;
-  distance: string;
-  duration: string;
-  payout: number;
-  customerPrice: number;
-  status: 'available' | 'accepted' | 'started' | 'completed' | 'declined';
-  otpCode: string;
-  scope: string[];
-  isSurge?: boolean;
 }
 
 export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthenticated }: Props) {
@@ -94,17 +71,13 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
     return null;
   });
 
-  // Dashboard Active Tab
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'leads' | 'wallet' | 'kyc'>('leads');
-
   // Modals & Navigation States
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
   const [showRateCardModal, setShowRateCardModal] = useState<boolean>(false);
   const [selectedRateCardCategory, setSelectedRateCardCategory] = useState<string>('all');
 
-  // Duty and Toast States
-  const [isDutyOnline, setIsDutyOnline] = useState<boolean>(true);
+  // Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Income Calculator States
@@ -130,20 +103,7 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
   const [regLoading, setRegLoading] = useState<boolean>(false);
   const [regError, setRegError] = useState<string | null>(null);
 
-  // Real Firestore-backed stats (0 when no completed jobs)
-  const [todayEarnings, setTodayEarnings] = useState<number>(0);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
-  const [completedJobsCount, setCompletedJobsCount] = useState<number>(0);
-
-  // Purged hardcoded dummy leads array (connected to real Firestore via PartnerApp)
-  const [leads, setLeads] = useState<Lead[]>([]);
-
-  // Lead OTP Modal State
-  const [activeOtpLead, setActiveOtpLead] = useState<Lead | null>(null);
-  const [enteredLeadOtp, setEnteredLeadOtp] = useState<string>('');
-  const [otpVerifyError, setOtpVerifyError] = useState<string | null>(null);
-
-  // Sync profile if external profile changes to partner
+  // Sync profile if external profile changes to partner or logs out
   useEffect(() => {
     if (profile && (profile.role === 'partner' || profile.role === 'admin')) {
       const partnerData = {
@@ -158,6 +118,11 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
       try {
         localStorage.setItem('zomindia_partner_session', JSON.stringify(partnerData));
       } catch (e) {}
+    } else if (!profile) {
+      const saved = localStorage.getItem('zomindia_partner_session');
+      if (!saved) {
+        setPartnerSession(null);
+      }
     }
   }, [profile]);
 
@@ -364,11 +329,14 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
 
   const handleLogout = async () => {
     try {
-      localStorage.removeItem('zomindia_partner_session');
-      await auth.signOut();
-    } catch (e) {}
+      await signOutUser();
+    } catch (e) {
+      console.warn('Signout warning:', e);
+    }
     setPartnerSession(null);
+    if (onPartnerAuthenticated) onPartnerAuthenticated(null);
     showToast('Logged out of Partner Dashboard.');
+    window.location.href = '/';
   };
 
   // ==================== REGISTRATION HANDLER ====================
@@ -409,99 +377,6 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
     setRegSubmitted(true);
   };
 
-  // ==================== LEADS & JOB ACTIONS ====================
-  const handleAcceptLead = (leadId: string) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'accepted' } : l));
-    const lead = leads.find(l => l.id === leadId);
-    if (lead) {
-      showToast(`Lead accepted! Contact details & route to ${lead.customerName} unlocked.`);
-    }
-  };
-
-  const handleDeclineLead = (leadId: string) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'declined' } : l));
-    showToast('Lead declined. New leads will refresh automatically.');
-  };
-
-  const handleOpenLeadOtpModal = (lead: Lead) => {
-    setActiveOtpLead(lead);
-    setEnteredLeadOtp('');
-    setOtpVerifyError(null);
-  };
-
-  const handleVerifyLeadOtp = () => {
-    if (!activeOtpLead) return;
-    if (enteredLeadOtp.trim() !== activeOtpLead.otpCode && enteredLeadOtp.trim() !== '1234') {
-      setOtpVerifyError(`Invalid OTP. Ask customer for 4-digit code (${activeOtpLead.otpCode})`);
-      return;
-    }
-
-    setLeads(prev => prev.map(l => l.id === activeOtpLead.id ? { ...l, status: 'started' } : l));
-    setActiveOtpLead(null);
-    showToast(`OTP Verified! Service for ${activeOtpLead.customerName} is now IN-PROGRESS.`);
-  };
-
-  const handleCompleteLeadJob = (leadId: string) => {
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'completed' } : l));
-    setTodayEarnings(prev => prev + lead.payout);
-    setWalletBalance(prev => prev + lead.payout);
-    setCompletedJobsCount(prev => prev + 1);
-    showToast(`Great job! ₹${lead.payout} payout credited to your wallet.`);
-  };
-
-  const handleInstantPayout = () => {
-    showToast(`Success! Payout request of ₹${walletBalance} queued for instant IMPS transfer to HDFC A/C ending 4092.`);
-  };
-
-  const activeJob = leads.find(l => l.status === 'accepted' || l.status === 'started');
-  const availableLeads = leads.filter(l => l.status === 'available');
-
-  // Helper for Zomato-style lively category tags and accents
-  const getCategoryBadgeStyle = (category: string) => {
-    const cat = category.toLowerCase();
-    if (cat.includes('ac') || cat.includes('air conditioner')) {
-      return {
-        badge: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-        pill: 'bg-cyan-50 text-cyan-800 border-cyan-200',
-        dot: 'bg-cyan-500',
-        label: 'Split AC Service'
-      };
-    }
-    if (cat.includes('refrigerator') || cat.includes('fridge')) {
-      return {
-        badge: 'bg-teal-50 text-teal-700 border-teal-200',
-        pill: 'bg-teal-500/10 text-teal-800 border-teal-200',
-        dot: 'bg-teal-500',
-        label: 'Refrigerator'
-      };
-    }
-    if (cat.includes('washing') || cat.includes('drum')) {
-      return {
-        badge: 'bg-purple-50 text-purple-700 border-purple-200',
-        pill: 'bg-purple-500/10 text-purple-800 border-purple-200',
-        dot: 'bg-purple-500',
-        label: 'Washing Machine'
-      };
-    }
-    if (cat.includes('purifier') || cat.includes('ro') || cat.includes('water')) {
-      return {
-        badge: 'bg-sky-50 text-sky-700 border-sky-200',
-        pill: 'bg-sky-500/10 text-sky-800 border-sky-200',
-        dot: 'bg-sky-500',
-        label: 'RO Purifier'
-      };
-    }
-    return {
-      badge: 'bg-blue-50 text-blue-700 border-blue-200',
-      pill: 'bg-blue-500/10 text-blue-800 border-blue-200',
-      dot: 'bg-blue-500',
-      label: category
-    };
-  };
-
   // =========================================================================
   // RENDER VIEW A: REAL FIRESTORE PARTNER DASHBOARD (When Logged In)
   // =========================================================================
@@ -515,619 +390,7 @@ export default function PartnerPortalLanding({ onLogin, profile, onPartnerAuthen
       kycStatus: 'approved',
       approvalStatus: 'approved',
     };
-    return <PartnerApp profile={activePartnerProfile as any} />;
-  }
-
-  if (false as boolean) {
-    return (
-      <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-600 selection:text-white pb-24">
-        {/* Floating Toast Notification */}
-        <AnimatePresence>
-          {toastMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="fixed top-5 left-1/2 -translate-x-1/2 z-[150] max-w-md w-[92%] bg-slate-900 text-white px-5 py-3.5 rounded-2xl font-bold text-xs shadow-2xl flex items-center justify-between gap-3 border border-slate-800"
-            >
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                <span>{toastMessage}</span>
-              </div>
-              <button 
-                onClick={() => setToastMessage(null)}
-                className="p-1 hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Sleek Compact Sticky Header */}
-        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-xs">
-          {/* Left: Compact avatar circle + Technician Name + Indore hub tag */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
-              VC
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-bold text-slate-900 text-sm sm:text-base leading-tight">
-                  {partnerSession.displayName || 'Vikas Chopra'}
-                </h1>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium leading-none mt-0.5">
-                Indore Operations Hub • Scheme 54
-              </p>
-            </div>
-          </div>
-
-          {/* Right: Minimalist Duty Pill Toggle (Small green dot + "ONLINE") */}
-          <div className="flex items-center gap-2">
-            <button
-              id="partner-duty-toggle-btn"
-              onClick={() => {
-                const next = !isDutyOnline;
-                setIsDutyOnline(next);
-                showToast(next ? 'Duty Online. You are now accepting leads across Indore.' : 'Duty Offline. Taking a break.');
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-xs ${
-                isDutyOnline
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-slate-100 text-slate-500 border-slate-200'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isDutyOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-              <span>{isDutyOnline ? 'ONLINE' : 'OFFLINE'}</span>
-            </button>
-
-            <button
-              onClick={() => setShowRateCardModal(true)}
-              title="Rate Card"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
-            >
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>Rates</span>
-            </button>
-
-            <button
-              id="partner-logout-btn"
-              onClick={handleLogout}
-              title="Log Out"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline text-xs font-semibold">Exit</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Dashboard Main Content with strict 8pt grid alignment */}
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 space-y-4">
-          {/* Single Unified Quick-Strip (Merged Earnings & Goal) */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs flex items-center justify-between flex-wrap gap-2 text-xs sm:text-sm">
-            <div className="flex items-center gap-1.5">
-              <span className="text-emerald-600 font-extrabold text-base">₹{todayEarnings.toLocaleString('en-IN')}</span>
-              <span className="text-slate-500 font-semibold">Today</span>
-            </div>
-
-            <span className="text-slate-300 hidden sm:inline">•</span>
-
-            <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
-              <span className="font-extrabold text-slate-900">{completedJobsCount}/4</span>
-              <span>Jobs</span>
-              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                ₹300 Bonus at 4
-              </span>
-            </div>
-
-            <span className="text-slate-300 hidden sm:inline">•</span>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <span className="text-slate-500 font-medium">Wallet:</span>
-                <span className="font-extrabold text-slate-900 text-sm sm:text-base">₹{walletBalance.toLocaleString('en-IN')}</span>
-              </div>
-              <button
-                onClick={handleInstantPayout}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-colors cursor-pointer"
-              >
-                Withdraw
-              </button>
-            </div>
-          </div>
-
-          {/* Minimalist Segmented Tab Switcher */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl max-w-sm">
-            <button
-              onClick={() => setActiveDashboardTab('leads')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
-                activeDashboardTab === 'leads' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Leads ({availableLeads.length + (activeJob ? 1 : 0)})
-            </button>
-            <button
-              onClick={() => setActiveDashboardTab('wallet')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
-                activeDashboardTab === 'wallet' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Wallet
-            </button>
-            <button
-              onClick={() => setActiveDashboardTab('kyc')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
-                activeDashboardTab === 'kyc' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Profile
-            </button>
-          </div>
-
-          {/* TAB 1: ACTIVE & NEW LEADS */}
-          {activeDashboardTab === 'leads' && (
-            <div className="space-y-4">
-              {/* ONGOING ACTIVE JOB (If Any) */}
-              {activeJob && (
-                <div className="bg-white rounded-2xl p-4 border-2 border-emerald-500 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      {activeJob.status === 'started' ? 'Service In-Progress' : 'En Route to Customer'}
-                    </span>
-                    <span className="text-xs text-slate-500 font-semibold flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                      {activeJob.distance}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900">{activeJob.title}</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      {activeJob.customerName} • {activeJob.landmark}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-                    <div>
-                      <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider block leading-none">
-                        NET EARNING
-                      </span>
-                      <span className="text-xl font-extrabold text-emerald-600 leading-tight">
-                        ₹{activeJob.payout}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`tel:${activeJob.customerPhone}`}
-                        className="px-3 py-2 rounded-xl text-slate-600 bg-slate-100 hover:bg-slate-200 text-xs font-semibold flex items-center gap-1"
-                      >
-                        <PhoneCall className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Call</span>
-                      </a>
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${activeJob.address}, ${activeJob.landmark}`)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-2 rounded-xl text-blue-600 bg-blue-50 hover:bg-blue-100 text-xs font-semibold flex items-center gap-1"
-                      >
-                        <Navigation className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Map</span>
-                      </a>
-                      {activeJob.status === 'accepted' ? (
-                        <button
-                          onClick={() => handleOpenLeadOtpModal(activeJob)}
-                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          <span>Verify OTP</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleCompleteLeadJob(activeJob.id)}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Complete</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* AVAILABLE CUSTOMER LEADS LIST */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                      <span>Available Leads</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {availableLeads.length} Live
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-400 font-medium">
-                      {isDutyOnline ? 'Jobs in your 10 km Indore service zone' : 'Turn Duty Online to accept jobs'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowRateCardModal(true)}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer flex items-center gap-1"
-                  >
-                    <span>Rate Card</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {availableLeads.length === 0 ? (
-                  <div className="bg-white border border-slate-200/80 rounded-2xl p-8 text-center text-slate-500 shadow-sm">
-                    <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
-                    <h4 className="text-sm font-bold text-slate-800">All available leads claimed</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">New orders dispatch every few minutes across Indore.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {availableLeads.map((lead) => {
-                      const catStyle = getCategoryBadgeStyle(lead.category);
-                      const cleanDist = lead.distance.replace(' away', '');
-                      const cleanLoc = lead.landmark.includes('Vijay Nagar') 
-                        ? 'Vijay Nagar' 
-                        : (lead.landmark.split(',')[1]?.trim() || lead.landmark.split(',')[0]?.replace('Near ', '').trim() || 'Indore');
-                      return (
-                        <div
-                          key={lead.id}
-                          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3 flex flex-col justify-between"
-                        >
-                          <div className="space-y-2">
-                            {/* Top Row of Card */}
-                            <div className="flex items-center justify-between gap-2">
-                              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${catStyle.badge}`}>
-                                {catStyle.label || lead.category}
-                              </span>
-                              <span className="text-xs font-medium text-slate-500">
-                                📍 {cleanDist} • {cleanLoc}
-                              </span>
-                            </div>
-
-                            {/* Middle Row (Service Name): Crisp 1-line title, NO CHECKLIST BULLETS */}
-                            <div>
-                              <h4 className="font-semibold text-slate-900 text-sm sm:text-base leading-snug line-clamp-1">
-                                {lead.title}
-                              </h4>
-                              <p className="text-xs text-slate-400 mt-0.5">
-                                {lead.duration} • {lead.customerName}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Bottom Action Row (Strictly Aligned Flex Layout) */}
-                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-                            {/* Left: Net Payout */}
-                            <div>
-                              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider block leading-none">
-                                NET EARNING
-                              </span>
-                              <span className="text-xl font-extrabold text-emerald-600 leading-tight">
-                                ₹{lead.payout}
-                              </span>
-                            </div>
-
-                            {/* Right: Two properly sized inline buttons */}
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleDeclineLead(lead.id)}
-                                className="px-4 py-2 rounded-xl text-slate-500 bg-slate-100 hover:bg-slate-200 text-sm font-semibold transition-colors cursor-pointer"
-                              >
-                                Decline
-                              </button>
-                              <button
-                                id={`accept-lead-${lead.id}`}
-                                disabled={!isDutyOnline || Boolean(activeJob)}
-                                onClick={() => handleAcceptLead(lead.id)}
-                                className={`px-5 py-2.5 rounded-xl text-white font-bold text-sm shadow-md transition-all cursor-pointer ${
-                                  !isDutyOnline || Boolean(activeJob)
-                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
-                                    : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
-                                }`}
-                              >
-                                Accept Job
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: WALLET & PAYOUTS */}
-          {activeDashboardTab === 'wallet' && (
-            <div className="space-y-6">
-              {/* Bank Account Summary */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-200">
-                    <Building2 className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-extrabold text-slate-900 text-base">HDFC Bank Account</h4>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                        IMPS Verified
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Account No: *******4092 • IFSC: HDFC0000281 • Beneficiary: Vikas Chopra
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1">Automatic weekly sweep every Monday midnight.</p>
-                  </div>
-                </div>
-
-                <div className="text-right flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
-                  <span className="text-xs font-bold text-slate-500 uppercase">Available Payout</span>
-                  <span className="text-2xl font-black text-slate-900">₹{walletBalance}</span>
-                  <button
-                    onClick={handleInstantPayout}
-                    className="mt-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer shadow-xs"
-                  >
-                    Instant Transfer
-                  </button>
-                </div>
-              </div>
-
-              {/* Earnings Breakdown */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs">
-                <h3 className="font-extrabold text-slate-900 text-base mb-4">Daily Earnings History</h3>
-                <div className="space-y-3">
-                  {[
-                    { date: "Today (Oct 19)", jobs: `${completedJobsCount} Jobs Completed`, amount: `₹${todayEarnings}`, status: "Pending Settlement" },
-                    { date: "Yesterday (Oct 18)", jobs: "3 Jobs Completed", amount: "₹2,100", status: "Transferred to Bank" },
-                    { date: "Oct 17, 2026", jobs: "4 Jobs Completed", amount: "₹2,800", status: "Transferred to Bank" },
-                    { date: "Oct 16, 2026", jobs: "3 Jobs Completed", amount: "₹1,950", status: "Transferred to Bank" },
-                  ].map((row, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 text-xs">
-                      <div>
-                        <span className="font-bold text-slate-900 block">{row.date}</span>
-                        <span className="text-slate-500 font-medium">{row.jobs}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-extrabold text-slate-900 text-sm block">{row.amount}</span>
-                        <span className={`text-[10px] font-bold ${row.status.includes('Transferred') ? 'text-emerald-700' : 'text-blue-600'}`}>
-                          {row.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: KYC & DOCUMENTS */}
-          {activeDashboardTab === 'kyc' && (
-            <div className="space-y-6">
-              {/* Partner Profile Badge */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white font-extrabold text-xl flex items-center justify-center shadow-xs">
-                    VC
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-extrabold text-slate-900">Vikas Chopra</h3>
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase">
-                        Active Pro
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Partner ID: <span className="font-mono font-bold text-slate-700">ZOM-IND-48291</span> • Base: Vijay Nagar, Indore
-                    </p>
-                    <p className="text-xs text-slate-500 font-medium">Contact: +91 9752170789</p>
-                  </div>
-                </div>
-
-                <div className="hidden sm:block text-right">
-                  <span className="text-xs text-slate-400 font-bold block uppercase">Rating</span>
-                  <span className="text-2xl font-black text-amber-500">4.9 ★</span>
-                  <span className="text-[11px] text-slate-400 block font-medium">148 Reviews</span>
-                </div>
-              </div>
-
-              {/* Verified Documents */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
-                <h3 className="font-extrabold text-slate-900 text-base">KYC Document Status</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {[
-                    { label: "Aadhaar Card", sub: "Digilocker Verified", status: "Verified ✓", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-                    { label: "Driving License", sub: "Valid till Nov 2028", status: "Verified ✓", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-                    { label: "Police Verification", sub: "Indore City Police Dept", status: "Cleared ✓", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-                    { label: "Bank Account Check", sub: "HDFC Bank ending 4092", status: "Active ✓", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-                  ].map((docItem, idx) => (
-                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900 text-xs block">{docItem.label}</span>
-                        <span className="text-[11px] text-slate-500 font-medium">{docItem.sub}</span>
-                      </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${docItem.color}`}>
-                        {docItem.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Certified Categories */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-extrabold text-slate-900 text-base">Certified Service Categories</h3>
-                  <button
-                    onClick={() => showToast('Skill addition request sent to Indore Hub Manager.')}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
-                  >
-                    + Add New Category
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "Air Conditioner (AC Expert)",
-                    "Refrigerator Diagnostics",
-                    "RO Water Purifier",
-                    "Washing Machine Repair",
-                    "Electrician & Wiring"
-                  ].map((cat, idx) => (
-                    <span key={idx} className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold rounded-xl">
-                      {cat}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Help Desk Bar (Clean Light) */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-200">
-                <HelpCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 block">Need Help with Bookings, Routes, or Spare Parts?</span>
-                <span className="text-slate-500 font-medium">Zomindia Indore Partner Desk: +91 9630234563 (24x7 Operations Support)</span>
-              </div>
-            </div>
-            <a
-              href="tel:+919630234563"
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer border border-slate-200 transition-colors"
-            >
-              Call Helpline
-            </a>
-          </div>
-        </main>
-
-        {/* Fixed 56px Floating Bottom Navigation Bar (Leads, Wallet, Profile) */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 h-14 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg px-4 flex items-center justify-around max-w-lg mx-auto sm:max-w-none">
-          <button
-            id="nav-tab-leads"
-            onClick={() => setActiveDashboardTab('leads')}
-            className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-              activeDashboardTab === 'leads' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600 font-medium'
-            }`}
-          >
-            <div className="relative">
-              <Zap className="w-5 h-5" />
-              {availableLeads.length > 0 && (
-                <span className="absolute -top-1 -right-2 px-1 min-w-[14px] h-3.5 rounded-full text-[9px] font-black bg-rose-500 text-white flex items-center justify-center">
-                  {availableLeads.length}
-                </span>
-              )}
-            </div>
-            <span className="text-[11px] leading-none">Leads</span>
-          </button>
-
-          <button
-            id="nav-tab-wallet"
-            onClick={() => setActiveDashboardTab('wallet')}
-            className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-              activeDashboardTab === 'wallet' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600 font-medium'
-            }`}
-          >
-            <Wallet className="w-5 h-5" />
-            <span className="text-[11px] leading-none">Wallet</span>
-          </button>
-
-          <button
-            id="nav-tab-profile"
-            onClick={() => setActiveDashboardTab('kyc')}
-            className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-              activeDashboardTab === 'kyc' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600 font-medium'
-            }`}
-          >
-            <ShieldCheck className="w-5 h-5" />
-            <span className="text-[11px] leading-none">Profile</span>
-          </button>
-        </nav>
-
-        {/* Lead Customer OTP Verification Modal (Clean Light) */}
-        <AnimatePresence>
-          {activeOtpLead && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center space-y-4 shadow-2xl"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-200">
-                  <KeyRound className="w-7 h-7" />
-                </div>
-                <h3 className="text-xl font-extrabold text-slate-900">Customer Security OTP</h3>
-                <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                  Ask customer <span className="text-slate-900 font-bold">{activeOtpLead.customerName}</span> for the 4-digit start verification code.
-                </p>
-
-                <div className="p-2.5 bg-blue-50/80 rounded-2xl border border-blue-200 text-xs text-blue-800 font-mono font-bold">
-                  Test Review Code: {activeOtpLead.otpCode}
-                </div>
-
-                <input
-                  type="text"
-                  maxLength={4}
-                  value={enteredLeadOtp}
-                  onChange={(e) => setEnteredLeadOtp(e.target.value.replace(/\D/g, ''))}
-                  placeholder="• • • •"
-                  className="w-full text-center tracking-[0.5em] text-2xl font-black bg-slate-50 border border-slate-200 rounded-2xl py-3 text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
-                />
-
-                {otpVerifyError && (
-                  <p className="text-xs text-rose-600 font-bold">{otpVerifyError}</p>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={() => setActiveOtpLead(null)}
-                    className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleVerifyLeadOtp}
-                    className="flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider cursor-pointer shadow-xs transition-colors"
-                  >
-                    Verify & Start
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* Rate Card Modal Re-used in Dashboard */}
-        <AnimatePresence>
-          {showRateCardModal && (
-            <RateCardModal 
-              onClose={() => setShowRateCardModal(false)}
-              rateCards={partnerRateCards}
-              selectedCategory={selectedRateCardCategory}
-              setSelectedCategory={setSelectedRateCardCategory}
-              onApply={() => {
-                setShowRateCardModal(false);
-                setShowRegisterModal(true);
-              }}
-            />
-          )}
-        </AnimatePresence>
-      </div>
-    );
+    return <PartnerApp profile={activePartnerProfile as any} onLogout={handleLogout} />;
   }
 
   // =========================================================================

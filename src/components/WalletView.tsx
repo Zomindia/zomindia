@@ -206,7 +206,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
             ...verifyPayload
           })
         });
-        const addFundsData = await addFundsRes.json();
+        const addFundsData = await addFundsRes.json().catch(() => ({}));
         if (addFundsRes.ok && addFundsData.success) {
           setTopupAmount('');
           displayMessage("Wallet recharged successfully via Razorpay!");
@@ -235,7 +235,6 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
               paymentId: response.razorpay_payment_id
             });
           } catch (verErr: any) {
-            console.error("[Razorpay Wallet Add Funds Error]:", verErr);
             displayMessage("Error processing verified payment: " + verErr.message, true);
           } finally {
             setLoading(false);
@@ -260,13 +259,11 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
 
       const rzp = new RazorpayConstructor(options);
       rzp.on('payment.failed', function (resp: any) {
-        console.warn('[Razorpay Topup Failed]:', resp.error);
         displayMessage(resp.error?.description || "Payment was declined.", true);
         setLoading(false);
       });
       rzp.open();
     } catch (err: any) {
-      console.error("[Wallet Top-up Error]:", err);
       displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
       setLoading(false);
     }

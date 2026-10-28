@@ -19,7 +19,6 @@ import PartnerHome from './partner/PartnerHome';
 import PartnerJobs from './partner/PartnerJobs';
 import PartnerWallet from './partner/PartnerWallet';
 import PartnerSettings from './partner/PartnerSettings';
-import NotificationsView from './NotificationsView';
 import PartnerAmcLeads from './partner/PartnerAmcLeads';
 import OffersView from './OffersView';
 import UnifiedKYCForm from './partner/UnifiedKYCForm';
@@ -27,18 +26,20 @@ import PartnerNotificationDrawer from './partner/PartnerNotificationDrawer';
 import PartnerSupportModal from './partner/PartnerSupportModal';
 import { LoadingScreen } from './LoadingIndicator';
 import { LogoHorizontal, LogoIcon } from './BrandLogo';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
+import { signOutUser } from '../services/authService';
 
 interface Props {
   profile: UserProfile;
   initialTab?: 'home' | 'jobs' | 'wallet' | 'settings' | 'notifications';
   targetBookingId?: string | null;
   onNavigate?: (tab: string) => void;
+  onLogout?: () => void;
 }
 
-export default function PartnerApp({ profile, initialTab = 'home', targetBookingId: initialTargetId, onNavigate: onAppNavigate }: Props) {
+export default function PartnerApp({ profile, initialTab = 'home', targetBookingId: initialTargetId, onNavigate: onAppNavigate, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<'stats' | 'jobs' | 'wallet' | 'settings' | 'notifications' | 'offers' | 'amc-leads'>(initialTab === 'home' || initialTab === 'notifications' ? 'stats' : (initialTab as any));
   const [targetBookingId, setTargetBookingId] = useState<string | null>(initialTargetId || null);
   const [showNotificationDrawer, setShowNotificationDrawer] = useState<boolean>(initialTab === 'notifications');
@@ -190,7 +191,24 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     }
   }, [kycStatus, profile.uid]);
 
+  const handlePartnerLogout = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.warn('Signout warning:', err);
+    }
+    if (onLogout) {
+      onLogout();
+    } else {
+      window.location.href = '/';
+    }
+  };
+
   const navigateWithTarget = (screen: any, targetId: string | null = null) => {
+    if (screen === 'logout' || screen === 'exit') {
+      handlePartnerLogout();
+      return;
+    }
     // If screen is notifications, open drawer without navigating away from dashboard
     if (screen === 'notifications') {
       setShowNotificationDrawer(true);
@@ -596,7 +614,17 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       case 'wallet':
         return <PartnerWallet partner={partner} profile={profile} bookings={bookings} />;
       case 'settings':
-        return <PartnerSettings partner={partner} profile={profile} onNavigate={navigateWithTarget} bookings={bookings} services={services} users={users} />;
+        return (
+          <PartnerSettings
+            partner={partner}
+            profile={profile}
+            onNavigate={navigateWithTarget}
+            onLogout={onLogout || (() => { window.location.href = '/'; })}
+            bookings={bookings}
+            services={services}
+            users={users}
+          />
+        );
       case 'notifications':
         return (
           <PartnerHome 

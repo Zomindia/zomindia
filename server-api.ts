@@ -1,4 +1,5 @@
 import express from "express";
+import dotenv from "dotenv";
 import crypto from "crypto";
 import axios from "axios";
 import realAdmin from "firebase-admin";
@@ -6,6 +7,11 @@ import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
+
+dotenv.config({ override: true });
+
+export const RAZORPAY_KEY_ID = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || "").trim();
+export const RAZORPAY_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || "").trim();
 
 // Create a robust wrapper proxy for admin to dynamically route database/static value accesses
 // This avoids read-only getter TypeError and handles client-compatibility vs admin SDK differences safely

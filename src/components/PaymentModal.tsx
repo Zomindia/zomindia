@@ -83,7 +83,6 @@ export default function PaymentModal({
   const [isInitializing, setIsInitializing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSimulation, setIsSimulation] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeKeyId, setActiveKeyId] = useState<string | null>(null);
   const [orderAmountPaise, setOrderAmountPaise] = useState<number>(0);
@@ -119,7 +118,6 @@ export default function PaymentModal({
     if (finalPayable > 0) {
       initiateRazorpayOrder();
     } else {
-      setIsSimulation(false);
       setActiveOrderId(null);
     }
   }, [finalPayable, resolvedBookingId]);
@@ -218,14 +216,19 @@ export default function PaymentModal({
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to process wallet payment');
+      const rawWalletText = await response.text();
+      let data: any = null;
+      try {
+        data = rawWalletText ? JSON.parse(rawWalletText) : null;
+      } catch {
+        data = null;
+      }
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to process wallet payment');
       }
 
       handleFinalSuccess(`WALLET_${Date.now()}`, 'Zomindia Wallet');
     } catch (err: any) {
-      console.error('Wallet Payment Error:', err);
       setErrorMessage(err.message || 'Wallet payment failed');
       setIsProcessing(false);
     }
@@ -255,7 +258,6 @@ export default function PaymentModal({
       await updateDoc(bRef, updatePayload);
       handleFinalSuccess(`COD_${Date.now()}`, 'Pay After Service');
     } catch (err: any) {
-      console.error('Error switching to Pay After Service:', err);
       setErrorMessage('Failed to update payment mode.');
       setIsProcessing(false);
     }
@@ -267,7 +269,6 @@ export default function PaymentModal({
 
     setIsInitializing(true);
     setErrorMessage(null);
-    setIsSimulation(false);
 
     try {
       // Partial wallet deduction if enabled
@@ -282,9 +283,15 @@ export default function PaymentModal({
             isFullSettlement: false
           }),
         });
-        const walletData = await walletRes.json();
-        if (!walletRes.ok || !walletData.success) {
-          throw new Error(walletData.error || 'Failed to process partial wallet deduction');
+        const walletRaw = await walletRes.text();
+        let walletData: any = null;
+        try {
+          walletData = walletRaw ? JSON.parse(walletRaw) : null;
+        } catch {
+          walletData = null;
+        }
+        if (!walletRes.ok || !walletData?.success) {
+          throw new Error(walletData?.error || 'Failed to process partial wallet deduction');
         }
       }
 
@@ -304,11 +311,17 @@ export default function PaymentModal({
         })
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        data = null;
+      }
 
       if (!res.ok || !data?.success) {
         setIsInitializing(false);
-        const errMsg = data?.error || 'Razorpay order could not be created. Please try again or choose Pay After Service.';
+        const errMsg = data?.error || 'Online payment gateway is not configured. Please contact support or pay via cash.';
         setErrorMessage(errMsg);
         return;
       }
@@ -316,22 +329,26 @@ export default function PaymentModal({
       const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
       const effectiveKey = (data.keyId && !data.keyId.includes('placeholder'))
         ? data.keyId
-        : (clientKey && !clientKey.includes('placeholder') ? clientKey : (data.keyId || 'rzp_test_placeholder'));
+        : (clientKey && !clientKey.includes('placeholder') ? clientKey : '');
+
+      if (!effectiveKey || !data.orderId) {
+        setIsInitializing(false);
+        setErrorMessage('Online payment gateway is not configured. Please contact support or pay via cash.');
+        return;
+      }
 
       setActiveOrderId(data.orderId);
       setActiveKeyId(effectiveKey);
       setOrderAmountPaise(data.amount || Math.round(finalPayable * 100));
-      setIsSimulation(Boolean(data.isMock || !effectiveKey || effectiveKey.includes('placeholder')));
       setIsInitializing(false);
     } catch (err: any) {
-      console.error('[Razorpay Init Error]:', err);
       setIsInitializing(false);
-      setErrorMessage('Could not initialize Razorpay checkout. Please check connection or pay after service.');
+      setErrorMessage('Online payment gateway is not configured. Please contact support or pay via cash.');
     }
   };
 
   // Verify payment status with backend
-  const verifyPayment = async (orderId: string, paymentId: string, signature: string, isMockTxn: boolean = false) => {
+  const verifyPayment = async (orderId: string, paymentId: string, signature: string) => {
     setIsProcessing(true);
     setErrorMessage(null);
 
@@ -347,30 +364,27 @@ export default function PaymentModal({
           customerUid: profile?.uid || (booking as any)?.customerId || 'customer',
           amount: finalPayable,
           walletDeductAmount: walletDeduction,
-          isMock: isMockTxn,
+          isMock: false,
           status: booking?.status === 'payment_pending' ? 'completed' : 'confirmed'
         })
       });
 
-      const verifyData = await verifyRes.json();
+      const verifyRaw = await verifyRes.text();
+      let verifyData: any = null;
+      try {
+        verifyData = verifyRaw ? JSON.parse(verifyRaw) : null;
+      } catch {
+        verifyData = null;
+      }
 
-      if (verifyRes.ok && verifyData.success) {
-        handleFinalSuccess(paymentId, isMockTxn ? 'Razorpay (Simulated)' : 'Razorpay');
+      if (verifyRes.ok && verifyData?.success) {
+        handleFinalSuccess(paymentId, 'Razorpay');
       } else {
-        if (isMockTxn) {
-          handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
-        } else {
-          setErrorMessage(verifyData.error || 'Payment signature verification failed.');
-        }
+        setErrorMessage(verifyData?.error || 'Payment signature verification failed.');
         setIsProcessing(false);
       }
     } catch (err: any) {
-      console.error('[Razorpay Verify Error]:', err);
-      if (isMockTxn) {
-        handleFinalSuccess(paymentId, 'Razorpay (Simulated)');
-      } else {
-        setErrorMessage('Network error while verifying payment status.');
-      }
+      setErrorMessage('Network error while verifying payment status.');
       setIsProcessing(false);
     }
   };
@@ -379,7 +393,7 @@ export default function PaymentModal({
   const openRazorpayCheckout = (keyToUse: string) => {
     const RazorpayConstructor = (window as any).Razorpay;
     if (typeof RazorpayConstructor !== 'function') {
-      setIsSimulation(true);
+      setErrorMessage('Online payment gateway is not configured. Please contact support or pay via cash.');
       return;
     }
 
@@ -393,10 +407,9 @@ export default function PaymentModal({
         order_id: activeOrderId,
         handler: function (response: any) {
           verifyPayment(
-            response.razorpay_order_id || activeOrderId,
+            response.razorpay_order_id || activeOrderId || '',
             response.razorpay_payment_id,
-            response.razorpay_signature,
-            false
+            response.razorpay_signature
           );
         },
         prefill: {
@@ -422,7 +435,7 @@ export default function PaymentModal({
       rzp.open();
     } catch (sdkErr: any) {
       console.error('[Razorpay Launch Error]:', sdkErr);
-      setIsSimulation(true);
+      setErrorMessage('Online payment gateway is not configured. Please contact support or pay via cash.');
     }
   };
 
@@ -433,9 +446,8 @@ export default function PaymentModal({
       return;
     }
 
-    if (isSimulation || !activeKeyId || activeKeyId.includes('placeholder')) {
-      const mockPayId = `pay_sim_${Date.now()}`;
-      verifyPayment(activeOrderId, mockPayId, 'mock_signature', true);
+    if (!activeKeyId || activeKeyId.includes('placeholder')) {
+      setErrorMessage('Online payment gateway is not configured. Please contact support or pay via cash.');
       return;
     }
 
@@ -449,8 +461,7 @@ export default function PaymentModal({
         openRazorpayCheckout(activeKeyId);
       };
       script.onerror = () => {
-        console.warn('Could not load Razorpay SDK dynamically. Falling back to sandbox simulation.');
-        setIsSimulation(true);
+        setErrorMessage('Unable to load Razorpay payment gateway. Please check your connection or pay via cash.');
       };
       document.body.appendChild(script);
     }
@@ -660,39 +671,6 @@ export default function PaymentModal({
                 </div>
               )}
 
-              {/* Simulation Mode Info Card */}
-              {isSimulation && !paymentSuccess && (
-                <div className="p-5 bg-gradient-to-br from-amber-50/90 via-orange-50/70 to-red-50/70 border-2 border-amber-200/80 rounded-3xl space-y-4 text-center shadow-xs">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center mx-auto shadow-md">
-                    <Sparkles size={24} />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 text-[11px] font-black rounded-full mb-1">
-                      <span>Preview & Sandbox Mode</span>
-                    </div>
-                    <h4 className="text-base font-black text-slate-900">Razorpay Simulation Active</h4>
-                    <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
-                      Razorpay live keys are not configured in this preview environment. You can simulate the verified payment flow to test end-to-end booking confirmation without errors.
-                    </p>
-                  </div>
-
-                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={() => {
-                        const mockPayId = `pay_sim_${Date.now()}`;
-                        verifyPayment(activeOrderId || `order_mock_${Date.now()}`, mockPayId, 'mock_signature', true);
-                      }}
-                      className="w-full sm:w-auto px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <Zap size={15} />
-                      <span>{isProcessing ? 'Processing...' : `Simulate Successful Payment (₹${finalPayable})`}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Loading State when initializing order */}
               {isInitializing && (
                 <div className="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-white flex flex-col items-center justify-center p-6 text-center space-y-3 shadow-xs">
@@ -710,12 +688,12 @@ export default function PaymentModal({
               )}
 
               {/* Primary Action Button for Online Checkout */}
-              {!isSimulation && finalPayable > 0 && !isInitializing && (
+              {finalPayable > 0 && !isInitializing && (
                 <div className="pt-2 space-y-2">
                   <button
                     type="button"
                     onClick={handleProceedToPay}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !activeOrderId}
                     className="w-full py-3.5 px-6 bg-red-600 hover:bg-red-700 active:scale-[0.99] text-white font-black text-sm rounded-2xl shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
                   >
                     {isProcessing ? (

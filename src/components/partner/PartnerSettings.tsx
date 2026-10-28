@@ -21,8 +21,8 @@ import {
 import { PartnerProfile, UserProfile, Category, Booking, Service, Review } from '../../types';
 import { LogoIcon } from '../BrandLogo';
 import { collection, getDocs, doc, updateDoc, Timestamp, setDoc, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
 import { db, auth, storage } from '../../lib/firebase';
+import { signOutUser } from '../../services/authService';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import AdminUpload from '../AdminUpload';
 import { sendNotification } from '../../lib/notifications';
@@ -31,6 +31,7 @@ interface Props {
   partner: PartnerProfile | null;
   profile: UserProfile;
   onNavigate: (tab: any) => void;
+  onLogout?: () => void;
   bookings?: Booking[];
   services?: Service[];
   users?: UserProfile[];
@@ -39,7 +40,7 @@ interface Props {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DEFAULT_HOURS = DAYS.map(day => ({ day, startTime: '09:00', endTime: '18:00', enabled: true }));
 
-export default function PartnerSettings({ partner, profile, onNavigate, bookings = [], services = [], users = [] }: Props) {
+export default function PartnerSettings({ partner, profile, onNavigate, onLogout, bookings = [], services = [], users = [] }: Props) {
   const [activeSub, setActiveSub] = useState<'kyc' | 'earnings' | 'skills' | 'faq' | 'performance' | null>(null);
   const [openFaq, setOpenFaq] = useState<string | null>(null);
 
@@ -107,6 +108,19 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
   const handleSelectSub = (sub: 'kyc' | 'earnings' | 'skills' | 'faq' | 'performance' | null) => {
     setActiveSub(sub);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePartnerLogout = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.warn('Signout warning:', err);
+    }
+    if (onLogout) {
+      onLogout();
+    } else {
+      window.location.href = '/';
+    }
   };
 
   const [isEditing, setIsEditing] = useState(false);
@@ -462,8 +476,8 @@ export default function PartnerSettings({ partner, profile, onNavigate, bookings
              ))}
 
              <button 
-               onClick={() => signOut(auth)}
-               className="w-full bg-rose-50/50 p-5 rounded-[28px] border border-rose-100 flex justify-between items-center active:scale-98 transition-all group mt-2"
+               onClick={handlePartnerLogout}
+               className="w-full bg-rose-50/50 p-5 rounded-[28px] border border-rose-100 flex justify-between items-center active:scale-98 transition-all group mt-2 cursor-pointer"
              >
                 <div className="flex items-center gap-4">
                    <div className="w-10 h-10 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-md shadow-rose-200 group-hover:scale-105 transition-transform">
