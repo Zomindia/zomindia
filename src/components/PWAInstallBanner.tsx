@@ -108,9 +108,9 @@ export function PWAInstallBanner() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-          className="fixed bottom-24 md:bottom-8 left-3 right-3 sm:left-auto sm:right-6 z-[60] max-w-sm w-full mx-auto sm:mx-0 pointer-events-auto"
+          className="fixed bottom-24 md:bottom-8 left-3 right-3 sm:left-auto sm:right-6 z-[60] max-w-sm w-full mx-auto sm:mx-0 pointer-events-none"
         >
-          <div className="relative bg-white/95 backdrop-blur-md rounded-3xl p-3.5 border border-slate-200/90 shadow-[0_16px_36px_-6px_rgba(0,46,110,0.18)] flex flex-col gap-2.5">
+          <div className="pointer-events-auto relative bg-white/95 backdrop-blur-md rounded-3xl p-3.5 border border-slate-200/90 shadow-[0_16px_36px_-6px_rgba(0,46,110,0.18)] flex flex-col gap-2.5">
             <div className="flex items-center justify-between gap-3">
               <button
                 onClick={handleDismiss}

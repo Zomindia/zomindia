@@ -2501,8 +2501,8 @@ export default function CustomerHome({
 
       {/* Sleek Floating Bottom Pill (Swiggy / Zomato Style) */}
       {hasActiveBooking && !isPillDismissed && activeBooking && (
-        <div className="fixed bottom-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-40 mx-auto">
-          <div className="bg-white/80 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/10 rounded-2xl p-3 flex items-center justify-between gap-2.5 transition-all animate-in slide-in-from-bottom duration-300">
+        <div className="fixed bottom-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-40 mx-auto pointer-events-none">
+          <div className="pointer-events-auto bg-white/80 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/10 rounded-2xl p-3 flex items-center justify-between gap-2.5 transition-all animate-in slide-in-from-bottom duration-300">
             {/* Left Section: Live Status & Partner Info */}
             <div
               onClick={() => setActiveTab("bookings", activeBooking.id)}

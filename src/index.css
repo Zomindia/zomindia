@@ -80,10 +80,9 @@
 
 @layer base {
   html, body {
-    overflow-x: clip !important;
-    overflow-y: auto !important;
-    height: auto !important;
-    min-height: 100% !important;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
     overscroll-behavior-y: auto;
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
@@ -92,9 +91,10 @@
     @apply antialiased text-slate-900 bg-[#f5f7fa] selection:bg-[#00baf2] selection:text-white leading-relaxed transition-colors duration-200;
   }
   #root {
-    min-height: 100%;
+    min-height: 100vh;
     width: 100%;
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: visible;
   }
   
   button, 

@@ -281,12 +281,27 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     return () => {
       draftBookingIdRef.current = '';
       isSubmittingRef.current = false;
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = 'unset';
+      }
     };
   }, [service?.id]);
+
+  // Ensure body scroll is always restored on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = 'unset';
+      }
+    };
+  }, []);
 
   const handleModalClose = () => {
     draftBookingIdRef.current = '';
     isSubmittingRef.current = false;
+    if (typeof document !== 'undefined') {
+      document.body.style.overflow = 'unset';
+    }
     onClose();
   };
 

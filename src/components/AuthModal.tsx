@@ -182,8 +182,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     if (isOpen) {
       resetForm();
     } else {
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = 'unset';
+      }
       clearRecaptchaInstance();
     }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = 'unset';
+      }
+    };
   }, [isOpen, initialView, initialData]);
 
   // Defensive cleanup on unmount
@@ -191,6 +199,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     return () => {
       if (typeof window !== 'undefined') {
         (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
+      }
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = 'unset';
       }
       clearRecaptchaInstance();
     };
@@ -634,17 +645,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
 
             {/* Top Brand Banner Header */}
             <div className="flex flex-col items-center justify-center relative z-10 select-none">
-              <img 
-                src="/logo-horizontal-white.png" 
-                alt="Zomindia" 
-                className="h-7 sm:h-8 w-auto object-contain opacity-95 mb-1.5"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-              <span className="text-[10px] font-bold tracking-widest text-blue-200/80 uppercase">
-                India's Trusted Home Services
-              </span>
+              <div className="bg-white/95 px-4 py-1.5 rounded-2xl shadow-md border border-white/20 inline-flex items-center justify-center mb-2 backdrop-blur-xs">
+                <img 
+                  src="/logo-horizontal.png" 
+                  alt="Zomindia" 
+                  className="h-6 sm:h-7 w-auto object-contain"
+                  onError={(e) => {
+                    // fallback to /logo-horizontal-white.png if /logo-horizontal.png fails
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('logo-horizontal-white.png')) {
+                      target.src = '/logo-horizontal-white.png';
+                    }
+                  }}
+                />
+              </div>
+              <span className="text-[10.5px] font-bold tracking-widest text-blue-200 uppercase">India's Trusted Home Services</span>
             </div>
           </div>
         )}

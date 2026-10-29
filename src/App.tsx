@@ -556,6 +556,7 @@ export default function App() {
 
 
   useEffect(() => {
+    document.body.style.overflow = 'unset';
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.documentElement.scrollTo({ top: 0, behavior: 'instant' });
     document.body.scrollTo({ top: 0, behavior: 'instant' });
@@ -1727,10 +1728,10 @@ If you have any billing questions, or if your refund is delayed, please email us
     <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
       {isFullScreenView ? (
         <div 
-          className="min-h-screen"
+          className="min-h-screen w-full overflow-x-hidden overflow-y-auto"
           style={{
             WebkitOverflowScrolling: 'touch',
-            overscrollBehaviorY: 'contain'
+            overscrollBehaviorY: 'auto'
           }}
         >
           <NotificationSystem onNavigate={setActiveTab} />
@@ -1741,7 +1742,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       ) : (
         <div 
-          className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans" 
+          className="min-h-screen w-full overflow-x-hidden overflow-y-auto bg-slate-50 text-slate-900 font-sans" 
           style={{ 
             backgroundColor: '#f8fafc', 
             color: '#0f172a',
@@ -2119,7 +2120,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           backgroundColor: '#f8fafc', 
           color: '#0f172a',
           WebkitOverflowScrolling: 'touch',
-          overscrollBehaviorY: 'contain'
+          overscrollBehaviorY: 'auto'
         }}
       >
         <AnimatePresence mode="wait">

@@ -1471,7 +1471,7 @@ export default function AiSupportChat({
     // ==========================================
     // STATE GUARDRAIL ENVELOPE: Absolute defensive wrapping container to prevent code purges on Customer, Partner, and Admin
     // ==========================================
-    <div id="zomi-immutable-support-root" className="contents">
+    <div id="zomi-immutable-support-root" className="pointer-events-none">
       <style>{`
         @keyframes zomindia-green-pulse {
           0% {
@@ -1494,7 +1494,7 @@ export default function AiSupportChat({
           initial={{ opacity: 0, y: 30, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           onClick={() => setIsOpen(true)}
-          className={`fixed ${
+          className={`pointer-events-auto fixed ${
             isPillVisible
               ? "bottom-[128px] sm:bottom-[132px] right-4 sm:right-6"
               : "bottom-20 sm:bottom-22 right-4 sm:right-6"
@@ -1522,7 +1522,7 @@ export default function AiSupportChat({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 70, scale: 0.97 }}
             transition={{ duration: 0.12, ease: "easeOut" }} // Premium quick 120ms animation layout transition
-            className="fixed top-12 bottom-0 right-0 sm:top-auto sm:bottom-24 sm:right-8 w-full sm:w-96 bg-white border-t sm:border border-slate-200 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col z-[110] overflow-visible"
+            className="pointer-events-auto fixed top-12 bottom-0 right-0 sm:top-auto sm:bottom-24 sm:right-8 w-full sm:w-96 bg-white border-t sm:border border-slate-200 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col z-[110] overflow-visible"
             style={
               isMobile
                 ? {

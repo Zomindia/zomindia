@@ -82,7 +82,7 @@ export function useKeyboardFriendlyInputs() {
     document.addEventListener('focusout', handleFocusOut);
 
     // Register capture touch event listeners on window (parent container representing global stage)
-    window.addEventListener('touchstart', handleParentTouchCapture, { capture: true, passive: false });
+    window.addEventListener('touchstart', handleParentTouchCapture, { capture: true, passive: true });
     window.addEventListener('mousedown', handleParentTouchCapture, { capture: true });
     window.addEventListener('keydown', handleKeyDown, { capture: true });
 
