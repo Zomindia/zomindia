@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 dotenv.config({ override: true });
@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Defensively guard against Firestore ca9 internal assertion failure in WebChannel long-polling
-function patchFirestorePlugin() {
+function patchFirestorePlugin(): Plugin {
   return {
     name: 'patch-firestore-ca9',
     transform(code: string, id: string) {
@@ -46,7 +46,6 @@ export default defineConfig(({ mode }) => {
   dotenv.config({ override: true });
   const env = loadEnv(mode, '.', '');
   const resolvedRazorpayKeyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || env.VITE_RAZORPAY_KEY_ID || '').trim();
-  const disableHmr = process.env.DISABLE_HMR === 'true';
 
   return {
     plugins: [

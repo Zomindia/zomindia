@@ -1,3 +1,6 @@
+import type { Timestamp } from 'firebase/firestore';
+
+export type FirestoreTimestamp = Timestamp | { seconds: number; nanoseconds?: number; toDate?: () => Date } | string | number | any;
 export type UserRole = 'customer' | 'partner' | 'admin' | 'anon';
 export type AdminSubRole = 'head' | 'accounts' | 'hr' | 'manager' | 'support' | 'editor' | 'moderator' | 'marketing' | 'sales' | 'logistics' | 'developer' | 'owner' | 'field_manager';
 
