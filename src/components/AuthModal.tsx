@@ -166,11 +166,55 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     };
   }, [isOpen, view]);
 
+  // Auto-Focus on OTP View Entry
+  useEffect(() => {
+    if (view === 'otp-entry') {
+      const t = setTimeout(() => {
+        otpInputRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [view]);
+
+  // Native Smart Clipboard Auto-Detector (Notification "Copy OTP" Sync)
+  const lastPastedRef = useRef<string>('');
+
+  const checkClipboardForOtp = async () => {
+    if (view !== 'otp-entry' || loading) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+        const clipText = await navigator.clipboard.readText();
+        const match = clipText.match(/\b\d{6}\b/);
+        if (match && match[0] && match[0] !== lastPastedRef.current) {
+          lastPastedRef.current = match[0];
+          setOtpCode(match[0]);
+          handleVerifyOTP(undefined, match[0]);
+        }
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (view !== 'otp-entry') return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkClipboardForOtp();
+      }
+    };
+    window.addEventListener('focus', checkClipboardForOtp);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', checkClipboardForOtp);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [view]);
+
   // Clean form state upon open or close without clearing the initialized RecaptchaVerifier
   const resetForm = () => {
     setView(getInitialView());
     setPhoneNumber('');
     setOtpCode('');
+    lastPastedRef.current = '';
     setDisplayName(initialData?.displayName || '');
     setEmail(initialData?.email || '');
     setError(null);
@@ -836,6 +880,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                         );
                       })}
                     </div>
+                  </div>
+
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={checkClipboardForOtp}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-3 py-1 rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      <span>📋 Paste OTP from SMS</span>
+                    </button>
                   </div>
 
                   {error && (
