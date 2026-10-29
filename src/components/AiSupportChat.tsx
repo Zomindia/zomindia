@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -9,11 +9,11 @@ import {
   Phone,
   Mail,
   MessageCircle,
-  CreditCard,
   ShieldCheck,
   Lock,
-  Check,
-  AlertCircle,
+  Calendar,
+  Clock,
+  RotateCcw,
 } from "lucide-react";
 import { UserProfile, Booking } from "../types";
 import {
@@ -25,11 +25,13 @@ import {
   onSnapshot,
   Timestamp,
   doc,
-  setDoc,
+  addDoc,
+  updateDoc,
+  serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
-import confetti from "canvas-confetti";
 
 // =========================================================================
 // IMMUTABLE STATIC GRAPHICS: High-Fidelity Custom Vector SVG for ZOMI Avatar
@@ -337,9 +339,151 @@ export default function AiSupportChat({
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
 
-  // IMMUTABLE SYSTEM-SYNC STARTING MESSAGE: Context-aware of active bookings
+  const [focusedBookingId, setFocusedBookingId] = useState<string | null>(null);
+  const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
+  const [allServices, setAllServices] = useState<any[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showBookingSuccess, setShowBookingSuccess] = useState(false);
+
+  // Reschedule Self-Serve State
+  const [showReschedulePicker, setShowReschedulePicker] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState<"today" | "tomorrow">("tomorrow");
+  const [rescheduleSlot, setRescheduleSlot] = useState<string>("10:00 AM - 12:00 PM");
+  const [isRescheduling, setIsRescheduling] = useState(false);
+
+  // Multilingual voice configurations
+  const [selectedLang, setSelectedLang] = useState("hi-IN");
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Resolve the active / focused booking dynamically across ANY category
+  const activeBookingsList = useMemo(() => {
+    return (localBookings || []).filter((b) =>
+      [
+        "pending",
+        "confirmed",
+        "assigned",
+        "accepted",
+        "on_the_way",
+        "arrived",
+        "in_progress",
+        "pending_acceptance",
+        "confirmed_pay_after_service",
+      ].includes(String(b.status || "").toLowerCase()),
+    );
+  }, [localBookings]);
+
+  const focusedBooking: Booking | null = useMemo(() => {
+    if (focusedBookingId) {
+      const explicitMatch = localBookings.find((b) => b.id === focusedBookingId);
+      if (explicitMatch) return explicitMatch;
+    }
+    if (activeBookingsList.length > 0) {
+      return activeBookingsList[0];
+    }
+    return null;
+  }, [focusedBookingId, localBookings, activeBookingsList]);
+
+  // Extract Dynamic Live Booking Telemetry for ANY service category
+  const bookingTelemetry = useMemo(() => {
+    if (!focusedBooking) return null;
+    const bAny = focusedBooking as any;
+    const shortBookingId = (focusedBooking.id || "ZOM101").slice(-6).toUpperCase();
+    const serviceName =
+      focusedBooking.serviceName ||
+      bAny.serviceType ||
+      bAny.categoryName ||
+      "Home Appliance Service";
+    const partnerName =
+      bAny.partnerName ||
+      bAny.assignedPartnerName ||
+      bAny.technicianName ||
+      (focusedBooking.partnerId ? "Rajesh Sharma" : "Amit Singh");
+    const partnerRating = bAny.partnerRating || "4.9★";
+    const startOtp =
+      bAny.startOtp ||
+      bAny.serviceOtp ||
+      bAny.otp ||
+      "6330";
+    const rawStatus = String(focusedBooking.status || "confirmed").toLowerCase();
+    const bookingTotal =
+      focusedBooking.totalPrice ??
+      bAny.finalAmount ??
+      bAny.amount ??
+      focusedBooking.visitationFee ??
+      195;
+    const isPaidOnline =
+      focusedBooking.paymentStatus === "paid" &&
+      focusedBooking.paymentMethod !== "cash" &&
+      focusedBooking.paymentMethod !== "pay_after_service";
+    const paymentModeLabel = isPaidOnline
+      ? "Paid Online (Verified)"
+      : "Pay Cash / UPI on Visit";
+    const scheduledSlot =
+      bAny.scheduledSlot ||
+      bAny.timeSlot ||
+      "Today, Priority Slot";
+    const rawAddr = focusedBooking.address as any;
+    const addressText =
+      typeof rawAddr === "string"
+        ? rawAddr
+        : rawAddr?.fullAddress ||
+          rawAddr?.line1 ||
+          "Indore Service Area";
+    const etaText =
+      rawStatus === "arrived"
+        ? "Arrived at your doorstep"
+        : rawStatus === "in_progress"
+        ? "Service in progress"
+        : rawStatus === "on_the_way"
+        ? "Arriving in ~12-15 mins"
+        : "Scheduled • Priority Dispatch (~15-20 mins)";
+
+    return {
+      id: focusedBooking.id,
+      shortBookingId,
+      serviceName,
+      partnerName,
+      partnerRating,
+      startOtp,
+      rawStatus,
+      bookingTotal,
+      isPaidOnline,
+      paymentModeLabel,
+      scheduledSlot,
+      addressText,
+      etaText,
+    };
+  }, [focusedBooking]);
+
+  const buildDynamicGreeting = (profile?: UserProfile, telemetry?: typeof bookingTelemetry) => {
+    if (!profile) {
+      return "Welcome to Zomindia! Please log in to chat with Zomini and track your active home services.";
+    }
+    const userName = profile.fullName || profile.displayName || "Ji";
+    if (telemetry) {
+      return `Namaste ${userName}! Aapke ${telemetry.serviceName} (#${telemetry.shortBookingId}) ke liye ${telemetry.partnerName} assigned hain. Main aapki kya sahayata kar sakti hu?`;
+    }
+    return `Namaste ${userName}! Main Zomini hu, Zomindia Indore Priority Desk se. AC, RO, Home Appliance repair ya maintenance me main aapki kya sahayata kar sakti hu?`;
+  };
+
   const [messages, setMessages] = useState<
-    { role: "ai" | "user"; text: string; bookingData?: any }[]
+    {
+      id?: string;
+      role: "ai" | "user" | "partner" | "admin";
+      senderName?: string;
+      text: string;
+      bookingData?: any;
+      quickActions?: { label: string; action: string }[];
+      showLoginBtn?: boolean;
+      pendingPackage?: string;
+      timestamp?: string;
+    }[]
   >(() => {
     try {
       const saved = sessionStorage.getItem("zomini_pending_chat_history");
@@ -351,54 +495,30 @@ export default function AiSupportChat({
       console.warn(e);
     }
 
-    const defaultMsg = "Welcome to Zomindia! Please log in to chat with Zomini and track your active home services.";
-    if (userProfile) {
-      const userName = userProfile.fullName || userProfile.displayName || "User";
-      return [
-        {
-          role: "ai",
-          text: `Namaste ${userName}, your refrigerator service expert is on the way.`,
-        },
-      ];
-    }
     return [
       {
         role: "ai",
-        text: defaultMsg,
+        text: buildDynamicGreeting(userProfile, null),
       },
     ];
   });
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [localBookings, setLocalBookings] = useState<Booking[]>(bookings || []);
-  const [allServices, setAllServices] = useState<any[]>([]);
-  const [showBookingSuccess, setShowBookingSuccess] = useState(false);
-  const [draftBookings, setDraftBookings] = useState<Record<string, any>>({});
-  const [selectedSlots, setSelectedSlots] = useState<Record<string, { date: string; slot: string }>>({});
-  const [selectedAddresses, setSelectedAddresses] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef<boolean>(false);
-  
-  // Razorpay Payment Gateway In Chat State
-  const [activePaymentSession, setActivePaymentSession] = useState<{
-    bookingId: string;
-    amount: number;
-    serviceType: string;
-    orderId: string;
-    paymentSessionId?: string;
-    checkoutUrl?: string;
-  } | null>(null);
-  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
-  const [paymentGatewayError, setPaymentGatewayError] = useState<string | null>(null);
 
-  // Multilingual voice configurations
-  const [selectedLang, setSelectedLang] = useState("hi-IN");
-  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [micError, setMicError] = useState<string | null>(null);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
+  // Update initial greeting dynamically when userProfile or active booking telemetry loads (if user hasn't sent messages yet)
+  useEffect(() => {
+    setMessages((prev) => {
+      if (
+        prev.length === 1 &&
+        prev[0].role === "ai" &&
+        (!prev[0].id || String(prev[0].id).startsWith("greeting_"))
+      ) {
+        const nextGreeting = buildDynamicGreeting(userProfile, bookingTelemetry);
+        if (prev[0].text !== nextGreeting) {
+          return [{ ...prev[0], role: "ai", text: nextGreeting }];
+        }
+      }
+      return prev;
+    });
+  }, [userProfile?.uid, userProfile?.fullName, bookingTelemetry?.id, bookingTelemetry?.serviceName, bookingTelemetry?.partnerName]);
 
   const saveContextBeforeLogin = () => {
     try {
@@ -407,7 +527,6 @@ export default function AiSupportChat({
       if (activeTab) {
         sessionStorage.setItem("zomini_saved_tab", activeTab);
       }
-      console.log("[Zomini] Saved pending chat history, active tab, and active toggle in sessionStorage.");
     } catch (err) {
       console.warn("Failed to save pending chat history:", err);
     }
@@ -449,7 +568,7 @@ export default function AiSupportChat({
     try {
       const q = query(collection(db, "services"));
       const unsubscribe = onSnapshot(q, (snap) => {
-        setAllServices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setAllServices(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       });
       return () => unsubscribe();
     } catch (e) {
@@ -469,7 +588,7 @@ export default function AiSupportChat({
     scrollToBottom();
     const timer = setTimeout(scrollToBottom, 60);
     return () => clearTimeout(timer);
-  }, [messages, isOpen, isLoading]);
+  }, [messages, isOpen, isLoading, showReschedulePicker]);
 
   const [isPillVisible, setIsPillVisible] = useState(false);
 
@@ -492,16 +611,28 @@ export default function AiSupportChat({
     }
   }, [activeTab]);
 
+  // Listen for open-zomini and toggle events with optional bookingId
   useEffect(() => {
     const handleToggle = (e: Event) => {
       const customEvent = e as CustomEvent;
+      if (customEvent.detail?.bookingId) {
+        setFocusedBookingId(customEvent.detail.bookingId);
+      }
       if (customEvent.detail && typeof customEvent.detail.open === "boolean") {
         setIsOpen(customEvent.detail.open);
       } else {
         setIsOpen((prev) => !prev);
       }
     };
-    const handleOpen = () => setIsOpen(true);
+
+    const handleOpen = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const targetBookingId = customEvent.detail?.bookingId || customEvent.detail?.booking?.id;
+      if (targetBookingId) {
+        setFocusedBookingId(targetBookingId);
+      }
+      setIsOpen(true);
+    };
 
     window.addEventListener("toggle-ai-chat", handleToggle);
     window.addEventListener("toggle-zomini-chat", handleToggle);
@@ -513,9 +644,9 @@ export default function AiSupportChat({
     };
   }, []);
 
-  // Sync or fetch bookings dynamically
+  // Sync or fetch bookings dynamically across all categories
   useEffect(() => {
-    if (bookings) {
+    if (bookings && bookings.length > 0) {
       setLocalBookings(bookings);
       return;
     }
@@ -525,7 +656,7 @@ export default function AiSupportChat({
     }
 
     try {
-      const isPartner = userProfile.role === "partner";
+      const isPartnerRole = userProfile.role === "partner";
       const unsubscribes: (() => void)[] = [];
       const bookingsMap = new Map<string, Booking>();
 
@@ -557,7 +688,7 @@ export default function AiSupportChat({
         setLocalBookings(sorted);
       };
 
-      if (isPartner) {
+      if (isPartnerRole) {
         const qPartner = query(
           collection(db, "bookings"),
           where("partnerId", "==", userProfile.uid),
@@ -568,18 +699,15 @@ export default function AiSupportChat({
           qPartner,
           (snap) => {
             bookingsMap.clear();
-            snap.docs.forEach((doc) => {
-              bookingsMap.set(doc.id, normalizeBooking(doc.id, doc.data()));
+            snap.docs.forEach((d) => {
+              bookingsMap.set(d.id, normalizeBooking(d.id, d.data()));
             });
             syncAndSetBookings();
           },
-          (err) => {
-            console.warn("Silent fallback: partner bookings list in AI Chat:", err);
-          },
+          () => {},
         );
         unsubscribes.push(unsub);
       } else {
-        // Primary: customerUid (canonical Urban Company / Zomato identity standard)
         const qCustomerUid = query(
           collection(db, "bookings"),
           where("customerUid", "==", userProfile.uid),
@@ -589,18 +717,15 @@ export default function AiSupportChat({
         const unsubPrimary = onSnapshot(
           qCustomerUid,
           (snap) => {
-            snap.docs.forEach((doc) => {
-              bookingsMap.set(doc.id, normalizeBooking(doc.id, doc.data()));
+            snap.docs.forEach((d) => {
+              bookingsMap.set(d.id, normalizeBooking(d.id, d.data()));
             });
             syncAndSetBookings();
           },
-          (err) => {
-            console.warn("Silent fallback: customerUid bookings in AI Chat:", err);
-          },
+          () => {},
         );
         unsubscribes.push(unsubPrimary);
 
-        // Resilient Fallback: legacy documents created with customerId
         const qCustomerId = query(
           collection(db, "bookings"),
           where("customerId", "==", userProfile.uid),
@@ -610,18 +735,16 @@ export default function AiSupportChat({
         const unsubLegacy = onSnapshot(
           qCustomerId,
           (snap) => {
-            snap.docs.forEach((doc) => {
-              const existing = bookingsMap.get(doc.id);
-              bookingsMap.set(doc.id, {
+            snap.docs.forEach((d) => {
+              const existing = bookingsMap.get(d.id);
+              bookingsMap.set(d.id, {
                 ...(existing || {}),
-                ...normalizeBooking(doc.id, doc.data()),
+                ...normalizeBooking(d.id, d.data()),
               });
             });
             syncAndSetBookings();
           },
-          (err) => {
-            console.warn("Silent fallback: legacy customerId in AI Chat:", err);
-          },
+          () => {},
         );
         unsubscribes.push(unsubLegacy);
       }
@@ -634,64 +757,145 @@ export default function AiSupportChat({
     }
   }, [userProfile?.uid, bookings]);
 
-  // Page Refresh Recovery: Restore active checkouts/confirmations dynamically
+  // Cross-Platform Unified Storage: Real-time Firestore listener on bookings/{bookingId}/messages
   useEffect(() => {
-    if (!userProfile || localBookings.length === 0) return;
+    const activeId = focusedBooking?.id;
+    if (!activeId || !userProfile?.uid) return;
 
-    const recoverable = localBookings.filter(
-      (b) =>
-        b.status === "pending_checkout" ||
-        b.status === "confirmed" ||
-        b.status === "confirmed_pay_after_service"
-    );
+    const greetingMsg = {
+      id: `greeting_${activeId}`,
+      role: "ai" as const,
+      text: buildDynamicGreeting(userProfile, bookingTelemetry),
+      timestamp: "Just now",
+    };
 
-    if (recoverable.length === 0) return;
+    try {
+      const messagesRef = collection(db, "bookings", activeId, "messages");
+      const q = query(messagesRef, orderBy("createdAt", "asc"));
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const syncedMsgs = snap.docs.map((docSnap) => {
+            const d = docSnap.data();
+            let role: "ai" | "user" | "partner" | "admin" = "ai";
+            const isAiFlag =
+              d.senderRole === "ai" ||
+              d.isAi === true ||
+              d.senderId === "support-agent" ||
+              d.senderId === "zomini_ai";
+            if (isAiFlag) {
+              role = "ai";
+            } else if (
+              d.senderRole === "customer" ||
+              d.role === "user" ||
+              d.senderId === userProfile.uid
+            ) {
+              role = "user";
+            } else if (
+              d.senderRole === "partner" ||
+              (focusedBooking?.partnerId && d.senderId === focusedBooking.partnerId)
+            ) {
+              role = "partner";
+            } else if (d.senderRole === "admin") {
+              role = "admin";
+            } else {
+              role = "ai";
+            }
 
-    setMessages((prev) => {
-      let updated = [...prev];
-      let changed = false;
+            let timeStr = "";
+            if (d.createdAt?.toDate) {
+              try {
+                timeStr = d.createdAt.toDate().toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              } catch (e) {}
+            }
 
-      recoverable.forEach((booking) => {
-        const hasMsg = updated.some(
-          (m) => (m as any).bookingData?.id === booking.id
-        );
-        if (!hasMsg) {
-          changed = true;
-          const bAny = booking as any;
-          if (booking.status === "pending_checkout") {
-            // Restore draft details so offline/online actions work immediately
-            setDraftBookings((prevDrafts) => {
-              if (prevDrafts[booking.id]) return prevDrafts;
-              return { ...prevDrafts, [booking.id]: booking };
-            });
+            return {
+              id: docSnap.id,
+              role,
+              senderName:
+                d.senderName ||
+                (role === "partner"
+                  ? "Service Partner"
+                  : role === "admin"
+                  ? "Indore Desk"
+                  : "Zomini AI"),
+              text: d.text || d.message || "",
+              bookingData: d.bookingData || undefined,
+              quickActions: d.quickActions || undefined,
+              timestamp: timeStr || "Just now",
+            };
+          });
 
-            const serviceTitle = booking.serviceName || bAny.serviceType || "Home Service";
-            updated.push({
-              role: "ai",
-              text: `Welcome back! You have an unfinished checkout. Please choose your payment option to complete your booking for ${serviceTitle}:`,
-              bookingData: booking
-            });
-          } else {
-            const isPayAfter =
-              booking.paymentStatus === "pay_after_service" ||
-              booking.paymentMethod === "cash" ||
-              booking.paymentMethod === "pay_after_service" ||
-              booking.status === "confirmed_pay_after_service";
-            const serviceTitle = booking.serviceName || bAny.serviceType || "Home Service";
-            updated.push({
-              role: "ai",
-              text: isPayAfter
-                ? `Welcome back! Your booking for ${serviceTitle} has been successfully confirmed (Pay After Service).`
-                : `Welcome back! Your booking for ${serviceTitle} is paid and fully confirmed.`,
-              bookingData: booking
-            });
-          }
-        }
+          setMessages((prev) => {
+            const firstMsg = prev[0];
+            const isFirstGreeting =
+              firstMsg &&
+              firstMsg.role === "ai" &&
+              (!firstMsg.id || String(firstMsg.id).startsWith("greeting_"));
+
+            const initialGreeting = isFirstGreeting ? firstMsg : greetingMsg;
+            const localConversation = isFirstGreeting ? prev.slice(1) : prev;
+
+            if (syncedMsgs.length === 0) {
+              return [initialGreeting, ...localConversation];
+            }
+
+            // Merge synced Firestore messages with any local optimistic messages not yet present in syncedMsgs
+            const pendingLocalMsgs = localConversation.filter(
+              (localMsg) =>
+                !syncedMsgs.some(
+                  (synced) =>
+                    (localMsg.id && synced.id === localMsg.id) ||
+                    (synced.role === localMsg.role &&
+                      synced.text.trim() === localMsg.text.trim()),
+                ),
+            );
+
+            return [initialGreeting, ...syncedMsgs, ...pendingLocalMsgs];
+          });
+        },
+        (err) => {
+          console.warn("Silent fallback on booking messages listener:", err);
+        },
+      );
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn("Failed to attach booking messages listener:", err);
+    }
+  }, [focusedBooking?.id, userProfile?.uid]);
+
+  // Persist message to bookings/{bookingId}/messages for Partner & Admin real-time sync
+  const persistBookingMessage = async (
+    bookingId: string,
+    payload: {
+      text: string;
+      senderRole: "customer" | "ai";
+      senderName: string;
+      bookingData?: any;
+      quickActions?: { label: string; action: string }[];
+    },
+  ) => {
+    try {
+      const messagesRef = collection(db, "bookings", bookingId, "messages");
+      await addDoc(messagesRef, {
+        text: payload.text,
+        senderRole: payload.senderRole,
+        senderName: payload.senderName,
+        senderId:
+          payload.senderRole === "customer"
+            ? userProfile?.uid || "support-agent"
+            : "support-agent",
+        role: payload.senderRole === "customer" ? "user" : "ai",
+        isAi: payload.senderRole === "ai",
+        createdAt: serverTimestamp(),
       });
-
-      return changed ? updated : prev;
-    });
-  }, [userProfile, localBookings]);
+    } catch (e) {
+      console.warn("Non-fatal: Could not persist message to Firestore subcollection:", e);
+    }
+  };
 
   // Listen for auth modal close to clear any pending booking action
   useEffect(() => {
@@ -704,7 +908,7 @@ export default function AiSupportChat({
     return () => window.removeEventListener("auth-modal-closed", handleAuthModalClosed);
   }, []);
 
-  // Auto-resume pending booking after login/OTP verification
+  // Auto-resume pending booking after login/OTP verification by opening official BookingModal
   useEffect(() => {
     if (!userProfile) return;
 
@@ -718,527 +922,326 @@ export default function AiSupportChat({
     if (pendingAction) {
       try {
         sessionStorage.removeItem("zomini_pending_booking_action");
-      } catch (e) {
-        console.warn(e);
-      }
-
-      setIsOpen(true);
-      triggerDirectBookingFlow(pendingAction, userProfile);
+      } catch (e) {}
+      launchOfficialBookingModal(pendingAction);
     }
   }, [userProfile?.uid, allServices]);
 
-  const updateBookingSlot = (bookingId: string, date: string, slot: string) => {
-    setSelectedSlots((prev) => ({ ...prev, [bookingId]: { date, slot } }));
-    setDraftBookings((prev) => {
-      const existing = prev[bookingId] || {};
-      return {
-        ...prev,
-        [bookingId]: {
-          ...existing,
-          scheduledSlot: `${date === "today" ? "Today" : "Tomorrow"}, ${slot}`
-        }
-      };
-    });
-  };
-
-  const updateBookingAddress = (bookingId: string, address: string) => {
-    setSelectedAddresses((prev) => ({ ...prev, [bookingId]: address }));
-    setDraftBookings((prev) => {
-      const existing = prev[bookingId] || {};
-      return {
-        ...prev,
-        [bookingId]: {
-          ...existing,
-          address
-        }
-      };
-    });
-  };
-
   const handleNavigateToBooking = (bookingId?: string) => {
     setIsOpen(false);
-    try {
-      sessionStorage.removeItem("zomini_pending_booking_action");
-    } catch (e) {}
     window.dispatchEvent(
       new CustomEvent("change-active-tab", {
-        detail: { tab: "bookings", bookingId: bookingId || null }
-      })
+        detail: { tab: "bookings", bookingId: bookingId || null },
+      }),
     );
   };
 
-  const findActiveBookingForCategory = (categoryOrName: string) => {
-    if (!localBookings || !Array.isArray(localBookings) || localBookings.length === 0) return null;
-    const cat = (categoryOrName || "").toLowerCase();
-    return localBookings.find((b) => {
-      const status = (b.status || "").toLowerCase();
-      const isActive = ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(status);
-      if (!isActive) return false;
-      const bService = ((b.serviceName || (b as any).serviceType || b.serviceId || "") + "").toLowerCase();
-      if ((cat.includes("ac") || cat.includes("cool")) && (bService.includes("ac") || bService.includes("cooling"))) return true;
-      if (cat.includes("washing") && (bService.includes("washing") || bService.includes("washer"))) return true;
-      if (cat.includes("ro") && (bService.includes("ro") || bService.includes("water") || bService.includes("purifier") || bService.includes("filter"))) return true;
-      if (cat.includes("electric") && bService.includes("electric")) return true;
-      if (cat.includes("carpent") && bService.includes("carpent")) return true;
-      return false;
-    }) || null;
+  // Match service dynamically across ALL categories and open the official BookingModal.tsx
+  const matchCatalogService = (queryText: string) => {
+    const q = (queryText || "").toLowerCase();
+    const keywords = [
+      { keys: ["split ac", "स्प्लिट"], fallbackName: "Split AC Jet Service", price: 499, cat: "cat_ac" },
+      { keys: ["window ac", "विंडो"], fallbackName: "Window AC Service", price: 399, cat: "cat_ac" },
+      { keys: ["ac", "air condition", "cooling", "एसी"], fallbackName: "AC Repair & Service", price: 299, cat: "cat_ac" },
+      { keys: ["ro", "water purifier", "filter", "आरओ", "फिल्टर"], fallbackName: "RO Water Purifier Service", price: 299, cat: "cat_ro" },
+      { keys: ["fridge", "refrigerator", "फ्रिज"], fallbackName: "Refrigerator Repair & Checkup", price: 249, cat: "cat_appliances" },
+      { keys: ["washing", "washer", "वाशिंग"], fallbackName: "Washing Machine Repair", price: 299, cat: "cat_appliances" },
+      { keys: ["geyser", "water heater", "गीजर"], fallbackName: "Geyser Checkup & Repair", price: 249, cat: "cat_appliances" },
+      { keys: ["tv", "television", "टीवी"], fallbackName: "LED / Smart TV Repair", price: 249, cat: "cat_appliances" },
+      { keys: ["microwave", "oven", "माइक्रोवेव"], fallbackName: "Microwave Repair", price: 249, cat: "cat_appliances" },
+      { keys: ["chimney", "चिमनी"], fallbackName: "Kitchen Chimney Deep Cleaning", price: 499, cat: "cat_cleaning" },
+      { keys: ["electric", "switch", "wiring", "fan", "इलेक्ट्रीशियन"], fallbackName: "Expert Electrician Visit", price: 149, cat: "cat_electrician" },
+      { keys: ["plumb", "tap", "leak", "pipe", "प्लंबर"], fallbackName: "Plumbing Repair Visit", price: 149, cat: "cat_plumbing" },
+      { keys: ["carpent", "door", "furniture", "कारपेंटर"], fallbackName: "Carpenter Visit", price: 195, cat: "cat_carpenter" },
+    ];
+
+    // First try matching against Firestore `allServices`
+    if (allServices.length > 0) {
+      const directMatch = allServices.find((s) => {
+        const sName = String(s.name || s.title || "").toLowerCase();
+        return sName && (q.includes(sName) || sName.split(" ").some((w: string) => w.length > 2 && q.includes(w)));
+      });
+      if (directMatch) return directMatch;
+    }
+
+    for (const item of keywords) {
+      if (item.keys.some((k) => q.includes(k))) {
+        const foundInCatalog = allServices.find((s) =>
+          item.keys.some((k) => String(s.name || s.title || "").toLowerCase().includes(k)),
+        );
+        if (foundInCatalog) return foundInCatalog;
+        return {
+          id: `service_${item.fallbackName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+          name: item.fallbackName,
+          title: item.fallbackName,
+          basePrice: item.price,
+          price: item.price,
+          categoryId: item.cat,
+        };
+      }
+    }
+
+    if (allServices.length > 0) return allServices[0];
+    return {
+      id: "service_home_appliance_visit",
+      name: "Home Appliance Inspection & Repair",
+      title: "Home Appliance Inspection & Repair",
+      basePrice: 195,
+      price: 195,
+      categoryId: "cat_appliances",
+    };
   };
 
-  const handlePayAfterService = async (bookingId: string) => {
-    if (isSubmittingRef.current || isSubmitting) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
+  const launchOfficialBookingModal = (queryText: string) => {
+    const matchedService = matchCatalogService(queryText);
+    setIsOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("open-booking-modal", {
+        detail: { service: matchedService },
+      }),
+    );
+  };
 
+  const handleConfirmReschedule = async () => {
+    if (!focusedBooking?.id || isRescheduling) return;
+    setIsRescheduling(true);
+    const formattedSlot = `${rescheduleDate === "today" ? "Today" : "Tomorrow"}, ${rescheduleSlot}`;
     try {
-      let bookingPayload = draftBookings[bookingId];
-      if (!bookingPayload) {
-        const foundMsg = messages.find((m: any) => m.bookingData?.id === bookingId);
-        if (foundMsg && (foundMsg as any).bookingData) {
-          bookingPayload = (foundMsg as any).bookingData;
-        }
-      }
+      const bookingRef = doc(db, "bookings", focusedBooking.id);
+      await updateDoc(bookingRef, {
+        scheduledSlot: formattedSlot,
+        updatedAt: serverTimestamp(),
+      });
+      setShowReschedulePicker(false);
+      const replyText = `✅ Done ji! Aapki booking #${bookingTelemetry?.shortBookingId} (${bookingTelemetry?.serviceName}) ko **${formattedSlot}** ke liye ₹0 reschedule fee par update kar diya gaya hai. Partner ${bookingTelemetry?.partnerName} naye slot par pahunchenge.`;
+      setMessages((prev) => [...prev, { role: "ai", text: replyText }]);
+      await persistBookingMessage(focusedBooking.id, {
+        text: replyText,
+        senderRole: "ai",
+        senderName: "Zomini AI",
+      });
+    } catch (e) {
+      console.error("Failed to reschedule booking:", e);
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
 
-      // Active Double-Booking Check before confirming
-      const targetCategory = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
-      const existingActive = findActiveBookingForCategory(targetCategory);
-      if (existingActive && existingActive.id !== bookingId) {
-        const isHindi = selectedLang === "hi-IN";
-        const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            text: isHindi
-              ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
-              : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
-            bookingData: existingActive,
-            quickActions: [
-              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
+  // Smart Multilingual (Hindi, Hinglish, Devanagari & English) Indore NLP Engine (0ms instant in-memory resolution)
+  const getSmartIndoreNlpReply = (
+    rawQuery: string,
+  ): {
+    text: string;
+    bookingData?: any;
+    quickActions?: { label: string; action: string }[];
+    openReschedule?: boolean;
+  } => {
+    const q = rawQuery.toLowerCase().trim();
+    const isDevanagari = /[\u0900-\u097F]/.test(rawQuery);
+    const isHinglishOrHindi =
+      isDevanagari ||
+      selectedLang === "hi-IN" ||
+      /\b(kab|kaha|kahan|kitna|kitne|kitni|kaise|kya|hai|hain|mera|meri|bhaiya|partner|aayega|aayenge|pahucha|pahuncha|time|badalna|kal|aana|paise|rupaye|sahi|karo|batao|bataiye|otp|code|pin|cancel|refund|bill|rate|namaste|pranam|ram|suno|bhai)\b/i.test(
+        q,
+      );
+
+    const t = bookingTelemetry;
+    const userName = userProfile?.fullName || userProfile?.displayName || "Ji";
+
+    // Intent A: Greetings ("hi", "hello", "hey", "namaste", "pranam", "ram ram", "suno", "bhai", "zomini", "नमस्ते", "हेलो", "हाय")
+    const isGreetingOnly =
+      /^(hi+|hello+|hey+|hlo+|hlw+|namaste|namaskar|pranam|ram\s*ram|suno|bhai|zomini|zomi|नमस्ते|हेलो|हाय|प्रणाम|राम\s*राम|सुनो|जी)[\s!.,?]*$/i.test(
+        q,
+      ) ||
+      (/\b(hi|hello|hey|namaste|pranam|ram ram|suno|bhai|zomini|नमस्ते|हेलो|हाय)\b/i.test(
+        q,
+      ) &&
+        !/\b(partner|technician|pro|bhaiya|expert|boy|पार्टनर|कारीगर|where|kab|kaha|kahan|otp|code|pin|reschedule|time|slot|cancel|refund|bill|rate|price|cost|ac|ro|fridge|washing|geyser|tv|microwave|electric|plumb|carpent)\b/i.test(
+          q,
+        ));
+
+    if (isGreetingOnly) {
+      return {
+        text: `Namaste ${userName}! Zomindia Priority Desk me aapka swagat hai. Main Zomini hu. ${
+          t
+            ? "Aapki active booking #" +
+              t.shortBookingId +
+              " (" +
+              t.serviceName +
+              ") ke liye main yahan hu. Bataiye kya sahayata karu?"
+            : "AC, RO, Washing Machine ya kisi bhi Home Appliance service me main aapki kya sahayata kar sakti hu?"
+        }`,
+        quickActions: t
+          ? [
+              { label: "📍 Where is my partner?", action: "Where is my partner?" },
+              { label: "📅 Reschedule Visit", action: "Reschedule Visit" },
+              { label: "🔒 Start OTP", action: "Start OTP" },
             ]
-          }
-        ]);
-        return;
-      }
-
-      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || (userProfile as any)?.address || "Indore (Zomindia Service Area)";
-      const chosenSlotObj = selectedSlots[bookingId];
-      const todayFullyBooked = isDateFullyBooked("today");
-      const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
-      const curDate = chosenSlotObj?.date || defaultDateVal;
-      const curSlot = chosenSlotObj?.slot || getFirstAvailableSlot(curDate as any) || "10:00 AM - 12:00 PM";
-      const scheduledSlot = `${curDate === "today" ? "Today" : "Tomorrow"}, ${curSlot}`;
-
-      const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
-      const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
-      const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
-      const resolvedEmail = userProfile?.email || auth.currentUser?.email || "";
-
-      const bookingRef = doc(db, "bookings", bookingId);
-      const fee = bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195;
-      const serviceTitle = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
-
-      // Unified Firestore Payload strictly identical to BookingModal.tsx
-      const confirmedPayload = {
-        id: bookingId,
-        customerUid: activeUid,
-        userId: activeUid,
-        customerId: activeUid,
-        serviceId: bookingPayload?.serviceId || "service_home_service",
-        serviceName: serviceTitle,
-        serviceType: serviceTitle,
-        issueDetails: bookingPayload?.issueDetails || serviceTitle,
-        visitationFee: fee,
-        partnerId: bookingPayload?.partnerId || null,
-        status: "pending",
-        paymentMethod: "cash",
-        paymentStatus: "pay_after_service",
-        totalPrice: fee,
-        originalBillValue: fee,
-        paidAmount: 0,
-        walletDeductAmount: 0,
-        discountApplied: 0,
-        promoCode: null,
-        isAmcBooking: false,
-        amcId: null,
-        scheduledSlot,
-        scheduledAt: Timestamp.now(),
-        address: selectedAddress,
-        lat: (bookingPayload?.lat !== undefined && bookingPayload?.lat !== null && !isNaN(Number(bookingPayload.lat))) ? Number(bookingPayload.lat) : ((userProfile as any)?.lat || null),
-        lng: (bookingPayload?.lng !== undefined && bookingPayload?.lng !== null && !isNaN(Number(bookingPayload.lng))) ? Number(bookingPayload.lng) : ((userProfile as any)?.lng || null),
-        serviceOtp: bookingPayload?.serviceOtp || String(Math.floor(1000 + Math.random() * 9000)),
-        otpVerified: false,
-        customerBookedName: resolvedName,
-        customerBookedPhone: resolvedMobile,
-        customerBookedEmail: resolvedEmail,
-        customerName: resolvedName,
-        customerMobile: resolvedMobile,
-        customerData: {
-          fullName: resolvedName,
-          mobile: resolvedMobile,
-          email: resolvedEmail
-        },
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
+          : [
+              { label: "⚡ Book AC Service", action: "Book Split AC Jet Service" },
+              { label: "⚡ Book RO Service", action: "Book RO Water Purifier Service" },
+            ],
       };
+    }
 
-      await setDoc(bookingRef, confirmedPayload, { merge: true });
+    // 1. Start OTP / Security Code Intent
+    if (
+      /\b(otp|code|pin|start code|security code|service code|ओटीपी|कोड|पिन)\b/i.test(q)
+    ) {
+      if (t) {
+        return {
+          text: isHinglishOrHindi
+            ? `Namaste ${userName}! Aapke **${t.serviceName}** (#${t.shortBookingId}) ka Start OTP 🔒 **${t.startOtp}** hai. Doorstep par partner **${t.partnerName}** ke pahunchne aur kaam shuru karne par hi yeh OTP share karein.`
+            : `Hello ${userName}! Your 4-digit Start OTP for **${t.serviceName}** (#${t.shortBookingId}) is 🔒 **${t.startOtp}**. Please share this code with partner **${t.partnerName}** only when they arrive at your doorstep.`,
+        };
+      }
+      return {
+        text: isHinglishOrHindi
+          ? `Namaste ${userName}! Start OTP aapke active booking card par dikhta hai. Jab technician aapke doorstep par pahunche, tabhi 4-digit Start OTP share karein.`
+          : `Your 4-digit Start OTP is displayed on your active booking card. Share it only when the verified partner arrives at your doorstep.`,
+      };
+    }
 
-      // Parallel sync to /api/bookings
-      try {
-        await fetch('/api/bookings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Customer-Uid': activeUid
+    // Intent B: Partner / Technician / Live ETA ("partner", "technician", "pro", "pro kahan hai", "bhaiya", "expert", "boy", "पार्टनर", "कारीगर", "where is my partner")
+    if (
+      /\b(partner|technician|pro|pro kahan hai|bhaiya|expert|boy|पार्टनर|कारीगर|where is my partner|where is|kab aayega|kab aayenge|kaha hai|kahan hai|kahan tak|pahucha|pahuncha|kitni der|kitna time|kidhar|late|eta|status|track|location|कब आएगा|कहाँ है|कहां है|स्टेटस|ट्रैक)\b/i.test(
+        q,
+      )
+    ) {
+      if (t) {
+        return {
+          text: `${t.partnerName} (${t.partnerRating}) is assigned • Status: ${t.rawStatus} • ETA: ${t.etaText} • Start OTP: 🔒 ${t.startOtp}`,
+          bookingData: focusedBooking || undefined,
+        };
+      }
+      return {
+        text: isHinglishOrHindi
+          ? `Namaste ${userName}! Abhi aapke account me koi active booking assigned nahi dikh rahi hai. Kya aap AC, RO ya kisi Home Appliance ke liye verified partner book karna chahenge?`
+          : `Hello ${userName}! You currently don't have an active booking assigned. Would you like to book a verified Indore partner for AC, RO, or Home Appliance service?`,
+        quickActions: [
+          { label: "⚡ Book AC Service", action: "Book Split AC Jet Service" },
+          { label: "⚡ Book RO Service", action: "Book RO Water Purifier Service" },
+        ],
+      };
+    }
+
+    // 3. Reschedule Visit Intent
+    if (
+      /\b(reschedule|time badalna|slot badalna|kal aana|change time|change slot|change date|baad me|postpone|समय बदलना|रीशेड्यूल|कल आना)\b/i.test(
+        q,
+      )
+    ) {
+      if (t) {
+        return {
+          text: isHinglishOrHindi
+            ? `Bilkul ${userName}! Aap apni **${t.serviceName}** (#${t.shortBookingId}) booking ko **₹0 Reschedule Fee** par kisi bhi naye time slot me shift kar sakte hain. Kripya neeche apna pasandida din aur time slot chunein:`
+            : `Certainly ${userName}! You can reschedule your **${t.serviceName}** (#${t.shortBookingId}) visit at **₹0 Reschedule Fee**. Please pick your preferred date and time slot below:`,
+          openReschedule: true,
+        };
+      }
+      return {
+        text: isHinglishOrHindi
+          ? `Zomindia par partner dispatch se pehle rescheduling **100% Free (₹0 शुल्क)** hai. Active booking par click karke aap turant naya slot chun sakte hain.`
+          : `Rescheduling is **100% Free (₹0 fee)** on Zomindia before partner dispatch. Select any active booking to choose a new slot.`,
+      };
+    }
+
+    // 4. Cancellation & Refund Policy Intent
+    if (
+      /\b(cancel|cancellation|refund|paise wapas|return|policy|रद्द|कैंसिल|रिफंड)\b/i.test(
+        q,
+      )
+    ) {
+      if (t) {
+        return {
+          text: isHinglishOrHindi
+            ? `**Zomindia Cancellation & 100% Refund Policy (#${t.shortBookingId} • ${t.serviceName}):**\n• **₹0 Cancellation Fee:** Service start (OTP verify) hone se pehle cancel karne par koi shulk nahi lagta.\n• **100% Instant Refund:** Online paid amount (**₹${t.bookingTotal}**) cancel hote hi original UPI/Bank source ya Zomindia Wallet me turant initiate ho jata hai.\n• Agar aap sirf time badalna chahte hain, toh **Reschedule Visit** (₹0 Fee) ka upyog karein.`
+            : `**Zomindia Cancellation & 100% Refund Policy (#${t.shortBookingId} • ${t.serviceName}):**\n• **₹0 Cancellation Fee:** Free cancellation anytime before the service starts (prior to Start OTP verification).\n• **100% Instant Refund:** Any online payment (**₹${t.bookingTotal}**) is refunded immediately upon cancellation.\n• Need another time instead? Use **Reschedule Visit** for ₹0 fee.`,
+          openReschedule: false,
+        };
+      }
+      return {
+        text: isHinglishOrHindi
+          ? `**Zomindia 100% Transparent Refund Policy:**\n• Service shuru hone se pehle cancel karne par **₹0 Cancellation Fee** hai.\n• Prepaid/UPI orders ka **100% Instant Refund** turant process kiya jata hai.`
+          : `**Zomindia 100% Transparent Refund Policy:**\n• **₹0 Cancellation Fee** anytime before service start.\n• **100% Instant Refund** for all online/UPI prepaid bookings.`,
+      };
+    }
+
+    // 5. Pricing / Bill / Rate Queries
+    if (
+      /\b(kitne paise|kitna paisa|kitna lagega|bill|rate|cost|price|charge|charges|amount|payable|fees|fee|बिल|रेट|चार्ज|कितने पैसे|प्राइस)\b/i.test(
+        q,
+      )
+    ) {
+      if (t) {
+        return {
+          text: isHinglishOrHindi
+            ? `Aapki **${t.serviceName}** (#${t.shortBookingId}) ka transparent कुल बिल **₹${t.bookingTotal}** (${t.paymentModeLabel}) hai. Zomindia par **Zero Hidden Surge** aur **30-Day Service Guarantee** lagu hai.`
+            : `The transparent total for your **${t.serviceName}** (#${t.shortBookingId}) is **₹${t.bookingTotal}** (${t.paymentModeLabel}) with **Zero Hidden Surge** and a **30-Day Service Guarantee**.`,
+        };
+      }
+      return {
+        text: isHinglishOrHindi
+          ? `Zomindia Indore par expert doorstep inspection **₹149–₹195** se shuru hota hai (Zero Hidden Surge + 30-Day Service Guarantee). Aap kis appliance ki service chahte hain?`
+          : `Zomindia doorstep inspection starts at **₹149–₹195** with Zero Hidden Surge and a 30-Day Service Guarantee. Which appliance service would you like to check?`,
+      };
+    }
+
+    // 6. City / Service Area Availability
+    if (/\b(city|cities|indore|area|available|शहर|इंदौर|उपलब्ध)\b/i.test(q)) {
+      return {
+        text: isHinglishOrHindi
+          ? `Zomindia abhi **Indore** ke sabhi प्रमुख zones (Vijay Nagar, Palasia, Bhawarkuan, Rajendra Nagar, Rau, Nipania, Sudama Nagar, Airport Road, Super Corridor) me 30-Min Priority Dispatch ke sath active hai!`
+          : `Zomindia is actively serving all major zones across **Indore** (Vijay Nagar, Palasia, Bhawarkuan, Rajendra Nagar, Rau, Nipania, Sudama Nagar, Super Corridor) with 30-Min Priority Dispatch!`,
+      };
+    }
+
+    // 7. Specific Appliance / Service Inquiry -> Instant response with 1-tap BookingModal trigger
+    if (
+      /\b(ac|split|window|cooling|ro|water purifier|filter|fridge|refrigerator|washing|washer|geyser|heater|tv|television|microwave|oven|chimney|electric|switch|fan|plumb|tap|leak|carpent|door|एसी|आरओ|फ्रिज|वाशिंग|गीजर|टीवी|माइक्रोवेव|चिमनी|इलेक्ट्रीशियन|प्लंबर|कारपेंटर)\b/i.test(
+        q,
+      )
+    ) {
+      const matched = matchCatalogService(q);
+      const svcTitle = matched.name || matched.title || "Home Appliance Service";
+      const svcPrice = matched.basePrice || matched.price || 195;
+      return {
+        text: isHinglishOrHindi
+          ? `Namaste ${userName}! **${svcTitle}** ke liye hamare background-verified Indore experts **₹${svcPrice}** (Transparent Rate • 30-Day Guarantee) par uplabdh hain. Aap neeche button daba kar turant slot book kar sakte hain:`
+          : `Hello ${userName}! Our background-verified Indore pros are available for **${svcTitle}** starting at **₹${svcPrice}** (Transparent Rate • 30-Day Guarantee). Tap below to book your slot immediately:`,
+        quickActions: [
+          {
+            label: `⚡ Book ${svcTitle} (₹${svcPrice})`,
+            action: `Book ${svcTitle}`,
           },
-          body: JSON.stringify({
-            ...confirmedPayload,
-            bookingId
-          })
-        });
-      } catch (apiErr) {
-        console.warn("API trigger note:", apiErr);
-      }
-
-      setMessages((prev) =>
-        prev.map((m: any) => {
-          if (m.bookingData && m.bookingData.id === bookingId) {
-            return {
-              ...m,
-              text: "✅ Cash Booking Confirmed - Pay After Service",
-              bookingData: {
-                ...m.bookingData,
-                status: "pending",
-                paymentStatus: "pay_after_service",
-                paymentMethod: "cash"
-              }
-            };
-          }
-          return m;
-        })
-      );
-
-      // Post AI confirmation message in chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: `🎉 Cash Booking Confirmed! Your booking #${bookingId.slice(-6).toUpperCase()} is registered for Pay After Service (COD). Our expert technician will arrive as scheduled.`
-        }
-      ]);
-
-      setShowBookingSuccess(true);
-      confetti({
-        particleCount: 120,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    } catch (err) {
-      console.error("Error confirming Pay After Service:", err);
-      alert("Failed to confirm booking. Please try again.");
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  };
-
-  const handlePayOnline = async (bookingId: string) => {
-    if (isSubmittingRef.current || isSubmitting) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
-    setPaymentGatewayError(null);
-
-    try {
-      let bookingPayload = draftBookings[bookingId];
-      if (!bookingPayload) {
-        const foundLocal = localBookings.find((b) => b.id === bookingId);
-        if (foundLocal) {
-          bookingPayload = foundLocal;
-        } else {
-          const foundMsg = messages.find((m: any) => m.bookingData?.id === bookingId);
-          if (foundMsg && (foundMsg as any).bookingData) {
-            bookingPayload = (foundMsg as any).bookingData;
-          }
-        }
-      }
-
-      // Active Double-Booking Check before online checkout
-      const targetCategory = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
-      const existingActive = findActiveBookingForCategory(targetCategory);
-      if (existingActive && existingActive.id !== bookingId) {
-        const isHindi = selectedLang === "hi-IN";
-        const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            text: isHindi
-              ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
-              : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
-            bookingData: existingActive,
-            quickActions: [
-              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-            ]
-          }
-        ]);
-        return;
-      }
-
-      const selectedAddress = selectedAddresses[bookingId] || bookingPayload?.address || (userProfile as any)?.address || "Indore (Zomindia Service Area)";
-      const chosenSlotObj = selectedSlots[bookingId];
-      const todayFullyBooked = isDateFullyBooked("today");
-      const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
-      const curDate = chosenSlotObj?.date || defaultDateVal;
-      const curSlot = chosenSlotObj?.slot || getFirstAvailableSlot(curDate as any) || "10:00 AM - 12:00 PM";
-      const scheduledSlot = `${curDate === "today" ? "Today" : "Tomorrow"}, ${curSlot}`;
-
-      const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
-      const resolvedName = userProfile?.fullName || userProfile?.displayName || auth.currentUser?.displayName || "Customer";
-      const resolvedMobile = userProfile?.mobile || userProfile?.phoneNumber || auth.currentUser?.phoneNumber || "9876543210";
-      const resolvedEmail = userProfile?.email || auth.currentUser?.email || "";
-      const serviceTitle = bookingPayload?.serviceName || bookingPayload?.serviceType || bookingPayload?.issueDetails || "Home Service";
-
-      const updatedPayload = {
-        ...(bookingPayload || {}),
-        id: bookingId,
-        customerUid: activeUid,
-        userId: activeUid,
-        customerId: activeUid,
-        serviceId: bookingPayload?.serviceId || "service_home_service",
-        serviceName: serviceTitle,
-        serviceType: serviceTitle,
-        issueDetails: bookingPayload?.issueDetails || serviceTitle,
-        visitationFee: bookingPayload?.visitationFee || 195,
-        totalPrice: bookingPayload?.totalPrice || bookingPayload?.visitationFee || 195,
-        scheduledSlot,
-        scheduledAt: Timestamp.now(),
-        address: selectedAddress,
-        lat: (bookingPayload?.lat !== undefined && bookingPayload?.lat !== null && !isNaN(Number(bookingPayload.lat))) ? Number(bookingPayload.lat) : ((userProfile as any)?.lat || null),
-        lng: (bookingPayload?.lng !== undefined && bookingPayload?.lng !== null && !isNaN(Number(bookingPayload.lng))) ? Number(bookingPayload.lng) : ((userProfile as any)?.lng || null),
-        status: "pending_checkout",
-        paymentStatus: "unpaid",
-        paymentMethod: "online",
-        customerBookedName: resolvedName,
-        customerBookedPhone: resolvedMobile,
-        customerBookedEmail: resolvedEmail,
-        customerName: resolvedName,
-        customerMobile: resolvedMobile,
-        customerData: {
-          fullName: resolvedName,
-          mobile: resolvedMobile,
-          email: resolvedEmail
-        },
-        updatedAt: Timestamp.now()
+        ],
       };
-
-      setDraftBookings((prev) => ({ ...prev, [bookingId]: updatedPayload }));
-
-      try {
-        const bookingRef = doc(db, "bookings", bookingId);
-        await setDoc(bookingRef, { ...updatedPayload, createdAt: Timestamp.now() }, { merge: true });
-      } catch (fErr) {
-        console.warn("Firestore draft save warning:", fErr);
-      }
-
-      const amountToPay = updatedPayload.totalPrice || updatedPayload.visitationFee || 195;
-
-      const payRes = await fetch("/api/razorpay/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: amountToPay,
-          bookingId,
-          customerPhone: resolvedMobile || "9999999999",
-          customerName: userProfile?.fullName || (auth.currentUser as any)?.displayName || "Customer",
-          serviceName: updatedPayload.serviceType || "Home Service"
-        })
-      });
-
-      let orderId = `ORDER_${Date.now()}`;
-      let keyId = "";
-      let amountPaise = Math.round(amountToPay * 100);
-
-      if (payRes.ok) {
-        const payData = await payRes.json();
-        if (payData.orderId) orderId = payData.orderId;
-        if (payData.keyId && !payData.keyId.includes("placeholder")) {
-          keyId = payData.keyId;
-        } else if ((import.meta as any).env?.VITE_RAZORPAY_KEY_ID) {
-          keyId = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
-        } else if (payData.keyId) {
-          keyId = payData.keyId;
-        }
-        if (payData.amount) amountPaise = payData.amount;
-      }
-
-      // Check if Razorpay JS SDK is available for instant checkout
-      const RazorpayConstructor = typeof window !== "undefined" && (window as any).Razorpay;
-      if (RazorpayConstructor && keyId && !keyId.includes("placeholder")) {
-        try {
-          const rzp = new RazorpayConstructor({
-            key: keyId,
-            amount: amountPaise,
-            currency: "INR",
-            name: "Zomindia Services",
-            description: `${updatedPayload.serviceType || "Home Service"} • Booking #${bookingId.slice(-6)}`,
-            order_id: orderId,
-            handler: async (resp: any) => {
-              await fetch("/api/razorpay/verify-payment", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  bookingId,
-                  customerUid: activeUid,
-                  razorpay_order_id: resp.razorpay_order_id || orderId,
-                  razorpay_payment_id: resp.razorpay_payment_id,
-                  razorpay_signature: resp.razorpay_signature,
-                  amount: amountToPay,
-                  status: "confirmed"
-                })
-              });
-              setShowBookingSuccess(true);
-            },
-            prefill: {
-              name: userProfile?.fullName || "Customer",
-              contact: resolvedMobile || ""
-            },
-            theme: { color: "#dc2626" }
-          });
-          rzp.open();
-          return;
-        } catch (sdkErr) {
-          console.warn("[AiSupportChat] Razorpay SDK launch notice:", sdkErr);
-        }
-      }
-
-      // Launch Razorpay In-Chat Modal
-      setActivePaymentSession({
-        bookingId,
-        amount: amountToPay,
-        serviceType: updatedPayload.serviceType,
-        orderId,
-        paymentSessionId: orderId,
-        checkoutUrl: ""
-      });
-    } catch (err: any) {
-      console.error("Error launching Razorpay payment:", err);
-      alert(`Error starting checkout: ${err.message || err}`);
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
     }
-  };
 
-  const handleExecutePayment = async () => {
-    if (!activePaymentSession) return;
-    setIsConfirmingPayment(true);
-    setPaymentGatewayError(null);
-
-    const { bookingId, amount, orderId } = activePaymentSession;
-    const activeUid = userProfile?.uid || auth.currentUser?.uid || "guest";
-
-    try {
-      const verifyRes = await fetch("/api/razorpay/verify-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingId,
-          customerUid: activeUid,
-          razorpay_order_id: orderId,
-          razorpay_payment_id: `pay_sim_${Date.now()}`,
-          razorpay_signature: "mock_signature",
-          isMock: true,
-          amount,
-          status: "confirmed"
-        })
-      });
-
-      const verifyData = await verifyRes.json().catch(() => ({}));
-      if (!verifyRes.ok) {
-        throw new Error(verifyData.error || "Payment confirmation failed");
-      }
-
-      // Update message state in chat
-      setMessages((prev) =>
-        prev.map((m: any) => {
-          if (m.bookingData && m.bookingData.id === bookingId) {
-            const dynamicStatus =
-              ["completed", "finalized", "in_progress", "assigned", "on_the_way", "arrived"].includes(m.bookingData.status)
-                ? m.bookingData.status
-                : (verifyData.status || m.bookingData.status || "confirmed");
-            return {
-              ...m,
-              bookingData: {
-                ...m.bookingData,
-                status: dynamicStatus,
-                paymentStatus: "paid",
-                paymentMethod: "online"
-              }
-            };
-          }
-          return m;
-        })
-      );
-
-      // Zomini posts confirmation message in chat
-      const resolvedBookingStatus = verifyData.status || "confirmed";
-      const statusNotice = resolvedBookingStatus === "completed" ? "PAID & COMPLETED" : "CONFIRMED";
-      const confirmMsg = `🎉 Payment Received! Your booking #${bookingId.slice(-6).toUpperCase()} is now ${statusNotice}.`;
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: confirmMsg,
-          bookingData: {
-            id: bookingId,
-            serviceType: activePaymentSession.serviceType,
-            visitationFee: amount,
-            status: resolvedBookingStatus,
-            paymentStatus: "paid"
-          }
-        }
-      ]);
-
-      setShowBookingSuccess(true);
-      confetti({
-        particleCount: 150,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
-
-      setActivePaymentSession(null);
-    } catch (err: any) {
-      console.error("Razorpay execution error:", err);
-      setPaymentGatewayError(err.message || "Payment verification failed. Please try again.");
-    } finally {
-      setIsConfirmingPayment(false);
+    // Intent C: Default Smart Fallback (Guaranteed 0ms instant helpful reply guiding to 1-Tap Call Desk, WhatsApp Help, or booking assistance)
+    if (t) {
+      return {
+        text: isHinglishOrHindi
+          ? `Namaste ${userName}! Main aapki active booking **#${t.shortBookingId} (${t.serviceName})** me turant sahayata ke liye yahan hu.\n• **Assigned Partner:** ${t.partnerName} (${t.partnerRating}) • ${t.etaText}\n• **Start OTP:** 🔒 ${t.startOtp}\n\nTurant executive se baat karne ke liye upar **Call Desk** ya **WhatsApp Help** par tap karein, ya neeche self-serve option chunein:`
+          : `Hello ${userName}! I am here to help with your active booking **#${t.shortBookingId} (${t.serviceName})**.\n• **Assigned Partner:** ${t.partnerName} (${t.partnerRating}) • ${t.etaText}\n• **Start OTP:** 🔒 ${t.startOtp}\n\nFor immediate human assistance, tap **Call Desk** or **WhatsApp Help** at the top, or choose a quick option below:`,
+        quickActions: [
+          { label: "📍 Where is my partner?", action: "Where is my partner?" },
+          { label: "📅 Reschedule Visit", action: "Reschedule Visit" },
+          { label: "🛡️ Cancellation & Refund", action: "Cancellation & Refund" },
+        ],
+      };
     }
-  };
 
-  const handleCancelPayment = () => {
-    if (!activePaymentSession) return;
-    const { bookingId, amount, serviceType } = activePaymentSession;
-
-    setActivePaymentSession(null);
-    setIsConfirmingPayment(false);
-    setPaymentGatewayError(null);
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: `Payment process was paused. You can complete payment anytime using the 💳 PAY NOW button on your booking summary card below, or choose Pay Cash on Delivery (COD).`,
-        bookingData: draftBookings[bookingId] || {
-          id: bookingId,
-          serviceType: serviceType || "Home Service",
-          visitationFee: amount || 195,
-          status: "pending_checkout",
-          paymentStatus: "unpaid"
-        }
-      }
-    ]);
+    return {
+      text: isHinglishOrHindi
+        ? `Namaste ${userName}! Main Zomini hu, Zomindia Indore Priority Desk se. Aap upar diye gaye **1-Tap Call Desk** ya **WhatsApp Help** se turant hamari team se jud sakte hain, ya neeche 1-tap me apni Home Appliance service book kar sakte hain:`
+        : `Hello ${userName}! I am Zomini from the Zomindia Indore Priority Desk. You can connect immediately with our team via **Call Desk** or **WhatsApp Help** above, or book a verified home service below:`,
+      quickActions: [
+        { label: "⚡ Book AC Service", action: "Book Split AC Jet Service" },
+        { label: "⚡ Book RO Service", action: "Book RO Water Purifier Service" },
+        { label: "⚡ Book Appliance Repair", action: "Book Home Appliance Inspection" },
+      ],
+    };
   };
 
   // Speech Recognition API
@@ -1274,7 +1277,6 @@ export default function AiSupportChat({
       };
 
       rec.onerror = (e: any) => {
-        console.error("Speech Recognition Error:", e);
         if (e.error === "not-allowed") {
           setMicError("Mic access blocked. Please enable permissions!");
         } else if (e.error === "no-speech") {
@@ -1317,177 +1319,51 @@ export default function AiSupportChat({
     if (pendingPackageText) {
       try {
         sessionStorage.setItem("zomini_pending_booking_action", pendingPackageText);
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch (e) {}
     }
     saveContextBeforeLogin();
     window.dispatchEvent(new CustomEvent("open-auth-modal"));
   };
 
-  const triggerDirectBookingFlow = (actionText: string, currentUser: UserProfile) => {
-    try {
-      sessionStorage.removeItem("zomini_pending_booking_action");
-    } catch (e) {}
-
-    let packageName = "स्प्लिट AC सर्विस (₹770)";
-    let detectedType = "AC Repair";
-
-    const textCheck = actionText.toLowerCase();
-
-    if (textCheck.includes("स्प्लिट") || textCheck.includes("split")) {
-      packageName = "स्प्लिट AC सर्विस (₹770)";
-      detectedType = "AC Repair";
-    } else if (textCheck.includes("विंडो") || textCheck.includes("window")) {
-      packageName = "विंडो AC सर्विस (₹599)";
-      detectedType = "AC Repair";
-    } else if (textCheck.includes("कम्पलीट ro") || textCheck.includes("complete ro")) {
-      packageName = "कम्पलीट RO सर्विसिंग (₹649)";
-      detectedType = "RO Service";
-    } else if (textCheck.includes("ro") || textCheck.includes("आरओ") || textCheck.includes("फ़िल्टर") || textCheck.includes("filter")) {
-      packageName = "RO फ़िल्टर सर्विस (₹399)";
-      detectedType = "RO Service";
-    } else if (textCheck.includes("वाशिंग") || textCheck.includes("washing")) {
-      packageName = "वाशिंग मशीन सर्विस (₹499)";
-      detectedType = "Washing Machine Repair";
-    } else {
-      packageName = actionText.replace(/⚡/g, "").trim() || "होम सर्विस पैकेज (₹195)";
-    }
-
-    // Active Booking Guard: prevent duplicate booking if an active order exists for this category
-    const existingActive = findActiveBookingForCategory(detectedType || packageName);
-    if (existingActive) {
-      const isHindi = selectedLang === "hi-IN";
-      const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: isHindi
-            ? `आपके पास पहले से ही ${packageName} के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
-            : `You already have an active booking (#${bIdShort}) for ${packageName} with status '${existingActive.status}'. You can track it directly below:`,
-          bookingData: existingActive,
-          quickActions: [
-            { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-            { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-          ]
-        }
-      ]);
-      return;
-    }
-
-    let matchedService = allServices.find(s => 
-      s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
-      detectedType.toLowerCase().includes(s.name?.toLowerCase() || "") ||
-      (detectedType.toLowerCase().includes("ac") && s.name?.toLowerCase().includes("ac")) ||
-      (detectedType.toLowerCase().includes("washing") && s.name?.toLowerCase().includes("washing")) ||
-      (detectedType.toLowerCase().includes("ro") && s.name?.toLowerCase().includes("ro"))
-    );
-
-    if (!matchedService) {
-      matchedService = {
-        id: `service_${detectedType.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
-        name: detectedType,
-        basePrice: 195,
-        categoryId: "cat_home_service"
-      };
-    }
-
-    const resolvedServiceId = matchedService.id;
-    const activeUid = currentUser.uid;
-    const resolvedFullName = currentUser.fullName || currentUser.displayName || "Customer";
-    const resolvedMobile = currentUser.mobile || currentUser.phoneNumber || "9876543210";
-    const resolvedEmail = currentUser.email || "";
-    const serviceOtp = String(Math.floor(1000 + Math.random() * 9000));
-
-    const draftBookingId = `ZOM_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    const defaultDate = isDateFullyBooked("today") ? "tomorrow" : "today";
-    const defaultSlot = getFirstAvailableSlot(defaultDate as any) || "10:00 AM - 12:00 PM";
-    const initialScheduledSlot = `${defaultDate === "today" ? "Today" : "Tomorrow"}, ${defaultSlot}`;
-
-    setSelectedSlots((prev) => ({
-      ...prev,
-      [draftBookingId]: { date: defaultDate, slot: defaultSlot }
-    }));
-
-    const priceMatch = packageName.match(/₹(\d+)/);
-    const resolvedFee = priceMatch ? Number(priceMatch[1]) : (matchedService.basePrice || 195);
-
-    const bookingPayload = {
-      customerUid: activeUid,
-      userId: activeUid,
-      customerId: activeUid,
-      serviceId: resolvedServiceId,
-      serviceName: packageName,
-      serviceType: packageName,
-      issueDetails: packageName,
-      visitationFee: resolvedFee,
-      totalPrice: resolvedFee,
-      originalBillValue: resolvedFee,
-      status: "pending_checkout",
-      paymentStatus: "unpaid",
-      paymentMethod: "cash",
-      scheduledSlot: initialScheduledSlot,
-      scheduledAt: Timestamp.now(),
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      address: (currentUser as any)?.address || "Indore (Zomindia Service Area)",
-      lat: (currentUser as any)?.lat || null,
-      lng: (currentUser as any)?.lng || null,
-      customerBookedEmail: resolvedEmail,
-      customerBookedPhone: resolvedMobile,
-      customerBookedName: resolvedFullName,
-      customerName: resolvedFullName,
-      customerMobile: resolvedMobile,
-      customerData: {
-        fullName: resolvedFullName,
-        mobile: resolvedMobile,
-        email: resolvedEmail
-      },
-      otpVerified: false,
-      serviceOtp
-    };
-
-    const fullDraftBooking = { id: draftBookingId, ...bookingPayload };
-
-    setDraftBookings((prev) => ({
-      ...prev,
-      [draftBookingId]: fullDraftBooking
-    }));
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: `बहुत बढ़िया! ${packageName} के लिए अपना स्लॉट चुनें:`,
-        bookingData: fullDraftBooking,
-        quickActions: undefined
-      }
-    ]);
-  };
-
-  // Direct sending helper for suggest clicks to bypass multiple fields
+  // Direct sending helper for suggest clicks & chat input
   const sendQueryDirectly = async (displayText: string, queryActionOverride?: string) => {
-    if (isSubmitting || isLoading) return;
+    if (isLoading) return;
 
     if (isListening && recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (err) {
-        console.warn(err);
-      }
+      } catch (err) {}
       setIsListening(false);
     }
 
-    // Always render the exact text of the clicked button/pill on the screen
-    setMessages((prev) => [...prev, { role: "user", text: displayText }]);
+    const nowTimeStr = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `local_user_${Date.now()}`,
+        role: "user",
+        senderName: userProfile?.fullName || userProfile?.displayName || "Customer",
+        text: displayText,
+        timestamp: nowTimeStr,
+      },
+    ]);
+
+    if (focusedBooking?.id && userProfile) {
+      persistBookingMessage(focusedBooking.id, {
+        text: displayText,
+        senderRole: "customer",
+        senderName: userProfile.fullName || userProfile.displayName || "Customer",
+      });
+    }
 
     const queryToSend = queryActionOverride || displayText;
     const cleanQ = (queryToSend + " " + displayText).toLowerCase();
 
-    // 1. Direct Booking Tracking & Status Resolution:
-    // If the query references an existing booking (e.g. #QVS8MZ or QVS8MZ)
+    // 1. Check if query references a specific booking code (#ABC123)
     const matchedByCode = localBookings.find((b) => {
       const fullId = (b.id || "").toLowerCase();
       const shortId = (b.id || "").slice(-6).toLowerCase();
@@ -1495,331 +1371,76 @@ export default function AiSupportChat({
     });
 
     if (matchedByCode) {
-      const bIdShort = (matchedByCode.id || "").slice(-6).toUpperCase();
-      const isHindi = selectedLang === "hi-IN";
-      const sTitle = matchedByCode.serviceName || (matchedByCode as any).serviceType || "Home Service";
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: isHindi
-            ? `बुकिंग #${bIdShort} (${sTitle}) का वर्तमान स्टेटस '${matchedByCode.status}' है। पूरा पेमेंट विवरण और लाइव ट्रैकिंग नीचे दी गई है:`
-            : `Here is the verified status and complete payment breakdown for booking #${bIdShort} (${sTitle}):`,
-          bookingData: matchedByCode,
-          quickActions: [
-            { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-            { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-          ]
-        }
-      ]);
-      return;
+      setFocusedBookingId(matchedByCode.id);
     }
 
-    const isTrackingIntent =
-      cleanQ.includes("track") ||
-      cleanQ.includes("status") ||
-      cleanQ.includes("ट्रैक") ||
-      cleanQ.includes("स्टेटस") ||
-      cleanQ.includes("where is") ||
-      cleanQ.includes("कहाँ है") ||
-      cleanQ.includes("technician");
-
-    if (isTrackingIntent && localBookings.length > 0) {
-      const activeBooking = localBookings.find((b) =>
-        ['pending', 'confirmed', 'on_the_way', 'in_progress', 'pending_acceptance', 'confirmed_pay_after_service'].includes(b.status)
-      ) || localBookings[0];
-
-      if (activeBooking) {
-        const bIdShort = (activeBooking.id || "").slice(-6).toUpperCase();
-        const isHindi = selectedLang === "hi-IN";
-        const sTitle = activeBooking.serviceName || (activeBooking as any).serviceType || "Home Service";
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            text: isHindi
-              ? `आपकी एक्टिव बुकिंग #${bIdShort} (${sTitle}) का स्टेटस '${activeBooking.status}' है:`
-              : `Your active booking #${bIdShort} (${sTitle}) is currently in status '${activeBooking.status}':`,
-            bookingData: activeBooking,
-            quickActions: [
-              { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-              { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-            ]
-          }
-        ]);
-        return;
-      }
-    }
-
+    // 2. Direct Service Booking Intent -> Launch Official BookingModal.tsx
     const isBookingAction =
-      !isTrackingIntent &&
-      (
-        queryToSend.toLowerCase().startsWith("book ") ||
-        queryToSend.toLowerCase().includes(" book ") ||
-        queryToSend.includes("बुक") ||
-        queryToSend.includes("⚡") ||
-        displayText.toLowerCase().startsWith("book ") ||
-        displayText.toLowerCase().includes(" book ") ||
-        displayText.includes("बुक") ||
-        displayText.includes("⚡")
-      );
+      queryToSend.toLowerCase().startsWith("book ") ||
+      queryToSend.toLowerCase().includes(" book ") ||
+      queryToSend.includes("बुक") ||
+      queryToSend.includes("⚡") ||
+      displayText.toLowerCase().startsWith("book ") ||
+      displayText.toLowerCase().includes(" book ") ||
+      displayText.includes("बुक") ||
+      displayText.includes("⚡");
 
     if (isBookingAction) {
       if (!userProfile) {
-        let packageName = "स्प्लिट AC सर्विस (₹770)";
-        const textCheck = (queryToSend + " " + displayText).toLowerCase();
-
-        if (textCheck.includes("स्प्लिट") || textCheck.includes("split")) {
-          packageName = "स्प्लिट AC सर्विस (₹770)";
-        } else if (textCheck.includes("विंडो") || textCheck.includes("window")) {
-          packageName = "विंडो AC सर्विस (₹599)";
-        } else if (textCheck.includes("कम्पलीट ro") || textCheck.includes("complete ro")) {
-          packageName = "कम्पलीट RO सर्विसिंग (₹649)";
-        } else if (textCheck.includes("ro") || textCheck.includes("आरओ") || textCheck.includes("फ़िल्टर") || textCheck.includes("filter")) {
-          packageName = "RO फ़िल्टर सर्विस (₹399)";
-        } else if (textCheck.includes("वाशिंग") || textCheck.includes("washing")) {
-          packageName = "वाशिंग मशीन सर्विस (₹499)";
-        } else {
-          packageName = displayText.replace(/⚡/g, "").trim() || "होम सर्विस पैकेज (₹195)";
-        }
-
         try {
           sessionStorage.setItem("zomini_pending_booking_action", displayText);
-        } catch (e) {
-          console.warn(e);
-        }
-
+        } catch (e) {}
         setMessages((prev) => [
           ...prev,
           {
+            id: `local_ai_${Date.now()}`,
             role: "ai",
-            text: `मैं आपकी ${packageName} बुक करने के लिए तैयार हूँ। कृपया सर्विस कन्फर्म करने के लिए अभी लॉगिन करें:`,
+            senderName: "Zomini AI",
+            text: `Main aapki service book karne ke liye taiyar hu! Kripya booking confirm karne ke liye mobile OTP se login karein:`,
             showLoginBtn: true,
-            pendingPackage: displayText
-          }
+            pendingPackage: displayText,
+            timestamp: nowTimeStr,
+          },
         ]);
         return;
       }
 
-      triggerDirectBookingFlow(displayText, userProfile);
+      launchOfficialBookingModal(queryToSend);
       return;
     }
 
-    setIsLoading(true);
+    // 3. Smart Multilingual Indore NLP Engine (0ms instant in-memory resolution for Greetings, Partner, ETA, OTP, Reschedule, Cancel/Refund, Pricing, & Default Fallback)
+    const localNlpReply = getSmartIndoreNlpReply(queryToSend);
+    if (localNlpReply.openReschedule) {
+      setShowReschedulePicker(true);
+    }
 
-    try {
-      const res = await fetch("/api/support-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({
-          message: queryToSend,
-          context: {
-            language:
-              LANGUAGES.find((l) => l.code === selectedLang)?.name || "Hindi",
-            user: userProfile
-              ? {
-                  name: userProfile.displayName || userProfile.fullName,
-                  role: userProfile.role || "customer",
-                  city: (userProfile as any).city,
-                  isPartner: isPartner,
-                }
-              : { isPartner: isPartner, role: 'Guest' },
-            bookings: localBookings?.slice(0, 5).map((b) => ({
-              id: b.id,
-              status: b.status,
-              serviceId: b.serviceId,
-              serviceName: b.serviceName || (b as any).serviceType,
-              scheduledAt:
-                b.scheduledAt?.toDate?.()?.toLocaleString() || b.scheduledAt,
-              totalPrice: b.totalPrice,
-              visitationFee: b.visitationFee || b.originalBillValue || b.totalPrice,
-              originalBillValue: b.originalBillValue || b.visitationFee || b.totalPrice,
-              couponDiscount: b.couponDiscount || b.discountApplied || 0,
-              walletDeductAmount: b.walletDeductAmount || 0,
-              paymentStatus: b.paymentStatus,
-              paymentMethod: b.paymentMethod,
-              address: b.address,
-            })),
-            chatHistory: [...messages, { role: "user", text: displayText }],
-          },
-        }),
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `local_ai_${Date.now()}`,
+        role: "ai",
+        senderName: "Zomini AI",
+        text: localNlpReply.text,
+        bookingData: localNlpReply.bookingData,
+        quickActions: localNlpReply.quickActions,
+        timestamp: nowTimeStr,
+      },
+    ]);
+
+    if (focusedBooking?.id && userProfile) {
+      persistBookingMessage(focusedBooking.id, {
+        text: localNlpReply.text,
+        senderRole: "ai",
+        senderName: "Zomini AI",
+        bookingData: localNlpReply.bookingData,
+        quickActions: localNlpReply.quickActions,
       });
-
-      const data = await res.json();
-      if (res.ok) {
-        // Double Booking Guard from Backend: If backend reported an existing active booking
-        if (data.existingBookingId) {
-          const matchedActive = localBookings.find(b => b.id === data.existingBookingId);
-          if (matchedActive) {
-            const bIdShort = (matchedActive.id || "").slice(-6).toUpperCase();
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "ai",
-                text: data.nextQuestion || data.reply || `You already have an active booking (#${bIdShort}) in progress. Here is your tracking card:`,
-                bookingData: matchedActive,
-                quickActions: [
-                  { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-                  { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-                ]
-              }
-            ]);
-            return;
-          }
-        }
-
-        const isGuest = !userProfile;
-        if (data.isReadyToBook === true && !isGuest) {
-          try {
-            // Strictly validate serviceType against catalog services with resilient fallback
-            const detectedType = data.serviceType || "AC Repair";
-
-            // Double Booking Guard on Frontend as well
-            const existingActive = findActiveBookingForCategory(detectedType || data.issueDetails || "");
-            if (existingActive) {
-              const isHindi = selectedLang === "hi-IN";
-              const bIdShort = (existingActive.id || "").slice(-6).toUpperCase();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  role: "ai",
-                  text: isHindi
-                    ? `आपके पास पहले से ही इस सर्विस के लिए एक एक्टिव बुकिंग (#${bIdShort}) चल रही है जिसका स्टेटस '${existingActive.status}' है। आप नीचे दिए गए कार्ड से इसे ट्रैक कर सकते हैं:`
-                    : `You already have an active booking (#${bIdShort}) for this service with status '${existingActive.status}'. You can track it directly below:`,
-                  bookingData: existingActive,
-                  quickActions: [
-                    { label: "📍 Track Status", action: `Track Booking #${bIdShort}` },
-                    { label: "📞 Support Helpline", action: "Talk to Human Agent" }
-                  ]
-                }
-              ]);
-              return;
-            }
-
-            let matchedService = allServices.find(s => 
-              s.name?.toLowerCase().includes(detectedType.toLowerCase()) ||
-              detectedType.toLowerCase().includes(s.name?.toLowerCase() || "") ||
-              (detectedType.toLowerCase().includes("ac") && s.name?.toLowerCase().includes("ac")) ||
-              (detectedType.toLowerCase().includes("washing") && s.name?.toLowerCase().includes("washing")) ||
-              (detectedType.toLowerCase().includes("ro") && s.name?.toLowerCase().includes("ro"))
-            );
-
-            if (!matchedService) {
-              matchedService = {
-                id: `service_${detectedType.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
-                name: detectedType,
-                basePrice: 195,
-                categoryId: "cat_home_service"
-              };
-            }
-
-            const resolvedServiceId = matchedService.id;
-            const activeUid = userProfile!.uid;
-            const resolvedFullName = userProfile!.fullName || userProfile!.displayName || "Customer";
-            const resolvedMobile = userProfile!.mobile || userProfile!.phoneNumber || "9876543210";
-            const resolvedEmail = userProfile!.email || "";
-
-            // Create a randomized 4-digit service OTP
-            const serviceOtp = String(Math.floor(1000 + Math.random() * 9000));
-            const serviceTitle = matchedService.name || data.issueDetails || "Home Service";
-
-            const bookingPayload = {
-              customerUid: activeUid,
-              userId: activeUid,
-              customerId: activeUid,
-              serviceId: resolvedServiceId,
-              serviceName: serviceTitle,
-              serviceType: serviceTitle,
-              issueDetails: data.issueDetails || serviceTitle,
-              visitationFee: 195,
-              totalPrice: 195,
-              originalBillValue: 195,
-              status: "pending_checkout",
-              paymentStatus: "unpaid",
-              paymentMethod: "cash",
-              scheduledAt: Timestamp.now(),
-              createdAt: Timestamp.now(),
-              updatedAt: Timestamp.now(),
-              address: (userProfile as any)?.address || "Indore (Zomindia Service Area)",
-              lat: (userProfile as any)?.lat || null,
-              lng: (userProfile as any)?.lng || null,
-              customerBookedEmail: resolvedEmail,
-              customerBookedPhone: resolvedMobile,
-              customerBookedName: resolvedFullName,
-              customerName: resolvedFullName,
-              customerMobile: resolvedMobile,
-              customerData: {
-                fullName: resolvedFullName,
-                mobile: resolvedMobile,
-                email: resolvedEmail
-              },
-              otpVerified: false,
-              serviceOtp
-            };
-
-            // Pre-generate unique client-side ID for the draft booking (preventing premature DB save)
-            const draftBookingId = `ZOM_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-            const fullDraftBooking = { id: draftBookingId, ...bookingPayload };
-
-            setDraftBookings((prev) => ({
-              ...prev,
-              [draftBookingId]: fullDraftBooking
-            }));
-
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "ai",
-                text: data.nextQuestion || "बहुत बढ़िया! चुनी गई सर्विस के लिए अपना पसंदीदा टाइम और स्लॉट चुनें:",
-                bookingData: fullDraftBooking,
-                quickActions: undefined
-              },
-            ]);
-            return;
-          } catch (e) {
-            console.error("Error creating draft booking card in AI Chat:", e);
-          }
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            text: data.nextQuestion || data.reply || "I am ZOMINI, here to assist with your home services.",
-            quickActions: data.quickActions || undefined
-          },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            text: "I am having trouble connecting to the server. Please try again or use our helpline.",
-          },
-        ]);
-      }
-    } catch (err: any) {
-      const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: isTimeout
-            ? (selectedLang === "hi-IN"
-                ? "सर्वर से जवाब मिलने में समय लग रहा है (टाइमआउट)। कृपया पुनः प्रयास करें या हमारी हेल्पलाइन पर संपर्क करें।"
-                : "The request timed out. Please try again or connect directly with our support helpline.")
-            : "Something went wrong. Let me assist you via WhatsApp support instead.",
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const sendMessage = async () => {
-    if (isSubmitting || !input.trim()) return;
-
+    if (!input.trim() || isLoading) return;
     const userMsg = input.trim();
     setInput("");
     await sendQueryDirectly(userMsg);
@@ -1901,27 +1522,45 @@ export default function AiSupportChat({
             </div>
 
             {/* Header Controls */}
-            <div className="bg-indigo-900 text-white p-4 pl-28 pr-4 flex items-center justify-between rounded-t-3xl border-b border-indigo-950 shrink-0 select-none">
-              <div className="flex flex-col text-left gap-0.5">
+            <div className="bg-indigo-900 text-white p-3.5 pl-28 pr-4 flex items-center justify-between rounded-t-3xl border-b border-indigo-950 shrink-0 select-none">
+              <div className="flex flex-col text-left gap-0.5 min-w-0">
                 <h3 className="font-black text-sm leading-tight flex items-center gap-1.5 tracking-tight text-white">
-                  <span className="text-white font-black">ZOMINI AI Chat</span>
-                  <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.2 rounded font-extrabold">
-                    LIVE
+                  <span className="text-white font-black truncate">Zomini Priority Support</span>
+                  <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-wider shrink-0">
+                    Active • Indore Desk
                   </span>
                 </h3>
-                
-                {/* Greeting Badge placed inside the header beautifully to avoid overlapping */}
+
+                {/* Dynamic Context Pill or Greeting Badge */}
                 <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                  <span className="text-[9px] text-indigo-200 font-bold tracking-widest uppercase">
-                    Support
-                  </span>
-                  <span className="text-indigo-400 font-bold">•</span>
-                  <div className="bg-white/15 text-white px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border border-white/20 shadow-sm flex items-center gap-1 backdrop-blur-sm">
-                    <span className="text-cyan-400 font-black animate-pulse">•</span>
-                    <span>
-                      नमस्ते, <span className="text-cyan-300">{userProfile ? (userProfile.fullName || userProfile.displayName || "User") : "Guest"}</span>
-                    </span>
-                  </div>
+                  {bookingTelemetry ? (
+                    <div className="bg-white/15 text-white px-2 py-0.5 rounded-md text-[10px] font-extrabold border border-white/20 shadow-xs flex items-center gap-1.5 backdrop-blur-xs max-w-full truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                      <span className="text-amber-300 font-mono font-black">
+                        #{bookingTelemetry.shortBookingId}
+                      </span>
+                      <span className="text-indigo-200">•</span>
+                      <span className="truncate font-bold text-white">
+                        {bookingTelemetry.serviceName}
+                      </span>
+                      <span className="text-indigo-200">•</span>
+                      <span className="text-emerald-300 font-black shrink-0">
+                        ₹{bookingTelemetry.bookingTotal}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="bg-white/15 text-white px-2 py-0.5 rounded-md text-[9.5px] font-extrabold border border-white/20 shadow-xs flex items-center gap-1 backdrop-blur-xs">
+                      <span className="text-cyan-400 font-black animate-pulse">•</span>
+                      <span>
+                        नमस्ते,{" "}
+                        <span className="text-cyan-300">
+                          {userProfile
+                            ? userProfile.fullName || userProfile.displayName || "User"
+                            : "Guest"}
+                        </span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <button
@@ -1931,82 +1570,86 @@ export default function AiSupportChat({
                     sessionStorage.removeItem("zomini_pending_booking_action");
                   } catch (e) {}
                 }}
-                className="text-indigo-300 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer active:scale-90"
+                className="text-indigo-300 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer active:scale-90 shrink-0"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Direct Channel Access Connect Bar */}
+            {/* 1-Tap Quick Action Hub (Call Desk & WhatsApp Help) */}
             <div
-              className="bg-slate-100 border-b border-slate-200 p-3 flex flex-col gap-1.5 select-none shrink-0"
+              className="bg-slate-100 border-b border-slate-200 px-3 py-2.5 flex flex-col gap-2 select-none shrink-0"
               id="chat-support-connect-bar"
             >
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">
-                  Fast Connect Channels
-                </span>
-                <span className="text-[8px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-black uppercase">
-                  Standard Verified
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center items-center w-full px-1">
-                {/* Click-to-WhatsApp support */}
+              <div className="flex items-center justify-between gap-2">
                 <a
-                  href="https://wa.me/919630234563?text=Hi%20ZOMINI%20zomindia"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 min-w-[75px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl border border-emerald-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 text-[11px] font-extrabold select-none"
-                  title="Connect via WhatsApp"
-                  id="chat-whatsapp-btn"
-                >
-                  <MessageCircle size={12} className="shrink-0" />
-                  <span>WhatsApp</span>
-                </a>
-
-                {/* Click-to-Call */}
-                <button
-                  onClick={() => {
-                    if (
-                      typeof (window as any).__showToast ===
-                      "function"
-                    ) {
-                      (window as any).__showToast(
-                        `Routing call via masked corporate gateway: ${CORPORATE_LANDLINE_GATEWAY}...`,
-                      );
-                    } else {
-                      alert(
-                        `[Zomindia Telephony Router]\nInitiating corporate bridge call.\nGateway number: ${CORPORATE_LANDLINE_GATEWAY}\nConnection status: Secure`,
-                      );
-                    }
-                  }}
-                  className="flex-1 min-w-[75px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-250 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 text-[11px] font-extrabold select-none"
-                  title="Call Support Team"
+                  href={`tel:${CORPORATE_LANDLINE_GATEWAY}`}
+                  className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 px-3 py-2 rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-[11px] font-black select-none shadow-2xs"
+                  title="Call Zomindia Priority Desk"
                   id="chat-call-btn"
                 >
-                  <Phone size={12} className="shrink-0" />
-                  <span>Call Gate</span>
-                </button>
+                  <Phone size={13} className="shrink-0 text-indigo-700" />
+                  <span>Call Desk</span>
+                </a>
 
-                {/* Click-to-Email */}
                 <a
-                  href="mailto:help@zomindia.com?subject=zomindia%20Support%20Request"
-                  className="flex-1 min-w-[75px] bg-slate-50 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 text-[11px] font-extrabold select-none"
-                  title="Email help@zomindia.com"
-                  id="chat-email-btn"
+                  href={`https://wa.me/919630234563?text=${encodeURIComponent(
+                    bookingTelemetry
+                      ? `Namaste Zomindia Priority Support! Need help with Booking #${bookingTelemetry.shortBookingId} (${bookingTelemetry.serviceName} - ₹${bookingTelemetry.bookingTotal}).`
+                      : "Namaste Zomindia Priority Support! I need assistance with home appliance services in Indore.",
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl border border-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-[11px] font-black select-none shadow-2xs"
+                  title="WhatsApp Priority Help"
+                  id="chat-whatsapp-btn"
                 >
-                  <Mail size={12} className="text-slate-500 shrink-0" />
-                  <span>Email Help</span>
+                  <MessageCircle size={13} className="shrink-0" />
+                  <span>WhatsApp Help</span>
                 </a>
               </div>
+
+              {/* Active Booking Live Telemetry Strip & Booking Switcher */}
+              {bookingTelemetry && (
+                <div className="bg-white rounded-xl px-2.5 py-1.5 border border-slate-200/90 flex items-center justify-between gap-2 text-[10px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0"></span>
+                    <span className="font-bold text-slate-700 truncate">
+                      {bookingTelemetry.partnerName} ({bookingTelemetry.partnerRating}) •{" "}
+                      <span className="text-indigo-700 font-black">{bookingTelemetry.etaText}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded font-mono font-black text-[9.5px]">
+                      OTP: {bookingTelemetry.startOtp}
+                    </span>
+                    {activeBookingsList.length > 1 && (
+                      <select
+                        value={focusedBooking?.id || ""}
+                        onChange={(e) => setFocusedBookingId(e.target.value)}
+                        className="bg-slate-100 text-slate-800 font-bold text-[9.5px] rounded px-1 py-0.5 border border-slate-300 focus:outline-none"
+                        title="Switch Active Booking"
+                      >
+                        {activeBookingsList.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            #{(b.id || "").slice(-6).toUpperCase()} • {b.serviceName || "Service"}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Messages Scroll Panel */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50">
               {!userProfile && (
-                <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 text-center mb-2 shadow-sm">
+                <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 text-center mb-2 shadow-xs">
                   <p className="text-[11.5px] text-slate-700 font-bold mb-2 leading-snug">
-                    You are currently browsing as a <span className="text-indigo-700 font-extrabold">Guest</span>. Speak to Zomini to diagnose issues, and log in to confirm your booking!
+                    You are currently browsing as a{" "}
+                    <span className="text-indigo-700 font-extrabold">Guest</span>. Speak to Zomini
+                    to diagnose issues, and log in to confirm or track your bookings!
                   </p>
                   <button
                     onClick={() => {
@@ -2020,13 +1663,14 @@ export default function AiSupportChat({
                   </button>
                 </div>
               )}
+
               {messages.map((msg, idx) => (
                 <div
-                  key={idx}
+                  key={msg.id || idx}
                   className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                 >
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
                       msg.role === "user"
                         ? "bg-slate-200 text-slate-600"
                         : "bg-indigo-900 text-white"
@@ -2041,367 +1685,164 @@ export default function AiSupportChat({
                     )}
                   </div>
                   <div
-                    className={`p-3 rounded-2xl max-w-[78%] text-[12.5px] leading-relaxed font-medium ${
+                    className={`p-3 rounded-2xl max-w-[80%] text-[12.5px] leading-relaxed font-medium ${
                       msg.role === "user"
                         ? "bg-blue-600 text-white rounded-tr-sm shadow-md"
-                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm"
+                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-xs"
                     }`}
                   >
-                    {/* Private masked telephone data rendered defensively */}
-                    {(msg as any).bookingData ? (
-                      (msg as any).bookingData.status === "pending_checkout" ? (
-                        <div className="bg-slate-50 border border-indigo-200 rounded-xl p-3 shadow-md space-y-2.5 relative overflow-hidden text-left">
-                          {/* Pulsing subtle background indicator */}
-                          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-16 h-16 bg-indigo-100/60 rounded-full blur-xl animate-pulse"></div>
+                    {msg.role !== "user" && msg.senderName && msg.senderName !== "Zomini AI" && (
+                      <div className="text-[9.5px] font-black uppercase tracking-wider text-indigo-700 mb-1">
+                        {msg.senderName}
+                      </div>
+                    )}
 
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
-                                ⚡
-                              </div>
-                              <span className="font-extrabold text-indigo-900 text-[11px] uppercase tracking-wider">डायरेक्ट बुक करें (Direct Booking)</span>
-                            </div>
-                            <span className="text-[10px] bg-indigo-100 text-indigo-900 font-extrabold px-2 py-0.5 rounded-full border border-indigo-250">
-                              ₹{(msg as any).bookingData.totalPrice ?? ((msg as any).bookingData.visitationFee || 195)} Payable
+                    <div className="whitespace-pre-line">{maskPhoneNumbers(msg.text)}</div>
+
+                    {/* Live Booking Summary Card inside message */}
+                    {msg.bookingData && (() => {
+                      const rawB = msg.bookingData || {};
+                      const liveB = rawB.id ? localBookings.find((b) => b.id === rawB.id) : null;
+                      const b = (liveB ? { ...rawB, ...liveB } : rawB) as Booking;
+                      const serviceTitle = b.serviceName || (b as any).serviceType || "Home Service";
+                      const shortId = (b.id || "").slice(-6).toUpperCase();
+                      const finalPayable = b.totalPrice ?? b.visitationFee ?? 195;
+
+                      return (
+                        <div className="mt-2.5 bg-emerald-50/90 border border-emerald-300/90 rounded-xl p-2.5 space-y-2 text-left">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black text-emerald-950 text-[11px]">
+                              #{shortId} • {serviceTitle}
+                            </span>
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">
+                              {String(b.status || "CONFIRMED").replace(/_/g, " ")}
                             </span>
                           </div>
-
-                          <div className="bg-white p-2.5 rounded-xl border border-indigo-100 space-y-2">
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">चुनी गई सर्विस पैकेज</p>
-                              <p className="text-[12px] font-black text-slate-900">
-                                {(msg as any).bookingData.serviceName || (msg as any).bookingData.issueDetails || (msg as any).bookingData.serviceType || "Home Service"}
-                              </p>
-                            </div>
-
-                            {/* Transparent Price Summary */}
-                            <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-200/80 space-y-1 text-xs">
-                              <div className="flex justify-between items-center text-[11px] text-slate-600">
-                                <span>Base / Inspection Fee</span>
-                                <span className="font-bold text-slate-800">₹{(msg as any).bookingData.visitationFee || (msg as any).bookingData.originalBillValue || (msg as any).bookingData.totalPrice || 195}</span>
-                              </div>
-                              {Boolean(((msg as any).bookingData.couponDiscount || (msg as any).bookingData.discountApplied || 0) > 0) && (
-                                <div className="flex justify-between items-center text-[11px] text-emerald-700 font-bold">
-                                  <span>Discount / Coupon</span>
-                                  <span>-₹{(msg as any).bookingData.couponDiscount || (msg as any).bookingData.discountApplied}</span>
-                                </div>
-                              )}
-                              {Boolean(((msg as any).bookingData.walletDeductAmount || 0) > 0) && (
-                                <div className="flex justify-between items-center text-[11px] text-purple-700 font-bold">
-                                  <span>Wallet Deduction</span>
-                                  <span>-₹{(msg as any).bookingData.walletDeductAmount}</span>
-                                </div>
-                              )}
-                              <div className="pt-1 border-t border-slate-200 flex justify-between items-center font-black text-slate-900">
-                                <span className="text-[10.5px] uppercase tracking-wider">Final Payable</span>
-                                <span className="text-xs text-[#002e6e] font-black">₹{(msg as any).bookingData.totalPrice ?? ((msg as any).bookingData.visitationFee || 195)}</span>
-                              </div>
-                            </div>
-
-                            {/* Slot Selection */}
-                            <div className="pt-1.5 border-t border-slate-100 space-y-1">
-                              <span className="text-[9.5px] font-extrabold text-slate-700 block">📅 टाइम व स्लॉट चुनें (Choose Slot):</span>
-                              
-                              {(() => {
-                                const bookingId = (msg as any).bookingData.id;
-                                const todayFullyBooked = isDateFullyBooked("today");
-                                const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
-                                const curDate = selectedSlots[bookingId]?.date || defaultDateVal;
-                                const curSlot = selectedSlots[bookingId]?.slot || getFirstAvailableSlot(curDate as any) || "";
-
-                                return (
-                                  <>
-                                    <div className="grid grid-cols-2 gap-1">
-                                      {["today", "tomorrow"].map((dVal) => {
-                                        const isToday = dVal === "today";
-                                        const isSel = curDate === dVal;
-                                        const isFull = isToday && todayFullyBooked;
-                                        const labelText = isToday ? (isFull ? "आज (Full)" : "आज (Today)") : "कल (Tomorrow)";
-
-                                        return (
-                                          <button
-                                            key={dVal}
-                                            type="button"
-                                            onClick={() => {
-                                              if (isToday && isFull) {
-                                                updateBookingSlot(bookingId, "today", "");
-                                                return;
-                                              }
-                                              const nextSlot = isToday
-                                                ? (isSlotAvailable("today", curSlot) ? curSlot : (getFirstAvailableSlot("today") || ""))
-                                                : (curSlot || "10:00 AM - 12:00 PM");
-                                              updateBookingSlot(bookingId, dVal, nextSlot);
-                                            }}
-                                            className={`py-1 px-1.5 rounded-md text-[10px] font-extrabold transition-all border cursor-pointer ${
-                                              isSel
-                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                                                : isFull
-                                                ? "bg-slate-100 text-slate-400 border-slate-200"
-                                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                                            }`}
-                                          >
-                                            {labelText}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-
-                                    {curDate === "today" && todayFullyBooked && (
-                                      <p className="text-[9px] font-bold text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 text-center leading-tight">
-                                        ⚠️ आज के सभी स्लॉट समाप्त हो चुके हैं। केवल 'कल (Tomorrow)' का स्लॉट उपलब्ध है।
-                                      </p>
-                                    )}
-
-                                    <div className="grid grid-cols-3 gap-1 pt-0.5">
-                                      {TIME_SLOTS.map((slotObj, tIdx) => {
-                                        const isAvail = isSlotAvailable(curDate as any, slotObj.label);
-                                        const isSelected = isAvail && curSlot === slotObj.label;
-
-                                        return (
-                                          <button
-                                            key={tIdx}
-                                            type="button"
-                                            disabled={!isAvail}
-                                            onClick={() => {
-                                              if (isAvail) {
-                                                updateBookingSlot(bookingId, curDate, slotObj.label);
-                                              }
-                                            }}
-                                            className={`py-1 px-0.5 text-center rounded-md text-[9px] font-bold border transition-all cursor-pointer ${
-                                              !isAvail
-                                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 line-through"
-                                                : isSelected
-                                                ? "bg-emerald-600 text-white border-emerald-600 font-black shadow-xs ring-2 ring-emerald-300 ring-offset-1"
-                                                : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
-                                            }`}
-                                          >
-                                            {slotObj.shortLabel}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-
-                            {/* Service Address Input */}
-                            <div className="pt-1.5 border-t border-slate-100">
-                              <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block mb-0.5">📍 सर्विस एड्रेस (Address)</span>
-                              <input
-                                type="text"
-                                value={selectedAddresses[(msg as any).bookingData.id] ?? ((msg as any).bookingData.address || "Indore (Zomindia Service Area)")}
-                                onChange={(e) => updateBookingAddress((msg as any).bookingData.id, e.target.value)}
-                                className="w-full text-[10.5px] font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:border-indigo-500"
-                                placeholder="Enter address in Indore"
-                              />
-                            </div>
-                          </div>
-
-                          {(() => {
-                            const bookingId = (msg as any).bookingData.id;
-                            const todayFullyBooked = isDateFullyBooked("today");
-                            const defaultDateVal = todayFullyBooked ? "tomorrow" : "today";
-                            const curDate = selectedSlots[bookingId]?.date || defaultDateVal;
-                            const curSlot = selectedSlots[bookingId]?.slot || getFirstAvailableSlot(curDate as any) || "";
-                            const isValidSlotSelected = Boolean(curSlot && isSlotAvailable(curDate as any, curSlot));
-
-                            return (
-                              <div className="flex flex-col gap-1.5 pt-0.5">
-                                {!isValidSlotSelected && (
-                                  <p className="text-[9.5px] font-bold text-amber-600 text-center leading-tight py-0.5">
-                                    ⚠️ कृपया ऊपर से एक सक्रिय टाइम स्लॉट चुनें
-                                  </p>
-                                )}
-                                <button
-                                  onClick={() => handlePayOnline(bookingId)}
-                                  disabled={isSubmitting || !isValidSlotSelected}
-                                  className={`w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-[11px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 group ${
-                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
-                                  }`}
-                                >
-                                  <CreditCard size={14} className="text-blue-100 group-hover:scale-110 transition-transform" />
-                                  <span>{isSubmitting ? "Launching Checkout..." : "💳 Pay via Razorpay / UPI"}</span>
-                                </button>
-                                <button
-                                  onClick={() => handlePayAfterService(bookingId)}
-                                  disabled={isSubmitting || !isValidSlotSelected}
-                                  className={`w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[10.5px] py-2 px-3 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 ${
-                                    isSubmitting || !isValidSlotSelected ? "opacity-50 cursor-not-allowed pointer-events-none grayscale" : ""
-                                  }`}
-                                >
-                                  <span>💵 Pay Cash on Delivery (COD)</span>
-                                </button>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      ) : (() => {
-                        const rawB = (msg as any).bookingData || {};
-                        const liveB = rawB.id ? localBookings.find((b) => b.id === rawB.id) : null;
-                        const resolvedB = (liveB ? { ...rawB, ...liveB } : rawB) as Booking;
-                        const activeCustomerId = resolvedB.customerUid || resolvedB.customerId || (resolvedB as any).userId || "";
-                        const b: Booking = {
-                          ...resolvedB,
-                          customerUid: activeCustomerId,
-                          customerId: activeCustomerId,
-                          userId: activeCustomerId,
-                        };
-
-                        const isAmc = Boolean(b.isAmcBooking || b.isAmcCovered || b.tier === "amc");
-                        const hasValidOnlineTxn = Boolean(
-                          b.transactionId &&
-                          b.paymentStatus === "paid" &&
-                          b.paymentMethod !== "cash" &&
-                          b.paymentMethod !== "pay_after_service"
-                        );
-                        const isPaid =
-                          isAmc ||
-                          (b.paymentMethod === "wallet" && (b.walletDeductAmount ?? 0) > 0) ||
-                          (b.paymentStatus === "paid" && b.paymentMethod !== "cash" && b.paymentMethod !== "pay_after_service") ||
-                          hasValidOnlineTxn;
-
-                        const baseFee = b.visitationFee || b.originalBillValue || (b.totalPrice || 0);
-                        const discount = b.couponDiscount || b.discountApplied || 0;
-                        const walletDeduct = b.walletDeductAmount || 0;
-                        const finalPayable = b.totalPrice ?? (baseFee - discount - walletDeduct);
-
-                        const serviceTitle = b.serviceName || (b as any).serviceType || "Home Service";
-                        const shortId = (b.id || "").slice(-6).toUpperCase();
-
-                        return (
-                          <div className="bg-emerald-50/90 border border-emerald-300/90 rounded-2xl p-3.5 shadow-sm space-y-3 relative overflow-hidden text-left">
-                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-14 h-14 bg-emerald-200/40 rounded-full blur-xl pointer-events-none"></div>
-
-                            <div className="flex items-center justify-between gap-2 flex-wrap relative z-10">
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
-                                  ✓
-                                </div>
-                                <span className="font-black text-emerald-950 text-xs">
-                                  {b.status === "completed"
-                                    ? "Service Completed"
-                                    : isPaid
-                                    ? "Booking Paid & Confirmed"
-                                    : "Booking Confirmed (Pay After Service)"}
-                                </span>
-                              </div>
-                              <span className="text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-200/70 text-emerald-900 border border-emerald-400/60">
-                                {b.status ? b.status.replace(/_/g, " ") : "CONFIRMED"}
-                              </span>
-                            </div>
-
-                            <div className="bg-white/85 rounded-xl p-2.5 border border-emerald-200/70 space-y-1 relative z-10">
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Service</span>
-                                <span className="font-extrabold text-slate-900 text-right truncate max-w-[180px]">{serviceTitle}</span>
-                              </div>
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Booking ID</span>
-                                <span className="font-mono font-extrabold text-[#002e6e] text-xs">#{shortId}</span>
-                              </div>
-                            </div>
-
-                            {/* Complete Transparent Payment Breakup */}
-                            <div className="bg-white/95 rounded-xl p-2.5 border border-emerald-200/80 space-y-1.5 text-xs relative z-10">
-                              <div className="flex justify-between items-center text-[11px] text-slate-600">
-                                <span>Base / Inspection Fee</span>
-                                <span className="font-bold text-slate-800">₹{baseFee}</span>
-                              </div>
-                              {discount > 0 && (
-                                <div className="flex justify-between items-center text-[11px] text-emerald-700 font-bold">
-                                  <span>Discount / Coupon {b.promoCode ? `(${b.promoCode})` : ""}</span>
-                                  <span>-₹{discount}</span>
-                                </div>
-                              )}
-                              {walletDeduct > 0 && (
-                                <div className="flex justify-between items-center text-[11px] text-purple-700 font-bold">
-                                  <span>Wallet Deduction</span>
-                                  <span>-₹{walletDeduct}</span>
-                                </div>
-                              )}
-                              <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center font-black">
-                                <span className="text-slate-800 text-[11px] uppercase tracking-wider">Final Payable</span>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-sm text-[#002e6e] font-black">₹{finalPayable}</span>
-                                  {isPaid ? (
-                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                      Paid Online
-                                    </span>
-                                  ) : (
-                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300">
-                                      Pay Cash/UPI After Service
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2 flex-wrap relative z-10">
-                              <button
-                                onClick={() => handleNavigateToBooking(b.id)}
-                                className="text-[11px] font-black text-emerald-800 hover:text-emerald-950 flex items-center gap-1 hover:underline cursor-pointer bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-1 rounded-lg transition-colors"
-                              >
-                                <span>Track Status ➔</span>
-                              </button>
-
-                              {!isPaid && b.status !== "completed" && b.status !== "cancelled" && (
-                                <button
-                                  onClick={() => handlePayOnline(b.id)}
-                                  disabled={isSubmitting}
-                                  className="bg-[#5f259f] hover:bg-[#4a1c7f] active:scale-95 text-white font-black text-[10.5px] px-3 py-1 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1"
-                                >
-                                  <CreditCard size={12} className="text-purple-200" />
-                                  <span>💳 Pay Online Instead</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <div>
-                        <div>{maskPhoneNumbers(msg.text)}</div>
-                        {((msg as any).showLoginBtn || (msg.role === "ai" && (msg.text.includes("लॉगिन") || msg.text.includes("Login") || msg.text.includes("login")))) && !userProfile && (
-                          <div className="mt-3 pt-2 border-t border-slate-100">
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-emerald-200/70">
+                            <span className="font-bold text-slate-700">Total: ₹{finalPayable}</span>
                             <button
-                              onClick={() => {
-                                handleInlineLogin((msg as any).pendingPackage || msg.text);
-                              }}
-                              className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11.5px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                              onClick={() => handleNavigateToBooking(b.id)}
+                              className="text-[10.5px] font-black text-emerald-800 hover:underline cursor-pointer"
                             >
-                              <span>🔐 अभी मोबाइल नंबर से लॉगिन करें (OTP)</span>
+                              View in My Bookings ➔
                             </button>
                           </div>
-                        )}
-                        {(msg as any).quickActions && (msg as any).quickActions.length > 0 && (
-                          <div className="flex flex-col gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
-                            {(msg as any).quickActions.map((btn: any, bIdx: number) => (
-                              <button
-                                key={bIdx}
-                                onClick={() => sendQueryDirectly(btn.label, btn.action)}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-[11px] font-extrabold py-2 px-3 rounded-xl transition-all shadow-sm cursor-pointer flex items-center justify-between gap-1.5"
-                              >
-                                <span>⚡ {btn.label}</span>
-                                <span>➔</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        </div>
+                      );
+                    })()}
+
+                    {(msg.showLoginBtn ||
+                      (msg.role === "ai" &&
+                        (msg.text.includes("लॉगिन") ||
+                          msg.text.includes("Login") ||
+                          msg.text.includes("login")))) &&
+                      !userProfile && (
+                        <div className="mt-3 pt-2 border-t border-slate-100">
+                          <button
+                            onClick={() => {
+                              handleInlineLogin(msg.pendingPackage || msg.text);
+                            }}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11.5px] py-2.5 px-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            <span>🔐 अभी मोबाइल नंबर से लॉगिन करें (OTP)</span>
+                          </button>
+                        </div>
+                      )}
+
+                    {msg.quickActions && msg.quickActions.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
+                        {msg.quickActions.map((btn: any, bIdx: number) => (
+                          <button
+                            key={bIdx}
+                            onClick={() => sendQueryDirectly(btn.label, btn.action)}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-[11px] font-extrabold py-2 px-3 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-between gap-1.5"
+                          >
+                            <span>⚡ {btn.label}</span>
+                            <span>➔</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {msg.timestamp && (
+                      <div
+                        className={`text-[9px] mt-1 font-semibold ${
+                          msg.role === "user" ? "text-blue-100 text-right" : "text-slate-400"
+                        }`}
+                      >
+                        {msg.timestamp}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
 
+              {/* Self-Serve Inline Reschedule Slot Picker */}
+              {showReschedulePicker && bookingTelemetry && (
+                <div className="bg-white border border-indigo-200 rounded-2xl p-3.5 shadow-sm space-y-2.5 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
+                      <Calendar size={13} className="text-indigo-600" />
+                      <span>Reschedule #{bookingTelemetry.shortBookingId} (₹0 Fee)</span>
+                    </span>
+                    <button
+                      onClick={() => setShowReschedulePicker(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(["today", "tomorrow"] as const).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setRescheduleDate(d)}
+                        className={`py-1.5 px-2 rounded-lg text-[10.5px] font-black border cursor-pointer transition-all ${
+                          rescheduleDate === d
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-slate-50 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {d === "today" ? "Today (आज)" : "Tomorrow (कल)"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {TIME_SLOTS.map((slotObj) => (
+                      <button
+                        key={slotObj.label}
+                        type="button"
+                        onClick={() => setRescheduleSlot(slotObj.label)}
+                        className={`py-1.5 px-1 rounded-lg text-[9.5px] font-bold border cursor-pointer transition-all ${
+                          rescheduleSlot === slotObj.label
+                            ? "bg-emerald-600 text-white border-emerald-600 font-black"
+                            : "bg-slate-50 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {slotObj.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConfirmReschedule}
+                    disabled={isRescheduling}
+                    className="w-full bg-indigo-700 hover:bg-indigo-800 text-white font-black text-[11px] py-2 rounded-xl shadow-xs cursor-pointer active:scale-95 transition-all"
+                  >
+                    {isRescheduling ? "Updating Slot..." : "Confirm New Slot (₹0 Fee)"}
+                  </button>
+                </div>
+              )}
+
               {isLoading && (
                 <div className="flex gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-indigo-950 flex items-center justify-center shrink-0 shadow-sm">
+                  <div className="w-8 h-8 rounded-full bg-indigo-950 flex items-center justify-center shrink-0 shadow-xs">
                     <div className="w-full h-full p-0.5 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-200">
                       <ZomiAvatarSVG className="w-full h-full rounded-full" />
                     </div>
                   </div>
-                  <div className="bg-white border border-slate-200 py-3.5 px-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-1.5">
+                  <div className="bg-white border border-slate-200 py-3.5 px-4 rounded-2xl rounded-tl-sm shadow-xs flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                     <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                     <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
@@ -2411,46 +1852,63 @@ export default function AiSupportChat({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Quick Suggestion Pills Section */}
-            <div className="flex gap-2 p-2 bg-slate-50 border-t border-slate-100 overflow-x-auto scrollbar-none shrink-0 select-none">
-              {(selectedLang === "hi-IN" || selectedLang === "hi"
+            {/* Smart Self-Serve Quick Chips */}
+            <div className="flex gap-1.5 px-3 py-2 bg-slate-50 border-t border-slate-200/80 overflow-x-auto scrollbar-none shrink-0 select-none">
+              {(bookingTelemetry
                 ? [
                     {
-                      label: "बुकिंग स्टेटस",
-                      query: "क्या आप मेरी एक्टिव सर्विस बुकिंग का स्टेटस चेक कर सकते हैं?",
+                      label: "Where is my partner?",
+                      query: "Where is my partner?",
                     },
                     {
-                      label: "रिफंड सहायता",
-                      query: "मुझे कैंसिलेशन और रिफंड की जानकारी चाहिए।",
+                      label: "Reschedule Visit",
+                      query: "Reschedule Visit",
                     },
                     {
-                      label: "शहर में उपलब्धता",
-                      query: "Zomindia अभी किन-किन शहरों में उपलब्ध है?",
+                      label: "Cancellation & Refund",
+                      query: "Cancellation & Refund",
+                    },
+                    {
+                      label: "Start OTP",
+                      query: "Mera Start OTP kya hai?",
+                    },
+                  ]
+                : selectedLang === "hi-IN" || selectedLang === "hi"
+                ? [
+                    {
+                      label: "Where is my partner?",
+                      query: "Mera service partner kaha hai?",
+                    },
+                    {
+                      label: "Reschedule Visit",
+                      query: "Mujhe apni booking ka time badalna hai",
+                    },
+                    {
+                      label: "Cancellation & Refund",
+                      query: "Cancellation aur refund policy kya hai?",
                     },
                   ]
                 : [
                     {
-                      label: "Booking Status",
-                      query:
-                        "Can you check my active booking status for refrigerator service?",
+                      label: "Where is my partner?",
+                      query: "Where is my partner?",
                     },
                     {
-                      label: "Refund Help",
-                      query: "I need help with refunds for my cancellation.",
+                      label: "Reschedule Visit",
+                      query: "Reschedule Visit",
                     },
                     {
-                      label: "City Availability",
-                      query: "Which cities are you currently available in?",
+                      label: "Cancellation & Refund",
+                      query: "Cancellation & Refund",
                     },
                   ]
               ).map((pill, pIdx) => (
                 <button
                   key={pIdx}
                   type="button"
-                  onClick={() => sendQueryDirectly(pill.query)}
-                  className="bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-700 text-[10px] font-black px-2.5 py-1.5 rounded-full transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer shadow-sm select-none"
+                  onClick={() => sendQueryDirectly(pill.label, pill.query)}
+                  className="bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-700 text-[10px] font-black px-2.5 py-1.5 rounded-full transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer shadow-2xs select-none"
                 >
-                  <span className="text-[11px]">💡</span>
                   <span>{pill.label}</span>
                 </button>
               ))}
@@ -2482,7 +1940,6 @@ export default function AiSupportChat({
 
             {/* Text input controller pad */}
             <div className="p-3 bg-white border-t border-slate-100 relative shrink-0">
-              {/* Dynamic scroll list overlay for localized tongues */}
               {isLangDropdownOpen && (
                 <div className="absolute bottom-16 left-3 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-[120] w-48 max-h-48 overflow-y-auto">
                   <p className="text-[9px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider">
@@ -2504,7 +1961,7 @@ export default function AiSupportChat({
                         }`}
                       >
                         <span>{lang.name}</span>
-                        <span className="text-[9px] bg-slate-105 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">
+                        <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">
                           {lang.code === "en-IN" ? "Eng" : lang.code === "hi-IN" ? "हिं" : lang.label}
                         </span>
                       </button>
@@ -2514,16 +1971,19 @@ export default function AiSupportChat({
               )}
 
               <div className="flex items-center gap-2">
-                {/* Globe translation trigger button */}
                 <button
                   type="button"
                   onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
-                  className="bg-slate-100 hover:bg-slate-200 border border-slate-250 text-slate-700 px-2.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer select-none"
+                  className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer select-none"
                   title="Select AI Conversation Accent"
                 >
                   <Globe size={13} className="text-indigo-700" />
                   <span>
-                    {selectedLang === "en-IN" ? "Eng" : selectedLang === "hi-IN" ? "हिं" : (LANGUAGES.find((l) => l.code === selectedLang)?.label || "हिं")}
+                    {selectedLang === "en-IN"
+                      ? "Eng"
+                      : selectedLang === "hi-IN"
+                      ? "हिं"
+                      : LANGUAGES.find((l) => l.code === selectedLang)?.label || "हिं"}
                   </span>
                 </button>
 
@@ -2532,22 +1992,18 @@ export default function AiSupportChat({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  disabled={isSubmitting}
                   placeholder={
                     isListening
                       ? "Listening natively..."
-                      : isSubmitting
-                      ? "Processing booking..."
-                      : "Type or speak to ZOMINI..."
+                      : "Ask Zomini in Hindi, Hinglish or English..."
                   }
-                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 text-xs py-2.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 text-xs py-2.5 px-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-700 font-semibold"
                 />
 
                 <button
                   type="button"
                   onClick={toggleListening}
-                  disabled={isSubmitting}
-                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 border cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 border cursor-pointer active:scale-95 ${
                     isListening
                       ? "bg-red-500 border-red-500 text-white animate-pulse shadow"
                       : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600"
@@ -2559,125 +2015,13 @@ export default function AiSupportChat({
 
                 <button
                   onClick={sendMessage}
-                  disabled={!input.trim() || isLoading || isSubmitting}
+                  disabled={!input.trim() || isLoading}
                   className="bg-indigo-700 text-white p-2.5 rounded-xl hover:bg-indigo-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow active:scale-95 cursor-pointer"
                 >
                   <Send size={15} />
                 </button>
               </div>
             </div>
-
-            {/* Razorpay Gateway In-Chat Modal Overlay */}
-            <AnimatePresence>
-              {activePaymentSession && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs z-[130] flex items-center justify-center p-3 rounded-t-3xl sm:rounded-3xl"
-                >
-                  <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-red-200 flex flex-col text-left">
-                    {/* Header */}
-                    <div className="bg-red-600 text-white p-3.5 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center font-black text-white text-xs border border-white/20 shadow-xs">
-                          RZP
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black tracking-wide flex items-center gap-1">
-                            Razorpay Checkout
-                          </h4>
-                          <p className="text-[9px] text-red-200 font-semibold flex items-center gap-1">
-                            <ShieldCheck size={11} className="text-emerald-300" />
-                            100% SECURE • 256-BIT ENCRYPTION
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleCancelPayment}
-                        disabled={isConfirmingPayment}
-                        className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
-                        title="Cancel Payment"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-
-                    {/* Order Details */}
-                    <div className="p-4 space-y-3 bg-gradient-to-b from-red-50/50 to-white">
-                      <div className="bg-white p-3 rounded-xl border border-red-100 shadow-xs space-y-2">
-                        <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
-                          <span>Booking Ref</span>
-                          <span className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            #{activePaymentSession.bookingId.slice(-6).toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                          <span className="text-[11px] font-black text-slate-800">{activePaymentSession.serviceType}</span>
-                          <span className="text-red-600 font-black text-base">₹{activePaymentSession.amount}</span>
-                        </div>
-                      </div>
-
-                      {/* Payment Method Selector */}
-                      <div className="space-y-1.5">
-                        <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider">Payment Options</label>
-                        
-                        <div className="p-2.5 rounded-xl border-2 border-red-600 bg-red-50/60 flex items-center justify-between shadow-xs cursor-pointer">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-red-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
-                              RZP
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-black text-slate-900">Razorpay PG (UPI / Cards / NetBanking)</p>
-                              <p className="text-[9px] text-red-700 font-semibold">Zero transaction fee • Instant confirmation</p>
-                            </div>
-                          </div>
-                          <div className="w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold">
-                            ✓
-                          </div>
-                        </div>
-                      </div>
-
-                      {paymentGatewayError && (
-                        <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-[10px] font-semibold text-center flex items-center justify-center gap-1">
-                          <AlertCircle size={12} />
-                          <span>{paymentGatewayError}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer Actions */}
-                    <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
-                      <button
-                        onClick={handleExecutePayment}
-                        disabled={isConfirmingPayment}
-                        className="w-full bg-red-600 hover:bg-red-700 active:scale-95 text-white font-black text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-red-900/20 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {isConfirmingPayment ? (
-                          <>
-                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Connecting to Gateway...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Lock size={13} />
-                            <span>PAY ₹{activePaymentSession.amount} VIA RAZORPAY</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        onClick={handleCancelPayment}
-                        disabled={isConfirmingPayment}
-                        className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-700 py-1 cursor-pointer text-center"
-                      >
-                        Cancel & Pay Cash on Delivery
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {/* Success Booking Popup Overlay */}
             <AnimatePresence>
@@ -2688,71 +2032,15 @@ export default function AiSupportChat({
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute inset-0 bg-white/95 z-[120] flex flex-col items-center justify-center p-6 text-center select-none rounded-t-3xl sm:rounded-3xl"
                 >
-                  {/* Animated Checkmark */}
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: [0, 1.2, 1] }}
-                    transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
-                    className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-3 shadow-inner relative"
-                  >
-                    <motion.svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={4}
-                      stroke="currentColor"
-                      className="w-8 h-8"
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ delay: 0.3, duration: 0.4 }}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </motion.svg>
-                    {/* Floating confetti-like particles */}
-                    {[...Array(12)].map((_, i) => {
-                      const angle = (i * 30 * Math.PI) / 180;
-                      const x = Math.cos(angle) * 40;
-                      const y = Math.sin(angle) * 40;
-                      return (
-                        <motion.div
-                          key={i}
-                          initial={{ x: 0, y: 0, opacity: 1, scale: 0.5 }}
-                          animate={{ x, y, opacity: 0, scale: 1.2 }}
-                          transition={{ delay: 0.4, duration: 0.8, ease: "easeOut" }}
-                          className={`absolute w-1.5 h-1.5 rounded-full ${
-                            i % 3 === 0 ? "bg-yellow-400" : i % 3 === 1 ? "bg-emerald-500" : "bg-indigo-500"
-                          }`}
-                        />
-                      );
-                    })}
-                  </motion.div>
-
-                  <motion.h3
-                    initial={{ y: 8, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.45 }}
-                    className="text-base font-black text-slate-800 mb-1"
-                  >
-                    Booking Confirmed!
-                  </motion.h3>
-                  <motion.p
-                    initial={{ y: 8, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.55 }}
-                    className="text-[11.5px] text-slate-500 max-w-[220px] leading-relaxed mb-5"
-                  >
-                    We have successfully assigned an Elite Partner for your home service.
-                  </motion.p>
-                  
-                  <motion.button
-                    initial={{ y: 8, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.65 }}
+                  <h3 className="text-base font-black text-slate-800 mb-1">
+                    Booking Updated!
+                  </h3>
+                  <button
                     onClick={() => setShowBookingSuccess(false)}
-                    className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] py-1.5 px-5 rounded-lg shadow-md transition-all cursor-pointer"
+                    className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] py-1.5 px-5 rounded-lg shadow-md transition-all cursor-pointer mt-3"
                   >
-                    View Chat
-                  </motion.button>
+                    Back to Chat
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>

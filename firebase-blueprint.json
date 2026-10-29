@@ -242,11 +242,13 @@
     },
     "Message": {
       "title": "Message",
-      "description": "Chat messages between customer and partner.",
+      "description": "Chat messages between customer, partner, admin, and Zomini support.",
       "type": "object",
       "properties": {
         "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
         "text": { "type": "string" },
+        "isAi": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["senderId", "text", "createdAt"]

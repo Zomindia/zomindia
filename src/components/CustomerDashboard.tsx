@@ -37,7 +37,6 @@ import BookingModal, { loadRazorpaySDK } from "./BookingModal";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
-import { SupportModal } from "./SupportModal";
 import CancellationModal from "./CancellationModal";
 import {
   formatCategoryShortLabel,
@@ -582,7 +581,6 @@ export default function CustomerDashboard({
   const [expandedTrackerId, setExpandedTrackerId] = useState<string | null>(null);
   const [bookingOtps, setBookingOtps] = useState<Record<string, string>>({});
   const [routingCallBookingId, setRoutingCallBookingId] = useState<string | null>(null);
-  const [activeSupportBooking, setActiveSupportBooking] = useState<Booking | null>(null);
   const [activeCallBooking, setActiveCallBooking] = useState<Booking | null>(null);
 
   // Modal and action states
@@ -841,7 +839,23 @@ export default function CustomerDashboard({
     [bookings],
   );
   const pastBookings = useMemo(
-    () => bookings,
+    () =>
+      bookings.filter(
+        (b) =>
+          ![
+            "pending",
+            "pending_acceptance",
+            "confirmed",
+            "confirmed_pay_after_service",
+            "assigned",
+            "on_the_way",
+            "arrived",
+            "in_progress",
+            "pending_parts",
+            "payment_pending",
+            "Pending - Customer Unresponsive",
+          ].includes(b.status),
+      ),
     [bookings],
   );
 
@@ -949,30 +963,21 @@ export default function CustomerDashboard({
   };
 
   const handleInitiateSupport = (bookingId: string) => {
-    const found = bookings.find((b) => b.id === bookingId);
-    if (found) {
-      setActiveSupportBooking(found);
-    }
+    window.dispatchEvent(new CustomEvent("open-zomini", { detail: { bookingId } }));
   };
 
-  // Ecosystem State Sync: Global open listener for support/messages window
+  // Ecosystem State Sync: Global open listener for support/messages window & booking modal
   useEffect(() => {
     (window as any).__openSupportChat = (bookingOrId: Booking | string) => {
-      if (typeof bookingOrId === "object" && bookingOrId !== null) {
-        setActiveSupportBooking(bookingOrId);
-      } else if (typeof bookingOrId === "string") {
-        const found = bookings.find((b) => b.id === bookingOrId);
-        if (found) {
-          setActiveSupportBooking(found);
-        } else {
-          setActiveSupportBooking({
-            id: bookingOrId,
-            serviceName: "Zomindia Service",
-            totalPrice: 345,
-            status: "pending",
-          } as any);
-        }
-      }
+      const resolvedId =
+        typeof bookingOrId === "object" && bookingOrId !== null
+          ? bookingOrId.id
+          : typeof bookingOrId === "string"
+            ? bookingOrId
+            : undefined;
+      window.dispatchEvent(
+        new CustomEvent("open-zomini", { detail: { bookingId: resolvedId } })
+      );
     };
     (window as any).__openCustomerChat = (bookingOrId: Booking | string) => {
       (window as any).__openSupportChat?.(bookingOrId);
@@ -980,10 +985,18 @@ export default function CustomerDashboard({
     (window as any).__openCancellationModal = (booking: Booking) => {
       setCancellingBooking(booking);
     };
+    const handleOpenBookingModal = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.service) {
+        setSelectedService(customEvent.detail.service);
+      }
+    };
+    window.addEventListener("open-booking-modal", handleOpenBookingModal);
     return () => {
       delete (window as any).__openSupportChat;
       delete (window as any).__openCustomerChat;
       delete (window as any).__openCancellationModal;
+      window.removeEventListener("open-booking-modal", handleOpenBookingModal);
     };
   }, [bookings]);
 
@@ -1970,43 +1983,28 @@ export default function CustomerDashboard({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 lg:py-12 select-none animate-pulse">
-        {/* Mirror: Greeting Top Section */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8 px-2 sm:px-0">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-slate-200 shrink-0" />
-            <div className="w-64 h-4 bg-slate-200 rounded-lg" />
-          </div>
+      <div className="max-w-7xl mx-auto px-4 pt-2 pb-8 sm:pt-4 sm:pb-12 select-none animate-pulse">
+        <div className="flex items-center gap-3 pt-2 pb-6">
+          <div className="w-40 h-7 bg-slate-200 rounded-xl" />
+          <div className="w-20 h-6 bg-slate-200 rounded-full" />
         </div>
-
-        {/* Mirror: Categories Section Title */}
-        <div className="mb-12 flex items-center gap-4">
-          <div className="w-10 h-10 bg-slate-200 rounded-[16px]" />
-          <div className="w-48 h-7 bg-slate-200 rounded-xl" />
-        </div>
-
-        {/* Mirror: Category Grid (6 columns) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 mb-16">
-          {[1, 2, 3, 4, 5, 6].map((idx) => (
-            <div key={idx} className="bg-white border-2 border-slate-50 p-6 rounded-[32px] shadow-sm flex flex-col items-center justify-center gap-4">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl" />
-              <div className="w-20 h-4 bg-slate-100 rounded animate-[pulse_1.5s_infinite]" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          {[1, 2].map((idx) => (
+            <div
+              key={idx}
+              className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-4 shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-24 h-5 bg-slate-100 rounded-full" />
+                <div className="w-16 h-5 bg-slate-100 rounded-full" />
+              </div>
+              <div className="w-3/4 h-6 bg-slate-200 rounded-lg" />
+              <div className="w-1/2 h-4 bg-slate-100 rounded-lg" />
+              <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                <div className="w-28 h-8 bg-slate-100 rounded-xl" />
+                <div className="w-24 h-8 bg-slate-200 rounded-xl" />
+              </div>
             </div>
-          ))}
-        </div>
-
-        {/* Mirror: Explore Services Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-slate-200 rounded-[16px]" />
-            <div className="w-48 h-7 bg-slate-200 rounded-xl" />
-          </div>
-        </div>
-
-        {/* Mirror: Grid of service card skeletons (3 cards in view) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-          {[1, 2, 3].map((idx) => (
-            <ServiceCardSkeleton key={idx} />
           ))}
         </div>
       </div>
@@ -2014,37 +2012,21 @@ export default function CustomerDashboard({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 pt-1.5 pb-8 sm:pt-2 sm:pb-12">
+    <div className="max-w-7xl mx-auto px-4 pt-1.5 pb-6 sm:pt-2 sm:pb-10">
       {/* Clean My Bookings Top Header */}
       <div className="flex items-center justify-between pt-2 pb-4 sm:pb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             My Bookings
           </h1>
-          {(() => {
-            const liveActiveCount = activeBookings.filter((b) =>
-              [
-                "pending",
-                "assigned",
-                "confirmed",
-                "on_the_way",
-                "arrived",
-                "in_progress",
-                "payment_pending",
-                "pending_parts",
-              ].includes(b.status)
-            ).length;
-            return (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#002e6e] border border-blue-200/80 shadow-2xs">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    liveActiveCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-                  }`}
-                />
-                <span>{liveActiveCount} Active</span>
-              </span>
-            );
-          })()}
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#002e6e] border border-blue-200/80 shadow-2xs">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                activeBookings.length > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+              }`}
+            />
+            <span>{activeBookings.length} Active</span>
+          </span>
         </div>
       </div>
 
@@ -2145,92 +2127,68 @@ export default function CustomerDashboard({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Unified Premium Active Booking Ticker Console */}
-      {activeBookings.some((b) =>
-        [
-          "pending",
-          "assigned",
-          "confirmed",
-          "on_the_way",
-          "arrived",
-          "in_progress",
-          "payment_pending",
-          "pending_parts",
-        ].includes(b.status),
-      ) ? (
+      {/* Section 1: Active Bookings List */}
+      {activeBookings.length > 0 ? (
         <motion.div
-          initial={{ opacity: 0, y: -24 }}
+          initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: "spring", stiffness: 80, damping: 14 }}
-          className="mb-12 -mx-4 px-4 sm:mx-0 sm:px-0"
+          className="mb-10 -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            {activeBookings
-              .filter((b) =>
-                [
-                  "pending",
-                  "assigned",
-                  "confirmed",
-                  "on_the_way",
-                  "arrived",
-                  "in_progress",
-                  "payment_pending",
-                  "pending_parts",
-                ].includes(b.status),
-              )
-              .map((booking) => {
-                const partnerUser = booking.partnerId
-                  ? partners[booking.partnerId]
-                  : null;
-                const partnerDetail = booking.partnerId
-                  ? partnerDetails[booking.partnerId]
-                  : null;
-                const otpCode = bookingOtps[booking.id] || booking.serviceOtp;
+            {activeBookings.map((booking) => {
+              const partnerUser = booking.partnerId
+                ? partners[booking.partnerId]
+                : null;
+              const partnerDetail = booking.partnerId
+                ? partnerDetails[booking.partnerId]
+                : null;
+              const otpCode = bookingOtps[booking.id] || booking.serviceOtp;
 
-                return (
-                  <CustomerBookingCard
-                    key={booking.id}
-                    booking={booking}
-                    service={services[booking.serviceId]}
-                    partnerUser={partnerUser}
-                    partnerDetail={partnerDetail}
-                    customerProfile={profile}
-                    activeTicket={supportTickets[booking.id] || null}
-                    otpCode={otpCode}
-                    isExpanded={expandedBookingId === booking.id}
-                    onToggleExpand={() =>
-                      setExpandedBookingId(
-                        expandedBookingId === booking.id ? null : booking.id,
-                      )
+              return (
+                <CustomerBookingCard
+                  key={booking.id}
+                  booking={booking}
+                  service={services[booking.serviceId]}
+                  partnerUser={partnerUser}
+                  partnerDetail={partnerDetail}
+                  customerProfile={profile}
+                  activeTicket={supportTickets[booking.id] || null}
+                  otpCode={otpCode}
+                  isExpanded={expandedBookingId === booking.id}
+                  onToggleExpand={() =>
+                    setExpandedBookingId(
+                      expandedBookingId === booking.id ? null : booking.id,
+                    )
+                  }
+                  onPayOnline={(b) => setBookingToPay(b)}
+                  onPayCash={(b) => handlePayWithCashByCustomer(b)}
+                  onScanQR={() => setIsPaymentScannerOpen(true)}
+                  onCallPartner={(_p, b) => handleInitiateCall(b)}
+                  onChatPartner={(b) => handleInitiateSupport(b.id)}
+                  onDownloadInvoice={handleDownloadInvoice}
+                  onSupport={(id) => handleInitiateSupport(id)}
+                  onBookAgain={(srv) => {
+                    if (onServiceSelect && srv) {
+                      onServiceSelect(srv.id || (srv as any));
                     }
-                    onPayOnline={(b) => setBookingToPay(b)}
-                    onPayCash={(b) => handlePayWithCashByCustomer(b)}
-                    onScanQR={() => setIsPaymentScannerOpen(true)}
-                    onCallPartner={(_p, b) => handleInitiateCall(b)}
-                    onChatPartner={(b) => setActiveSupportBooking(b)}
-                    onDownloadInvoice={handleDownloadInvoice}
-                    onSupport={(id) => handleInitiateSupport(id)}
-                    onBookAgain={(srv) => {
-                      if (onServiceSelect && srv) {
-                        onServiceSelect(srv.id || (srv as any));
-                      }
-                    }}
-                    onReschedule={handleReschedule}
-                    onCancel={handleCancelBooking}
-                    routingCallBookingId={routingCallBookingId}
-                  />
-                );
-              })}
+                  }}
+                  onReschedule={handleReschedule}
+                  onCancel={handleCancelBooking}
+                  routingCallBookingId={routingCallBookingId}
+                />
+              );
+            })}
           </div>
         </motion.div>
       ) : (
-        <div className="bg-white border-2 border-dashed border-slate-150 rounded-[32px] p-8 text-center mb-12 flex flex-col items-center justify-center py-16 max-w-7xl mx-auto shadow-sm">
+        <div className="bg-white border-2 border-dashed border-slate-200/80 rounded-[32px] p-8 text-center mb-10 flex flex-col items-center justify-center py-12 max-w-7xl mx-auto shadow-2xs">
           <Calendar size={32} className="text-slate-300 mb-3" />
-          <p className="text-sm font-extrabold text-slate-500">
+          <p className="text-sm font-extrabold text-slate-600">
             No active bookings right now.
           </p>
           <p className="text-xs text-slate-400 mt-1 font-medium">
-            Need a professional task done? Book a service below!
+            Your upcoming and in-progress appointments will appear here with live tracking.
           </p>
         </div>
       )}
@@ -2548,7 +2506,7 @@ export default function CustomerDashboard({
                           {/* Direct action panel for assigned partner */}
                           <div className="flex gap-3">
                             <button
-                              onClick={() => setActiveSupportBooking(booking)}
+                              onClick={() => handleInitiateSupport(booking.id)}
                               className="flex-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-bold tracking-wider text-[11px] uppercase py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
                             >
                               <MessageSquare
@@ -2694,8 +2652,8 @@ export default function CustomerDashboard({
         </motion.div>
       )}
 
-      {/* Ongoing Jobs & Service Discovery Logic */}
-      {!searchQuery && (
+      {/* Ongoing Jobs & Service Discovery Logic - Hidden on Bookings Tab */}
+      {false && !searchQuery && (
         <div className="space-y-12 sm:space-y-16">
           {false && activeBookings.length > 0 && (
             <div className="mb-8">
@@ -3217,7 +3175,7 @@ export default function CustomerDashboard({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveSupportBooking(booking);
+                                    handleInitiateSupport(booking.id);
                                   }}
                                   className="w-10 h-10 bg-blue-600 text-white hover:bg-blue-700 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer"
                                   title="Chat with Partner"
@@ -3263,7 +3221,7 @@ export default function CustomerDashboard({
           )}
 
           {/* Discovery Grid */}
-          <div className="mb-16">
+          {false && <div className="mb-16">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
@@ -3328,201 +3286,13 @@ export default function CustomerDashboard({
                 );
               })}
             </div>
-          </div>
+          </div>}
           </div>
         )}
 
-      {/* Promotions & Offers - Discovery */}
-      {promotions.length > 0 && !searchQuery && (
-        <div className="mb-16">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-[#22c55e]/10 text-[#22c55e] rounded-xl border border-[#22c55e]/20">
-                <Zap size={18} fill="currentColor" />
-              </div>
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-                Exclusive Deals
-              </h2>
-            </div>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-6 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-            {promotions.map((promo, idx) => {
-              const isPercent = promo.discountType === "percent";
-              const isFestive = (promo.code || '').includes('SUMMER') || (promo.name || '').includes('Summer');
-              const pillarGradient = isFestive
-                ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
-                : isPercent
-                  ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white'
-                  : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white';
-
-              return (
-                <motion.div
-                  whileHover={{ y: -3, boxShadow: '0 8px 20px rgba(0,0,0,0.06)' }}
-                  key={promo.id}
-                  className="flex-shrink-0 w-[320px] bg-white border border-slate-200/80 rounded-2xl flex flex-row items-stretch relative overflow-hidden group shadow-sm transition-all duration-300"
-                >
-                  {/* Left Offer Badge Pillar */}
-                  <div className={`w-20 shrink-0 relative flex flex-col items-center justify-center p-2.5 text-center ${pillarGradient} select-none`}>
-                    <span className="text-lg sm:text-xl font-black leading-none tracking-tight">
-                      {isPercent ? `${promo.discountValue}%` : `₹${promo.discountValue}`}
-                    </span>
-                    <span className="bg-white/20 backdrop-blur-xs text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full mt-1 border border-white/20">
-                      OFF
-                    </span>
-                  </div>
-
-                  {/* Semicircular Ticket Notch Divider */}
-                  <div className="relative w-0 flex flex-col justify-between items-center z-10">
-                    <div className="absolute -top-3 -left-3 w-6 h-6 rounded-full bg-slate-50 border-b border-slate-200/80 shadow-inner" />
-                    <div className="h-full border-r-2 border-dashed border-slate-200/90 my-2" />
-                    <div className="absolute -bottom-3 -left-3 w-6 h-6 rounded-full bg-slate-50 border-t border-slate-200/80 shadow-inner" />
-                  </div>
-
-                  {/* Right Content */}
-                  <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0 bg-white pl-4">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.2 rounded">
-                          Exclusive
-                        </span>
-                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-full border border-amber-200/60">
-                          ⚡ 7 Days
-                        </span>
-                      </div>
-                      <h3 className="text-xs sm:text-sm font-black text-slate-900 leading-snug truncate">
-                        {promo.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mt-0.5">
-                        {promo.description}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-1.5 pt-2.5 mt-2 border-t border-slate-100">
-                      <div className="border-dashed border-2 border-blue-300 bg-blue-50/50 px-2 py-0.5 rounded-lg text-[11px] font-mono font-black text-blue-700 tracking-wider flex items-center gap-1">
-                        <span>{promo.code}</span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(promo.code);
-                          try {
-                            localStorage.setItem('activeCoupon', JSON.stringify(promo));
-                            localStorage.setItem('zomindia_active_coupon', promo.code);
-                          } catch {}
-                          if (typeof window !== 'undefined') {
-                            window.dispatchEvent(new CustomEvent('coupon-applied', { detail: promo }));
-                          }
-                          if (typeof (window as any).__showToast === 'function') {
-                            (window as any).__showToast(`Coupon ${promo.code} applied successfully! Check savings at checkout.`);
-                          } else if (typeof (window as any).__showCopyToast === 'function') {
-                            (window as any).__showCopyToast(promo.code);
-                          }
-                        }}
-                        className="bg-[#2563EB] hover:bg-blue-700 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Sparkles size={11} />
-                        <span>APPLY</span>
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Categories Discovery */}
-      {!searchQuery && (
-        <div className="mb-20">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                <Compass size={16} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                Explore Categories
-              </h3>
-            </div>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-            <button
-              onClick={() => setActiveCategoryFilter(null)}
-              className={`flex-shrink-0 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all shadow-2xs active:scale-95 duration-200 ${!activeCategoryFilter ? "bg-blue-700 text-white shadow-xs" : "bg-white border border-slate-200/80 text-slate-700 hover:text-slate-900 hover:bg-slate-50"}`}
-            >
-              All
-            </button>
-            {allCategories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategoryFilter(cat.id)}
-                className={`flex-shrink-0 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center gap-2 shadow-2xs active:scale-95 duration-200 ${activeCategoryFilter === cat.id ? "bg-blue-700 text-white shadow-xs" : "bg-white border border-slate-200/80 text-slate-700 hover:text-slate-900 hover:bg-slate-50"}`}
-              >
-                {formatCategoryShortLabel(cat.name)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Services Grid or Filtered Results */}
-      {(activeCategoryFilter || searchQuery) && (
-        <div className="mb-32">
-          <div className="flex items-center justify-between mb-16">
-            <div>
-              <h2 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tighter uppercase italic leading-none mb-4">
-                {searchQuery
-                  ? `Results: "${searchQuery}"`
-                  : allCategories.find((c) => c.id === activeCategoryFilter)
-                      ?.name}
-              </h2>
-              <p className="text-slate-400 font-medium">
-                Refining your selection for{" "}
-                <span className="text-slate-900 border-b border-blue-700">
-                  verified pros
-                </span>
-                .
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setSearchQuery("");
-                setActiveCategoryFilter(null);
-              }}
-              className="px-6 py-3 bg-slate-100 rounded-xl text-[10px] font-black text-slate-400 hover:text-blue-700 hover:bg-slate-200 uppercase tracking-widest transition-all"
-            >
-              Reset View
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {filteredServices.map((service, idx) => (
-              <ServiceCard
-                key={service.id}
-                service={service}
-                categoryName={allCategories.find((c) => c.id === service.categoryId)?.name}
-                onSelect={(id) => {
-                  const s = filteredServices.find((item) => item.id === id) || service;
-                  setSelectedService(s);
-                  if (onServiceSelect) onServiceSelect(id);
-                }}
-                idx={idx}
-              />
-            ))}
-          </div>
-          {filteredServices.length === 0 && (
-            <div className="py-20 text-center bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
-              <Search size={32} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-500 font-medium">
-                No services found matching your criteria.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Past Bookings - Collapsible Section */}
-      {!searchQuery && pastBookings.length > 0 && (
-        <div className="mb-12">
+      {/* Section 2: Past / Completed Bookings History */}
+      {pastBookings.length > 0 && (
+        <div className="mb-8">
           {/* Header with search inputs */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
@@ -3672,34 +3442,6 @@ export default function CustomerDashboard({
         )}
       </AnimatePresence>
 
-      <SupportModal
-        isOpen={!!activeSupportBooking}
-        booking={activeSupportBooking}
-        service={activeSupportBooking ? services[activeSupportBooking.serviceId] : undefined}
-        partnerUser={
-          activeSupportBooking && activeSupportBooking.partnerId
-            ? partners[activeSupportBooking.partnerId] || null
-            : null
-        }
-        partnerDetail={
-          activeSupportBooking && activeSupportBooking.partnerId
-            ? partnerDetails[activeSupportBooking.partnerId] || null
-            : null
-        }
-        customerProfile={profile}
-        activeTicket={
-          activeSupportBooking ? supportTickets[activeSupportBooking.id] || null : null
-        }
-        onTicketCreated={(t) => {
-          if (activeSupportBooking) {
-            setSupportTickets((prev) => ({ ...prev, [activeSupportBooking.id]: t }));
-          }
-        }}
-        onReschedule={handleReschedule}
-        onCancelBooking={handleCancelBooking}
-        onClose={() => setActiveSupportBooking(null)}
-      />
-
       <AnimatePresence>
         {cancellingBooking && (
           <CancellationModal
@@ -3709,7 +3451,7 @@ export default function CustomerDashboard({
             booking={cancellingBooking}
             onConfirmCancel={handleConfirmCancel}
             secondsRemaining={getCancellationSecondsRemaining(cancellingBooking.createdAt, liveNowMs)}
-            onOpenSupport={(b) => setActiveSupportBooking(b)}
+            onOpenSupport={(b) => handleInitiateSupport(b.id)}
           />
         )}
       </AnimatePresence>

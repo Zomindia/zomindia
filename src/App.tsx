@@ -305,11 +305,22 @@ export default function App() {
         setActiveTab(customEvent.detail.tab, customEvent.detail.bookingId || null);
       }
     };
+    const handleOpenBookingModal = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const svc = customEvent.detail?.service;
+      const svcId = customEvent.detail?.serviceId || svc?.id;
+      if (svcId) {
+        setSelectedServiceId(svcId);
+      }
+      setActiveTab('home');
+    };
     window.addEventListener("open-auth-modal", handleOpenAuth);
     window.addEventListener("change-active-tab", handleChangeTab);
+    window.addEventListener("open-booking-modal", handleOpenBookingModal);
     return () => {
       window.removeEventListener("open-auth-modal", handleOpenAuth);
       window.removeEventListener("change-active-tab", handleChangeTab);
+      window.removeEventListener("open-booking-modal", handleOpenBookingModal);
     };
   }, []);
 
@@ -1439,7 +1450,7 @@ If you have any billing questions, or if your refund is delayed, please email us
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeInOut" }}
-          className="w-full bg-slate-50 min-h-screen text-slate-900"
+          className="w-full bg-slate-50 text-slate-900"
           style={{ backgroundColor: '#f8fafc', color: '#0f172a' }}
         >
           <CustomerDashboard

@@ -17,15 +17,13 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Send,
   X,
-  User,
   MessageSquare,
   Phone,
   MessageCircle,
-  ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { sendNotification } from "../lib/notifications";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
+import { ZomiAvatarSVG } from "./AiSupportChat";
 
 export interface ChatWindowProps {
   booking: Booking;
@@ -172,9 +170,21 @@ export default function ChatWindow({
 
     try {
       const messagesRef = collection(db, "bookings", booking.id, "messages");
+      const currentSenderRole = isCustomerUser
+        ? "customer"
+        : auth.currentUser?.uid === booking.partnerId
+        ? "partner"
+        : "admin";
       await addDoc(messagesRef, {
         senderId: auth.currentUser?.uid,
-        senderName: auth.currentUser?.displayName || "Customer",
+        senderRole: currentSenderRole,
+        senderName:
+          auth.currentUser?.displayName ||
+          (currentSenderRole === "partner"
+            ? "Service Partner"
+            : currentSenderRole === "admin"
+            ? "Indore Desk"
+            : "Customer"),
         text: messageText,
         createdAt: serverTimestamp(),
       });
@@ -192,21 +202,26 @@ export default function ChatWindow({
       handleFirestoreError(err, OperationType.CREATE, `bookings/${booking.id}/messages`);
     }
 
-    // Trigger instant assistant response
-    setTimeout(async () => {
-      const reply = getSmartResponse(messageText);
-      try {
-        const messagesRef = collection(db, "bookings", booking.id, "messages");
-        await addDoc(messagesRef, {
-          senderId: "support-agent",
-          senderName: "Zomindia Priority Desk",
-          text: reply,
-          isAi: true,
-          createdAt: serverTimestamp(),
-        });
-      } catch (e) {}
+    // Trigger instant assistant response only when customer sends a message
+    if (isCustomerUser) {
+      setTimeout(async () => {
+        const reply = getSmartResponse(messageText);
+        try {
+          const messagesRef = collection(db, "bookings", booking.id, "messages");
+          await addDoc(messagesRef, {
+            senderId: "support-agent",
+            senderRole: "ai",
+            senderName: "Zomini • Priority Support",
+            text: reply,
+            isAi: true,
+            createdAt: serverTimestamp(),
+          });
+        } catch (e) {}
+        setIsTyping(false);
+      }, 700);
+    } else {
       setIsTyping(false);
-    }, 700);
+    }
   };
 
   const handleFormSubmit = (e: FormEvent) => {
@@ -237,14 +252,17 @@ export default function ChatWindow({
       {!isEmbedded && (
         <div className="bg-slate-900 text-white px-4 py-3 sm:px-5 sm:py-3.5 shrink-0 border-b border-slate-800">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
-                <ShieldCheck size={16} className="text-slate-950" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative w-9 h-9 rounded-full p-0.5 bg-gradient-to-tr from-blue-600 via-sky-400 to-emerald-400 shrink-0 shadow-xs">
+                <div className="w-full h-full rounded-full overflow-hidden bg-slate-950 flex items-center justify-center">
+                  <ZomiAvatarSVG className="w-full h-full" />
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-extrabold text-xs sm:text-sm tracking-tight text-white truncate">
-                    Zomindia Priority Support
+                    Zomini Priority Support
                   </h3>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 </div>
@@ -342,7 +360,8 @@ export default function ChatWindow({
           </div>
         ) : (
           messages.map((msg) => {
-            const isMe = msg.senderId === auth.currentUser?.uid && !(msg as any).isAi;
+            const isAiMsg = (msg as any).isAi || (msg as any).senderRole === "ai" || msg.senderId === "support-agent" || msg.senderId === "zomini_ai";
+            const isMe = !isAiMsg && (msg.senderId === auth.currentUser?.uid || (isCustomerUser && (msg as any).senderRole === "customer"));
 
             return (
               <motion.div
@@ -359,9 +378,11 @@ export default function ChatWindow({
                   }`}
                 >
                   {!isMe && (
-                    <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1">
-                      <Sparkles size={11} className="text-emerald-600" />
-                      <span>{otherUser?.displayName ? otherUser.displayName : "Indore Priority Desk"}</span>
+                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1">
+                      <div className="w-4 h-4 rounded-full overflow-hidden bg-slate-950 border border-sky-300 shrink-0">
+                        <ZomiAvatarSVG className="w-full h-full" />
+                      </div>
+                      <span>{(msg as any).senderName || (otherUser?.displayName ? otherUser.displayName : "Zomini • Priority Support")}</span>
                     </div>
                   )}
                   <p className="whitespace-pre-wrap">{msg.text}</p>

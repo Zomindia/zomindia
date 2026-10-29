@@ -65,6 +65,7 @@ import {
   RotateCcw,
   PhoneCall,
   Droplets,
+  BadgePercent,
 } from "lucide-react";
 
 interface Props {
@@ -621,6 +622,23 @@ export default function CustomerHome({
     };
   }, [isPillVisible]);
 
+  useEffect(() => {
+    const handleOpenBookingModal = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.service) {
+        if (!profile) {
+          onAuthRequired();
+          return;
+        }
+        setSelectedService(customEvent.detail.service);
+      }
+    };
+    window.addEventListener("open-booking-modal", handleOpenBookingModal);
+    return () => {
+      window.removeEventListener("open-booking-modal", handleOpenBookingModal);
+    };
+  }, [profile, onAuthRequired]);
+
   // Force-review popup rating states
   const [ratedBookings, setRatedBookings] = useState<Record<string, boolean>>({});
   const [showForceFeedbackPopup, setShowForceFeedbackPopup] = useState<boolean>(false);
@@ -981,21 +999,6 @@ export default function CustomerHome({
       fetchPartners();
     }
   }, [selectedCategory]);
-
-  const mostRecentService = (() => {
-    const valid = (allServices || []).filter(isValidCustomerService);
-    if (valid.length === 0) return null;
-    return [...valid].sort((a, b) => {
-      const timeA = a.createdAt?.seconds || a.createdAt?._seconds || 0;
-      const timeB = b.createdAt?.seconds || b.createdAt?._seconds || 0;
-      return timeB - timeA;
-    })[0];
-  })();
-
-  const recentServiceCategory =
-    mostRecentService && allCategories.length > 0
-      ? allCategories.find((c) => c.id === mostRecentService.categoryId)
-      : null;
 
   if (selectedCategory) {
     const validCategoryServices = services.filter(isValidCustomerService);
@@ -1978,301 +1981,76 @@ export default function CustomerHome({
 
 
 
-        {/* Why Choose Us */}
-        <section className="mb-20 px-2 lg:px-4">
-          <div className="bg-white rounded-[48px] p-8 md:p-16 lg:p-20 overflow-hidden relative border border-slate-150 shadow-xl">
-            {/* Background glowing effects */}
-            <div className="absolute top-0 right-0 w-96 h-96 bg-blue-300/10 rounded-full blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-80 h-80 bg-rose-500/5 rounded-full blur-[100px] pointer-events-none" />
+        {/* Compact Urban Company Style Trust Section */}
+        <section className="py-6 sm:py-8 px-4 max-w-5xl mx-auto">
+          <div className="text-center">
+            <span className="bg-blue-50 text-blue-700 border border-blue-200/80 text-[10px] sm:text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full inline-flex items-center gap-1">
+              THE ZOMINDIA PROMISE
+            </span>
+            <h2 className="text-base sm:text-xl font-black text-slate-900 tracking-tight mt-1.5 flex items-center justify-center gap-1.5">
+              <span>Gold Standard Home Care</span>
+              <CheckCircle2 size={16} className="text-emerald-500" />
+            </h2>
+          </div>
 
-            <div className="relative z-10">
-              {/* Header */}
-              <div className="max-w-3xl mb-12 lg:mb-16 text-center md:text-left">
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-blue-700 mb-3 block font-sans">
-                  Why Choose Our Platform
-                </span>
-                <h2 className="text-3xl md:text-5xl font-extrabold font-display text-blue-950 tracking-tight leading-tight mb-4">
-                  The Gold Standard of Home Care Guarantees
-                </h2>
-                <p className="text-indigo-950/70 font-medium font-sans text-sm md:text-base leading-relaxed">
-                  We are redefining urban home care in India by vetting,
-                  training, and backing every single service partner so that you
-                  can book with pure confidence.
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 mt-4 sm:mt-5">
+            {/* Card 1 */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-blue-400 hover:bg-white transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2.5 shrink-0">
+                <ShieldCheck size={17} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                  30-Day Guarantee
+                </h4>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-tight mt-1">
+                  Free rework & ₹0 re-visit cover.
                 </p>
               </div>
+            </div>
 
-              {/* Bento Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-                {/* Spotlight Card: Most Recent Service Added in Admin */}
-                {mostRecentService && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    whileHover={{ y: -6, scale: 1.02, transition: { duration: 0.2 } }}
-                    whileTap={{ scale: 0.99 }}
-                    className="bg-gradient-to-br from-indigo-50/50 via-blue-50/50 to-white rounded-[32px] p-8 border border-indigo-150 text-left relative overflow-hidden group lg:col-span-2 flex flex-col justify-between min-h-[320px] shadow-xl hover:shadow-2xl hover:border-blue-300 transition-all cursor-pointer"
-                    onClick={() => {
-                      if (profile) {
-                        setSelectedService(mostRecentService);
-                      } else {
-                        onAuthRequired();
-                      }
-                    }}
-                  >
-                    {/* Decorative background glow elements */}
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none group-hover:bg-indigo-500/10 transition-all" />
-                    <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/5 rounded-full blur-[50px] pointer-events-none" />
+            {/* Card 2 */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-blue-400 hover:bg-white transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-2.5 shrink-0">
+                <UserCheck size={17} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                  Verified Indore Pros
+                </h4>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-tight mt-1">
+                  Background-checked specialists.
+                </p>
+              </div>
+            </div>
 
-                    <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6 h-full w-full">
-                      <div className="flex-1 flex flex-col justify-between space-y-4">
-                        <div>
-                          {/* Badge */}
-                          <div className="flex items-center gap-2 mb-4">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600"></span>
-                            </span>
-                            <span className="text-[10px] font-bold uppercase text-indigo-900 tracking-wider font-mono">
-                              Featured Service
-                            </span>
-                          </div>
+            {/* Card 3 */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-blue-400 hover:bg-white transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2.5 shrink-0">
+                <BadgePercent size={17} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                  Transparent Rates
+                </h4>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-tight mt-1">
+                  Fixed pricing, ₹0 surge charge.
+                </p>
+              </div>
+            </div>
 
-                          <h4 className="text-2xl md:text-3xl font-bold font-display text-blue-950 mb-2 tracking-tight leading-tight hover:text-blue-700 transition-colors">
-                            {mostRecentService.name}
-                          </h4>
-
-                          <div className="flex items-center gap-2 mb-4">
-                            {recentServiceCategory && (
-                              <span className="text-[10px] bg-indigo-55/65 border border-indigo-200/50 text-indigo-900 font-semibold font-sans px-2.5 py-1 rounded-lg">
-                                Category: {recentServiceCategory.name}
-                              </span>
-                            )}
-                            <span className="text-xs text-indigo-950/70 font-semibold font-mono bg-blue-50/50 px-2 py-1 rounded-lg">
-                              ⏱️ {mostRecentService.duration || "2 Hours"}
-                            </span>
-                          </div>
-
-                          <p className="text-indigo-950/75 text-sm font-normal font-sans leading-relaxed max-w-md line-clamp-2">
-                            {mostRecentService.description ||
-                              "Freshly certified category-specific professional assistance delivered on-demand to your doorstep."}
-                          </p>
-                        </div>
-
-                        <div className="pt-4 border-t border-slate-150 flex items-center justify-between w-full font-sans">
-                          <div>
-                            <span className="text-[10px] text-indigo-950/50 uppercase font-semibold tracking-widest block mb-0.5">
-                              Premium Launch Price
-                            </span>
-                            <span className="text-2xl font-bold font-display text-blue-950">
-                              ₹{mostRecentService.basePrice}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (profile) {
-                                setSelectedService(mostRecentService);
-                              } else {
-                                onAuthRequired();
-                              }
-                            }}
-                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] transition-all duration-200 shrink-0 font-sans cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <span>Instant Booking</span>
-                            <span>⚡</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right side illustration / card styling */}
-                      {mostRecentService.imageURL && (
-                        <div className="w-full md:w-[220px] aspect-video md:aspect-[4/3] rounded-2xl overflow-hidden bg-white border border-slate-150 shrink-0 relative flex items-center justify-center self-center transition-all duration-500 shadow-sm">
-                          <img
-                            src={mostRecentService.imageURL}
-                            alt={mostRecentService.name}
-                            className="w-full h-full object-cover opacity-100 transition-transform duration-700 ease-out group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Stats / Hero Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  className="bg-blue-55 rounded-[32px] p-8 flex flex-col justify-between border border-blue-150 text-left min-h-[320px] lg:col-span-1"
-                >
-                  <div className="space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-md">
-                      <Star size={24} fill="currentColor" />
-                    </div>
-                    <div>
-                      <h3 className="text-4xl font-bold font-display text-blue-950 tracking-tight">
-                        4.85★
-                      </h3>
-                      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-900 mt-1 font-sans">
-                        Average Service Rating
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-6 border-t border-blue-150">
-                    <p className="text-xs text-indigo-950/80 font-medium font-sans leading-relaxed">
-                      "Unmatched reliability. The repairs partner arrived in
-                      exactly 45 minutes, wore certified safety equipment, and
-                      solved my leakage issue cleanly under budget."
-                    </p>
-                    <span className="text-[10px] font-semibold text-blue-900 block font-sans">
-                      —— Priya K., Mumbai
-                    </span>
-                  </div>
-                </motion.div>
-
-                {/* Grid Item 1: 100% Verified Partners */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-slate-50/80 rounded-[32px] p-8 border border-slate-150 hover:border-blue-300 transition-all group flex flex-col justify-between text-left"
-                >
-                  <div>
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
-                      <UserCheck size={22} />
-                    </div>
-                    <h4 className="text-xl font-bold font-display text-blue-950 mb-2">
-                      Multi-Tier Screening
-                    </h4>
-                    <p className="text-indigo-950/70 text-sm leading-relaxed font-normal font-sans">
-                      Every partner undergoes rigorous identity checks, local
-                      police verification, and a 3-step technical assessment in
-                      our modern training classrooms.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-emerald-50/50 text-emerald-800 text-[10px] font-semibold font-sans border border-emerald-100/60 rounded-xl tracking-wider uppercase">
-                      Only Top 5% Hired
-                    </span>
-                  </div>
-                </motion.div>
-
-                {/* Grid Item 2: Upfront Transparent Pricing */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.15 }}
-                  className="bg-slate-50/80 rounded-[32px] p-8 border border-slate-150 hover:border-blue-300 transition-all group flex flex-col justify-between text-left"
-                >
-                  <div>
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
-                      <Sparkles size={22} />
-                    </div>
-                    <h4 className="text-xl font-bold font-display text-blue-950 mb-2">
-                      No Haggling. No Secrets.
-                    </h4>
-                    <p className="text-indigo-950/70 text-sm leading-relaxed font-normal font-sans">
-                      Get transparent estimates before the job starts.
-                      Standardized pricing guides prevent overcharging, so you
-                      pay only what's displayed on screen.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-indigo-50/50 text-indigo-900 text-[10px] font-semibold font-sans border border-indigo-100/60 rounded-xl tracking-wider uppercase">
-                      Itemized Invoices
-                    </span>
-                  </div>
-                </motion.div>
-
-                {/* Row 2 - Grid Item 3: Safety Controls */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.2 }}
-                  className="bg-slate-50/80 rounded-[32px] p-8 border border-slate-150 hover:border-blue-300 transition-all group flex flex-col justify-between text-left"
-                >
-                  <div>
-                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-805 border border-amber-100 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
-                      <ShieldCheck size={22} />
-                    </div>
-                    <h4 className="text-xl font-bold font-display text-blue-950 mb-2">
-                      Secure OTP Inspections
-                    </h4>
-                    <p className="text-indigo-950/70 text-sm leading-relaxed font-normal font-sans">
-                      Experience end-to-end security. Partners share a unique
-                      pin to initiate jobs, keeping authentication transparent
-                      and fully logged.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-amber-50/50 text-amber-800 text-[10px] font-semibold font-sans border border-amber-100/65 rounded-xl tracking-wider uppercase">
-                      Fully Insured Jobs
-                    </span>
-                  </div>
-                </motion.div>
-
-                {/* Row 2 - Grid Item 4: Quick-Turn Turnaround */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.25 }}
-                  className="bg-slate-50/80 rounded-[32px] p-8 border border-slate-150 hover:border-blue-300 transition-all group flex flex-col justify-between text-left"
-                >
-                  <div>
-                    <div className="w-12 h-12 rounded-2xl bg-cyan-50 text-cyan-750 border border-cyan-100 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
-                      <Clock size={22} />
-                    </div>
-                    <h4 className="text-xl font-bold font-display text-blue-950 mb-2">
-                      Punctuality Promise
-                    </h4>
-                    <p className="text-indigo-950/70 text-sm leading-relaxed font-normal font-sans">
-                      We value your time. If our professional partner is
-                      significantly delayed, receive proactive booking credits
-                      instantly credited to your account.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-cyan-50/50 text-cyan-800 text-[10px] font-semibold font-sans border border-cyan-100/65 rounded-xl tracking-wider uppercase">
-                      Swift Response
-                    </span>
-                  </div>
-                </motion.div>
-
-                {/* Row 2 - Grid Item 5: Post-Service Support */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-slate-50/80 rounded-[32px] p-8 border border-slate-150 hover:border-blue-300 transition-all group flex flex-col justify-between text-left lg:col-span-1"
-                >
-                  <div>
-                    <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 border border-rose-100 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
-                      <CheckCircle2 size={22} />
-                    </div>
-                    <h4 className="text-xl font-bold font-display text-blue-950 mb-2">
-                      Quality Warranty
-                    </h4>
-                    <p className="text-indigo-950/70 text-sm leading-relaxed font-normal font-sans">
-                      Not fully satisfied? Our comprehensive care network
-                      handles complimentary re-work evaluations within 7 days of
-                      service completion.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-rose-50/50 text-rose-800 text-[10px] font-semibold font-sans border border-rose-100/65 rounded-xl tracking-wider uppercase">
-                      7-Day Free Cover
-                    </span>
-                  </div>
-                </motion.div>
+            {/* Card 4 */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-blue-400 hover:bg-white transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2.5 shrink-0">
+                <Zap size={17} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                  Instant Refund
+                </h4>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-tight mt-1">
+                  100% money back before arrival.
+                </p>
               </div>
             </div>
           </div>

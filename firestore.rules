@@ -288,11 +288,15 @@ service cloud.firestore {
     }
 
     function isValidMessage(data) {
-      return data.keys().hasAll(['senderId', 'text', 'createdAt']) &&
-             data.keys().size() == 3 &&
-             data.senderId == request.auth.uid &&
+      return data.keys().hasAll(['text', 'createdAt']) &&
+             data.keys().hasOnly(['senderId', 'senderName', 'senderRole', 'text', 'message', 'createdAt', 'isAi', 'role', 'bookingId', 'bookingData', 'quickActions']) &&
+             (!('senderId' in data) || data.senderId == request.auth.uid || data.senderId == 'support-agent' || data.senderId == 'zomini_ai' || isAdmin()) &&
+             (!('senderName' in data) || (data.senderName is string && data.senderName.size() <= 120)) &&
+             (!('senderRole' in data) || (data.senderRole in ['customer', 'ai', 'partner', 'admin'])) &&
+             (!('isAi' in data) || data.isAi is bool) &&
+             (!('role' in data) || (data.role is string && data.role.size() <= 40)) &&
              data.text is string && data.text.size() > 0 && data.text.size() <= 5000 &&
-             data.createdAt is timestamp;
+             (data.createdAt is timestamp || data.createdAt is string);
     }
 
     function isValidEarningsHistory(data) {
@@ -532,7 +536,7 @@ service cloud.firestore {
           existing().get('customerId', '') == request.auth.uid || 
           existing().get('userId', '') == request.auth.uid) && (
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'status', 'scheduledAt', 'partnerId', 'activeCall', 
+            'status', 'scheduledAt', 'scheduledSlot', 'partnerId', 'activeCall', 
             'secondaryContact', 'updatedAt', 'cancellationReason', 'cancelledAt', 'address', 'customerData', 
             'customerMobile', 'customerName', 'customerBookedName', 'customerBookedPhone', 
             'customerBookedEmail', 'progressPercentage', 'checklist',
@@ -580,6 +584,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('partnerId', '') == request.auth.uid
         );
         allow create: if isSignedIn() && isValidId(bookingId) && (
+          isAdmin() ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerUid', '') == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('customerId', '') == request.auth.uid ||
           get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('userId', '') == request.auth.uid ||
