@@ -7,7 +7,7 @@ import {
 import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from '../lib/recaptcha';
-import { doc, setDoc, Timestamp, getDoc, updateDoc, query, where, collection, getDocs, runTransaction, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc, query, where, collection, getDocs } from 'firebase/firestore';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
@@ -43,10 +43,7 @@ type AuthView =
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView, initialData }: Props) {
   const getInitialView = (): AuthView => {
-    if (initialView && initialView !== ('login-selection' as any) && initialView !== ('google-phone-setup' as any)) {
-      return initialView;
-    }
-    return 'phone-entry';
+    return initialView || 'phone-entry';
   };
 
   const [view, setView] = useState<AuthView>(getInitialView);
@@ -67,12 +64,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [verifiedUid, setVerifiedUid] = useState<string | null>(initialData?.uid || null);
   const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
-
-  // Zomato-Style Onboarding verification and interactive conflict resolution state
-  const [isOnboardingVerification, setIsOnboardingVerification] = useState(false);
-  const [shouldMergeConflictOnSuccess, setShouldMergeConflictOnSuccess] = useState(false);
-  const [conflictUid, setConflictUid] = useState<string | null>(null);
-  const [showConflictOptions, setShowConflictOptions] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -185,10 +176,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     setError(null);
     setConfirmationResult(null);
     setVerifiedUid(initialData?.uid || null);
-    setIsOnboardingVerification(false);
-    setShouldMergeConflictOnSuccess(false);
-    setConflictUid(null);
-    setShowConflictOptions(false);
   };
 
   useEffect(() => {
@@ -198,19 +185,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       clearRecaptchaInstance();
     }
   }, [isOpen, initialView, initialData]);
-
-  // Track visibility of Name & Email onboarding modal globally to prevent background tasks (GPS, Push)
-  useEffect(() => {
-    const isOnboardingView = isOpen && (view === 'profile-setup');
-    if (typeof window !== 'undefined') {
-      (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = isOnboardingView;
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        (window as any).__ZOMINDIA_ONBOARDING_MODAL_VISIBLE = false;
-      }
-    };
-  }, [isOpen, view]);
 
   // Defensive cleanup on unmount
   useEffect(() => {
@@ -359,89 +333,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       const userObj = credential.user;
       setVerifiedUid(userObj.uid);
 
-      if (isOnboardingVerification) {
-        const activeUid = userObj.uid;
-        const cleanPhone = phoneNumber.replace(/\D/g, '');
-        const formattedPhone = `+91${cleanPhone}`;
-        const isSarthakEmail = email.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
-
-        // Safe transactional pre-write merge/link
-        await runTransaction(db, async (transaction) => {
-          const activeUserRef = doc(db, 'users', activeUid);
-          const activeUserSnap = await transaction.get(activeUserRef);
-
-          let walletVal = walletJoiningBonus;
-          let existingData: any = {};
-
-          if (activeUserSnap.exists()) {
-            existingData = activeUserSnap.data();
-            if (existingData.walletBalance !== undefined) {
-              walletVal = existingData.walletBalance;
-            }
-          }
-
-          if (shouldMergeConflictOnSuccess && conflictUid) {
-            try {
-              const conflictRef = doc(db, 'users', conflictUid);
-              const conflictSnap = await transaction.get(conflictRef);
-              if (conflictSnap.exists()) {
-                const conflictData = conflictSnap.data();
-                if (conflictData.walletBalance !== undefined) {
-                  walletVal += conflictData.walletBalance;
-                }
-                existingData = {
-                  ...conflictData,
-                  ...existingData,
-                };
-              }
-            } catch (err) {
-              console.warn("Notice reading conflict doc:", err);
-            }
-          }
-
-          const profilePayload = buildDualPersonaUserDoc({
-            ...existingData,
-            uid: activeUid, // ALWAYS strictly authenticated activeUid!
-            displayName: displayName.trim(),
-            fullName: displayName.trim(),
-            email: email.trim(),
-            phoneNumber: formattedPhone,
-            mobile: formattedPhone,
-            onboardingComplete: true,
-            walletBalance: walletVal,
-            updatedAt: Timestamp.now()
-          });
-
-          if (isSarthakEmail) {
-            profilePayload.role = 'admin';
-            profilePayload.adminSubRole = 'head';
-          } else if (!profilePayload.role) {
-            profilePayload.role = 'customer';
-          }
-
-          transaction.set(activeUserRef, profilePayload, { merge: true });
-        });
-
-        // Move any bookings/history in Firestore if needed (though resolvedUid ensures they access their bookings seamlessly)
-        if (shouldMergeConflictOnSuccess && conflictUid) {
-          try {
-            const bookingsQ1 = query(collection(db, 'bookings'), where('userId', '==', activeUid));
-            const bookingsQ2 = query(collection(db, 'bookings'), where('customerId', '==', activeUid));
-            const [bSnap1, bSnap2] = await Promise.all([getDocs(bookingsQ1), getDocs(bookingsQ2)]);
-
-            const batch = writeBatch(db);
-            bSnap1.docs.forEach((d) => {
-              batch.update(doc(db, 'bookings', d.id), { userId: conflictUid });
-            });
-            bSnap2.docs.forEach((d) => {
-              batch.update(doc(db, 'bookings', d.id), { customerId: conflictUid });
-            });
-            await batch.commit();
-          } catch (migrateErr) {
-            console.error("Non-blocking bookings migration error:", migrateErr);
+      // Check Firestore for user profile
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      const formattedPhone = cleanPhone ? `+91${cleanPhone}` : (userObj.phoneNumber || '');
+      let profileSnap: any = null;
+      try {
+        profileSnap = await getDoc(doc(db, 'users', userObj.uid));
+        if (!profileSnap?.exists() && formattedPhone) {
+          const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
+          const pSnap = await getDocs(phoneQ);
+          if (!pSnap.empty) {
+            profileSnap = pSnap.docs[0];
           }
         }
+      } catch (fetchErr) {
+        console.warn('[AuthModal] Profile fetch notice:', fetchErr);
+      }
 
+      // Strictly guard every access: userData?.role, userData?.customerData?.fullName, userData?.onboardingComplete. Never assume userData exists.
+      // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
+      const userData = profileSnap?.exists() ? profileSnap.data() : null;
+      const hasCompletedOnboarding = Boolean(
+        userData &&
+        userData?.onboardingComplete !== false &&
+        (userData?.fullName?.toString().trim() || userData?.displayName?.toString().trim() || userData?.customerData?.fullName?.toString().trim())
+      );
+
+      if (hasCompletedOnboarding) {
         setView('success-transition');
         setTimeout(() => {
           onSuccess();
@@ -449,46 +367,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           resetForm();
         }, 1500);
       } else {
-        // Check Firestore for user profile
-        const cleanPhone = phoneNumber.replace(/\D/g, '');
-        const formattedPhone = cleanPhone ? `+91${cleanPhone}` : (userObj.phoneNumber || '');
-        let profileSnap: any = null;
-        try {
-          profileSnap = await getDoc(doc(db, 'users', userObj.uid));
-          if (!profileSnap?.exists() && formattedPhone) {
-            const phoneQ = query(collection(db, 'users'), where('phoneNumber', '==', formattedPhone));
-            const pSnap = await getDocs(phoneQ);
-            if (!pSnap.empty) {
-              profileSnap = pSnap.docs[0];
-            }
-          }
-        } catch (fetchErr) {
-          console.warn('[AuthModal] Profile fetch notice:', fetchErr);
-        }
-
-        // Strictly guard every access: userData?.role, userData?.customerData?.fullName, userData?.onboardingComplete. Never assume userData exists.
-        // Default new user state: { role: 'customer', onboardingComplete: false, fullName: '' }
-        const userData = profileSnap?.exists() ? profileSnap.data() : null;
-        const hasCompletedOnboarding = Boolean(
-          userData &&
-          userData?.onboardingComplete !== false &&
-          (userData?.fullName?.toString().trim() || userData?.displayName?.toString().trim() || userData?.customerData?.fullName?.toString().trim())
-        );
-
-        if (hasCompletedOnboarding) {
-          setView('success-transition');
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-            resetForm();
-          }, 1500);
-        } else {
-          // Fresh phone number or incomplete profile -> Route directly to profile-setup view
-          setDisplayName(userData?.customerData?.fullName || userData?.fullName || userData?.displayName || '');
-          setEmail(userData?.customerData?.email || userData?.email || '');
-          setVerifiedUid(userObj.uid);
-          setView('profile-setup');
-        }
+        // Fresh phone number or incomplete profile -> Route directly to profile-setup view
+        setDisplayName(userData?.customerData?.fullName || userData?.fullName || userData?.displayName || '');
+        setEmail(userData?.customerData?.email || userData?.email || '');
+        setVerifiedUid(userObj.uid);
+        setView('profile-setup');
       }
     } catch (err: any) {
       console.error("[AuthModal] OTP verification error:", err);
@@ -546,64 +429,32 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
       const userSnap = await getDoc(userRef);
 
       const targetPhone = formattedPhone.trim();
-      
-      // Enforce unique dual-field tracking (Email + Mobile) and prevent cross-account data conflicts
       const emailLower = email.trim().toLowerCase();
-      const phoneDigits = targetPhone.replace(/\D/g, '');
 
-      if (phoneDigits) {
-        const checkPhoneQ1 = query(collection(db, 'users'), where('phoneNumber', '==', `+91${phoneDigits}`));
-        const checkPhoneQ2 = query(collection(db, 'users'), where('mobile', '==', `+91${phoneDigits}`));
-        const checkPhoneQ3 = query(collection(db, 'users'), where('phoneNumber', '==', phoneDigits));
-        const checkPhoneQ4 = query(collection(db, 'users'), where('mobile', '==', phoneDigits));
-
-        const [pSnap1, pSnap2, pSnap3, pSnap4] = await Promise.all([
-          getDocs(checkPhoneQ1),
-          getDocs(checkPhoneQ2),
-          getDocs(checkPhoneQ3),
-          getDocs(checkPhoneQ4)
-        ]);
-
-        const mergedPhoneDocs = [...pSnap1.docs, ...pSnap2.docs, ...pSnap3.docs, ...pSnap4.docs];
-        for (const docSnap of mergedPhoneDocs) {
-          if (docSnap.id !== activeUid) {
-            const docEmail = (docSnap.data().email || '').trim().toLowerCase();
-            if (docEmail && emailLower && !emailLower.includes('@phone.zomindia.com') && !docEmail.includes('@phone.zomindia.com') && docEmail !== emailLower) {
-              console.warn("[AuthModal] Account linked to another email, continuing phone auth seamlessly.");
-            }
-          }
-        }
-      }
-
-      if (emailLower && !emailLower.includes('@phone.zomindia.com') && emailLower.includes('@')) {
-        const checkEmailQ1 = query(collection(db, 'users'), where('email', '==', email.trim()));
-        const checkEmailQ2 = query(collection(db, 'users'), where('email', '==', emailLower));
-
-        const [eSnap1, eSnap2] = await Promise.all([
-          getDocs(checkEmailQ1),
-          getDocs(checkEmailQ2)
-        ]);
-
-        const mergedEmailDocs = [...eSnap1.docs, ...eSnap2.docs];
-        for (const docSnap of mergedEmailDocs) {
-          if (docSnap.id !== activeUid) {
-            const data = docSnap.data();
-            const docPhone = (data.phoneNumber || data.mobile || '').replace(/\D/g, '');
-            if (docPhone && phoneDigits && docPhone !== phoneDigits) {
-              console.warn("[AuthModal] Email matched another record, proceeding with phone identity.");
-            }
-          }
-        }
-      }
-
+      // Single clean, indexed lookup on phoneNumber and email
       let existingUserDoc: any = null;
+      const lookupPromises: Promise<any>[] = [];
 
       if (targetPhone) {
-        const q1 = query(collection(db, 'users'), where('phoneNumber', '==', targetPhone));
-        const q2 = query(collection(db, 'users'), where('mobile', '==', targetPhone));
-        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-        if (!snap1.empty) existingUserDoc = snap1.docs[0];
-        else if (!snap2.empty) existingUserDoc = snap2.docs[0];
+        lookupPromises.push(
+          getDocs(query(collection(db, 'users'), where('phoneNumber', '==', targetPhone)))
+        );
+      }
+      if (emailLower && emailLower.includes('@') && !emailLower.includes('@phone.zomindia.com')) {
+        lookupPromises.push(
+          getDocs(query(collection(db, 'users'), where('email', '==', emailLower)))
+        );
+      }
+
+      if (lookupPromises.length > 0) {
+        const snapshots = await Promise.all(lookupPromises);
+        for (const snap of snapshots) {
+          if (!snap.empty) {
+            if (!existingUserDoc && snap.docs[0].data()?.phoneNumber === targetPhone) {
+              existingUserDoc = snap.docs[0];
+            }
+          }
+        }
       }
 
       if (existingUserDoc) {
@@ -922,16 +773,26 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     {/* Underlying single native input for Chrome/Android/iOS WebOTP, auto-fill, and SMS paste bar */}
                     <input
                       ref={otpInputRef}
-                      type="tel"
+                      name="otp"
+                      id="otp"
+                      type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       pattern="[0-9]*"
                       maxLength={6}
+                      aria-label="6-digit verification code"
                       autoFocus
                       required
                       value={otpCode}
                       onChange={(e) => handleOtpChange(e.target.value)}
-                      className="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer caret-transparent"
+                      onPaste={(e) => {
+                        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                        if (pasted.length === 6) {
+                          setOtpCode(pasted);
+                          handleVerifyOTP(undefined, pasted);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full text-transparent bg-transparent caret-transparent focus:outline-none z-20 cursor-pointer"
                     />
 
                     {/* Visual 6-box representation synced directly with single unified state */}

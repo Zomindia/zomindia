@@ -1244,23 +1244,42 @@ export default function AiSupportChat({
     };
   };
 
-  // Speech Recognition API
-  const toggleListening = () => {
+  // Speech Recognition API with Native Android / Browser Microphone Permission Trigger
+  const toggleListening = async () => {
     if (isListening) {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
       }
       setIsListening(false);
       return;
     }
 
     setMicError(null);
+
+    // Explicitly trigger native Android OS / WebView runtime microphone permission prompt
+    if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately release media tracks so SpeechRecognition can claim the hardware microphone
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (permErr: any) {
+        setMicError(
+          "Mic access blocked. Please allow Microphone permission in App Settings!",
+        );
+        setIsListening(false);
+        setTimeout(() => setMicError(null), 5000);
+        return;
+      }
+    }
+
     const SpeechRecognition =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setMicError(
-        "Voice input is not supported in this browser. Please try Chrome!",
+        "Voice input is not supported in this browser. Please type your query below!",
       );
       setTimeout(() => setMicError(null), 5000);
       return;
@@ -1277,8 +1296,10 @@ export default function AiSupportChat({
       };
 
       rec.onerror = (e: any) => {
-        if (e.error === "not-allowed") {
-          setMicError("Mic access blocked. Please enable permissions!");
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setMicError(
+            "Mic access blocked. Please enable Microphone permissions in device settings!",
+          );
         } else if (e.error === "no-speech") {
           setMicError("No voice detected. Please speak closer to microphone.");
         } else {
