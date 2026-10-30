@@ -51,8 +51,10 @@ jobs:
             fi
           fi
 
-      - name: Build Release AAB & APK
+      - name: Build Release AAB & APK (v7.0 / code 7)
         run: |
+          sed -i 's/versionCode [0-9]\+/versionCode 7/' android/app/build.gradle
+          sed -i 's/versionName ".*"/versionName "7.0"/' android/app/build.gradle
           cd android
           ./gradlew bundleRelease assembleRelease assembleDebug --stacktrace
 

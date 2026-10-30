@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { onAuthStateChanged, User, sendEmailVerification, signInWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, User, sendEmailVerification, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
@@ -226,6 +226,9 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     return typeof window !== 'undefined' && localStorage.getItem('zomindia_admin_authenticated') === 'true';
@@ -239,10 +242,11 @@ export default function App() {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
       const data = userDoc.exists() ? userDoc.data() : null;
-      const isSarthak = email.trim().toLowerCase() === 'sarthakwebtech@gmail.com';
-      
-      if (isSarthak || data?.role === 'admin' || data?.adminSubRole) {
-        // Successfully authenticated as admin
+      const isSuperAdmin = email.trim().toLowerCase() === 'sarthakwebtech@gmail.com';
+      const isStaffAdmin = data?.role === 'admin' || Boolean(data?.adminSubRole);
+
+      if (isSuperAdmin || isStaffAdmin) {
+        // Authorized admin session
         setIsAdminAuthenticated(true);
         localStorage.setItem('zomindia_admin_authenticated', 'true');
         const adminProfile = sanitizeUserProfile({
@@ -252,12 +256,12 @@ export default function App() {
           displayName: data?.displayName || cred.user.displayName || 'Admin',
           fullName: data?.fullName || data?.displayName || cred.user.displayName || 'Admin',
           role: 'admin',
-          adminSubRole: data?.adminSubRole || (isSarthak ? 'head' : undefined),
+          adminSubRole: data?.adminSubRole || (isSuperAdmin ? 'head' : undefined),
           onboardingComplete: true,
         }, cred.user);
         setProfile(adminProfile);
       } else {
-        setError('Access denied: You do not have administrator permissions.');
+        setError('Access denied: This email is not authorized for administrative access. Please contact IT Support.');
       }
     } catch (err: any) {
       if (err?.code?.includes('auth/operation-not-allowed') || err?.message?.includes('auth/operation-not-allowed')) {
@@ -267,6 +271,26 @@ export default function App() {
       }
     } finally {
       setAdminLoginLoading(false);
+    }
+  };
+
+  const handleSendResetLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your official admin email address.');
+      return;
+    }
+    setResetLoading(true);
+    setError(null);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setResetSent(true);
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setError(err.message || 'Failed to dispatch reset email. Please ensure the email is registered in Firebase Authentication.');
+    } finally {
+      setResetLoading(false);
     }
   };
   const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => {
@@ -1419,71 +1443,159 @@ If you have any billing questions, or if your refund is delayed, please email us
 
               {/* Direct Admin Email & Password Login Card */}
               <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 p-6 sm:p-7 text-left mb-6">
-                <form onSubmit={handleAdminLogin} className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1.5">
-                      Admin Email
-                    </label>
-                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
-                      <Mail size={16} className="text-slate-400 shrink-0" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="admin@zomindia.com"
-                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
-                      />
+                {isResetMode ? (
+                  <form onSubmit={handleSendResetLink} className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-extrabold text-slate-900 tracking-tight mb-1">
+                        Reset Admin Password
+                      </h3>
+                      <p className="text-slate-500 text-xs leading-relaxed">
+                        Enter your official admin email (e.g. vikas@zomindia.com or registered admin ID) to receive a password reset link.
+                      </p>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1.5">
-                      Password
-                    </label>
-                    <div className="relative flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
-                      <Lock size={16} className="text-slate-400 shrink-0" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full pr-11 placeholder:text-slate-300 placeholder:font-normal"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer focus:outline-none"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                    <div>
+                      <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase block mb-1.5">
+                        Admin Email
+                      </label>
+                      <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                        <Mail size={16} className="text-slate-400 shrink-0" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="admin@zomindia.com"
+                          className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  {error && (
-                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
-                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={adminLoginLoading}
-                    className="w-full py-3.5 rounded-2xl bg-[#002e6e] hover:bg-[#002252] text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {adminLoginLoading ? (
-                      <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
-                    ) : (
-                      <>
-                        <span>Sign In to Admin Portal</span>
-                        <ArrowRight size={17} />
-                      </>
+                    {resetSent && (
+                      <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-bold leading-relaxed">
+                        ✓ Password reset link sent! Check your inbox (and Spam folder) to set a new password.
+                      </div>
                     )}
-                  </button>
-                </form>
+
+                    {error && (
+                      <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                        <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={resetLoading}
+                      className="w-full py-3.5 rounded-2xl bg-[#002e6e] hover:bg-[#002252] text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {resetLoading ? (
+                        <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
+                      ) : (
+                        <>
+                          <span>Send Reset Link</span>
+                          <ArrowRight size={17} />
+                        </>
+                      )}
+                    </button>
+
+                    <div className="text-center pt-3 border-t border-slate-100 mt-4 space-y-2">
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Need credentials provisioning or Super-Admin IT assistance?
+                      </p>
+                      <a
+                        href="mailto:support@zomindia.com?subject=Admin%20Portal%20Credential%20Request&body=Hello%20Zomindia%20IT%20Team%2C%0A%0ARequesting%20assistance%20for%20admin%20account%3A%20"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <span>✉ Contact support@zomindia.com</span>
+                      </a>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => { setIsResetMode(false); setResetSent(false); setError(null); }}
+                          className="text-xs text-blue-700 font-bold hover:underline cursor-pointer mt-1"
+                        >
+                          ← Back to Sign In
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleAdminLogin} className="space-y-4">
+                    <div>
+                      <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase block mb-1.5">
+                        Admin Email
+                      </label>
+                      <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                        <Mail size={16} className="text-slate-400 shrink-0" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="admin@zomindia.com"
+                          className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                          Password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setIsResetMode(true); setError(null); }}
+                          className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
+                      <div className="relative flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                        <Lock size={16} className="text-slate-400 shrink-0" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full pr-11 placeholder:text-slate-300 placeholder:font-normal"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer focus:outline-none"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                        <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={adminLoginLoading}
+                      className="w-full py-3.5 rounded-2xl bg-[#002e6e] hover:bg-[#002252] text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {adminLoginLoading ? (
+                        <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
+                      ) : (
+                        <>
+                          <span>Sign In to Admin Portal</span>
+                          <ArrowRight size={17} />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
               </div>
 
               <div className="flex justify-center mt-5">
