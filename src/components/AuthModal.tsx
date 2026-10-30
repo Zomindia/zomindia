@@ -22,7 +22,9 @@ import {
   ShieldCheck,
   Zap,
   Lock,
-  Mail
+  Mail,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface Props {
@@ -60,6 +62,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   const [displayName, setDisplayName] = useState(initialData?.displayName || '');
   const [email, setEmail] = useState(initialData?.email || '');
   const [adminPassword, setAdminPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Status & states
   const [loading, setLoading] = useState(false);
@@ -665,7 +668,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         setError('Access denied: You do not have administrator permissions.');
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please verify your credentials.');
+      if (err?.code?.includes('auth/operation-not-allowed') || err?.message?.includes('auth/operation-not-allowed')) {
+        setError('Email/Password sign-in is disabled in Firebase Console. Please enable it under Authentication > Sign-in method.');
+      } else {
+        setError(err.message || 'Authentication failed. Please verify your credentials.');
+      }
     } finally {
       setLoading(false);
     }
@@ -1153,16 +1160,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
                       Password
                     </label>
-                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                    <div className="relative flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
                       <Lock size={16} className="text-slate-400 shrink-0" />
                       <input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         required
                         value={adminPassword}
                         onChange={(e) => setAdminPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full pr-11 placeholder:text-slate-300 placeholder:font-normal"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer focus:outline-none"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
 
