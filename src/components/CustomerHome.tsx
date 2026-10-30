@@ -10,7 +10,6 @@ import {
   onSnapshot,
   Timestamp,
   addDoc,
-  or,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { LogoIcon } from "./BrandLogo";
@@ -24,12 +23,11 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
-import { formatTime12Hour, isValidCustomerService } from "../utils/formatters";
+import { isValidCustomerService } from "../utils/formatters";
 import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
 import BookingModal from "./BookingModal";
-import { ImageCarousel } from "./ServiceDetails";
 import { BrandedButtonSpinner } from "./LoadingIndicator";
 import {
   SkeletonCategoryGrid,
@@ -46,21 +44,18 @@ import {
   Search,
   ArrowRight,
   Star,
-  Clock,
   ShieldCheck,
   UserCheck,
   X,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  MessageCircle,
   Zap,
   Copy,
   Check,
   Plus,
   Scissors,
   Tv,
-  Brush,
   Hammer,
   RotateCcw,
   PhoneCall,
@@ -363,39 +358,56 @@ export const resolveCategoryIcon = (iconName?: string, catName?: string): any =>
   return Sparkles;
 };
 
+export const resolveBadge = (cat: any): string => {
+  if (cat?.badge && String(cat.badge).trim()) return String(cat.badge).trim().toUpperCase();
+  if (cat?.tag && String(cat.tag).trim()) return String(cat.tag).trim().toUpperCase();
+
+  const name = String(cat?.name || cat?.title || '').toLowerCase();
+  if (name.includes('ro') || name.includes('purifier') || name.includes('water')) return 'ESSENTIAL';
+  if (name.includes('ac') || name.includes('cooling')) return 'TRENDING';
+  if (name.includes('fridge') || name.includes('refrigerator')) return 'INSTANT';
+  if (name.includes('washing') || name.includes('laundry')) return 'TRENDING';
+  if (name.includes('electric') || name.includes('plumb')) return 'FAST';
+
+  // Fallback for any newly added category in the future:
+  return 'POPULAR';
+};
+
+export const getCategoryBadgeConfig = (badgeText: string, _categoryName: string = ''): string => {
+  const upper = (badgeText || '').trim().toUpperCase();
+  if (upper === 'TRENDING' || upper === 'HOT' || upper.includes('TREND') || upper.includes('HOT')) {
+    return 'bg-amber-500/15 text-amber-700 border-amber-300/60';
+  }
+  if (
+    upper === 'INSTANT' ||
+    upper === 'FAST' ||
+    upper === '30 MINS' ||
+    upper.includes('INSTANT') ||
+    upper.includes('FAST') ||
+    upper.includes('30 MIN')
+  ) {
+    return 'bg-emerald-500/15 text-emerald-700 border-emerald-300/60';
+  }
+  if (upper === 'ESSENTIAL' || upper === 'POPULAR' || upper.includes('ESSENTIAL') || upper.includes('POPULAR')) {
+    return 'bg-blue-500/15 text-blue-700 border-blue-300/60';
+  }
+  if (upper === 'BESTSELLER' || upper === 'TOP RATED' || upper.includes('BESTSELLER') || upper.includes('TOP RATED')) {
+    return 'bg-indigo-500/15 text-indigo-700 border-indigo-300/60';
+  }
+  if (upper === 'NEW' || upper === 'OFFER' || upper.includes('NEW') || upper.includes('OFFER')) {
+    return 'bg-rose-500/15 text-rose-700 border-rose-300/60';
+  }
+  return 'bg-slate-100 text-slate-700 border-slate-300/60';
+};
+
 export const getCategoryBadge = (cat: any): { text: string; className: string } | null => {
   if (!cat) return null;
-  const explicitBadge = String(cat.badge || cat.tag || "").trim().toUpperCase();
-  const name = String(cat.name || "").toLowerCase().trim();
-
-  if (explicitBadge.includes("TREND") || explicitBadge.includes("POPULAR")) {
-    return {
-      text: "TRENDING",
-      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
-    };
-  }
-  if (explicitBadge.includes("INSTANT") || explicitBadge.includes("FAST") || explicitBadge.includes("QUICK")) {
-    return {
-      text: "INSTANT",
-      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
-    };
-  }
-
-  // Demand-based assignment:
-  if (name.includes("ac") || name.includes("air conditioner") || name.includes("cooling")) {
-    return {
-      text: "TRENDING",
-      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
-    };
-  }
-  if (name.includes("electric") || name.includes("plumb") || name.includes("emergency") || name.includes("repair")) {
-    return {
-      text: "INSTANT",
-      className: "absolute -top-1.5 -right-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm ring-1 ring-white z-10 pointer-events-none",
-    };
-  }
-
-  return null;
+  const badgeText = resolveBadge(cat);
+  const colorClasses = getCategoryBadgeConfig(badgeText, cat.name || cat.title || '');
+  return {
+    text: badgeText,
+    className: `text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border shadow-2xs ${colorClasses}`,
+  };
 };
 
 const getCategoryType = (
@@ -459,14 +471,6 @@ export default function CustomerHome({
   }, [selectedCategory]);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentOfferIndex((prev) => (prev + 1) % CONSOLIDATED_OFFERS.length);
-    }, 4500);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
@@ -583,7 +587,9 @@ export default function CustomerHome({
   }, [isOfferPaused, consolidatedOffers.length]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
+  const [servicesLoading, setServicesLoading] = useState(true);
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({});
+  const [failedServiceImages, setFailedServiceImages] = useState<Record<string, boolean>>({});
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
   const [isPillDismissed, setIsPillDismissed] = useState(false);
@@ -890,13 +896,39 @@ export default function CustomerHome({
       (snap) => {
         if (!isMounted) return;
         const validServices = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as Service)
-          .filter(isValidCustomerService);
+          .map((d) => {
+            const raw = d.data() as Record<string, any>;
+            const resolvedName = raw.name || raw.title || "";
+            const resolvedPrice = Number(
+              raw.discountedPrice ?? raw.basePrice ?? raw.price ?? 0
+            );
+            const resolvedImage =
+              raw.imageURL ||
+              raw.imageUrl ||
+              raw.image ||
+              (Array.isArray(raw.images) && raw.images.length > 0
+                ? raw.images[0]
+                : undefined);
+            return {
+              ...raw,
+              id: d.id,
+              name: resolvedName,
+              basePrice: resolvedPrice,
+              categoryId: raw.categoryId || raw.category || "",
+              imageURL: resolvedImage,
+            } as Service;
+          })
+          .filter(
+            (s) =>
+              (s as any).isActive !== false && isValidCustomerService(s)
+          );
         setAllServices(validServices);
+        setServicesLoading(false);
       },
       (err) => {
         if (!isMounted) return;
         console.error("Error subscribing to services:", err);
+        setServicesLoading(false);
       },
     );
     return () => {
@@ -904,6 +936,73 @@ export default function CustomerHome({
       if (typeof unsubscribeServices === "function") unsubscribeServices();
     };
   }, []);
+
+  const groupedCategoryServices = useMemo(() => {
+    if (allServices.length === 0) return [];
+
+    const groupsMap = new Map<
+      string,
+      {
+        key: string;
+        category: Category | null;
+        categoryName: string;
+        categoryDescription?: string;
+        services: Service[];
+      }
+    >();
+
+    allServices.forEach((service) => {
+      const rawCatKey = String(
+        service.categoryId || (service as any).category || ""
+      ).trim();
+      if (!rawCatKey) return;
+
+      const matchedCat =
+        allCategories.find(
+          (c) =>
+            c.id === rawCatKey ||
+            c.name.toLowerCase().trim() === rawCatKey.toLowerCase()
+        ) || null;
+
+      const groupKey = matchedCat ? matchedCat.id : rawCatKey;
+      const existing = groupsMap.get(groupKey);
+      if (existing) {
+        existing.services.push(service);
+      } else {
+        groupsMap.set(groupKey, {
+          key: groupKey,
+          category: matchedCat,
+          categoryName: matchedCat?.name || rawCatKey,
+          categoryDescription: matchedCat?.description,
+          services: [service],
+        });
+      }
+    });
+
+    const orderedGroups: Array<{
+      key: string;
+      category: Category | null;
+      categoryName: string;
+      categoryDescription?: string;
+      services: Service[];
+    }> = [];
+
+    allCategories.forEach((cat) => {
+      const group = groupsMap.get(cat.id);
+      if (group && group.services.length > 0) {
+        orderedGroups.push(group);
+        groupsMap.delete(cat.id);
+      }
+    });
+
+    groupsMap.forEach((group) => {
+      if (group.services.length > 0) {
+        orderedGroups.push(group);
+      }
+    });
+
+    return orderedGroups;
+  }, [allServices, allCategories]);
 
   const filteredSearchResults = useMemo(() => {
     if (searchQuery.trim() === "") return [];
@@ -1632,7 +1731,8 @@ export default function CustomerHome({
                     .map((cat) => {
                       const Icon = resolveCategoryIcon(cat.icon, cat.name);
                       const tileStyle = getCategoryTileStyle(cat.name);
-                      const badge = getCategoryBadge(cat);
+                      const badgeText = resolveBadge(cat);
+                      const badgeColorClass = getCategoryBadgeConfig(badgeText, cat.name);
                       const isFailedIcon = failedIcons[cat.id];
                       const hasValidIconURL =
                         cat.iconURL &&
@@ -1663,13 +1763,17 @@ export default function CustomerHome({
                           }}
                           className="group relative flex flex-col items-center justify-start p-1 bg-transparent border-0 shadow-none cursor-pointer active:scale-95 transition-all duration-200 select-none focus:outline-none"
                         >
+                          {/* Category Badge Chip Above Icon */}
+                          {badgeText && (
+                            <span
+                              className={`mb-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border shadow-2xs whitespace-nowrap leading-none ${badgeColorClass}`}
+                            >
+                              {badgeText}
+                            </span>
+                          )}
+
                           {/* Swiggy/Zomato Icon Avatar (The Hero Element) */}
                           <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-slate-50 to-slate-100/90 border border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:scale-105 transition-all duration-200 flex items-center justify-center p-2.5 overflow-visible">
-                            {badge && (
-                              <span className={badge.className}>
-                                {badge.text}
-                              </span>
-                            )}
                             {hasValidIconURL ? (
                               <img
                                 src={cat.iconURL}
@@ -1865,53 +1969,61 @@ export default function CustomerHome({
         </section>
 
         {/* Most Booked in Indore (Top 4 Services with Clear Pricing & Direct Book) */}
-        <section
-          className="mb-8 w-full max-w-6xl mx-auto"
-          id="most-booked-section"
-        >
-          <div className="flex flex-row items-center justify-between mb-4 px-1">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
-                  Indore Verified
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Rated</span>
+        {(servicesLoading || allServices.length > 0) && (
+          <section
+            className="mb-8 w-full max-w-6xl mx-auto"
+            id="most-booked-section"
+          >
+            <div className="flex flex-row items-center justify-between mb-4 px-1">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                    Indore Verified
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Rated</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
+                  Most Booked in Indore
+                </h3>
               </div>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
-                Most Booked in Indore
-              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById("categories-grid");
+                  el?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
+              >
+                See all
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const el = document.getElementById("categories-grid");
-                el?.scrollIntoView({ behavior: "smooth" });
-              }}
-              className="text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
-            >
-              See all
-            </button>
-          </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-            {allServices.length === 0 ? (
-              <SkeletonServiceCardGrid count={4} />
-            ) : (
-              allServices
-                .filter((s) => s.rating && s.rating >= 4.5)
-                .slice(0, 4)
-                .map((service, idx) => (
-                  <ServiceCard
-                    key={service.id}
-                    service={service}
-                    categoryName={allCategories.find((c) => c.id === service.categoryId)?.name}
-                    onSelect={onServiceSelect}
-                    idx={idx}
-                  />
-                ))
-            )}
-          </div>
-        </section>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+              {servicesLoading ? (
+                <SkeletonServiceCardGrid count={4} />
+              ) : (
+                [...allServices]
+                  .sort(
+                    (a, b) =>
+                      Number(b.rating || b.averageRating || 4.8) -
+                      Number(a.rating || a.averageRating || 4.8)
+                  )
+                  .slice(0, 4)
+                  .map((service, idx) => (
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
+                      categoryName={
+                        allCategories.find((c) => c.id === service.categoryId)?.name
+                      }
+                      onSelect={onServiceSelect}
+                      idx={idx}
+                    />
+                  ))
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Clean Single-Row Trust Guarantee Banner & Support Action */}
         <section className="mb-12 w-full max-w-6xl mx-auto" id="trust-guarantee-banner">
@@ -1979,7 +2091,193 @@ export default function CustomerHome({
           </div>
         </section>
 
+        {/* Dynamic Category-Wise Service Carousels from Firestore */}
+        {servicesLoading ? (
+          <div className="mb-8 w-full max-w-6xl mx-auto">
+            <SkeletonServiceCardGrid count={4} />
+          </div>
+        ) : (
+          groupedCategoryServices.map((group) => {
+            const tileStyle = getCategoryTileStyle(group.categoryName);
+            const CategoryFallbackIcon = resolveCategoryIcon(
+              group.category?.icon,
+              group.categoryName
+            );
 
+            return (
+              <section
+                key={group.key}
+                className="mb-8 w-full max-w-6xl mx-auto"
+              >
+                <div className="flex flex-row items-center justify-between mb-3.5 px-1">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${tileStyle.bg} ${tileStyle.text}`}
+                      >
+                        {formatCategoryShortLabel(group.categoryName)}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <ShieldCheck size={11} /> 30-Day Warranty
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-0.5">
+                      {group.categoryName}
+                    </h3>
+                    {group.categoryDescription && (
+                      <p className="text-[11px] sm:text-xs text-slate-500 font-medium line-clamp-1">
+                        {group.categoryDescription}
+                      </p>
+                    )}
+                  </div>
+
+                  {group.category && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(group.category);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="text-xs font-black uppercase tracking-wider text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
+                    >
+                      See all
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-3 overflow-x-auto scrollbar-none pb-2 snap-x snap-mandatory">
+                  {group.services.map((service) => {
+                    const title = service.name || (service as any).title || "Service";
+                    const displayPrice = Number(
+                      (service as any).discountedPrice ??
+                        service.basePrice ??
+                        (service as any).price ??
+                        0
+                    );
+                    const originalPrice = Number(
+                      (service as any).originalPrice ??
+                        ((service as any).discountedPrice
+                          ? service.basePrice ?? (service as any).price
+                          : 0)
+                    );
+                    const hasDiscount = originalPrice > displayPrice && displayPrice > 0;
+                    const discountPercent = hasDiscount
+                      ? Math.round(((originalPrice - displayPrice) / originalPrice) * 100)
+                      : 0;
+                    const ratingValue = Number(
+                      service.rating || service.averageRating || 4.8
+                    ).toFixed(1);
+                    const reviewCount = service.reviewCount || service.totalReviews;
+                    const imageSrc =
+                      service.imageURL ||
+                      (service as any).imageUrl ||
+                      (service as any).image ||
+                      (Array.isArray(service.images) && service.images.length > 0
+                        ? service.images[0]
+                        : "");
+                    const showImage = Boolean(
+                      imageSrc && !failedServiceImages[service.id]
+                    );
+
+                    return (
+                      <div
+                        key={service.id}
+                        onClick={() => onServiceSelect(service.id)}
+                        className="min-w-[230px] sm:min-w-[255px] max-w-[255px] snap-start bg-white rounded-2xl border border-slate-200/90 p-3 shadow-2xs hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between shrink-0 group cursor-pointer"
+                      >
+                        <div>
+                          <div
+                            className={`relative w-full h-32 rounded-xl overflow-hidden ${tileStyle.bg} mb-2.5 border border-slate-100 flex items-center justify-center`}
+                          >
+                            {showImage ? (
+                              <img
+                                src={imageSrc}
+                                alt={title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                                onError={() => {
+                                  setFailedServiceImages((prev) => ({
+                                    ...prev,
+                                    [service.id]: true,
+                                  }));
+                                }}
+                              />
+                            ) : (
+                              <CategoryFallbackIcon
+                                size={36}
+                                className={`${tileStyle.text} opacity-80 group-hover:scale-110 transition-transform duration-300`}
+                              />
+                            )}
+                            <div className="absolute top-2 left-2 bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-xs">
+                              <span>{ratingValue}★</span>
+                              {reviewCount ? (
+                                <span className="text-[9px] opacity-90">
+                                  ({reviewCount})
+                                </span>
+                              ) : null}
+                            </div>
+                            {hasDiscount && discountPercent > 0 && (
+                              <div className="absolute top-2 right-2 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shadow-xs">
+                                {discountPercent}% OFF
+                              </div>
+                            )}
+                            <div className="absolute bottom-1.5 left-1.5 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <ShieldCheck size={10} className="text-emerald-400" />
+                              <span>30-Day Warranty</span>
+                            </div>
+                          </div>
+                          <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                            {title}
+                          </h4>
+                          {service.description && (
+                            <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-snug">
+                              {service.description}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-sm sm:text-base font-black text-slate-900">
+                                ₹{displayPrice.toLocaleString("en-IN")}
+                              </span>
+                              {hasDiscount && (
+                                <span className="text-[11px] text-slate-400 line-through font-semibold">
+                                  ₹{originalPrice.toLocaleString("en-IN")}
+                                </span>
+                              )}
+                            </div>
+                            {hasDiscount && (
+                              <span className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider block">
+                                Save ₹{(originalPrice - displayPrice).toLocaleString("en-IN")}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (profile) {
+                                setSelectedService(service);
+                              } else {
+                                onAuthRequired();
+                              }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+                          >
+                            Book
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })
+        )}
 
         {/* Compact Urban Company Style Trust Section */}
         <section className="py-6 sm:py-8 px-4 max-w-5xl mx-auto">
@@ -2057,102 +2355,124 @@ export default function CustomerHome({
         </section>
 
         {/* How it Works */}
-        <section className="bg-slate-50 rounded-[40px] py-20 px-8 mb-20 border border-slate-100">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-slate-900 mb-4">
-              How it works
+        <section className="py-6 sm:py-8 px-4 max-w-5xl mx-auto">
+          <div className="text-center">
+            <span className="bg-slate-100 text-slate-700 text-[10px] sm:text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full inline-flex items-center gap-1">
+              HOW IT WORKS
+            </span>
+            <h2 className="text-base sm:text-xl font-black text-slate-900 tracking-tight mt-1.5">
+              Seamless Service in 4 Steps
             </h2>
-            <p className="text-slate-500 font-medium max-w-lg mx-auto italic">
-              Simple, transparent, and reliable service at your doorstep in 4
-              easy steps.
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12">
-            {[
-              {
-                title: "Choose a service",
-                desc: "Select from our wide range of documented home services.",
-                icon: Search,
-              },
-              {
-                title: "Choose a slot",
-                desc: "Pick a time that works best for your schedule.",
-                icon: Clock,
-              },
-              {
-                title: "OTP Verification",
-                desc: "Secure handshake with your service partner upon arrival.",
-                icon: ShieldCheck,
-              },
-              {
-                title: "Relax",
-                desc: "Our experts handle everything while you sit back and enjoy.",
-                icon: Zap,
-              },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="flex flex-col items-center text-center group"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center text-slate-900 mb-6 group-hover:bg-blue-700 group-hover:text-white transition-all duration-300">
-                  <item.icon size={28} strokeWidth={1.5} />
-                </div>
-                <h4 className="text-lg font-bold text-slate-900 mb-2">
-                  {item.title}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 mt-4 sm:mt-5">
+            {/* Step 1 */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-slate-300 transition-all shadow-2xs">
+              <div>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-wider text-blue-600 bg-blue-50">
+                  01
+                </span>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 mt-2">
+                  Pick Service
                 </h4>
-                <p className="text-sm text-slate-500 font-medium leading-relaxed px-4">
-                  {item.desc}
-                </p>
               </div>
-            ))}
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                Fixed, transparent rates.
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-slate-300 transition-all shadow-2xs">
+              <div>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-wider text-indigo-600 bg-indigo-50">
+                  02
+                </span>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 mt-2">
+                  Choose Slot
+                </h4>
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                Instant or scheduled.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-slate-300 transition-all shadow-2xs">
+              <div>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-wider text-amber-600 bg-amber-50">
+                  03
+                </span>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 mt-2">
+                  Doorstep OTP
+                </h4>
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                Safe verified arrival.
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:border-slate-300 transition-all shadow-2xs">
+              <div>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-wider text-emerald-600 bg-emerald-50">
+                  04
+                </span>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 mt-2">
+                  Relax & Pay
+                </h4>
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                Pay post service + cover.
+              </p>
+            </div>
           </div>
         </section>
 
         {/* Support Chat Banner */}
-        <section className="bg-gradient-to-r from-blue-700 to-indigo-900 rounded-[40px] p-8 md:p-12 text-white shadow-xl relative overflow-hidden mb-20 mx-2">
-          <div className="absolute inset-0 bg-white/5 bg-[radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.1),transparent_50%)]" />
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-            <div className="max-w-xl">
-              <span className="px-3 py-1 bg-white/10 text-white text-[10px] font-bold rounded-lg tracking-wider uppercase inline-flex items-center gap-1 mb-4">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-                Always Available
+        <section className="max-w-5xl mx-auto px-4 py-4 sm:py-6">
+          <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 rounded-3xl p-5 sm:p-6 text-center sm:text-left relative overflow-hidden border border-indigo-500/20 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-5">
+            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative z-10">
+              <span className="inline-flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                ZOMINI AI • ALWAYS LIVE
               </span>
-              <h2 className="text-3xl md:text-4xl font-display font-extrabold tracking-tight mb-4">
-                Need Fast Help? Ask{" "}
-                <span className="text-amber-300 drop-shadow-sm font-black">ZOMINI</span>
+              <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight mt-2">
+                Need Quick Help? Ask <span className="text-amber-400">ZOMINI</span>
               </h2>
-              <p className="text-blue-100 text-sm leading-relaxed max-w-md">
-                Get answers about booking states, refund policies, annual
-                contracts, or service recommendations instantly from our
-                conversational AI assistant.
+              <p className="text-slate-300 text-xs sm:text-sm mt-1 max-w-lg leading-relaxed">
+                Track active visits, reschedule slots, or ask for instant appliance repair estimates.
               </p>
             </div>
             <button
-              onClick={() => {
-                if (!profile) {
-                  onAuthRequired();
-                } else {
-                  window.dispatchEvent(
-                    new CustomEvent("toggle-ai-chat", {
-                      detail: { open: true },
-                    }),
-                  );
-                }
-              }}
-              className="bg-white text-slate-900 border border-transparent shadow-lg text-sm font-bold px-8 py-4 rounded-2xl hover:bg-slate-100 active:scale-95 transition-all shrink-0 flex items-center gap-2 mx-auto md:mx-0"
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-zomini'))}
+              className="relative z-10 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm px-5 py-2.5 rounded-2xl shadow-lg transition-all active:scale-95 cursor-pointer inline-flex items-center gap-2 shrink-0 group"
             >
-              <MessageCircle
-                size={18}
-                className="text-blue-700 animate-bounce"
-              />
-              Chat is Online
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span>Chat with Zomini</span>
+              <span className="group-hover:translate-x-1 transition-transform">➔</span>
             </button>
           </div>
         </section>
 
         {/* Force review feedback popup with skip option */}
         <AnimatePresence>
+          {selectedService && (
+            <BookingModal
+              service={selectedService}
+              profile={profile}
+              onClose={() => setSelectedService(null)}
+              onSuccess={(bookingId?: string) => {
+                setSelectedService(null);
+                if (bookingId) {
+                  setActiveTab("bookings", bookingId);
+                } else {
+                  setActiveTab("bookings");
+                }
+              }}
+            />
+          )}
           {showForceFeedbackPopup && activeBooking && (
             <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
               <motion.div

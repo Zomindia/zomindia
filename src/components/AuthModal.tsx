@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   signInWithPhoneNumber,
+  signInWithEmailAndPassword,
   ConfirmationResult,
   updateProfile,
 } from 'firebase/auth';
@@ -19,7 +20,9 @@ import {
   AlertCircle,
   ChevronLeft,
   ShieldCheck,
-  Zap
+  Zap,
+  Lock,
+  Mail
 } from 'lucide-react';
 
 interface Props {
@@ -34,12 +37,12 @@ interface Props {
   };
 }
 
-// Zomato / Swiggy model: Phone number + OTP is the sole authentication method.
-type AuthView = 
+export type AuthView = 
   | 'phone-entry'
   | 'otp-entry'
   | 'profile-setup'
-  | 'success-transition';
+  | 'success-transition'
+  | 'admin-email';
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView, initialData }: Props) {
   const getInitialView = (): AuthView => {
@@ -53,9 +56,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   const [otpCode, setOtpCode] = useState('');
   const otpInputRef = useRef<HTMLInputElement | null>(null);
   
-  // Registration data
+  // Registration & Admin Login data
   const [displayName, setDisplayName] = useState(initialData?.displayName || '');
   const [email, setEmail] = useState(initialData?.email || '');
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Status & states
   const [loading, setLoading] = useState(false);
@@ -214,6 +218,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     setView(getInitialView());
     setPhoneNumber('');
     setOtpCode('');
+    setAdminPassword('');
     lastPastedRef.current = '';
     setDisplayName(initialData?.displayName || '');
     setEmail(initialData?.email || '');
@@ -633,6 +638,34 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
     } catch (err: any) {
       console.error("Profile registration error: ", err);
       setError('Failed to setup profile: ' + (err.message || 'Error occurred'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), adminPassword);
+      const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+      const data = userDoc.exists() ? userDoc.data() : null;
+      const isSarthak = email.trim().toLowerCase() === 'sarthakwebtech@gmail.com';
+
+      if (isSarthak || data?.role === 'admin' || data?.adminSubRole) {
+        localStorage.setItem('zomindia_admin_authenticated', 'true');
+        setView('success-transition');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+          resetForm();
+        }, 800);
+      } else {
+        setError('Access denied: You do not have administrator permissions.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
@@ -1075,6 +1108,98 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
                     transition={{ duration: 1.2, ease: 'easeInOut' }}
                     className="h-full bg-gradient-to-r from-blue-700 via-indigo-600 to-amber-400 rounded-full"
                   />
+                </div>
+              </motion.div>
+            )}
+
+            {/* VIEW 5: Admin Email & Password Login */}
+            {view === 'admin-email' && (
+              <motion.div
+                key="admin-email"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="pt-6 pb-6 px-6 sm:px-8 text-center space-y-4"
+              >
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Admin Portal Sign In
+                  </h2>
+                  <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-4 leading-relaxed">
+                    Enter your authorized head office or regional management credentials.
+                  </p>
+                </div>
+
+                <form onSubmit={handleAdminEmailLogin} className="space-y-4 text-left">
+                  <div>
+                    <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
+                      Admin Email
+                    </label>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                      <Mail size={16} className="text-slate-400 shrink-0" />
+                      <input
+                        type="email"
+                        required
+                        autoFocus
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="admin@zomindia.com"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold tracking-wider text-slate-400 uppercase text-left mb-1.5 block">
+                      Password
+                    </label>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                      <Lock size={16} className="text-slate-400 shrink-0" />
+                      <input
+                        type="password"
+                        required
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed text-left">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading || !email.trim() || !adminPassword}
+                    className="w-full mt-4 py-3.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-800 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
+                    ) : (
+                      <>
+                        <span>Sign In to Admin Portal</span>
+                        <ArrowRight size={18} className="transform group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setView('phone-entry');
+                    }}
+                    className="text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                  >
+                    Sign in with Mobile OTP instead
+                  </button>
                 </div>
               </motion.div>
             )}

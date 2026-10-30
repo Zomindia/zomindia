@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { onAuthStateChanged, User, sendEmailVerification } from 'firebase/auth';
+import { onAuthStateChanged, User, sendEmailVerification, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, getDocs, setDoc, updateDoc, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { UserProfile, UserRole, Booking, Service, Category, COMPANY_NAME, PartnerApplication } from './types';
@@ -32,14 +32,16 @@ import {
   Lock,
   UserCheck,
   CreditCard,
-  LifeBuoy
+  LifeBuoy,
+  AlertCircle,
+  ArrowRight
 } from 'lucide-react';
 
 // Modules
 import CustomerHome from './components/CustomerHome';
 import Avatar from './components/Avatar';
 import PWAInstallBanner from './components/PWAInstallBanner';
-import { LoadingScreen } from './components/LoadingIndicator';
+import { LoadingScreen, BrandedButtonSpinner } from './components/LoadingIndicator';
 import NotificationSystem from './components/NotificationSystem';
 import AuthModal from './components/AuthModal';
 import { signOutUser, resolveAndSubscribeProfile, sanitizeUserProfile } from './services/authService';
@@ -213,9 +215,53 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalInitialView, setAuthModalInitialView] = useState<'phone-entry' | 'otp-entry' | 'profile-setup' | 'success-transition'>('phone-entry');
+  const [authModalInitialView, setAuthModalInitialView] = useState<'phone-entry' | 'otp-entry' | 'profile-setup' | 'success-transition' | 'admin-email'>('phone-entry');
   const [authModalInitialData, setAuthModalInitialData] = useState<{ uid?: string; displayName?: string; email?: string } | undefined>(undefined);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+
+  // Direct Admin Login Card States
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && localStorage.getItem('zomindia_admin_authenticated') === 'true';
+  });
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginLoading(true);
+    setError(null);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+      const data = userDoc.exists() ? userDoc.data() : null;
+      const isSarthak = email.trim().toLowerCase() === 'sarthakwebtech@gmail.com';
+      
+      if (isSarthak || data?.role === 'admin' || data?.adminSubRole) {
+        // Successfully authenticated as admin
+        setIsAdminAuthenticated(true);
+        localStorage.setItem('zomindia_admin_authenticated', 'true');
+        const adminProfile = sanitizeUserProfile({
+          ...(data || {}),
+          uid: cred.user.uid,
+          email: cred.user.email || email.trim(),
+          displayName: data?.displayName || cred.user.displayName || 'Admin',
+          fullName: data?.fullName || data?.displayName || cred.user.displayName || 'Admin',
+          role: 'admin',
+          adminSubRole: data?.adminSubRole || (isSarthak ? 'head' : undefined),
+          onboardingComplete: true,
+        }, cred.user);
+        setProfile(adminProfile);
+      } else {
+        setError('Access denied: You do not have administrator permissions.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please verify your credentials.');
+    } finally {
+      setAdminLoginLoading(false);
+    }
+  };
   const [activeTab, setActiveTabState] = useState<ActiveTabType>(() => {
     const urlTab = getTabFromUrl();
     if (urlTab) return urlTab;
@@ -298,7 +344,15 @@ export default function App() {
   }, [profile?.uid, profile?.currentMode, profile?.role]);
 
   useEffect(() => {
-    const handleOpenAuth = () => setIsAuthModalOpen(true);
+    const handleOpenAuth = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.initialView) {
+        setAuthModalInitialView(customEvent.detail.initialView);
+      } else if (window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase() === 'admin' || window.location.hash.toLowerCase().includes('admin')) {
+        setAuthModalInitialView('admin-email');
+      }
+      setIsAuthModalOpen(true);
+    };
     const handleChangeTab = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail && customEvent.detail.tab) {
@@ -754,6 +808,8 @@ export default function App() {
       } else {
         Telemetry.setUser(null);
         setProfile(null);
+        setIsAdminAuthenticated(false);
+        localStorage.removeItem('zomindia_admin_authenticated');
         setHasActiveArrival(false);
         setPartnerApplication(null);
         setCurrentModeState('customer');
@@ -1335,34 +1391,113 @@ If you have any billing questions, or if your refund is delayed, please email us
     }
 
     if (activeTab === 'admin') {
-      if (!profile || profile.role !== 'admin') {
+      const hasAdminAccess = Boolean(
+        profile && (
+          profile.role === 'admin' ||
+          (profile as any).adminSubRole ||
+          isAdminAuthenticated ||
+          profile.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com'
+        )
+      );
+
+      if (!hasAdminAccess) {
         return (
-          <div className="max-w-md mx-auto px-4 py-24 text-center">
-            <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">Admin Access Required</h2>
-            <p className="text-slate-500 text-sm mb-6">You need authorized head office or regional management credentials to access this portal.</p>
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => setActiveTab('home')}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors"
-              >
-                Back to Home
-              </button>
-              {!profile && (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
+            <div className="w-full max-w-md mx-auto text-center">
+              <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-5 shadow-xs border border-rose-100">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">Admin Access Required</h2>
+              <p className="text-slate-500 text-sm mb-6">You need authorized head office or regional management credentials to access this portal.</p>
+
+              {/* Direct Admin Email & Password Login Card */}
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 p-6 sm:p-7 text-left mb-6">
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div>
+                    <label className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1.5">
+                      Admin Email
+                    </label>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                      <Mail size={16} className="text-slate-400 shrink-0" />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="admin@zomindia.com"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1.5">
+                      Password
+                    </label>
+                    <div className="flex items-center bg-slate-50 border-2 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 rounded-2xl px-3.5 py-2.5 transition-all gap-2.5">
+                      <Lock size={16} className="text-slate-400 shrink-0" />
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="bg-transparent text-slate-900 font-bold text-sm sm:text-base focus:outline-none w-full placeholder:text-slate-300 placeholder:font-normal"
+                      />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 text-xs font-semibold leading-relaxed">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={adminLoginLoading}
+                    className="w-full py-3.5 rounded-2xl bg-[#002e6e] hover:bg-[#002252] text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {adminLoginLoading ? (
+                      <BrandedButtonSpinner className="w-5 h-5 mx-auto" />
+                    ) : (
+                      <>
+                        <span>Sign In to Admin Portal</span>
+                        <ArrowRight size={17} />
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              <div className="flex justify-center gap-3">
                 <button
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-[#002e6e] text-white font-bold hover:bg-[#002252] transition-colors"
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem('zomindia_last_active_tab', 'home');
+                    window.location.href = '/';
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Back to Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthModalInitialView('admin-email');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-[#002e6e] text-white font-bold hover:bg-[#002252] transition-colors cursor-pointer"
                 >
                   Sign In
                 </button>
-              )}
+              </div>
             </div>
           </div>
         );
       }
-      return <AdminDashboard profile={profile} setActiveTab={setActiveTab} />;
+      return <AdminDashboard profile={{ ...profile!, role: 'admin' }} setActiveTab={setActiveTab} />;
     }
 
     if (activeTab === 'service-details') {
@@ -1738,6 +1873,50 @@ If you have any billing questions, or if your refund is delayed, please email us
           <Suspense fallback={<LoadingScreen message="Loading dashboard..." />}>
             {renderContent()}
           </Suspense>
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            initialView={authModalInitialView}
+            initialData={authModalInitialData}
+            onClose={() => {
+              setIsAuthModalOpen(false);
+              setAuthModalInitialView('phone-entry');
+              setAuthModalInitialData(undefined);
+              try {
+                sessionStorage.removeItem("zomini_pending_booking_action");
+              } catch (e) {}
+              window.dispatchEvent(new CustomEvent("auth-modal-closed"));
+            }}
+            onSuccess={() => {
+              const cur = auth.currentUser;
+              if (cur) {
+                setUser({ ...cur } as any);
+                const isSarthak = cur.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com';
+                const isAdmin = isSarthak || localStorage.getItem('zomindia_admin_authenticated') === 'true';
+                if (isAdmin) {
+                  setIsAdminAuthenticated(true);
+                }
+                const instantProfile = sanitizeUserProfile({
+                  uid: cur.uid,
+                  phoneNumber: cur.phoneNumber || '',
+                  mobile: cur.phoneNumber || '',
+                  role: isAdmin ? 'admin' : 'customer',
+                  displayName: cur.displayName || (cur.phoneNumber ? `Customer (${cur.phoneNumber.slice(-4)})` : 'Admin'),
+                  fullName: cur.displayName || 'Admin',
+                  email: cur.email || '',
+                  photoURL: cur.photoURL || '',
+                  savedAddresses: [],
+                  addresses: [],
+                  bookings: [],
+                  onboardingComplete: true,
+                  createdAt: new Date().toISOString()
+                }, cur);
+                setProfile(instantProfile);
+              }
+              setIsAuthModalOpen(false);
+              setAuthModalInitialView('phone-entry');
+              setAuthModalInitialData(undefined);
+            }}
+          />
           <OfflineSyncIndicator />
         </div>
       ) : (
