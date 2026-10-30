@@ -732,7 +732,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
 
   // SCENARIO C (Approved)
   return (
-    <div className="min-h-[100dvh] bg-slate-50 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-slate-200 pb-20">
+    <div className="min-h-[100dvh] bg-slate-50 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-slate-200 pb-20">
       <style>{`
         /* Hide the duplicate KYC banner card completely if rendered */
         .min-h-\\[100dvh\\] .bg-amber-500.text-slate-950.p-4.rounded-3xl {
@@ -890,7 +890,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
       </header>
 
       {/* Screen Content */}
-      <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth pb-24">
+      <main className="flex-1 pb-24">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

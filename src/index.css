@@ -82,10 +82,9 @@
   html, body {
     min-height: 100vh;
     overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior-y: auto;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
-    scroll-behavior: smooth;
+    touch-action: pan-y;
   }
   body {
     @apply antialiased text-slate-900 bg-[#f5f7fa] selection:bg-[#00baf2] selection:text-white leading-relaxed transition-colors duration-200;
@@ -95,6 +94,11 @@
     width: 100%;
     overflow-x: hidden;
     overflow-y: visible;
+  }
+  .overflow-x-auto,
+  .touch-pan-xy {
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
   }
   
   button, 

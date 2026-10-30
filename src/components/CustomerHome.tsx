@@ -937,6 +937,73 @@ export default function CustomerHome({
     };
   }, []);
 
+  useEffect(() => {
+    const handlePullRefresh = async () => {
+      try {
+        const [catSnap, svcSnap, promoSnap] = await Promise.all([
+          getDocs(query(collection(db, "categories"), orderBy("name", "asc"))),
+          getDocs(collection(db, "services")),
+          getDocs(query(collection(db, "promotions"), where("active", "==", true))),
+        ]);
+
+        const cats = catSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Category
+        );
+        if (cats.length > 0) {
+          setCategories(cats);
+          setAllCategories(cats);
+        }
+
+        const validServices = svcSnap.docs
+          .map((d) => {
+            const raw = d.data() as Record<string, any>;
+            const resolvedName = raw.name || raw.title || "";
+            const resolvedPrice = Number(
+              raw.discountedPrice ?? raw.basePrice ?? raw.price ?? 0
+            );
+            const resolvedImage =
+              raw.imageURL ||
+              raw.imageUrl ||
+              raw.image ||
+              (Array.isArray(raw.images) && raw.images.length > 0
+                ? raw.images[0]
+                : undefined);
+            return {
+              ...raw,
+              id: d.id,
+              name: resolvedName,
+              basePrice: resolvedPrice,
+              categoryId: raw.categoryId || raw.category || "",
+              imageURL: resolvedImage,
+            } as Service;
+          })
+          .filter(
+            (s) => (s as any).isActive !== false && isValidCustomerService(s)
+          );
+        setAllServices(validServices);
+
+        const allPromos = promoSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Promotion
+        );
+        setPromotions(
+          allPromos.filter(
+            (promo) =>
+              promo.targetAudience === "customer" ||
+              !promo.targetAudience ||
+              promo.targetAudience === "all"
+          )
+        );
+      } catch (err) {
+        console.warn("[CustomerHome] Pull-to-refresh notice:", err);
+      }
+    };
+
+    window.addEventListener("zomindia-pull-to-refresh", handlePullRefresh);
+    return () => {
+      window.removeEventListener("zomindia-pull-to-refresh", handlePullRefresh);
+    };
+  }, []);
+
   const groupedCategoryServices = useMemo(() => {
     if (allServices.length === 0) return [];
 
@@ -1529,8 +1596,6 @@ export default function CustomerHome({
           <div className="relative z-50 flex-1 min-w-0">
             <div 
               className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 px-3"
-              onTouchStartCapture={(e) => e.stopPropagation()} 
-              onMouseDownCapture={(e) => e.stopPropagation()}
             >
               <div className="text-slate-400 focus-within:text-blue-600 flex items-center shrink-0 mr-2">
                 <Search size={18} className="stroke-[2.2]" />
@@ -1683,7 +1748,10 @@ export default function CustomerHome({
 
             {/* Category Tabs: ALL, HOME, PROFESSIONAL, REPAIR */}
             <div className="mb-3 sm:mb-4 relative z-10">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-0.5">
+              <div
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-0.5 touch-pan-xy"
+                style={{ touchAction: "pan-x pan-y" }}
+              >
                 {(
                   [
                     { id: "All", label: "✨ All" },
@@ -1859,7 +1927,8 @@ export default function CustomerHome({
 
         {/* Consolidated Offers Auto-Slider Banner (Single card with indicator dots) */}
         <section
-          className="mb-8 w-full max-w-6xl mx-auto"
+          className="mb-8 w-full max-w-6xl mx-auto touch-pan-xy"
+          style={{ touchAction: "pan-x pan-y" }}
           id="offers-slider"
           onMouseEnter={() => setIsOfferPaused(true)}
           onMouseLeave={() => setIsOfferPaused(false)}
@@ -2145,7 +2214,10 @@ export default function CustomerHome({
                   )}
                 </div>
 
-                <div className="flex gap-3 overflow-x-auto scrollbar-none pb-2 snap-x snap-mandatory">
+                <div
+                  className="flex gap-3 overflow-x-auto scrollbar-none pb-2 snap-x snap-mandatory touch-pan-xy"
+                  style={{ touchAction: "pan-x pan-y" }}
+                >
                   {group.services.map((service) => {
                     const title = service.name || (service as any).title || "Service";
                     const displayPrice = Number(

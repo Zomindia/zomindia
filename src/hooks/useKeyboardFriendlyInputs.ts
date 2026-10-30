@@ -45,26 +45,6 @@ export function useKeyboardFriendlyInputs() {
       }
     };
 
-    // Centralized parent touch/mousedown capture handler
-    const handleParentTouchCapture = (e: TouchEvent | MouseEvent) => {
-      const activeEl = document.activeElement;
-      if (
-        activeEl &&
-        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
-        activeEl.getAttribute('type') !== 'checkbox' &&
-        activeEl.getAttribute('type') !== 'radio'
-      ) {
-        const target = e.target as HTMLElement;
-        // If the tap/click is outside the active input itself and also not clicking an active option, button, or link
-        if (target !== activeEl && !target.closest('button, a, input, select, textarea, [role="button"]')) {
-          // Temporarily disable the global touch-dismiss mechanism / navigation
-          // on the parent container when any input is active, preventing accidental screen dismissals.
-          e.stopPropagation();
-          console.log('[KeyboardFriendly] Accidental parent touch-dismiss click captured and suppressed.');
-        }
-      }
-    };
-
     // Global Keydown handler for Escape key
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -73,48 +53,19 @@ export function useKeyboardFriendlyInputs() {
           activeEl.blur();
           e.stopPropagation();
           e.preventDefault();
-          console.log('[KeyboardFriendly] Input cleanly unfocused via Escape key.');
         }
       }
     };
 
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
-
-    // Register capture touch event listeners on window (parent container representing global stage)
-    window.addEventListener('touchstart', handleParentTouchCapture, { capture: true, passive: true });
-    window.addEventListener('mousedown', handleParentTouchCapture, { capture: true });
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-
-    // Handle visualViewport orientation / sizing changes
-    const handleViewportChange = () => {
-      const activeEl = document.activeElement as HTMLElement;
-      if (
-        activeEl &&
-        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
-        activeEl.getAttribute('type') !== 'checkbox' &&
-        activeEl.getAttribute('type') !== 'radio'
-      ) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleViewportChange);
-      window.visualViewport.addEventListener('scroll', handleViewportChange);
-    }
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
-      window.removeEventListener('touchstart', handleParentTouchCapture, { capture: true });
-      window.removeEventListener('mousedown', handleParentTouchCapture, { capture: true });
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
       clearTimeout(focusTimeout);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleViewportChange);
-        window.visualViewport.removeEventListener('scroll', handleViewportChange);
-      }
     };
   }, []);
 }

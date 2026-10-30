@@ -78,6 +78,7 @@ import ElitePartnerModal from './components/ElitePartnerModal';
 
 import { GOOGLE_MAPS_API_KEY } from './lib/maps-config';
 import { useKeyboardFriendlyInputs } from './hooks/useKeyboardFriendlyInputs';
+import { usePullToRefresh, PullToRefreshIndicator } from './hooks/usePullToRefresh';
 
 import { LogoHorizontal } from './components/BrandLogo';
 
@@ -564,6 +565,37 @@ export default function App() {
       if (typeof unsubCategories === "function") unsubCategories();
     };
   }, []);
+
+  const handleGlobalPullRefresh = async () => {
+    try {
+      window.dispatchEvent(new CustomEvent('zomindia-pull-to-refresh'));
+      const [svcSnap, catSnap] = await Promise.all([
+        getDocs(collection(db, 'services')),
+        getDocs(collection(db, 'categories')),
+      ]);
+
+      const loadedServices = svcSnap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Service))
+        .filter(isValidCustomerService);
+      setAllServices(loadedServices);
+      setAllCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists()) {
+          setProfile(sanitizeUserProfile({ uid: currentUser.uid, ...userDoc.data() }, currentUser));
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Pull-to-refresh sync notice:', err);
+    }
+  };
+
+  const { pullDistance, isRefreshing } = usePullToRefresh({
+    onRefresh: handleGlobalPullRefresh,
+    threshold: 65,
+  });
 
   const mostRecentAppService = (() => {
     const valid = (allServices || []).filter(isValidCustomerService);
@@ -2033,13 +2065,10 @@ If you have any billing questions, or if your refund is delayed, please email us
 
   return (
     <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
+      <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} threshold={65} />
       {isFullScreenView ? (
         <div 
-          className="min-h-screen w-full overflow-x-hidden overflow-y-auto"
-          style={{
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehaviorY: 'auto'
-          }}
+          className="min-h-screen w-full overflow-x-hidden"
         >
           <NotificationSystem onNavigate={setActiveTab} />
           <Suspense fallback={<LoadingScreen message="Loading dashboard..." />}>
@@ -2093,12 +2122,10 @@ If you have any billing questions, or if your refund is delayed, please email us
         </div>
       ) : (
         <div 
-          className="min-h-screen w-full overflow-x-hidden overflow-y-auto bg-slate-50 text-slate-900 font-sans" 
+          className="min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-900 font-sans" 
           style={{ 
             backgroundColor: '#f8fafc', 
             color: '#0f172a',
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehaviorY: 'auto'
           }}
         >
       <NotificationSystem onNavigate={setActiveTab} />
@@ -2470,8 +2497,6 @@ If you have any billing questions, or if your refund is delayed, please email us
         style={{ 
           backgroundColor: '#f8fafc', 
           color: '#0f172a',
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehaviorY: 'auto'
         }}
       >
         <AnimatePresence mode="wait">

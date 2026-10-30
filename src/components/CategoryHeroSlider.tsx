@@ -345,7 +345,8 @@ export const CategoryHeroSlider: React.FC<CategoryHeroSliderProps> = ({
 
       {/* Sleek App-Grade Banner Frame: Edge-to-Edge Modern Frame */}
       <div 
-        className="w-full aspect-[2.2/1] sm:aspect-[2.6/1] rounded-2xl overflow-hidden shadow-xs border border-slate-100 relative cursor-pointer group bg-gradient-to-r from-blue-50 to-indigo-50/80 active:scale-[0.99] transition-transform duration-200"
+        className="w-full aspect-[2.2/1] sm:aspect-[2.6/1] rounded-2xl overflow-hidden shadow-xs border border-slate-100 relative cursor-pointer group bg-gradient-to-r from-blue-50 to-indigo-50/80 active:scale-[0.99] transition-transform duration-200 touch-pan-xy"
+        style={{ touchAction: 'pan-x pan-y' }}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
         onTouchStart={handleTouchStart}

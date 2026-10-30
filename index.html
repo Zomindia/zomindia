@@ -60,11 +60,13 @@
       html, body {
         min-height: 100vh;
         overflow-x: hidden;
-        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
       }
     </style>
   </head>
-  <body style="min-height: 100vh; overflow-x: hidden; overflow-y: auto;">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
