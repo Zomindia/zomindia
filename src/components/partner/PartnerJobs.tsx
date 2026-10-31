@@ -34,7 +34,7 @@ import { handleFirestoreError, OperationType } from '../../lib/firestore-errors'
 import ChatWindow from '../ChatWindow';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { GOOGLE_MAPS_MAP_ID } from '../../lib/maps-config';
-import { useLocationTracking } from '../../hooks/useLocationTracking';
+import { resolveDoorstepCoords } from '../tracking/TrackingModal';
 import { offlineSyncEngine } from '../../lib/offlineQueue';
 import { CORPORATE_LANDLINE_GATEWAY } from '../../lib/telephony';
 import { formatTime12Hour } from '../../utils/formatTime';
@@ -192,10 +192,11 @@ function AssignedTasksMiniMap({
       const s = b.status?.toLowerCase();
       const isActive = ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(s);
       if (isActive) {
+        const resolved = resolveDoorstepCoords(b);
         return {
           ...b,
-          lat: typeof b.lat === 'number' ? b.lat : (typeof (b as any).customerLocation?.lat === 'number' ? (b as any).customerLocation.lat : 22.7196),
-          lng: typeof b.lng === 'number' ? b.lng : (typeof (b as any).customerLocation?.lng === 'number' ? (b as any).customerLocation.lng : 75.8577)
+          lat: resolved.lat,
+          lng: resolved.lng
         };
       }
       return null;
@@ -393,9 +394,8 @@ function AssignedTasksMiniMap({
                   <button
                     type="button"
                     onClick={() => {
-                      const destLat = highlightedBooking.lat || (highlightedBooking as any).customerLocation?.lat || 22.7196;
-                      const destLng = highlightedBooking.lng || (highlightedBooking as any).customerLocation?.lng || 75.8577;
-                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}`, '_blank');
+                      const resolved = resolveDoorstepCoords(highlightedBooking);
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${resolved.lat},${resolved.lng}`, '_blank');
                     }}
                     className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest py-3.5 rounded-2xl flex items-center justify-center gap-1.5 active:scale-95 transition-all outline-none border-0 cursor-pointer"
                     title="Navigate via Google Maps"
@@ -508,9 +508,8 @@ function AssignedTasksMiniMap({
                           <button
                             type="button"
                             onClick={() => {
-                              const destLat = highlightedBooking.lat || (highlightedBooking as any).customerLocation?.lat || 22.7196;
-                              const destLng = highlightedBooking.lng || (highlightedBooking as any).customerLocation?.lng || 75.8577;
-                              const url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}`;
+                              const resolved = resolveDoorstepCoords(highlightedBooking);
+                              const url = `https://www.google.com/maps/dir/?api=1&destination=${resolved.lat},${resolved.lng}`;
                               window.open(url, '_blank');
                             }}
                             className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-[8.5px] font-black uppercase tracking-widest py-2 rounded-xl border border-slate-200/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 mt-1"
@@ -995,15 +994,9 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     }
   };
 
-  // Implement real-time location tracking
-  const fallbackTracker = useLocationTracking(
-    (propsLastSyncedAt !== undefined || propsIsTrackingActive !== undefined) ? undefined : partner?.id, 
-    bookings, 
-    partner?.availabilityStatus
-  );
-  
-  const lastSyncedAt = propsLastSyncedAt !== undefined ? propsLastSyncedAt : fallbackTracker.lastSyncedAt;
-  const isTrackingActive = propsIsTrackingActive !== undefined ? propsIsTrackingActive : fallbackTracker.isTrackingActive;
+  // Receive real-time location tracking state from top-level PartnerApp watcher
+  const lastSyncedAt = propsLastSyncedAt ?? null;
+  const isTrackingActive = propsIsTrackingActive ?? false;
 
   useEffect(() => {
     if (initialExpandedBookingId) {
@@ -1747,9 +1740,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                     <button 
                       type="button"
                       onClick={() => {
-                        const destLat = booking.lat || (booking as any).customerLocation?.lat || 22.7196;
-                        const destLng = booking.lng || (booking as any).customerLocation?.lng || 75.8577;
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}`;
+                        const resolved = resolveDoorstepCoords(booking);
+                        const url = `https://www.google.com/maps/dir/?api=1&destination=${resolved.lat},${resolved.lng}`;
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }}
                       className="text-[10px] font-black text-blue-700 hover:text-blue-800 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
@@ -1940,9 +1932,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
                 <button
                   type="button"
                   onClick={() => {
-                    const destLat = booking.lat || (booking as any).customerLocation?.lat || 22.7196;
-                    const destLng = booking.lng || (booking as any).customerLocation?.lng || 75.8577;
-                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}`, '_blank');
+                    const resolved = resolveDoorstepCoords(booking);
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${resolved.lat},${resolved.lng}`, '_blank');
                   }}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
                 >

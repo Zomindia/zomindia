@@ -34,6 +34,8 @@ export interface UserProfile {
   emailVerified?: boolean;
   photoURL?: string;
   address?: string;
+  houseNumber?: string;
+  customerLocation?: { lat: number; lng: number };
   city?: string;
   bio?: string;
   walletBalance?: number;
@@ -86,6 +88,8 @@ export interface UserProfile {
     walletBalance?: number;
     welcomeBonusClaimed?: boolean;
     address?: string;
+    houseNumber?: string;
+    customerLocation?: { lat: number; lng: number };
     gender?: string;
     languagePreference?: string;
     houseType?: string;
@@ -141,6 +145,7 @@ export interface Service {
   rating?: number;
   averageRating?: number;
   reviewCount?: number;
+  reviewsCount?: number;
   totalReviews?: number;
   totalRatingPoints?: number;
   predefinedTasks?: string[];

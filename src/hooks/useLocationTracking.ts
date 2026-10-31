@@ -4,11 +4,7 @@ import { db } from '../lib/firebase';
 import { Booking } from '../types';
 import { Telemetry } from '../services/telemetry';
 
-const ACTIVE_BOOKING_STATUSES = ['assigned', 'accepted', 'on_the_way', 'in_progress'];
-
-function isLegacyRajwadaCoord(lat: number, lng: number): boolean {
-  return Math.abs(lat - 22.7196) < 0.001 && Math.abs(lng - 75.8577) < 0.001;
-}
+const ACTIVE_BOOKING_STATUSES = ['assigned', 'confirmed', 'accepted', 'on_the_way', 'arrived', 'in_progress'];
 
 export function useLocationTracking(
   partnerProfileId: string | undefined,
@@ -93,12 +89,13 @@ export function useLocationTracking(
               if (
                 typeof latitude !== 'number' ||
                 isNaN(latitude) ||
+                !isFinite(latitude) ||
                 typeof longitude !== 'number' ||
                 isNaN(longitude) ||
-                (latitude === 0 && longitude === 0) ||
-                isLegacyRajwadaCoord(latitude, longitude)
+                !isFinite(longitude) ||
+                (latitude === 0 && longitude === 0)
               ) {
-                Telemetry.addBreadcrumb('native', 'Skipped invalid or dummy GPS coordinates');
+                Telemetry.addBreadcrumb('native', 'Skipped invalid GPS coordinates');
                 return;
               }
 

@@ -26,6 +26,7 @@ import { signOutUser } from '../../services/authService';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import AdminUpload from '../AdminUpload';
 import { sendNotification } from '../../lib/notifications';
+import { normalizeCategories } from '../../utils/formatters';
 
 interface Props {
   partner: PartnerProfile | null;
@@ -242,7 +243,8 @@ export default function PartnerSettings({ partner, profile, onNavigate, onLogout
   useEffect(() => {
     const fetchCategories = async () => {
       const snap = await getDocs(collection(db, 'categories'));
-      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      const rawCategories = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      setCategories(normalizeCategories(rawCategories));
     };
     fetchCategories();
   }, []);

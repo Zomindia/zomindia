@@ -380,12 +380,6 @@ export default function DoorstepPinPickerModal({
                     isDragging ? '-translate-y-2.5 scale-105' : 'translate-y-0 scale-100'
                   }`}
                 >
-                  {/* Sleek Tooltip Pill */}
-                  <div className="mb-0.5 px-2 py-0.5 rounded-full bg-slate-900/90 backdrop-blur-xs text-white text-[9px] font-bold shadow-md flex items-center gap-1 whitespace-nowrap">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span>Doorstep</span>
-                  </div>
-
                   {/* Sharp-Tipped Precision Needle SVG */}
                   <svg
                     width="24"
@@ -432,29 +426,15 @@ export default function DoorstepPinPickerModal({
               </button>
             </div>
 
-            {/* Live Locating / Geocoding / Coordinate Status Chip (Top Left) */}
-            <div className="absolute top-3 left-3 z-20">
-              <div className="px-2.5 py-1 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md text-[10px] font-bold text-slate-700 flex items-center gap-1.5">
-                {isLocatingDevice ? (
-                  <>
-                    <Loader2 size={11} className="animate-spin text-blue-600" />
-                    <span>📡 Detecting doorstep GPS...</span>
-                  </>
-                ) : isGeocoding ? (
-                  <>
-                    <Loader2 size={11} className="animate-spin text-blue-600" />
-                    <span>Resolving address...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>
-                      GPS Locked • {currentCoords.lat.toFixed(4)}°N, {currentCoords.lng.toFixed(4)}°E
-                    </span>
-                  </>
-                )}
+            {/* Transient Loading Indicator Only (No Raw Coordinates Exposed) */}
+            {(isLocatingDevice || isGeocoding) && (
+              <div className="absolute top-3 left-3 z-20">
+                <div className="px-2.5 py-1 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md text-[10px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <Loader2 size={11} className="animate-spin text-blue-600" />
+                  <span>{isLocatingDevice ? 'Detecting doorstep location...' : 'Resolving street address...'}</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 3. Doorstep Details & Confirmation Sheet */}
@@ -468,16 +448,11 @@ export default function DoorstepPinPickerModal({
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                   Detected Area / Street
                 </span>
-                <div className="flex items-center gap-1.5">
-                  {detectedPostcode && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      PIN: {detectedPostcode}
-                    </span>
-                  )}
-                  <span className="text-[10px] font-mono text-slate-500">
-                    GPS Locked • {currentCoords.lat.toFixed(4)}°N, {currentCoords.lng.toFixed(4)}°E
+                {detectedPostcode && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                    PIN: {detectedPostcode}
                   </span>
-                </div>
+                )}
               </div>
               <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug break-words">
                 {detectedAddress}

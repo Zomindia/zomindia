@@ -23,7 +23,18 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
-import { isValidCustomerService } from "../utils/formatters";
+import {
+  isValidCustomerService,
+  sanitizeCatalogText,
+  DEFAULT_CATEGORIES,
+  DEFAULT_SERVICES,
+  getCanonicalCategoryKey,
+  normalizeCategories,
+  normalizeServicesList,
+  getServiceRatingBadgeInfo,
+  isWashingMachineService,
+  healFirestoreCatalogIfNeeded,
+} from "../utils/formatters";
 import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
 import PWAUpdateRegister from "./PWAUpdateRegister";
@@ -104,60 +115,12 @@ const CONSOLIDATED_OFFERS = [
   },
 ];
 
-const SAMPLE_CATEGORIES = [
-  {
-    id: "ac",
-    name: "AC Repair & Service",
-    icon: "Wind",
-    description: "Jet service, gas refill, installation",
-  },
-  {
-    id: "washing",
-    name: "Washing Machine",
-    icon: "RotateCcw",
-    description: "Drum repair, motor fix, spin issue",
-  },
-  {
-    id: "ro",
-    name: "RO Water Purifier",
-    icon: "Droplets",
-    description: "Filter change, membrane replacement",
-  },
-  {
-    id: "fridge",
-    name: "Refrigerator",
-    icon: "Zap",
-    description: "Cooling check, gas charging",
-  },
-  {
-    id: "tv",
-    name: "TV Repair",
-    icon: "Tv",
-    description: "LED/LCD screen, motherboard, sound",
-  },
-  {
-    id: "electrical",
-    name: "Electrician",
-    icon: "Plug",
-    description: "Wiring, switchboard, fuse repair",
-  },
-  {
-    id: "plumbing",
-    name: "Plumber",
-    icon: "Wrench",
-    description: "Pipe leak, tap fittings, motor pump",
-  },
-  {
-    id: "cleaning",
-    name: "Home Cleaning",
-    icon: "Sparkles",
-    description: "Deep bathroom & kitchen sanitization",
-  },
-];
+const SAMPLE_CATEGORIES: Category[] = DEFAULT_CATEGORIES;
 
 export const formatCategoryShortLabel = (name: string): string => {
   if (!name) return "";
-  const lower = name.toLowerCase().trim();
+  const cleaned = sanitizeCatalogText(name);
+  const lower = cleaned.toLowerCase().trim();
   if (lower.includes("ac ") || lower.includes("air conditioner") || lower === "ac repair & service" || lower === "ac service" || lower === "ac") {
     return "AC Service";
   }
@@ -179,8 +142,8 @@ export const formatCategoryShortLabel = (name: string): string => {
   if (lower.includes("electric")) {
     return "Electrician";
   }
-  if (lower.includes("plumb")) {
-    return "Plumbing";
+  if (lower.includes("plumb") || lower.includes("tap")) {
+    return "Plumbing & Taps";
   }
   if (lower.includes("clean") || lower.includes("sanitiz")) {
     return "Cleaning";
@@ -198,7 +161,7 @@ export const formatCategoryShortLabel = (name: string): string => {
     return "Geyser Repair";
   }
   if (lower.includes("microwave") || lower.includes("oven")) {
-    return "Microwave";
+    return "Microwave / Oven";
   }
   if (lower.includes("chimney")) {
     return "Chimney";
@@ -209,13 +172,13 @@ export const formatCategoryShortLabel = (name: string): string => {
   if (lower.includes("carpenter") || lower.includes("wood")) {
     return "Carpentry";
   }
-  return name
+  return cleaned
     .replace(/\(.*?\)/g, "")
     .replace(/Repair\s*&\s*Service/gi, "")
     .replace(/Repair\s*and\s*Service/gi, "")
     .replace(/Services?/gi, "")
     .replace(/Repair/gi, "")
-    .trim() || name;
+    .trim() || cleaned;
 };
 
 export const getCategoryTileStyle = (categoryName: string): { bg: string; text: string; border: string; hoverBg: string } => {
@@ -486,20 +449,6 @@ export default function CustomerHome({
   const [categoryTypeTab, setCategoryTypeTab] = useState<
     "All" | "Home" | "Professional" | "Repair"
   >("All");
-  const INDORE_TYPEWRITER_SERVICES = useMemo(
-    () => [
-      "Search 'Split AC Service'...",
-      "Search 'RO Water Purifier Repair'...",
-      "Search 'Front Load Washing Machine'...",
-      "Search 'Refrigerator Gas Refilling'...",
-      "Search 'Doorstep TV Repair'...",
-    ],
-    [],
-  );
-
-  const [currentPlaceholder, setCurrentPlaceholder] = useState(
-    "Search 'Split AC Service'...",
-  );
 
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -515,50 +464,6 @@ export default function CustomerHome({
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    let serviceIndex = 0;
-    let charIndex = 0;
-    let isDeleting = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    const tick = () => {
-      if (!isMounted) return;
-
-      const currentService =
-        INDORE_TYPEWRITER_SERVICES[
-          serviceIndex % INDORE_TYPEWRITER_SERVICES.length
-        ];
-
-      if (isDeleting) {
-        setCurrentPlaceholder(currentService.substring(0, charIndex - 1));
-        charIndex--;
-      } else {
-        setCurrentPlaceholder(currentService.substring(0, charIndex + 1));
-        charIndex++;
-      }
-
-      let delay = isDeleting ? 25 : 65;
-
-      if (!isDeleting && charIndex === currentService.length) {
-        delay = 1900;
-        isDeleting = true;
-      } else if (isDeleting && charIndex === 0) {
-        isDeleting = false;
-        serviceIndex++;
-        delay = 350;
-      }
-
-      timeoutId = setTimeout(tick, delay);
-    };
-
-    timeoutId = setTimeout(tick, 450);
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
-  }, [INDORE_TYPEWRITER_SERVICES]);
 
   const [partners, setPartners] = useState<PartnerWithInfo[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -857,6 +762,9 @@ export default function CustomerHome({
       .catch((err) => console.error("Error fetching promos:", err));
   }, []);
 
+  const [rawFirestoreServices, setRawFirestoreServices] = useState<any[]>([]);
+  const [rawFirestoreCategories, setRawFirestoreCategories] = useState<Category[]>([]);
+
   useEffect(() => {
     let isMounted = true;
     const q = query(collection(db, "categories"), orderBy("name", "asc"));
@@ -867,19 +775,21 @@ export default function CustomerHome({
         const cats = snap.docs.map(
           (doc) => ({ id: doc.id, ...doc.data() }) as Category,
         );
-        if (cats.length === 0) {
-          setCategories(SAMPLE_CATEGORIES as Category[]);
-          setAllCategories(SAMPLE_CATEGORIES as Category[]);
-        } else {
-          setCategories(cats);
-          setAllCategories(cats);
-        }
+        setRawFirestoreCategories(cats);
+        const normalizedCats = normalizeCategories(
+          cats.length > 0 ? cats : SAMPLE_CATEGORIES,
+          true
+        );
+        setCategories(normalizedCats);
+        setAllCategories(normalizedCats);
         setLoading(false);
       },
       (err) => {
         if (!isMounted) return;
         console.error("Error subscribing to categories:", err);
-        setCategories(SAMPLE_CATEGORIES as Category[]);
+        const fallback = normalizeCategories(SAMPLE_CATEGORIES, true);
+        setCategories(fallback);
+        setAllCategories(fallback);
         setLoading(false);
       },
     );
@@ -895,34 +805,11 @@ export default function CustomerHome({
       collection(db, "services"),
       (snap) => {
         if (!isMounted) return;
-        const validServices = snap.docs
-          .map((d) => {
-            const raw = d.data() as Record<string, any>;
-            const resolvedName = raw.name || raw.title || "";
-            const resolvedPrice = Number(
-              raw.discountedPrice ?? raw.basePrice ?? raw.price ?? 0
-            );
-            const resolvedImage =
-              raw.imageURL ||
-              raw.imageUrl ||
-              raw.image ||
-              (Array.isArray(raw.images) && raw.images.length > 0
-                ? raw.images[0]
-                : undefined);
-            return {
-              ...raw,
-              id: d.id,
-              name: resolvedName,
-              basePrice: resolvedPrice,
-              categoryId: raw.categoryId || raw.category || "",
-              imageURL: resolvedImage,
-            } as Service;
-          })
-          .filter(
-            (s) =>
-              (s as any).isActive !== false && isValidCustomerService(s)
-          );
-        setAllServices(validServices);
+        const rawDocs = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Record<string, any>),
+        }));
+        setRawFirestoreServices(rawDocs);
         setServicesLoading(false);
       },
       (err) => {
@@ -938,6 +825,19 @@ export default function CustomerHome({
   }, []);
 
   useEffect(() => {
+    const activeCats = allCategories.length > 0 ? allCategories : SAMPLE_CATEGORIES;
+    const normalized = normalizeServicesList(
+      rawFirestoreServices.length > 0 ? rawFirestoreServices : DEFAULT_SERVICES,
+      activeCats
+    );
+    setAllServices(normalized);
+
+    if (rawFirestoreCategories.length > 0 || rawFirestoreServices.length > 0) {
+      healFirestoreCatalogIfNeeded(rawFirestoreCategories, rawFirestoreServices);
+    }
+  }, [rawFirestoreServices, rawFirestoreCategories, allCategories]);
+
+  useEffect(() => {
     const handlePullRefresh = async () => {
       try {
         const [catSnap, svcSnap, promoSnap] = await Promise.all([
@@ -949,38 +849,24 @@ export default function CustomerHome({
         const cats = catSnap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Category
         );
-        if (cats.length > 0) {
-          setCategories(cats);
-          setAllCategories(cats);
-        }
+        const normalizedCats = normalizeCategories(
+          cats.length > 0 ? cats : SAMPLE_CATEGORIES,
+          true
+        );
+        setCategories(normalizedCats);
+        setAllCategories(normalizedCats);
 
-        const validServices = svcSnap.docs
-          .map((d) => {
-            const raw = d.data() as Record<string, any>;
-            const resolvedName = raw.name || raw.title || "";
-            const resolvedPrice = Number(
-              raw.discountedPrice ?? raw.basePrice ?? raw.price ?? 0
-            );
-            const resolvedImage =
-              raw.imageURL ||
-              raw.imageUrl ||
-              raw.image ||
-              (Array.isArray(raw.images) && raw.images.length > 0
-                ? raw.images[0]
-                : undefined);
-            return {
-              ...raw,
-              id: d.id,
-              name: resolvedName,
-              basePrice: resolvedPrice,
-              categoryId: raw.categoryId || raw.category || "",
-              imageURL: resolvedImage,
-            } as Service;
-          })
-          .filter(
-            (s) => (s as any).isActive !== false && isValidCustomerService(s)
-          );
-        setAllServices(validServices);
+        const rawSvcs = svcSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Record<string, any>),
+        }));
+        setRawFirestoreServices(rawSvcs);
+        setAllServices(
+          normalizeServicesList(
+            rawSvcs.length > 0 ? rawSvcs : DEFAULT_SERVICES,
+            normalizedCats
+          )
+        );
 
         const allPromos = promoSnap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Promotion
@@ -1024,12 +910,25 @@ export default function CustomerHome({
       ).trim();
       if (!rawCatKey) return;
 
+      const canonicalServiceCat = getCanonicalCategoryKey(rawCatKey);
+
       const matchedCat =
         allCategories.find(
           (c) =>
             c.id === rawCatKey ||
-            c.name.toLowerCase().trim() === rawCatKey.toLowerCase()
+            c.name.toLowerCase().trim() === rawCatKey.toLowerCase() ||
+            (canonicalServiceCat &&
+              getCanonicalCategoryKey(c.name) === canonicalServiceCat)
         ) || null;
+
+      // Ensure Washing Machine section ONLY lists Washing Machine services
+      const resolvedCatName = sanitizeCatalogText(matchedCat?.name || rawCatKey);
+      if (
+        getCanonicalCategoryKey(resolvedCatName) === "washing" &&
+        !isWashingMachineService(service.name)
+      ) {
+        return;
+      }
 
       const groupKey = matchedCat ? matchedCat.id : rawCatKey;
       const existing = groupsMap.get(groupKey);
@@ -1039,8 +938,8 @@ export default function CustomerHome({
         groupsMap.set(groupKey, {
           key: groupKey,
           category: matchedCat,
-          categoryName: matchedCat?.name || rawCatKey,
-          categoryDescription: matchedCat?.description,
+          categoryName: resolvedCatName,
+          categoryDescription: sanitizeCatalogText(matchedCat?.description),
           services: [service],
         });
       }
@@ -1101,22 +1000,24 @@ export default function CustomerHome({
 
   useEffect(() => {
     if (selectedCategory) {
-      const fetchServices = async () => {
-        const path = "services";
-        try {
-          const q = query(
-            collection(db, path),
-            where("categoryId", "==", selectedCategory.id),
-          );
-          const snap = await getDocs(q);
-          const loadedServices = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }) as Service)
-            .filter(isValidCustomerService);
-          setServices(loadedServices);
-        } catch (err) {
-          handleFirestoreError(err, OperationType.LIST, path);
+      const targetKey = getCanonicalCategoryKey(selectedCategory.name || selectedCategory.id);
+      const matchedFromNormalized = allServices.filter((s) => {
+        const sCat = allCategories.find((c) => c.id === s.categoryId);
+        const sKey = getCanonicalCategoryKey(sCat?.name || s.categoryId);
+        if (targetKey === "washing" && !isWashingMachineService(s.name)) {
+          return false;
         }
-      };
+        return s.categoryId === selectedCategory.id || (targetKey && sKey === targetKey);
+      });
+
+      if (matchedFromNormalized.length > 0) {
+        setServices(matchedFromNormalized);
+      } else {
+        const fallbackDefaults = DEFAULT_SERVICES.filter(
+          (s) => getCanonicalCategoryKey(s.categoryId) === targetKey
+        );
+        setServices(fallbackDefaults);
+      }
 
       const fetchPartners = async () => {
         try {
@@ -1161,13 +1062,13 @@ export default function CustomerHome({
         }
       };
 
-      fetchServices();
       fetchPartners();
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, allServices, allCategories]);
 
   if (selectedCategory) {
     const validCategoryServices = services.filter(isValidCustomerService);
+    const cleanSelectedCatName = sanitizeCatalogText(selectedCategory.name);
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2">
@@ -1185,11 +1086,11 @@ export default function CustomerHome({
               <Sparkles size={11} /> Verified Category
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight uppercase font-display">
-              {selectedCategory.name}
+              {cleanSelectedCatName}
             </h2>
             {selectedCategory.description && (
               <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5 max-w-2xl line-clamp-2">
-                {selectedCategory.description}
+                {sanitizeCatalogText(selectedCategory.description)}
               </p>
             )}
           </div>
@@ -1198,7 +1099,7 @@ export default function CustomerHome({
             <div className="hidden sm:block w-24 h-24 rounded-2xl overflow-hidden border border-slate-100 shadow-sm shrink-0 bg-slate-50">
               <img
                 src={selectedCategory.imageURL}
-                alt={selectedCategory.name}
+                alt={cleanSelectedCatName}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
                 loading="lazy"
@@ -1209,34 +1110,46 @@ export default function CustomerHome({
 
         {/* Urban Company-Style Compact Horizontal Row Layout for Service Items */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-1 mb-4">
-          {validCategoryServices.map((service, idx) => (
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              key={service.id}
-              className="bg-white border border-slate-200/80 hover:border-blue-600/70 rounded-2xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between gap-4 group"
-            >
-              {/* Left Column (Text & Details) */}
-              <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
-                <div>
-                  <h3
-                    onClick={() => onServiceSelect(service.id)}
-                    className="text-base sm:text-lg font-bold text-slate-900 hover:text-blue-700 transition-colors line-clamp-1 cursor-pointer leading-snug"
-                  >
-                    {service.name}
-                  </h3>
+          {validCategoryServices.map((service, idx) => {
+            const ratingInfo = getServiceRatingBadgeInfo(service);
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                key={service.id}
+                className="h-full bg-white border border-slate-200/80 hover:border-blue-600/70 rounded-2xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between gap-4 group"
+              >
+                {/* Left Column (Text & Details) */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+                  <div>
+                    <h3
+                      onClick={() => onServiceSelect(service.id)}
+                      className="text-base sm:text-lg font-bold text-slate-900 hover:text-blue-700 transition-colors line-clamp-1 cursor-pointer leading-snug"
+                    >
+                      {sanitizeCatalogText(service.name)}
+                    </h3>
 
-                  {/* Rating badge & duration: subtle gray/amber */}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-100/70 text-amber-700 rounded-md text-[11px] font-bold">
-                      <Star size={11} fill="currentColor" className="text-amber-500" />
-                      <span>{service.rating || 4.8}</span>
+                    {/* Rating badge & duration: subtle gray/amber */}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-100/70 text-amber-700 rounded-md text-[11px] font-bold">
+                        <Star size={11} fill="currentColor" className="text-amber-500" />
+                        <span>
+                          {ratingInfo.isNew
+                            ? "New"
+                            : `${ratingInfo.ratingText}${ratingInfo.reviewCount >= 5 ? ` (${ratingInfo.reviewCount})` : ""}`}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        ({service.duration || "45-60 mins"})
+                      </span>
                     </div>
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      ({service.duration || "45-60 mins"})
-                    </span>
-                  </div>
+
+                    {service.description && (
+                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[2.5rem] mt-1.5">
+                        {sanitizeCatalogText(service.description)}
+                      </p>
+                    )}
 
                   {/* Price display with helper text */}
                   <div className="mt-2.5 flex items-baseline gap-1.5">
@@ -1296,8 +1209,9 @@ export default function CustomerHome({
                   <Plus size={12} strokeWidth={2.5} /> ADD
                 </button>
               </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
 
           {validCategoryServices.length === 0 && (
             <div className="col-span-full py-12 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
@@ -1596,27 +1510,27 @@ export default function CustomerHome({
           {/* Search Input Container - Flexes to fill full width */}
           <div className="relative z-50 flex-1 min-w-0">
             <div 
-              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 px-3"
+              className="relative flex items-center h-11 bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white border border-slate-200/90 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/10 rounded-2xl shadow-xs transition-all duration-200 pl-3 pr-1.5 gap-2"
             >
-              <div className="text-slate-400 focus-within:text-blue-600 flex items-center shrink-0 mr-2">
-                <Search size={18} className="stroke-[2.2]" />
+              <div className="text-slate-400 focus-within:text-blue-600 flex items-center justify-center shrink-0">
+                <Search size={17} className="stroke-[2.2]" />
               </div>
 
               <input
                 type="text"
                 inputMode="text"
                 enterKeyHint="search"
-                placeholder={currentPlaceholder}
+                placeholder="Search AC, RO, Fridge, TV..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium min-w-0 ${searchQuery.trim().length > 0 ? "pr-20" : "pr-10"}`}
+                className="flex-1 w-full min-w-0 py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium truncate"
               />
 
               {searchQuery.trim().length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-11 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 cursor-pointer"
+                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition-all active:scale-90 cursor-pointer shrink-0 flex items-center justify-center"
                   aria-label="Clear search"
                 >
                   <X size={15} />
@@ -1625,7 +1539,7 @@ export default function CustomerHome({
 
               <button
                 type="submit"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-lg flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white h-8 w-8 rounded-xl flex items-center justify-center transition-all shadow-xs cursor-pointer shrink-0"
                 aria-label="Search"
               >
                 <Search className="w-4 h-4" />
@@ -1774,13 +1688,13 @@ export default function CustomerHome({
               </div>
             </div>
 
-            {/* Service Categories Grid */}
+            {/* Service Categories Grid: Balanced 2x4 (8 categories) grid */}
             {loading && categories.length === 0 ? (
-              <SkeletonCategoryGrid count={14} />
+              <SkeletonCategoryGrid count={8} />
             ) : (
               <motion.div
                 layout
-                className="grid grid-cols-4 sm:grid-cols-6 gap-x-2 gap-y-4 my-3 px-1 relative z-10"
+                className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-x-2 gap-y-4 my-3 px-1 relative z-10"
               >
                 <AnimatePresence mode="popLayout">
                   {categories
@@ -1791,11 +1705,13 @@ export default function CustomerHome({
                       }
                       return true;
                     })
+                    .slice(0, 8)
                     .map((cat) => {
-                      const Icon = resolveCategoryIcon(cat.icon, cat.name);
-                      const tileStyle = getCategoryTileStyle(cat.name);
+                      const cleanCatName = sanitizeCatalogText(cat.name);
+                      const Icon = resolveCategoryIcon(cat.icon, cleanCatName);
+                      const tileStyle = getCategoryTileStyle(cleanCatName);
                       const badgeText = resolveBadge(cat);
-                      const badgeColorClass = getCategoryBadgeConfig(badgeText, cat.name);
+                      const badgeColorClass = getCategoryBadgeConfig(badgeText, cleanCatName);
                       const isFailedIcon = failedIcons[cat.id];
                       const hasValidIconURL =
                         cat.iconURL &&
@@ -1840,7 +1756,7 @@ export default function CustomerHome({
                             {hasValidIconURL ? (
                               <img
                                 src={cat.iconURL}
-                                alt={cat.name}
+                                alt={cleanCatName}
                                 width={48}
                                 height={48}
                                 className="w-full h-full object-contain drop-shadow-xs transition-transform duration-200 group-hover:scale-110"
@@ -1861,8 +1777,8 @@ export default function CustomerHome({
                           </div>
 
                           {/* Typography (Clean, Centered, No Cramping) */}
-                          <span className="mt-2 text-slate-800 font-semibold text-[11px] sm:text-xs leading-snug line-clamp-2 max-w-[76px] sm:max-w-[88px] text-center select-none">
-                            {formatCategoryShortLabel(cat.name)}
+                          <span className="mt-2 text-slate-800 font-semibold text-[11px] sm:text-xs leading-snug line-clamp-2 max-w-[78px] sm:max-w-[92px] text-center select-none">
+                            {formatCategoryShortLabel(cleanCatName)}
                           </span>
                         </motion.button>
                       );
@@ -1886,35 +1802,6 @@ export default function CustomerHome({
                     </p>
                   </div>
                 )}
-
-                <motion.button
-                  layout
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="group relative flex flex-col items-center justify-start p-1 bg-transparent border-0 shadow-none cursor-pointer active:scale-95 transition-all duration-200 select-none focus:outline-none"
-                  onClick={() => {
-                    const detailsSec =
-                      document.getElementById("categories-grid");
-                    if (detailsSec) {
-                      window.scrollTo({
-                        top:
-                          detailsSec.offsetTop + detailsSec.offsetHeight + 100,
-                        behavior: "smooth",
-                      });
-                    }
-                  }}
-                >
-                  <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-2xl sm:rounded-3xl bg-slate-100 border border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:scale-105 transition-all duration-200 flex items-center justify-center p-2.5 overflow-visible">
-                    <div className="flex gap-1 items-center justify-center">
-                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                      <div className="w-1.5 h-1.5 bg-slate-400 rounded-full transition-transform duration-200 group-hover:scale-125 group-hover:bg-slate-700" />
-                    </div>
-                  </div>
-                  <span className="mt-2 text-slate-800 font-semibold text-[11px] sm:text-xs leading-snug line-clamp-2 max-w-[76px] sm:max-w-[88px] text-center select-none">
-                    More
-                  </span>
-                </motion.button>
               </motion.div>
             )}
           </div>
@@ -2210,11 +2097,16 @@ export default function CustomerHome({
                 </div>
 
                 <div
-                  className="flex gap-3 overflow-x-auto scrollbar-none pb-2 snap-x snap-mandatory touch-pan-xy"
+                  className="flex items-stretch gap-3 overflow-x-auto scrollbar-none pb-2 snap-x snap-mandatory touch-pan-xy"
                   style={{ touchAction: "pan-x pan-y" }}
                 >
                   {group.services.map((service) => {
-                    const title = service.name || (service as any).title || "Service";
+                    const title = sanitizeCatalogText(
+                      service.name || (service as any).title || "Service"
+                    );
+                    const cleanDesc =
+                      sanitizeCatalogText(service.description) ||
+                      "Verified doorstep repair & maintenance by certified technicians.";
                     const displayPrice = Number(
                       (service as any).discountedPrice ??
                         service.basePrice ??
@@ -2231,10 +2123,7 @@ export default function CustomerHome({
                     const discountPercent = hasDiscount
                       ? Math.round(((originalPrice - displayPrice) / originalPrice) * 100)
                       : 0;
-                    const ratingValue = Number(
-                      service.rating || service.averageRating || 4.8
-                    ).toFixed(1);
-                    const reviewCount = service.reviewCount || service.totalReviews;
+                    const ratingInfo = getServiceRatingBadgeInfo(service);
                     const imageSrc =
                       service.imageURL ||
                       (service as any).imageUrl ||
@@ -2250,11 +2139,11 @@ export default function CustomerHome({
                       <div
                         key={service.id}
                         onClick={() => onServiceSelect(service.id)}
-                        className="min-w-[230px] sm:min-w-[255px] max-w-[255px] snap-start bg-white rounded-2xl border border-slate-200/90 p-3 shadow-2xs hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between shrink-0 group cursor-pointer"
+                        className="min-w-[230px] sm:min-w-[255px] max-w-[255px] h-auto snap-start bg-white rounded-2xl border border-slate-200/90 p-3 shadow-2xs hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between shrink-0 group cursor-pointer"
                       >
-                        <div>
+                        <div className="flex flex-col flex-1 min-w-0">
                           <div
-                            className={`relative w-full h-32 rounded-xl overflow-hidden ${tileStyle.bg} mb-2.5 border border-slate-100 flex items-center justify-center`}
+                            className={`relative w-full h-32 rounded-xl overflow-hidden ${tileStyle.bg} mb-2.5 border border-slate-100 flex items-center justify-center shrink-0`}
                           >
                             {showImage ? (
                               <img
@@ -2277,12 +2166,18 @@ export default function CustomerHome({
                               />
                             )}
                             <div className="absolute top-2 left-2 bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-xs">
-                              <span>{ratingValue}★</span>
-                              {reviewCount ? (
-                                <span className="text-[9px] opacity-90">
-                                  ({reviewCount})
-                                </span>
-                              ) : null}
+                              {ratingInfo.isNew ? (
+                                <span>★ New</span>
+                              ) : (
+                                <>
+                                  <span>{ratingInfo.ratingText} ★</span>
+                                  {ratingInfo.reviewCount >= 5 ? (
+                                    <span className="text-[9px] opacity-90">
+                                      ({ratingInfo.reviewCount})
+                                    </span>
+                                  ) : null}
+                                </>
+                              )}
                             </div>
                             {hasDiscount && discountPercent > 0 && (
                               <div className="absolute top-2 right-2 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shadow-xs">
@@ -2297,15 +2192,16 @@ export default function CustomerHome({
                           <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
                             {title}
                           </h4>
-                          {service.description && (
-                            <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-snug">
-                              {service.description}
-                            </p>
-                          )}
+                          <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[2.5rem] mt-1">
+                            {cleanDesc}
+                          </p>
                         </div>
 
-                        <div className="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                          <div>
+                        <div className="pt-2.5 mt-auto border-t border-slate-100 flex items-center justify-between gap-2 shrink-0">
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-medium text-slate-400 tracking-wider uppercase block leading-tight mb-0.5">
+                              Starts At
+                            </span>
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-sm sm:text-base font-black text-slate-900">
                                 ₹{displayPrice.toLocaleString("en-IN")}
@@ -2316,11 +2212,6 @@ export default function CustomerHome({
                                 </span>
                               )}
                             </div>
-                            {hasDiscount && (
-                              <span className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider block">
-                                Save ₹{(originalPrice - displayPrice).toLocaleString("en-IN")}
-                              </span>
-                            )}
                           </div>
                           <button
                             type="button"

@@ -54,7 +54,7 @@ import ZomatoPageEndMarker, { getPageDisplayName } from './components/ZomatoPage
 import AboutUs from './components/AboutUs';
 import Footer from './components/Footer';
 import AiSupportChat from './components/AiSupportChat';
-import { isValidCustomerService } from './utils/formatters';
+import { isValidCustomerService, normalizeCategories, normalizeServicesList } from './utils/formatters';
 import { Telemetry } from './services/telemetry';
 
 // Direct static imports for robust component resolution
@@ -525,10 +525,11 @@ export default function App() {
     let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       if (!isMounted) return;
-      const loadedServices = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Service))
-        .filter(isValidCustomerService);
-      setAllServices(loadedServices);
+      const rawServices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
+      setAllServices(prev => {
+        const currentCats = normalizeCategories(allCategories);
+        return normalizeServicesList(rawServices, currentCats);
+      });
       if (isInitialServices) {
         isInitialServices = false;
       } else {
@@ -545,7 +546,8 @@ export default function App() {
     let isInitialCategories = true;
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
       if (!isMounted) return;
-      setAllCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      const rawCategories = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      setAllCategories(normalizeCategories(rawCategories));
       if (isInitialCategories) {
         isInitialCategories = false;
       } else {
@@ -574,11 +576,16 @@ export default function App() {
         getDocs(collection(db, 'categories')),
       ]);
 
-      const loadedServices = svcSnap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Service))
-        .filter(isValidCustomerService);
+      const normalizedCats = normalizeCategories(
+        catSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category))
+      );
+      setAllCategories(normalizedCats);
+
+      const loadedServices = normalizeServicesList(
+        svcSnap.docs.map(d => ({ id: d.id, ...d.data() } as Service)),
+        normalizedCats
+      );
       setAllServices(loadedServices);
-      setAllCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
 
       const currentUser = auth.currentUser;
       if (currentUser) {
@@ -2154,9 +2161,9 @@ If you have any billing questions, or if your refund is delayed, please email us
               {/* Mobile Greeting starting cleanly right after the logo container */}
               {(profile || user || auth.currentUser) && (
                 <div className="flex md:hidden items-center select-none min-w-0">
-                  <span className="text-[11px] font-bold bg-sky-50/80 border border-sky-100/90 px-2.5 py-1 rounded-xl shadow-xs inline-flex items-center">
-                    <span className="bg-gradient-to-r from-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight truncate max-w-[140px] xs:max-w-[200px]">
-                      {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
+                  <span className="bg-sky-50/80 border border-sky-100/90 px-2 py-1 rounded-xl shadow-xs inline-flex items-center min-w-0">
+                    <span className="text-xs font-semibold text-slate-800 max-w-[110px] sm:max-w-[180px] truncate block">
+                      नमस्ते, {profile?.displayName || profile?.fullName || user?.displayName || 'Customer'}
                     </span>
                   </span>
                 </div>
@@ -2190,11 +2197,9 @@ If you have any billing questions, or if your refund is delayed, please email us
                       className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
                       id="nav-green-greeting"
                     >
-                      <div className="flex flex-col text-right items-end">
-                        <span className="text-xs font-bold leading-tight flex items-center justify-end" id="portal-header-greeter">
-                          <span className="bg-gradient-to-r from-[#002e6e] via-[#002e6e] to-[#00baf2] bg-clip-text text-transparent font-extrabold tracking-tight">
-                            {profile?.displayName || profile?.fullName || user?.displayName ? `नमस्ते, ${profile?.displayName || profile?.fullName || user?.displayName}` : "नमस्ते"}
-                          </span>
+                      <div className="flex flex-col text-right items-end min-w-0">
+                        <span className="text-xs font-semibold text-slate-800 max-w-[110px] sm:max-w-[180px] truncate block" id="portal-header-greeter">
+                          नमस्ते, {profile?.displayName || profile?.fullName || user?.displayName || 'Customer'}
                         </span>
                         <span 
                           onClick={(e) => {

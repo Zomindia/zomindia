@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Star, ArrowRight } from 'lucide-react';
 import { Service } from '../types';
+import { getServiceRatingBadgeInfo, sanitizeCatalogText } from '../utils/formatters';
 
 interface ServiceCardProps {
   service: Service;
@@ -16,13 +17,16 @@ export const getCategoryBadgeClass = (categoryName?: string) => {
   if (lower.includes('ac') || lower.includes('cool') || lower.includes('air') || lower.includes('freeze')) {
     return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200/70';
   }
+  if (lower.includes('refrigerat') || lower.includes('fridge')) {
+    return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200/70';
+  }
   if (lower.includes('clean') || lower.includes('wash') || lower.includes('maid') || lower.includes('pest')) {
     return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70';
   }
-  if (lower.includes('electr') || lower.includes('wire') || lower.includes('power') || lower.includes('light')) {
+  if (lower.includes('electr') || lower.includes('wire') || lower.includes('power') || lower.includes('light') || lower.includes('microwave') || lower.includes('oven')) {
     return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/70';
   }
-  if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('water') || lower.includes('ro') || lower.includes('leak')) {
+  if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('water') || lower.includes('ro') || lower.includes('leak') || lower.includes('tap')) {
     return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200/70';
   }
   return 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200/60';
@@ -36,7 +40,12 @@ export default function ServiceCard({
   className = '',
 }: ServiceCardProps) {
   const originalMrp = (service as any).originalPrice || (service as any).mrp || Math.round(service.basePrice * 1.25);
-  const ratingValue = Number(service.rating || 4.8).toFixed(1);
+  const ratingInfo = getServiceRatingBadgeInfo(service);
+  const cleanTitle = sanitizeCatalogText(service.name);
+  const cleanCategoryName = sanitizeCatalogText(categoryName) || 'Home Service';
+  const cleanDescription =
+    sanitizeCatalogText(service.description) ||
+    'Verified doorstep repair & maintenance by certified technicians.';
 
   return (
     <motion.div
@@ -46,18 +55,18 @@ export default function ServiceCard({
       whileHover={{ y: -4, scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.25, delay: idx * 0.04 }}
-      className={`bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-3 sm:p-4 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-blue-200/80 cursor-pointer group flex flex-col justify-between text-left shadow-xs ${className}`}
+      className={`h-full bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-3 sm:p-4 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-blue-200/80 cursor-pointer group flex flex-col justify-between text-left shadow-xs ${className}`}
       onClick={() => onSelect(service.id)}
     >
-      <div className="flex flex-col w-full min-w-0">
+      <div className="flex flex-col w-full min-w-0 flex-1">
         {/* Exact Dimensions & Media Frame with Zomato/Swiggy Rating Badge */}
-        <div className="w-full aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-3 bg-slate-100 relative shadow-inner">
+        <div className="w-full aspect-[4/3] rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 sm:mb-3 bg-slate-100 relative shadow-inner shrink-0">
           <img
             src={
               service.imageURL ||
               'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=400'
             }
-            alt={service.name}
+            alt={cleanTitle}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
             referrerPolicy="no-referrer"
             loading="lazy"
@@ -65,32 +74,35 @@ export default function ServiceCard({
           {/* Zomato-style emerald green rating pill */}
           <div className="absolute top-2 left-2 bg-emerald-600 text-white font-bold text-xs px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm backdrop-blur-xs z-10 select-none">
             <Star size={10} className="fill-white text-white shrink-0" />
-            <span>{ratingValue}</span>
+            <span>{ratingInfo.isNew ? 'New' : ratingInfo.ratingText}</span>
+            {!ratingInfo.isNew && ratingInfo.reviewCount >= 5 && (
+              <span className="text-[10px] opacity-90 font-semibold">({ratingInfo.reviewCount})</span>
+            )}
           </div>
         </div>
 
         {/* Category Tag: Vibrant Mini-Pill Badge */}
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wider inline-flex items-center gap-1 w-fit mb-1.5 ${getCategoryBadgeClass(
-            categoryName
+          className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wider inline-flex items-center gap-1 w-fit max-w-full truncate mb-1.5 ${getCategoryBadgeClass(
+            cleanCategoryName
           )}`}
         >
-          {categoryName || 'Home Service'}
+          <span className="truncate">{cleanCategoryName}</span>
         </span>
 
         {/* Title: High-Contrast Dark Slate with Smooth Blue Hover Transition */}
         <h4 className="text-slate-900 font-extrabold text-sm sm:text-base line-clamp-1 group-hover:text-blue-600 transition-colors duration-200 leading-snug">
-          {service.name}
+          {cleanTitle}
         </h4>
 
-        {/* Description: Clean and readable */}
-        <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 mb-2.5 font-medium leading-relaxed">
-          {service.description}
+        {/* Description: Strict 2-line clamping & min-h-[2.5rem] for uniform card height */}
+        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[2.5rem] mt-1 mb-2.5">
+          {cleanDescription}
         </p>
       </div>
 
       {/* Price Section & Zomato/Swiggy Gradient "Book" Button */}
-      <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
+      <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto w-full shrink-0">
         <div className="min-w-0">
           <span className="text-[10px] font-medium text-slate-400 tracking-wider uppercase block leading-tight mb-0.5">
             STARTS AT

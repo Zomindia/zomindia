@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { notifyBookingUpdate } from '../lib/notifications';
 import { Booking, PartnerProfile, UserProfile, Service, Category } from '../types';
+import { resolveDoorstepCoords } from './tracking/TrackingModal';
 
 export interface UnassignedJobDispatcherProps {
   bookings: Booking[];
@@ -196,8 +197,9 @@ export default function UnassignedJobDispatcher({
     const currentService = selectedBooking ? services.find(s => s.id === selectedBooking.serviceId) : null;
     const targetCatId = currentService?.categoryId;
 
-    const bLat = typeof selectedBooking?.lat === 'number' ? selectedBooking.lat : (typeof (selectedBooking as any)?.customerLocation?.lat === 'number' ? (selectedBooking as any).customerLocation.lat : 22.7196);
-    const bLng = typeof selectedBooking?.lng === 'number' ? selectedBooking.lng : (typeof (selectedBooking as any)?.customerLocation?.lng === 'number' ? (selectedBooking as any).customerLocation.lng : 75.8577);
+    const resolvedBookingCoords = resolveDoorstepCoords(selectedBooking);
+    const bLat = resolvedBookingCoords.lat;
+    const bLng = resolvedBookingCoords.lng;
 
     const listWithDistance = partners.map((p) => {
       const pLat = typeof p.lat === 'number' && !isNaN(p.lat) 

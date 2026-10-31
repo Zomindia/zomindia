@@ -38,6 +38,7 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { formatTime12Hour } from "../utils/formatTime";
+import { normalizeCategories, normalizeServicesList } from "../utils/formatters";
 import { notifyBookingUpdate } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
@@ -509,12 +510,13 @@ export default function AdminDashboard({
       (err) => handleFirestoreError(err, OperationType.LIST, "users"),
     );
 
+    let currentAdminCategories: Category[] = [];
     const unsubCategories = onSnapshot(
       collection(db, "categories"),
       (snap) => {
-        setCategories(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
-        );
+        const rawCats = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Category);
+        currentAdminCategories = normalizeCategories(rawCats);
+        setCategories(currentAdminCategories);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "categories"),
     );
@@ -525,7 +527,7 @@ export default function AdminDashboard({
         const sList = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Service,
         );
-        setServices(sList);
+        setServices(normalizeServicesList(sList, currentAdminCategories));
       },
       (err) => handleFirestoreError(err, OperationType.LIST, "services"),
     );

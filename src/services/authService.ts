@@ -100,6 +100,12 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
   const safeDisplayName = raw?.displayName || safeFullName || (phoneNumber ? `Customer (${phoneNumber.slice(-4)})` : 'Customer');
   const safeOnboardingComplete = raw ? (raw?.onboardingComplete === true) : false;
 
+  const rawAddress = raw?.address || raw?.customerData?.address || '';
+  const cleanAddress = rawAddress.toLowerCase().includes('lasuriamori') ? '' : rawAddress;
+  const rawSavedAddresses = Array.isArray(raw?.savedAddresses)
+    ? raw.savedAddresses.filter((a: any) => !String(a?.address || '').toLowerCase().includes('lasuriamori'))
+    : [];
+
   const safeProfile = {
     ...raw,
     uid,
@@ -112,7 +118,10 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
     adminSubRole: isMasterAdmin ? 'head' : (raw?.adminSubRole || undefined),
     walletBalance: raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101,
     welcomeBonusClaimed: true,
-    savedAddresses: Array.isArray(raw?.savedAddresses) ? raw.savedAddresses : [],
+    address: cleanAddress,
+    houseNumber: raw?.houseNumber || raw?.customerData?.houseNumber || '',
+    customerLocation: raw?.customerLocation || raw?.customerData?.customerLocation || undefined,
+    savedAddresses: rawSavedAddresses,
     addresses: Array.isArray(raw?.addresses) ? raw.addresses : [],
     bookings: Array.isArray(raw?.bookings) ? raw.bookings : [],
     onboardingComplete: safeOnboardingComplete,
@@ -124,7 +133,9 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
       mobile: raw?.customerData?.mobile || phoneNumber || '',
       walletBalance: raw?.customerData?.walletBalance !== undefined ? Number(raw.customerData.walletBalance) : (raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101),
       welcomeBonusClaimed: true,
-      address: raw?.customerData?.address || '',
+      address: cleanAddress,
+      houseNumber: raw?.customerData?.houseNumber || raw?.houseNumber || '',
+      customerLocation: raw?.customerData?.customerLocation || raw?.customerLocation || undefined,
       gender: raw?.customerData?.gender || '',
       languagePreference: raw?.customerData?.languagePreference || 'English',
       houseType: raw?.customerData?.houseType || 'Apartment',

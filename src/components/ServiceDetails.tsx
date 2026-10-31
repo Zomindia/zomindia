@@ -38,7 +38,13 @@ import {
 import BookingModal from "./BookingModal";
 import { LoadingScreen } from "./LoadingIndicator";
 import { getSampledIndoreHighDemandAreas } from "../utils/indoreDemandAreas";
-import { isValidCustomerService } from "../utils/formatters";
+import {
+  isValidCustomerService,
+  normalizeCategories,
+  normalizeServicesList,
+  normalizeServiceItem,
+  getServiceRatingBadgeInfo,
+} from "../utils/formatters";
 
 interface ServiceDetailsProps {
   serviceId: string;
@@ -181,25 +187,28 @@ export default function ServiceDetails({
         setLoading(true);
         // 1. Fetch All Categories
         const categoriesSnap = await getDocs(collection(db, "categories"));
-        const categoriesList = categoriesSnap.docs.map(
+        const rawCategories = categoriesSnap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Category,
         );
+        const categoriesList = normalizeCategories(rawCategories);
         setCategories(categoriesList);
 
         // 2. Fetch All Services for the category carousel
         const servicesSnap = await getDocs(collection(db, "services"));
-        const servicesList = servicesSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as Service)
-          .filter(isValidCustomerService);
+        const rawServices = servicesSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Service,
+        );
+        const servicesList = normalizeServicesList(rawServices, categoriesList);
         setAllServices(servicesList);
 
         // 3. Fetch Service
         const serviceSnap = await getDoc(doc(db, "services", currentServiceId));
-        if (serviceSnap.exists()) {
-          const serviceData = {
-            id: serviceSnap.id,
-            ...serviceSnap.data(),
-          } as Service;
+        const matchedFromList = servicesList.find((s) => s.id === currentServiceId);
+        if (serviceSnap.exists() || matchedFromList) {
+          const rawServiceData = serviceSnap.exists()
+            ? ({ id: serviceSnap.id, ...serviceSnap.data() } as Service)
+            : matchedFromList!;
+          const serviceData = normalizeServiceItem(rawServiceData, categoriesList);
           setService(serviceData);
 
           // 4. Set Specific Category
@@ -265,7 +274,8 @@ export default function ServiceDetails({
     originalMrp > 0
       ? Math.max(12, Math.round((savingAmount / originalMrp) * 100))
       : 23;
-  const ratingValue = Number(service.rating || 4.8).toFixed(1);
+  const ratingInfo = getServiceRatingBadgeInfo(service);
+  const ratingValue = ratingInfo.isNew ? "New" : ratingInfo.ratingText;
 
   const checklistItems: string[] =
     service.checklist && service.checklist.length > 0
@@ -823,10 +833,15 @@ export default function ServiceDetails({
                             {srv.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
-                        <div className="absolute top-2 left-2 bg-emerald-600 text-white font-bold text-xs px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
-                          <Star size={10} className="fill-white text-white shrink-0" />
-                          <span>{Number(srv.rating || 4.8).toFixed(1)}</span>
-                        </div>
+                        {(() => {
+                          const srvRating = getServiceRatingBadgeInfo(srv);
+                          return (
+                            <div className="absolute top-2 left-2 bg-emerald-600 text-white font-bold text-xs px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                              <Star size={10} className="fill-white text-white shrink-0" />
+                              <span>{srvRating.isNew ? "New" : srvRating.ratingText}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Info */}
@@ -834,7 +849,7 @@ export default function ServiceDetails({
                         <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
                           {srv.name}
                         </h4>
-                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 font-medium">
+                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[2.5rem] mt-0.5 font-medium">
                           {srv.description}
                         </p>
                       </div>

@@ -77,9 +77,11 @@ export function calculateHaversineDistance(
   return R * c;
 }
 
-function isGenericVijayNagarDefault(lat?: number | null, lng?: number | null): boolean {
+function isLegacyCityDefault(lat?: number | null, lng?: number | null): boolean {
   if (typeof lat !== "number" || typeof lng !== "number") return false;
-  return Math.abs(lat - 22.7533) < 0.0005 && Math.abs(lng - 75.8937) < 0.0005;
+  const isRajwada = Math.abs(lat - 22.7196) < 0.002 && Math.abs(lng - 75.8577) < 0.002;
+  const isVijayNagar = Math.abs(lat - 22.7533) < 0.002 && Math.abs(lng - 75.8937) < 0.002;
+  return isRajwada || isVijayNagar;
 }
 
 function matchLevel2MicroLocality(addressStr: string): { lat: number; lng: number } | null {
@@ -156,8 +158,8 @@ export function resolveDoorstepCoords(
       lat !== 0 &&
       lng !== 0
     ) {
-      if (isGenericVijayNagarDefault(lat, lng) && level2Match) {
-        return level2Match;
+      if (isLegacyCityDefault(lat, lng) && (level2Match || level1Match)) {
+        return (level2Match || level1Match)!;
       }
       return { lat, lng };
     }
@@ -171,26 +173,31 @@ export function resolveDoorstepCoords(
 
 /**
  * Validates whether a partner GPS coordinate is an authentic live reading
- * (rejects legacy Rajwada dummy coordinates, 0/0, or coordinates sitting directly on doorstep during approach).
+ * within Greater Indore bounds (without rejecting distant partners > 5 km).
  */
 export function isValidPartnerGps(
   candidate: { lat?: any; lng?: any } | null | undefined,
-  destCoords: { lat: number; lng: number },
-  status?: string
+  _destCoords?: { lat: number; lng: number },
+  _status?: string
 ): candidate is { lat: number; lng: number; heading?: number | null } {
   if (!candidate) return false;
   const lat = Number(candidate.lat);
   const lng = Number(candidate.lng);
-  if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return false;
-
-  const distKm = calculateHaversineDistance({ lat, lng }, destCoords);
-  const normalizedStatus = (status || "on_the_way").toLowerCase();
-
-  // Never place approaching technician right on top of customer's doorstep or > 5 km away
   if (
-    !["arrived", "in_progress", "completed"].includes(normalizedStatus) &&
-    (distKm < 0.08 || distKm > 5.0)
+    typeof lat !== "number" ||
+    isNaN(lat) ||
+    !isFinite(lat) ||
+    typeof lng !== "number" ||
+    isNaN(lng) ||
+    !isFinite(lng) ||
+    lat === 0 ||
+    lng === 0
   ) {
+    return false;
+  }
+
+  // Greater Indore geographic sanity bounds
+  if (lat < 22.5 || lat > 23.0 || lng < 75.6 || lng > 76.1) {
     return false;
   }
 

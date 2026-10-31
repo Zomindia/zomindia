@@ -10,6 +10,8 @@ import {
   doc, 
   setDoc, 
   addDoc,
+  updateDoc,
+  arrayUnion,
   onSnapshot, 
   runTransaction 
 } from 'firebase/firestore';
@@ -98,7 +100,6 @@ const INDORE_QUICK_LOCALITIES = [
   'Scheme 54',
   'Bhanwarkua',
   'Mahalaxmi Nagar',
-  'Lasuriamori',
   'Saket',
   'Annapurna'
 ] as const;
@@ -111,7 +112,6 @@ export const LOCALITY_COORDS: Record<string, { lat: number; lng: number }> = {
   'Scheme 54': { lat: 22.7540, lng: 75.8950 },
   'Bhanwarkua': { lat: 22.6926, lng: 75.8676 },
   'Mahalaxmi Nagar': { lat: 22.7627, lng: 75.9038 },
-  'Lasuriamori': { lat: 22.7780, lng: 75.9250 },
   'Saket': { lat: 22.7215, lng: 75.8988 },
   'Annapurna': { lat: 22.6983, lng: 75.8398 }
 };
@@ -129,11 +129,15 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   // Load saved progress if it exists and matches the current service
   const savedState = useMemo(() => {
     try {
-      const saved = localStorage.getItem('zomindia_pending_booking');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.serviceId === service.id) {
-          return parsed;
+      const raw = localStorage.getItem('zomindia_pending_booking');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved?.address?.toLowerCase().includes('lasuriamori') || saved?.address?.toLowerCase().includes('singapore')) {
+          localStorage.removeItem('zomindia_pending_booking');
+          return null;
+        }
+        if (saved && saved.serviceId === service.id) {
+          return saved;
         }
       }
     } catch (e) {
@@ -171,14 +175,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   const todayDisplay = useMemo(() => formatShortDisplay(todayDateObj), [todayDateObj]);
   const tomorrowDisplay = useMemo(() => formatShortDisplay(tomorrowDateObj), [tomorrowDateObj]);
 
-  // Saved user addresses from profile
+  // Saved user addresses from profile (filtering out any stale Lasuriamori cache)
   const userSavedAddresses = useMemo<SavedAddress[]>(() => {
     const list: SavedAddress[] = [];
     if (Array.isArray(profile?.savedAddresses) && profile.savedAddresses.length > 0) {
-      return profile.savedAddresses;
+      const cleanSaved = profile.savedAddresses.filter(
+        (a) => a?.address && !a.address.toLowerCase().includes('lasuriamori')
+      );
+      if (cleanSaved.length > 0) {
+        return cleanSaved;
+      }
     }
     const profileAddr = profile?.address || profile?.customerData?.address;
-    if (profileAddr && !isBroadIndoreName(profileAddr)) {
+    if (profileAddr && !isBroadIndoreName(profileAddr) && !profileAddr.toLowerCase().includes('lasuriamori')) {
       list.push({
         id: 'profile_home_default',
         tag: 'Home',
@@ -186,29 +195,74 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         address: profileAddr,
         city: 'Indore',
         fullAddress: [(profile as any)?.houseNumber, profileAddr].filter(Boolean).join(', '),
+        lat: profile?.customerLocation?.lat,
+        lng: profile?.customerLocation?.lng,
         isDefault: true
       });
     }
     return list;
   }, [profile]);
 
+  const latestUserSavedAddress = userSavedAddresses.length > 0
+    ? userSavedAddresses[userSavedAddresses.length - 1]
+    : null;
+
   // Address states
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(() => {
-    return userSavedAddresses[0]?.id || null;
+    return latestUserSavedAddress?.id || null;
   });
   const [addressTag, setAddressTag] = useState<'Home' | 'Work' | 'Other'>(() => {
-    return userSavedAddresses[0]?.tag || 'Home';
+    return latestUserSavedAddress?.tag || 'Home';
   });
 
-  const cachedSelectedLocation = typeof window !== 'undefined' ? (localStorage.getItem('zomindia_selected_location') || '') : '';
-  const initialRawAddress = savedState?.address || userSavedAddresses[0]?.address || profile?.address || profile?.customerData?.address || cachedSelectedLocation || 'Palasia / City Center, Indore';
-  const initialAddress = (!initialRawAddress || isBroadIndoreName(initialRawAddress))
+  const cachedSelectedLocation = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const loc = localStorage.getItem('zomindia_selected_location') || '';
+    if (loc.toLowerCase().includes('lasuriamori') || loc.toLowerCase().includes('singapore')) {
+      localStorage.removeItem('zomindia_selected_location');
+      return '';
+    }
+    return loc;
+  }, []);
+
+  const cachedHouseNo = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('zomindia_selected_houseno') || '';
+  }, []);
+
+  const cachedCoords = useMemo<{ lat: number; lng: number } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('zomindia_selected_coords');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.lat === 'number' && typeof parsed?.lng === 'number') {
+          return { lat: Number(parsed.lat), lng: Number(parsed.lng) };
+        }
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const rawCandidateAddress =
+    savedState?.address ||
+    (profile?.address && !profile.address.toLowerCase().includes('lasuriamori') ? profile.address : '') ||
+    latestUserSavedAddress?.address ||
+    (profile?.customerData?.address && !profile.customerData.address.toLowerCase().includes('lasuriamori') ? profile.customerData.address : '') ||
+    cachedSelectedLocation ||
+    'Palasia / City Center, Indore';
+
+  const initialAddress = (!rawCandidateAddress || isBroadIndoreName(rawCandidateAddress) || rawCandidateAddress.toLowerCase().includes('lasuriamori'))
     ? 'Palasia / City Center, Indore'
-    : initialRawAddress;
+    : rawCandidateAddress;
 
   const [address, setAddress] = useState<string>(initialAddress);
   const [houseNumber, setHouseNumber] = useState<string>(
-    savedState?.houseNumber || userSavedAddresses[0]?.houseNumber || (profile as any)?.houseNumber || ''
+    savedState?.houseNumber ||
+    (profile as any)?.houseNumber ||
+    latestUserSavedAddress?.houseNumber ||
+    cachedHouseNo ||
+    ''
   );
 
   // Exact Customer GPS Coordinates State
@@ -219,8 +273,14 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (savedState?.lat && savedState?.lng) {
       return { lat: Number(savedState.lat), lng: Number(savedState.lng) };
     }
-    if (userSavedAddresses[0]?.lat && userSavedAddresses[0]?.lng) {
-      return { lat: Number(userSavedAddresses[0].lat), lng: Number(userSavedAddresses[0].lng) };
+    if (profile?.customerLocation?.lat && profile?.customerLocation?.lng) {
+      return { lat: Number(profile.customerLocation.lat), lng: Number(profile.customerLocation.lng) };
+    }
+    if (latestUserSavedAddress?.lat && latestUserSavedAddress?.lng) {
+      return { lat: Number(latestUserSavedAddress.lat), lng: Number(latestUserSavedAddress.lng) };
+    }
+    if (cachedCoords?.lat && cachedCoords?.lng) {
+      return cachedCoords;
     }
     for (const [key, coords] of Object.entries(LOCALITY_COORDS)) {
       if (initialAddress.toLowerCase().includes(key.toLowerCase())) {
@@ -228,13 +288,46 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       }
     }
     return DEFAULT_INDORE_CENTER;
-  }, [savedState, userSavedAddresses, initialAddress]);
+  }, [savedState, profile, latestUserSavedAddress, cachedCoords, initialAddress]);
+
+  const hasVerifiedSavedCoords = Boolean(
+    (profile?.customerLocation?.lat && profile?.customerLocation?.lng) ||
+    (latestUserSavedAddress?.lat && latestUserSavedAddress?.lng) ||
+    (cachedCoords?.lat && cachedCoords?.lng && cachedSelectedLocation)
+  );
 
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(initialCustomerCoords);
   const [showAddressPicker, setShowAddressPicker] = useState<boolean>(false);
   const [showMapPickerModal, setShowMapPickerModal] = useState<boolean>(false);
-  const [isDoorstepLocked, setIsDoorstepLocked] = useState<boolean>(false);
+  const [isDoorstepLocked, setIsDoorstepLocked] = useState<boolean>(hasVerifiedSavedCoords);
   const [isFetchingGps, setIsFetchingGps] = useState(false);
+
+  // Reactive Profile Address Sync when Firestore profile resolves
+  useEffect(() => {
+    // If user already pinned a doorstep in this active modal session, do not overwrite
+    if (isDoorstepLocked) return;
+
+    const validSaved = Array.isArray(profile?.savedAddresses)
+      ? profile.savedAddresses.filter(a => a?.address && !a.address.toLowerCase().includes('lasuriamori'))
+      : [];
+    const latestFromList = validSaved.length > 0 ? validSaved[validSaved.length - 1] : null;
+
+    const savedProfileAddr = (profile?.address && !profile.address.toLowerCase().includes('lasuriamori') ? {
+      address: profile.address,
+      houseNumber: (profile as any)?.houseNumber || latestFromList?.houseNumber || '',
+      lat: profile?.customerLocation?.lat ?? latestFromList?.lat,
+      lng: profile?.customerLocation?.lng ?? latestFromList?.lng
+    } : null) || latestFromList || profile?.savedAddresses?.[0];
+
+    if (savedProfileAddr && savedProfileAddr.address && !savedProfileAddr.address.toLowerCase().includes('lasuriamori')) {
+      setAddress(savedProfileAddr.address);
+      if (savedProfileAddr.houseNumber) setHouseNumber(savedProfileAddr.houseNumber);
+      if (savedProfileAddr.lat && savedProfileAddr.lng) {
+        setCustomerCoords({ lat: Number(savedProfileAddr.lat), lng: Number(savedProfileAddr.lng) });
+        setIsDoorstepLocked(true);
+      }
+    }
+  }, [profile]);
 
   // Slot picker state: default date is todayKey
   const [date, setDate] = useState<string>(savedState?.date || todayKey);
@@ -311,65 +404,6 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     onClose();
   };
 
-  // Real-time busy slots listener
-  const [busySlots, setBusySlots] = useState<{ [date: string]: string[] }>({});
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const minDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-    const maxDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30);
-    const minTimestamp = Timestamp.fromDate(minDate);
-    const maxTimestamp = Timestamp.fromDate(maxDate);
-
-    const q = query(
-      collection(db, 'bookings'),
-      where('status', 'not-in', ['cancelled', 'rejected']),
-      where('scheduledAt', '>=', minTimestamp),
-      where('scheduledAt', '<=', maxTimestamp)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const busyMap: { [date: string]: string[] } = {};
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (!data.scheduledAt) return;
-          
-          let bookingDateObj: Date;
-          if (data.scheduledAt instanceof Timestamp) {
-            bookingDateObj = data.scheduledAt.toDate();
-          } else if (data.scheduledAt.seconds) {
-            bookingDateObj = new Date(data.scheduledAt.seconds * 1000);
-          } else {
-            bookingDateObj = new Date(data.scheduledAt);
-          }
-          
-          const year = bookingDateObj.getFullYear();
-          const month = String(bookingDateObj.getMonth() + 1).padStart(2, '0');
-          const day = String(bookingDateObj.getDate()).padStart(2, '0');
-          const dateStr = `${year}-${month}-${day}`;
-          
-          const hours = String(bookingDateObj.getHours()).padStart(2, '0');
-          const minutes = String(bookingDateObj.getMinutes()).padStart(2, '0');
-          const timeStr = `${hours}:${minutes}`;
-          
-          if (!busyMap[dateStr]) busyMap[dateStr] = [];
-          if (!busyMap[dateStr].includes(timeStr)) busyMap[dateStr].push(timeStr);
-        });
-        setBusySlots(busyMap);
-      },
-      (err) => {
-        try {
-          handleFirestoreError(err, OperationType.LIST, 'bookings');
-        } catch (logErr) {
-          console.warn("Busy slots fallback notice:", logErr);
-        }
-      }
-    );
-
-    return () => unsubscribe();
-  }, [profile, now]);
 
   // Fetch available promos & AMC plans
   useEffect(() => {
@@ -422,29 +456,28 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
   }, [service, appliedPromo]);
 
-  // Slot status helper: subtly disables past/booked slots without harsh tags
+  // Slot status helper: purely time-based 2-hour advance buffer
   const getSlotStatus = (slotValue: string, testDate?: string): 'available' | 'expired' => {
     const d = testDate || date;
     if (!d) return 'available';
 
-    if (busySlots[d] && busySlots[d].includes(slotValue)) {
-      return 'expired';
-    }
+    const now = new Date();
+    const todayStr = formatDateKey(now);
 
-    const currentDateObj = new Date();
-    const todayStr = formatDateKey(currentDateObj);
-
+    // Any future date (Tomorrow or beyond): 100% of slots are available
     if (d > todayStr) return 'available';
+    // Past dates: expired
     if (d < todayStr) return 'expired';
 
+    // For "Today": Enforce strict 2-hour advance buffer for technician prep & travel
     const [hours, minutes] = slotValue.split(':').map(Number);
-    const slotTime = new Date(currentDateObj);
-    slotTime.setHours(hours, minutes, 0, 0);
+    const slotDateObj = new Date(now);
+    slotDateObj.setHours(hours, minutes, 0, 0);
 
-    const diffInHours = (slotTime.getTime() - currentDateObj.getTime()) / (1000 * 60 * 60);
-    // Allow booking slot if at least 1.5 hours in advance
-    if (diffInHours < 1.5) return 'expired';
-    return 'available';
+    const diffInHours = (slotDateObj.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    // Slot must be at least 2.0 hours ahead of the current minute
+    return diffInHours >= 2.0 ? 'available' : 'expired';
   };
 
   // SMART DEFAULT: Auto-select earliest available slot when date changes
@@ -462,7 +495,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         }
       }
     }
-  }, [date, busySlots, todayKey, tomorrowKey]);
+  }, [date, todayKey, tomorrowKey]);
 
   // Base pricing is 100% transparent and flat. NO hidden surges!
   const getPrimeDiscountAmount = () => {
@@ -551,9 +584,43 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     setAddressTag(confirmed.tag);
     setIsDoorstepLocked(true);
     setShowAddressPicker(false);
+
+    if (auth.currentUser?.uid) {
+      try {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        const homeAddressObj = {
+          id: `addr_${Date.now()}`,
+          tag: confirmed.tag || 'Home',
+          houseNumber: confirmed.houseNumber || '',
+          address: confirmed.address,
+          city: 'Indore',
+          fullAddress: [confirmed.houseNumber, confirmed.address].filter(Boolean).join(', '),
+          lat: confirmed.coords.lat,
+          lng: confirmed.coords.lng,
+          isDefault: true,
+          updatedAt: new Date().toISOString()
+        };
+
+        updateDoc(userRef, {
+          address: confirmed.address,
+          houseNumber: confirmed.houseNumber,
+          customerLocation: confirmed.coords,
+          'customerData.address': confirmed.address,
+          'customerData.houseNumber': confirmed.houseNumber,
+          'customerData.customerLocation': confirmed.coords,
+          savedAddresses: arrayUnion(homeAddressObj)
+        }).catch((err) => console.warn("Background address profile update failed:", err));
+      } catch (err) {
+        console.warn("Firestore updateDoc error:", err);
+      }
+    }
+
+    // Also persist to localStorage for instant local retrieval
     try {
       if (typeof window !== 'undefined' && confirmed.address) {
         localStorage.setItem('zomindia_selected_location', confirmed.address);
+        localStorage.setItem('zomindia_selected_houseno', confirmed.houseNumber || '');
+        localStorage.setItem('zomindia_selected_coords', JSON.stringify(confirmed.coords));
       }
     } catch {}
   };
@@ -995,60 +1062,42 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
 
-          {/* B. SINGLE-ROW SMART ADDRESS PILL */}
+          {/* B. SPACIOUS & PROFESSIONAL DOORSTEP ADDRESS CARD */}
           <div className="space-y-1.5">
-            {isDoorstepLocked ? (
-              <div className="flex items-center justify-between py-2 px-3 bg-emerald-50/80 border border-emerald-300 rounded-xl text-xs transition-colors">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  <span className="truncate text-slate-800">
-                    <span className="font-bold text-emerald-800">📍 Verified Doorstep (Lat, Lng locked):</span> {addressTag} ({displayAddressString})
+            <div className="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 transition-all">
+              {/* Top Row: Service Tag, Pin Badge & Action Button */}
+              <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200/50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm">
+                    {addressTag === 'Work' ? '🏢' : addressTag === 'Other' ? '📍' : '🏠'}
                   </span>
-                </div>
-                <div className="flex items-center gap-2 ml-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowMapPickerModal(true)}
-                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
-                  >
-                    Adjust Pin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddressPicker(!showAddressPicker)}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
-                  >
-                    {showAddressPicker ? "Close" : "Change"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between py-2 px-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl text-xs transition-colors">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <MapPin size={14} className="text-blue-600 shrink-0" />
-                  <span className="truncate text-slate-700">
-                    <span className="font-bold text-slate-900">Service at:</span> {addressTag} ({displayAddressString})
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                    Service at: {addressTag || 'Home'}
                   </span>
+                  {isDoorstepLocked && (
+                    <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md shrink-0">
+                      ✓ Pinned
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 ml-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowMapPickerModal(true)}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
-                  >
-                    <Navigation size={11} />
-                    <span>Pin on Map</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddressPicker(!showAddressPicker)}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
-                  >
-                    {showAddressPicker ? "Close" : "Change"}
-                  </button>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMapPickerModal(true)}
+                  className="text-[11px] font-bold text-[#050CA6] hover:text-[#040980] bg-[#050CA6]/5 hover:bg-[#050CA6]/10 px-2.5 py-1 rounded-lg transition-all shrink-0 cursor-pointer"
+                >
+                  {isDoorstepLocked ? 'Adjust Pin' : 'Pin on Map'}
+                </button>
               </div>
-            )}
+
+              {/* Bottom Row: Full-Width Simple Address (Spans edge-to-edge) */}
+              <div className="pt-1.5">
+                <p className="text-xs font-normal text-slate-700 leading-relaxed break-words">
+                  {houseNumber ? <span className="font-medium text-slate-900">{houseNumber}, </span> : null}
+                  {address || "Indore, Madhya Pradesh"}
+                </p>
+              </div>
+            </div>
 
             {/* Collapsible Clean 1-Click Location Picker */}
             <AnimatePresence>

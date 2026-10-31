@@ -394,21 +394,6 @@ export default function PartnerTrackingMap({
     const activeBooking = liveBookingData || booking;
     const rawStatus = (activeBooking?.status || "on_the_way").toLowerCase();
 
-    // Explicit prop coordinates
-    if (
-      isValidPartnerGps(
-        { lat: partnerLat, lng: partnerLng },
-        destCoords,
-        rawStatus
-      )
-    ) {
-      return {
-        lat: Number(partnerLat),
-        lng: Number(partnerLng),
-        heading: typeof partnerHeading === "number" ? partnerHeading : null,
-      };
-    }
-
     // Priority 1: Real-time Firestore booking.partnerLocation
     const bookingLoc =
       activeBooking?.partnerLocation || activeBooking?.expertLocation;
@@ -422,6 +407,21 @@ export default function PartnerTrackingMap({
             : typeof activeBooking?.heading === "number"
             ? activeBooking.heading
             : null,
+      };
+    }
+
+    // Explicit prop coordinates
+    if (
+      isValidPartnerGps(
+        { lat: partnerLat, lng: partnerLng },
+        destCoords,
+        rawStatus
+      )
+    ) {
+      return {
+        lat: Number(partnerLat),
+        lng: Number(partnerLng),
+        heading: typeof partnerHeading === "number" ? partnerHeading : null,
       };
     }
 

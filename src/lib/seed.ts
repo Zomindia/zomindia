@@ -1,17 +1,6 @@
 import { db, auth } from './firebase';
 import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
-
-const CATEGORIES = [
-  { name: 'AC Repair & Service', icon: 'Wind', description: 'Jet service, gas refill, installation' },
-  { name: 'Washing Machine', icon: 'RotateCcw', description: 'Drum repair, motor fix, spin issue' },
-  { name: 'RO Water Purifier', icon: 'Droplets', description: 'Filter change, membrane replacement' },
-  { name: 'Refrigerator', icon: 'Zap', description: 'Cooling check, gas charging' },
-  { name: 'TV Repair', icon: 'Tv', description: 'LED/LCD screen, motherboard, sound' },
-  { name: 'Electrician', icon: 'Plug', description: 'Wiring, switchboard, fuse repair' },
-  { name: 'Plumber', icon: 'Wrench', description: 'Pipe leak, tap fittings, motor pump' },
-  { name: 'Home Cleaning', icon: 'Sparkles', description: 'Deep bathroom & kitchen sanitization' },
-  { name: 'Phone Repair', icon: 'Smartphone', description: 'Expert repair services for all smartphone brands' },
-];
+import { DEFAULT_CATEGORIES, DEFAULT_SERVICES, healFirestoreCatalogIfNeeded } from '../data/services';
 
 export async function seedDatabase() {
   if (!auth.currentUser || auth.currentUser.email !== 'sarthakwebtech@gmail.com') {
@@ -23,54 +12,27 @@ export async function seedDatabase() {
     const catsSnap = await getDocs(collection(db, 'categories'));
     if (catsSnap.empty) {
       console.log('Seeding categories...');
-      for (const cat of CATEGORIES) {
-        if (cat.name === 'Phone Repair') {
-           // Use explicit ID as requested by user
-           await setDoc(doc(db, 'categories', 'Phone Repair'), cat);
-        } else {
-           await addDoc(collection(db, 'categories'), cat);
-        }
+      for (const cat of DEFAULT_CATEGORIES) {
+        await setDoc(doc(db, 'categories', cat.id), {
+          name: cat.name,
+          icon: cat.icon,
+          description: cat.description,
+          imageURL: cat.imageURL || '',
+        });
       }
     }
 
     // Seed Services
     const servicesSnap = await getDocs(collection(db, 'services'));
     if (servicesSnap.empty) {
-       console.log('Seeding services...');
-       const allCats = await getDocs(collection(db, 'categories'));
-       const catMap: Record<string, string> = {};
-       allCats.forEach(d => catMap[d.data().name] = d.id);
-
-       const cleaningId = catMap['Cleaning'];
-       if (cleaningId) {
-          await addDoc(collection(db, 'services'), {
-            categoryId: cleaningId,
-            name: 'Full Home Cleaning',
-            description: 'Deep cleaning of all rooms, balcony and kitchen.',
-            basePrice: 120,
-            duration: '4-5 Hours'
-          });
-          await addDoc(collection(db, 'services'), {
-            categoryId: cleaningId,
-            name: 'Bathroom Cleaning',
-            description: 'Sparkling clean bathroom with specialized chemicals.',
-            basePrice: 40,
-            duration: '1-2 Hours'
-          });
-       }
-
-       // Add requested service
-       // We can use catMap['Phone Repair'] or the hardcoded 'Phone Repair' ID
-       await addDoc(collection(db, 'services'), {
-          categoryId: 'Phone Repair',
-          name: 'Screen Replacement',
-          description: 'Replacement of cracked phone screens for all major brands.',
-          basePrice: 2500,
-          duration: '2 Hours',
-          imageURL: 'https://example.com/images/screen-replacement.jpg',
-          rating: 4.9,
-          reviewCount: 120
-       });
+      console.log('Seeding services...');
+      for (const svc of DEFAULT_SERVICES) {
+        await setDoc(doc(db, 'services', svc.id), svc);
+      }
+    } else {
+      const currentCats = catsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const currentSvcs = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      await healFirestoreCatalogIfNeeded(currentSvcs, currentCats);
     }
 
     // Seed Promotions

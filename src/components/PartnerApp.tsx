@@ -31,6 +31,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
 import { signOutUser } from '../services/authService';
 import { playPartnerBookingAlert, stopPartnerBookingAlert, playNotificationPop } from '../services/soundService';
+import { normalizeServicesList, DEFAULT_CATEGORIES } from '../utils/formatters';
 
 interface Props {
   profile: UserProfile;
@@ -478,7 +479,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         collection(db, 'services'),
         (snap) => {
           if (!isMounted) return;
-          setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+          const rawServices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
+          setServices(normalizeServicesList(rawServices, DEFAULT_CATEGORIES));
         },
         (err) => {
           if (!isMounted) return;
