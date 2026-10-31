@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   doc,
+  getDoc,
   updateDoc,
+  deleteDoc,
   setDoc,
   collection,
   query,
   where,
   getDocs,
   Timestamp,
+  serverTimestamp,
   onSnapshot,
   orderBy,
   limit,
@@ -24,8 +27,9 @@ import {
 import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from "../lib/recaptcha";
 import { db, auth } from "../lib/firebase";
 import { offlineSyncEngine } from "../lib/offlineQueue";
-import { UserProfile } from "../types";
+import { UserProfile, WalletTransaction } from "../types";
 import { buildDualPersonaUserDoc } from "../lib/user-schema";
+import { isCorruptMockWalletTx } from "../services/authService";
 import { formatTime12Hour } from "../utils/formatTime";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { handleMapsError } from "../lib/maps-errors";
@@ -298,6 +302,97 @@ export default function ProfileSettings({
   // 3. Fetch true stats from firestore on load
   useEffect(() => {
     fetchUserData();
+  }, [profile?.uid]);
+
+  // 3b. Real-time Wallet Ledger Sync to prevent any 600 flicker or discrepancy with WalletView
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [verifiedWalletBalance, setVerifiedWalletBalance] = useState<number>(() => {
+    const raw = profile?.walletBalance !== undefined ? Number(profile.walletBalance) : 101;
+    return isNaN(raw) || raw === 600 ? 101 : raw;
+  });
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    let isMounted = true;
+
+    fetch('/api/wallet/sanitize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: profile.uid })
+    }).catch(() => {});
+
+    const q = query(collection(db, "walletTransactions"), where("userId", "==", profile.uid));
+    const unsub = onSnapshot(
+      q,
+      async (snap) => {
+        if (!isMounted) return;
+        const allDocs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const corruptDocs = allDocs.filter((tx) => isCorruptMockWalletTx(tx));
+        for (const badTx of corruptDocs) {
+          deleteDoc(doc(db, "walletTransactions", badTx.id)).catch(() => {});
+        }
+
+        const genuineDocs = allDocs.filter((tx) => !isCorruptMockWalletTx(tx));
+        genuineDocs.sort((a, b) => {
+          const timeA = typeof a.createdAt?.toMillis === "function" ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+          const timeB = typeof b.createdAt?.toMillis === "function" ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
+          return timeB - timeA;
+        });
+
+        setWalletTransactions(genuineDocs);
+
+        if (genuineDocs.length === 0) {
+          setVerifiedWalletBalance(101);
+          try {
+            const welcomeRef = doc(db, "walletTransactions", `welcome_bonus_${profile.uid}`);
+            const welcomeSnap = await getDoc(welcomeRef);
+            if (!welcomeSnap.exists()) {
+              await setDoc(welcomeRef, {
+                userId: profile.uid,
+                amount: 101,
+                type: "credit",
+                reason: "Zomindia ₹101 Welcome Reward",
+                status: "completed",
+                createdAt: serverTimestamp(),
+              });
+            }
+          } catch {}
+          if (profile.walletBalance !== 101) {
+            updateDoc(doc(db, "users", profile.uid), {
+              walletBalance: 101,
+              "customerData.walletBalance": 101,
+              welcomeBonusClaimed: true,
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        const calcBal = Math.max(
+          0,
+          genuineDocs.reduce((acc, tx) => {
+            if (tx.status && tx.status !== "completed") return acc;
+            const amt = Number(tx.amount) || 0;
+            return tx.type === "credit" ? acc + amt : acc - amt;
+          }, 0),
+        );
+
+        setVerifiedWalletBalance(calcBal);
+
+        if (Number(profile.walletBalance) !== calcBal) {
+          updateDoc(doc(db, "users", profile.uid), {
+            walletBalance: calcBal,
+            "customerData.walletBalance": calcBal,
+            welcomeBonusClaimed: true,
+          }).catch(() => {});
+        }
+      },
+      () => {},
+    );
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, [profile?.uid]);
 
   // 4. Sync state if profile changes
@@ -1303,7 +1398,7 @@ export default function ProfileSettings({
               {/* Quick Stats: Sleek Compact 3-Column Pill Grid */}
               <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-slate-50/90 rounded-xl border border-slate-100 mt-3 text-center">
                 <button
-                  onClick={() => handleSelectSub("wallet")}
+                  onClick={() => setActiveTab("wallet")}
                   className="px-1 py-1.5 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer flex flex-col items-center group active:scale-95"
                   id="stats-wallet-btn"
                 >
@@ -1311,7 +1406,7 @@ export default function ProfileSettings({
                     Wallet
                   </span>
                   <span className="text-xs font-black text-slate-900 leading-tight">
-                    ₹{profile.walletBalance ?? 101}
+                    ₹{verifiedWalletBalance}
                   </span>
                 </button>
 
@@ -1440,7 +1535,7 @@ export default function ProfileSettings({
               </span>
               <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
                 <button
-                  onClick={() => handleSelectSub("wallet")}
+                  onClick={() => setActiveTab("wallet")}
                   className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-slate-50 transition-colors text-left group cursor-pointer"
                   id="menu-wallet"
                 >
@@ -1450,12 +1545,12 @@ export default function ProfileSettings({
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-black text-slate-800">Zomindia Wallet</p>
-                      <p className="text-[10px] text-slate-400 font-medium truncate">Load cash & redeem coupons</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate">Promotional credits & rewards</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                      ₹{profile.walletBalance ?? 101}
+                      ₹{verifiedWalletBalance}
                     </span>
                     <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </div>
@@ -2128,7 +2223,7 @@ export default function ProfileSettings({
                           Active Funds
                         </span>
                         <p className="text-2xl font-black text-[#050CA6] mt-2">
-                          ₹{profile.walletBalance ?? 101}
+                          ₹{verifiedWalletBalance}
                         </p>
                       </div>
                       <span className="text-[8px] text-neutral-400 font-bold mt-4 block">

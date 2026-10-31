@@ -40,7 +40,6 @@ const AVAILABLE_SERVICES = [
   "Washing Machine Repair",
   "Home Cleaning Services",
   "Electrician Services",
-  "Plumbing Services",
   "Geyser Repair & Installation"
 ];
 

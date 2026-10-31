@@ -38,7 +38,7 @@ import {
 } from "../types";
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { formatTime12Hour } from "../utils/formatTime";
-import { normalizeCategories, normalizeServicesList } from "../utils/formatters";
+import { normalizeCategories, normalizeServicesList, isPurgedCategoryOrService } from "../utils/formatters";
 import { notifyBookingUpdate } from "../lib/notifications";
 import { motion, AnimatePresence } from "motion/react";
 import AdminUpload from "./AdminUpload";
@@ -608,8 +608,8 @@ export default function AdminDashboard({
             id: docId,
             userId: docId,
             displayName: u.displayName || u.fullName || pData.displayName || "Partner",
-            categories: pData.categories || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
-            skills: pData.skills || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"]),
+            categories: (pData.categories || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"])).filter((c: string) => !isPurgedCategoryOrService(c)),
+            skills: (pData.skills || u.skills || (u.serviceType ? u.serviceType.split(',').map((s: any) => s.trim()) : ["Appliance Repair"])).filter((c: string) => !isPurgedCategoryOrService(c)),
             bio: pData.bio || u.bio || `Elite Certified Professional`,
             rating: pData.rating !== undefined ? pData.rating : 4.9,
             reviewCount: pData.reviewCount !== undefined ? pData.reviewCount : 0,
@@ -657,8 +657,8 @@ export default function AdminDashboard({
           id: docId,
           userId: p.userId || existing.userId || docId,
           displayName: p.displayName || p.fullName || existing.displayName || "Partner",
-          categories: p.categories || p.skills || existing.categories || ["Appliance Repair"],
-          skills: p.skills || existing.skills || ["Appliance Repair"],
+          categories: (p.categories || p.skills || existing.categories || ["Appliance Repair"]).filter((c: string) => !isPurgedCategoryOrService(c)),
+          skills: (p.skills || existing.skills || ["Appliance Repair"]).filter((c: string) => !isPurgedCategoryOrService(c)),
           bio: p.bio || existing.bio || "Elite Certified Professional",
           rating: p.rating !== undefined ? p.rating : (existing.rating !== undefined ? existing.rating : 4.9),
           reviewCount: p.reviewCount !== undefined ? p.reviewCount : (existing.reviewCount || 0),
@@ -6314,7 +6314,7 @@ function PartnerManager({
                           Registered Services
                         </p>
                         <div className="flex flex-wrap gap-1">
-                          {p.categories?.map((c) => (
+                          {p.categories?.filter((c) => !isPurgedCategoryOrService(c)).map((c) => (
                             <span
                               key={c}
                               className="text-[9px] font-bold bg-blue-700 text-white px-2 py-0.5 rounded-full"
@@ -7540,7 +7540,7 @@ function PartnerManager({
                       Competencies
                     </h5>
                     <div className="flex flex-wrap gap-2">
-                      {selectedProfilePartner.categories?.map((catId) => (
+                      {selectedProfilePartner.categories?.filter((catId) => !isPurgedCategoryOrService(catId)).map((catId) => (
                         <span
                           key={catId}
                           className="px-4 py-2 bg-blue-700 text-white rounded-xl text-xs font-bold"
@@ -7549,7 +7549,7 @@ function PartnerManager({
                         </span>
                       ))}
                       {(!selectedProfilePartner.categories ||
-                        selectedProfilePartner.categories.length === 0) && (
+                        selectedProfilePartner.categories.filter((catId) => !isPurgedCategoryOrService(catId)).length === 0) && (
                         <span className="text-xs text-slate-400 italic">
                           No categories assigned.
                         </span>

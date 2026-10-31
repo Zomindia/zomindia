@@ -5,26 +5,24 @@ import {
   Star, 
   Package, 
   ChevronRight, 
-  ChevronDown,
-  AlertCircle,
   Clock,
   Sparkles,
   Zap,
   Briefcase,
-  Check,
   Lock,
   MessageSquareQuote,
   Wallet,
   Phone,
   MapPin,
   ShieldCheck,
-  Award,
   Radio,
   CheckCircle2,
   Power,
-  Navigation
+  Navigation,
+  User,
+  CreditCard
 } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, LineChart, Line } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import { PartnerProfile, Booking, UserProfile, Service, PartnerApplication, Review } from '../../types';
 import { formatTime12Hour } from '../../utils/formatTime';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, setDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
@@ -60,9 +58,12 @@ export default function PartnerHome({
   onOpenSupport
 }: Props) {
   const [showPendingPopup, setShowPendingPopup] = useState(false);
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [isAdvancingJob, setIsAdvancingJob] = useState(false);
   const [otpModalBooking, setOtpModalBooking] = useState<Booking | null>(null);
+
+  const handleOpenSection = (section: 'profile' | 'bank' | 'kyc' | 'skills' | 'earnings' | 'performance' | 'faq') => {
+    onNavigate('settings', section);
+  };
 
   const handleAdvanceJobStatus = async (bookingId: string, nextStatus: 'on_the_way' | 'arrived' | 'completed') => {
     setIsAdvancingJob(true);
@@ -124,18 +125,6 @@ export default function PartnerHome({
   const service = currentJob ? services.find(s => s.id === currentJob.serviceId) : null;
   const customer = currentJob ? users.find(u => u.uid === currentJob.customerUid) : null;
 
-  const upcomingJobs = bookings
-    .filter(b => b.status === 'confirmed')
-    .sort((a, b) => {
-      const timeA = a.scheduledAt?.toDate?.()?.getTime() || 0;
-      const timeB = b.scheduledAt?.toDate?.()?.getTime() || 0;
-      return timeA - timeB;
-    });
-  
-  const nextUpcomingJob = upcomingJobs[0];
-  const nextService = nextUpcomingJob ? services.find(s => s.id === nextUpcomingJob.serviceId) : null;
-  const nextCustomer = nextUpcomingJob ? users.find(u => u.uid === nextUpcomingJob.customerUid) : null;
-
   // Real partner bookings & completed metrics
   const myBookings = bookings;
   const totalCompleted = myBookings.filter(b => ['completed', 'finalized', 'closed'].includes(b.status)).length;
@@ -149,16 +138,23 @@ export default function PartnerHome({
     return bookings.filter(b => b.status === 'completed' || b.status === 'finalized');
   }, [bookings]);
 
-  // Total Lifetime Earnings (80% Net Partner Payout)
+  const computeNetPartnerShare = (gross: number) => {
+    if (isNaN(gross) || gross <= 0) return 0;
+    const platformFee = Math.round(gross * 0.20);
+    const gstOnFee = Math.round(platformFee * 0.18);
+    return Math.max(0, gross - (platformFee + gstOnFee));
+  };
+
+  // Total Lifetime Earnings (Net Partner Payout after 20% Platform Fee + 18% GST on Fee)
   const calculatedTotalEarnings = useMemo(() => {
     const sumFromBookings = completedBookings.reduce((acc, b) => {
       const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-      return acc + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
+      return acc + computeNetPartnerShare(amount);
     }, 0);
     return sumFromBookings > 0 ? sumFromBookings : Number(partner?.totalEarnings || 0);
   }, [completedBookings, partner?.totalEarnings]);
 
-  // Today's Earnings (80% Net Partner Payout) & Completed Jobs
+  // Today's Earnings (Net Partner Payout) & Completed Jobs
   const { todayEarnings, todayCompletedCount } = useMemo(() => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -179,7 +175,7 @@ export default function PartnerHome({
       
       if (bookingTime >= todayStart) {
         const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-        earningsSum += isNaN(amount) ? 0 : Math.round(amount * 0.80);
+        earningsSum += computeNetPartnerShare(amount);
         count++;
       }
     });
@@ -187,7 +183,7 @@ export default function PartnerHome({
     return { todayEarnings: earningsSum, todayCompletedCount: count };
   }, [completedBookings]);
 
-  // Weekly Earnings (past 7 days, 80% Net Partner Payout)
+  // Weekly Earnings (past 7 days, Net Partner Payout)
   const weeklyEarnings = useMemo(() => {
     const now = new Date();
     const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
@@ -205,7 +201,7 @@ export default function PartnerHome({
       
       if (bookingTime >= sevenDaysAgo) {
         const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-        return acc + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
+        return acc + computeNetPartnerShare(amount);
       }
       return acc;
     }, 0);
@@ -344,23 +340,17 @@ export default function PartnerHome({
     }
   };
 
-  // Active leads count (pending acceptance, assigned, and in-progress jobs for this partner)
-  const candidateIds = useMemo(() => [
-    profile.uid,
-    partner?.id,
-    partner?.userId,
-    (profile as any)?.partnerId
-  ].filter((id): id is string => Boolean(id && typeof id === 'string')), [profile.uid, partner?.id, partner?.userId, (profile as any)?.partnerId]);
-
   const activeLeadsCount = useMemo(() => {
     return activeJobs.length;
   }, [activeJobs]);
 
   const liveWalletBalance = useMemo(() => {
-    if (typeof profile?.walletBalance === 'number') return profile.walletBalance;
+    if (completedBookings.length > 0 && calculatedTotalEarnings > 0) {
+      return calculatedTotalEarnings;
+    }
     if (typeof (partner as any)?.walletBalance === 'number') return (partner as any).walletBalance;
     return calculatedTotalEarnings || 0;
-  }, [profile?.walletBalance, (partner as any)?.walletBalance, calculatedTotalEarnings]);
+  }, [completedBookings.length, (partner as any)?.walletBalance, calculatedTotalEarnings]);
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -546,9 +536,9 @@ export default function PartnerHome({
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="text-[9px] text-slate-400 font-black uppercase block">80% Net Payout</span>
+                  <span className="text-[9px] text-slate-400 font-black uppercase block">Net Payout</span>
                   <span className="text-lg font-black text-emerald-600">
-                    ₹{Math.round(Number(currentJob.totalPrice || (currentJob as any).finalPrice || 0) * 0.80)}
+                    ₹{computeNetPartnerShare(Number(currentJob.totalPrice ?? (currentJob as any).finalPrice ?? (currentJob as any).basePrice ?? 0))}
                   </span>
                   <span className="text-[9px] text-slate-400 font-bold block">
                     Bill: ₹{currentJob.totalPrice || (currentJob as any).finalPrice || 0}
@@ -775,148 +765,25 @@ export default function PartnerHome({
               {/* Transparency Guarantee Note */}
               <div className="flex items-center gap-2 text-[10px] text-white/60 font-medium pt-1">
                 <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                <span>Zero hidden deductions • 20% Platform Fee • 80% Direct Technician Payout. Weekly bank settlement every Monday at 10:00 AM.</span>
+                <span>Zero hidden deductions • 20% Platform Fee + 18% GST on Fee • Direct Technician Payout. Weekly bank settlement every Monday at 10:00 AM.</span>
               </div>
             </div>
           </section>
 
-          {/* 4. Main Duty & Active Task Container (Urban Company / Swiggy Style) */}
-          <section className="space-y-3">
-            <div className="flex justify-between items-center px-1">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Duty Status & Active Tasks</h3>
-              <button 
-                onClick={() => onNavigate('jobs')}
-                className="text-[11px] font-black text-blue-700 hover:text-blue-900 flex items-center gap-1 cursor-pointer"
-              >
-                All Jobs ({bookings.length}) <ChevronRight size={13} />
-              </button>
-            </div>
+          {/* 4. Live Duty Radar Container (when no active job is on top) */}
+          {!currentJob && (
+            <section className="space-y-3">
+              <div className="flex justify-between items-center px-1">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Duty Status & Dispatch Radar</h3>
+                <button 
+                  onClick={() => onNavigate('jobs')}
+                  className="text-[11px] font-black text-blue-700 hover:text-blue-900 flex items-center gap-1 cursor-pointer"
+                >
+                  All Jobs ({bookings.length}) <ChevronRight size={13} />
+                </button>
+              </div>
 
-            {currentJob ? (
-              /* If Job Assigned: Prominent Active Job Card */
-              <motion.div 
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border-2 border-blue-600/30 rounded-3xl p-5 shadow-lg shadow-blue-500/5 relative overflow-hidden space-y-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-13 h-13 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
-                      {service?.imageURL ? (
-                        <img src={service.imageURL} alt="" className="w-full h-full object-cover rounded-2xl" />
-                      ) : (
-                        <Package size={24} />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 bg-blue-600 text-white font-black text-[9px] uppercase tracking-wider rounded-md">
-                          {currentJob.status?.replace('_', ' ')}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold font-mono">
-                          #{currentJob.id.slice(0, 8).toUpperCase()}
-                        </span>
-                      </div>
-                      <h4 className="text-base font-black text-slate-900 mt-1 truncate">
-                        {service?.name || currentJob.serviceName || 'Active Service Task'}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5 mt-0.5">
-                        <Clock size={12} className="text-blue-600" />
-                        <span>Scheduled: {formatTime12Hour(currentJob.scheduledAt)}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer Bill</span>
-                    <span className="text-lg font-black text-slate-900">
-                      ₹{currentJob.totalPrice || (currentJob as any).finalPrice || 0}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Customer Address Details */}
-                <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-2 text-xs">
-                  <div className="flex items-start gap-2 text-slate-700">
-                    <MapPin size={15} className="text-rose-500 shrink-0 mt-0.5" />
-                    <span className="font-semibold text-slate-800 line-clamp-1">
-                      {currentJob.address || 'Indore Customer Location'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
-                    <span>Customer: <strong className="text-slate-800">{customer?.displayName || currentJob.customerName || 'Verified Customer'}</strong></span>
-                  </div>
-                </div>
-
-                {/* Quick Actions: Open in Google Maps & Call Customer */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${currentJob.lat || (currentJob as any).customerLocation?.lat || 22.7196},${currentJob.lng || (currentJob as any).customerLocation?.lng || 75.8577}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
-                  >
-                    <Navigation size={14} className="text-blue-700 shrink-0" />
-                    <span className="truncate">Open in Google Maps</span>
-                  </a>
-                  <a
-                    href={`tel:${customer?.phoneNumber || customer?.mobile || currentJob.customerMobile || ''}`}
-                    className="py-3 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-emerald-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
-                  >
-                    <Phone size={14} className="text-emerald-700 shrink-0" />
-                    <span className="truncate">Call Customer</span>
-                  </a>
-                </div>
-
-                {/* Status Step Actions */}
-                <div className="pt-1">
-                  {(currentJob.status === 'assigned' || currentJob.status === 'confirmed' || currentJob.status === 'pending_acceptance') && (
-                    <button
-                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'on_the_way')}
-                      disabled={isAdvancingJob}
-                      className="w-full py-4 bg-[#0a2540] hover:bg-[#12365c] text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Navigation size={16} />
-                      <span>{isAdvancingJob ? 'Updating...' : 'Start Journey • On The Way'}</span>
-                    </button>
-                  )}
-
-                  {currentJob.status === 'on_the_way' && (
-                    <button
-                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'arrived')}
-                      disabled={isAdvancingJob}
-                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <MapPin size={16} />
-                      <span>{isAdvancingJob ? 'Updating...' : 'Reached Customer Location'}</span>
-                    </button>
-                  )}
-
-                  {currentJob.status === 'arrived' && (
-                    <button
-                      type="button"
-                      onClick={() => setOtpModalBooking(currentJob)}
-                      className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Lock size={16} />
-                      <span>Enter Customer Start OTP 🔒</span>
-                    </button>
-                  )}
-
-                  {(currentJob.status === 'in_progress' || currentJob.status === 'payment_pending') && (
-                    <button
-                      type="button"
-                      onClick={() => handleAdvanceJobStatus(currentJob.id, 'completed')}
-                      disabled={isAdvancingJob}
-                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <CheckCircle2 size={16} />
-                      <span>{isAdvancingJob ? 'Completing...' : 'Complete Service & Collect Payment ✅'}</span>
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            ) : isOnline ? (
+              {isOnline ? (
               /* If Online (No active job): Clean pulse radar */
               <div className="bg-white border border-slate-200/90 rounded-3xl p-8 text-center space-y-4 shadow-xs">
                 <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
@@ -965,8 +832,9 @@ export default function PartnerHome({
                   <span>Turn Duty ON</span>
                 </button>
               </div>
-            )}
-          </section>
+              )}
+            </section>
+          )}
 
           {/* 5. Performance Scorecard (Urban Company 4-Pillar Model) */}
           <section className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-4">
@@ -1188,6 +1056,87 @@ export default function PartnerHome({
               <p className="text-[10px] text-slate-500 mt-0.5">Direct UPI withdrawal</p>
             </button>
           </section>
+
+          {/* 9. Account & Preferences Card (Sleek Zomato/Swiggy Partner Standard) */}
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Card Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 tracking-tight">Account & Preferences</h3>
+                <p className="text-[11px] font-medium text-slate-500">Manage your profile, payouts & documents</p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Active Partner
+              </span>
+            </div>
+
+            {/* Interactive Options List */}
+            <div className="divide-y divide-slate-100/80">
+              {/* Personal Details */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('profile')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <User size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Personal Details</p>
+                    <p className="text-[11px] text-slate-500">Name, mobile & display picture</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              {/* Bank & Payout Details */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('bank')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <CreditCard size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Bank & Payout Details</p>
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        ✓ Linked
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">UPI ID & settlement bank account</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              {/* Identity & Verification */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('kyc')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Identity & Verification</p>
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        ✓ Verified
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Aadhaar, PAN & KYC documents</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            </div>
+          </div>
         </>
       )}
 

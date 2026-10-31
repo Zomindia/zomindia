@@ -947,11 +947,8 @@ export default function AiSupportChat({
       { keys: ["fridge", "refrigerator", "फ्रिज"], fallbackName: "Refrigerator Repair & Checkup", price: 249, cat: "cat_appliances" },
       { keys: ["washing", "washer", "वाशिंग"], fallbackName: "Washing Machine Repair", price: 299, cat: "cat_appliances" },
       { keys: ["geyser", "water heater", "गीजर"], fallbackName: "Geyser Checkup & Repair", price: 249, cat: "cat_appliances" },
-      { keys: ["tv", "television", "टीवी"], fallbackName: "LED / Smart TV Repair", price: 249, cat: "cat_appliances" },
-      { keys: ["microwave", "oven", "माइक्रोवेव"], fallbackName: "Microwave Repair", price: 249, cat: "cat_appliances" },
       { keys: ["chimney", "चिमनी"], fallbackName: "Kitchen Chimney Deep Cleaning", price: 499, cat: "cat_cleaning" },
       { keys: ["electric", "switch", "wiring", "fan", "इलेक्ट्रीशियन"], fallbackName: "Expert Electrician Visit", price: 149, cat: "cat_electrician" },
-      { keys: ["plumb", "tap", "leak", "pipe", "प्लंबर"], fallbackName: "Plumbing Repair Visit", price: 149, cat: "cat_plumbing" },
       { keys: ["carpent", "door", "furniture", "कारपेंटर"], fallbackName: "Carpenter Visit", price: 195, cat: "cat_carpenter" },
     ];
 

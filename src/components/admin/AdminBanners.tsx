@@ -74,14 +74,6 @@ const PRESET_IMAGE_TEMPLATES = [
     subtitle: 'Cooling coil, thermostat & compressor diagnostics',
     targetType: 'category' as BannerTargetType,
   },
-  {
-    name: 'TV Repair & Audio',
-    url: 'https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=1200&q=80',
-    badge: 'SAME DAY FIX',
-    title: 'LED/LCD TV Repair',
-    subtitle: 'Screen panel, motherboard & audio diagnostics at home',
-    targetType: 'category' as BannerTargetType,
-  },
 ];
 
 export const AdminBanners: React.FC<AdminBannersProps> = ({ categories, services }) => {

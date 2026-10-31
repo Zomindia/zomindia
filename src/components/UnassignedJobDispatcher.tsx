@@ -28,6 +28,7 @@ import {
 import { notifyBookingUpdate } from '../lib/notifications';
 import { Booking, PartnerProfile, UserProfile, Service, Category } from '../types';
 import { resolveDoorstepCoords } from './tracking/TrackingModal';
+import { isPurgedCategoryOrService } from '../utils/formatters';
 
 export interface UnassignedJobDispatcherProps {
   bookings: Booking[];
@@ -252,9 +253,10 @@ export default function UnassignedJobDispatcher({
 
       return true;
     }).sort((a, b) => {
-      // 1. Skill/Category match
-      const aMatch = targetCatId && a.categories?.includes(targetCatId) ? 1 : 0;
-      const bMatch = targetCatId && b.categories?.includes(targetCatId) ? 1 : 0;
+      // 1. Skill/Category match (excluding purged categories)
+      const validTargetCatId = targetCatId && !isPurgedCategoryOrService(targetCatId) ? targetCatId : null;
+      const aMatch = validTargetCatId && a.categories?.includes(validTargetCatId) ? 1 : 0;
+      const bMatch = validTargetCatId && b.categories?.includes(validTargetCatId) ? 1 : 0;
       if (aMatch !== bMatch) return bMatch - aMatch;
 
       // 2. Available/Online status match
@@ -745,7 +747,11 @@ export default function UnassignedJobDispatcher({
                   
                   // Skill check
                   const currentService = selectedBooking ? services.find(s => s.id === selectedBooking.serviceId) : null;
-                  const isSkillMatch = Boolean(currentService?.categoryId && partner.categories?.includes(currentService.categoryId));
+                  const isSkillMatch = Boolean(
+                    currentService?.categoryId &&
+                    !isPurgedCategoryOrService(currentService.categoryId) &&
+                    partner.categories?.includes(currentService.categoryId)
+                  );
 
                   return (
                     <div

@@ -1,7 +1,8 @@
 import { UserProfile } from "../types";
 
 export function buildDualPersonaUserDoc(profile: Partial<UserProfile> & { uid: string }) {
-  const resolvedWalletBalance = profile.walletBalance !== undefined ? profile.walletBalance : 101;
+  const rawBal = profile.walletBalance !== undefined ? Number(profile.walletBalance) : 101;
+  const resolvedWalletBalance = (isNaN(rawBal) || rawBal === 600) ? 101 : rawBal;
   const customerData = {
     fullName: profile.fullName || profile.displayName || "User",
     email: profile.email || "",

@@ -23,9 +23,6 @@ import {
   Settings,
   MessageSquare,
   Mail,
-  RefreshCw,
-  Download,
-  Sparkles,
   Check,
   Phone,
   Briefcase,
@@ -391,12 +388,6 @@ export default function App() {
     );
   });
   const [allServices, setAllServices] = useState<Service[]>([]);
-  const [systemUpdate, setSystemUpdate] = useState<{ reason: string } | null>(null);
-  const [pendingVersion, setPendingVersion] = useState<string | null>(null);
-  const [skippedUpdate, setSkippedUpdate] = useState<{ reason: string, version?: string | null } | null>(null);
-  const update90SecTimer = useRef<any>(null);
-  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
-  const [updateStep, setUpdateStep] = useState<string>('');
   const [allCategories, setAllCategories] = useState<Category[]>([]);
 
   const [currentMode, setCurrentModeState] = useState<'customer' | 'partner'>(
@@ -405,12 +396,26 @@ export default function App() {
 
   useEffect(() => {
     if (profile) {
-      const mode = profile.currentMode || (profile.role === 'partner' ? 'partner' : 'customer');
+      const isOnPartnerRoute =
+        activeTab === 'partner' ||
+        (typeof window !== 'undefined' && (
+          window.location.pathname.toLowerCase().startsWith('/partner') ||
+          window.location.hash.toLowerCase().includes('partner')
+        ));
+      const mode = isOnPartnerRoute
+        ? 'partner'
+        : (profile.currentMode || (profile.role === 'partner' ? 'partner' : 'customer'));
       setCurrentModeState(mode);
     } else {
-      setCurrentModeState('customer');
+      const isOnPartnerRoute =
+        activeTab === 'partner' ||
+        (typeof window !== 'undefined' && (
+          window.location.pathname.toLowerCase().startsWith('/partner') ||
+          window.location.hash.toLowerCase().includes('partner')
+        ));
+      setCurrentModeState(isOnPartnerRoute ? 'partner' : 'customer');
     }
-  }, [profile?.uid, profile?.currentMode, profile?.role]);
+  }, [profile?.uid, profile?.currentMode, profile?.role, activeTab]);
 
   useEffect(() => {
     const handleOpenAuth = (e: Event) => {
@@ -510,19 +515,8 @@ export default function App() {
     };
   }, []);
 
-  const triggerSystemUpdate = (reason: string, version?: string | null) => {
-    setSystemUpdate({ reason });
-    if (version) {
-      setPendingVersion(version);
-    } else {
-      setPendingVersion(null);
-    }
-    setSkippedUpdate(null);
-  };
-
   useEffect(() => {
     let isMounted = true;
-    let isInitialServices = true;
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       if (!isMounted) return;
       const rawServices = snap.docs.map(d => ({ id: d.id, ...d.data() } as Service));
@@ -530,32 +524,15 @@ export default function App() {
         const currentCats = normalizeCategories(allCategories);
         return normalizeServicesList(rawServices, currentCats);
       });
-      if (isInitialServices) {
-        isInitialServices = false;
-      } else {
-        const changes = snap.docChanges();
-        if (changes.some(c => c.type === 'modified' || c.type === 'added' || c.type === 'removed')) {
-          triggerSystemUpdate("System content update: Advanced service pricing or description modifications were made live.");
-        }
-      }
     }, (err) => {
       if (!isMounted) return;
       console.error("Error subscribing to services in App.tsx:", err);
     });
 
-    let isInitialCategories = true;
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snap) => {
       if (!isMounted) return;
       const rawCategories = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
       setAllCategories(normalizeCategories(rawCategories));
-      if (isInitialCategories) {
-        isInitialCategories = false;
-      } else {
-        const changes = snap.docChanges();
-        if (changes.some(c => c.type === 'modified' || c.type === 'added' || c.type === 'removed')) {
-          triggerSystemUpdate("Ecosystem Category update: Category settings or catalog modifications made live.");
-        }
-      }
     }, (err) => {
       if (!isMounted) return;
       console.error("Error subscribing to categories in App.tsx:", err);
@@ -805,7 +782,7 @@ export default function App() {
           phoneNumber: u.phoneNumber || '',
           mobile: u.phoneNumber || '',
           role: u.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
-          walletBalance: 0,
+          walletBalance: 101,
           displayName: u.displayName || (u.phoneNumber ? `Customer (${u.phoneNumber.slice(-4)})` : 'Customer'),
           fullName: u.displayName || '',
           email: u.email || '',
@@ -919,21 +896,23 @@ export default function App() {
         localStorage.removeItem('zomindia_admin_authenticated');
         setHasActiveArrival(false);
         setPartnerApplication(null);
-        setCurrentModeState('customer');
+
+        // Preserve route: If on /partner or partner tab, KEEP partner tab so PartnerPortalLanding / Partner Login renders
         setActiveTabState((prevTab) => {
-          if (
-            prevTab === 'partner' ||
-            (typeof window !== 'undefined' && (
-              window.location.pathname.startsWith('/partner') ||
-              window.location.hash.toLowerCase().includes('partner')
-            ))
-          ) {
-            if (typeof window !== 'undefined') {
-              window.history.pushState(null, '', '/');
+          const currentPath = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '';
+          const currentHash = typeof window !== 'undefined' ? window.location.hash.toLowerCase() : '';
+          if (prevTab === 'partner' || currentPath.startsWith('/partner') || currentHash.includes('partner')) {
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/partner')) {
+              window.history.pushState(null, '', '/partner');
             }
-            return 'home';
+            setCurrentModeState('partner');
+            return 'partner';
           }
-          return prevTab;
+          if (prevTab === 'admin' || currentPath.startsWith('/admin')) {
+            return 'admin';
+          }
+          setCurrentModeState('customer');
+          return prevTab || 'home';
         });
         setLoading(false);
       }
@@ -953,84 +932,6 @@ export default function App() {
       if (typeof unsubscribePartnerApp === "function") unsubscribePartnerApp();
     };
   }, []);
-
-  // Generic live pipeline listener for system-critical backend force-reloads (Permanently Deprecated)
-  useEffect(() => {
-    // Only activate for authenticated admin users
-    if (!profile || profile.role !== 'admin') {
-      return;
-    }
-
-    let isMounted = true;
-    const updatesColRef = collection(db, 'system_updates');
-
-    const unsubscribeSystemUpdates = onSnapshot(
-      updatesColRef,
-      (snapshot) => {
-        // Logic bypassed to permanently prevent blocking promotional update alerts
-      },
-      (error) => {
-        if (!isMounted) return;
-        // Gracefully fall back without logging runtime permission warnings
-        if ((error as any)?.code !== 'permission-denied') {
-          console.debug("system_updates subscription notification:", (error as any)?.message);
-        }
-      }
-    );
-
-    return () => {
-      isMounted = false;
-      if (typeof unsubscribeSystemUpdates === "function") unsubscribeSystemUpdates();
-    };
-  }, [profile?.role, skippedUpdate]);
-
-  // 90 second interval re-prompt if update dismissed but not yet updated (Permanently Deprecated)
-  useEffect(() => {
-    // Reprompt logic bypassed to permanently prevent blocking promotional update alerts
-  }, [skippedUpdate]);
-
-  const handleSkipUpdate = () => {
-    if (systemUpdate) {
-      setSkippedUpdate({ ...systemUpdate, version: pendingVersion });
-    }
-    setSystemUpdate(null);
-  };
-
-  const handleStartUpdateProgress = () => {
-    setSkippedUpdate(null);
-    setUpdateProgress(0);
-    setUpdateStep('Loading new updates...');
-
-    let current = 0;
-    const interval = setInterval(() => {
-      current += Math.floor(Math.random() * 15) + 5;
-      if (current >= 100) {
-        current = 100;
-        setUpdateProgress(100);
-        setUpdateStep('Completing update...');
-        clearInterval(interval);
-        setTimeout(() => {
-          if (pendingVersion) {
-            localStorage.setItem('app_version', pendingVersion);
-          } else {
-            localStorage.setItem('app_version', `1.0.${Math.floor(Date.now() / 1000)}`);
-          }
-          window.location.reload();
-        }, 600);
-      } else {
-        setUpdateProgress(current);
-        if (current < 25) {
-          setUpdateStep('Downloading updates...');
-        } else if (current < 55) {
-          setUpdateStep('Checking connection...');
-        } else if (current < 85) {
-          setUpdateStep('Updating service list...');
-        } else {
-          setUpdateStep('Almost done...');
-        }
-      }
-    }, 200);
-  };
 
   if (loading) {
     return <LoadingScreen message="Connecting to secure zomindia console..." />;
@@ -1242,6 +1143,50 @@ export default function App() {
   };
 
   const renderContentInner = () => {
+    const isDirectPartnerPath =
+      activeTab === 'partner' ||
+      (typeof window !== 'undefined' && (
+        window.location.pathname.toLowerCase().startsWith('/partner') &&
+        !window.location.pathname.toLowerCase().startsWith('/partner-signup')
+      ));
+
+    if (isDirectPartnerPath) {
+      if (!profile || (profile.role !== 'partner' && profile.role !== 'admin' && !profile.partnerId)) {
+        return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="w-full"
+          >
+            <Suspense fallback={<LoadingScreen />}>
+              <PartnerPortalLanding 
+                profile={profile}
+                onLogin={() => setIsAuthModalOpen(true)}
+                onPartnerAuthenticated={(p) => setProfile(p)}
+              />
+            </Suspense>
+          </motion.div>
+        );
+      }
+      return (
+        <PartnerApp 
+          profile={profile} 
+          onNavigate={(tab) => setActiveTab(tab as any)}
+          onLogout={() => {
+            setProfile(null);
+            setCurrentModeState('partner');
+            setActiveTabState('partner');
+            localStorage.setItem('zomindia_last_active_tab', 'partner');
+            if (typeof window !== 'undefined') {
+              window.history.pushState(null, '', '/partner');
+            }
+          }}
+        />
+      );
+    }
+
     if (profile && currentMode === 'partner' && (profile.role === 'partner' || profile.role === 'admin' || profile.partnerId)) {
       return (
         <PartnerApp 
@@ -1249,9 +1194,12 @@ export default function App() {
           onNavigate={(tab) => setActiveTab(tab as any)}
           onLogout={() => {
             setProfile(null);
-            setCurrentModeState('customer');
-            setActiveTabState('home');
-            window.history.pushState(null, '', '/');
+            setCurrentModeState('partner');
+            setActiveTabState('partner');
+            localStorage.setItem('zomindia_last_active_tab', 'partner');
+            if (typeof window !== 'undefined') {
+              window.history.pushState(null, '', '/partner');
+            }
           }}
         />
       );
@@ -1440,40 +1388,6 @@ If you have any billing questions, or if your refund is delayed, please email us
           />
         );
       }
-    }
-
-    if (activeTab === 'partner') {
-      if (!profile || (profile.role !== 'partner' && profile.role !== 'admin' && !profile.partnerId)) {
-        return (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="w-full"
-          >
-            <Suspense fallback={<LoadingScreen />}>
-              <PartnerPortalLanding 
-                profile={profile}
-                onLogin={() => setIsAuthModalOpen(true)}
-                onPartnerAuthenticated={(p) => setProfile(p)}
-              />
-            </Suspense>
-          </motion.div>
-        );
-      }
-      return (
-        <PartnerApp 
-          profile={profile} 
-          onNavigate={(tab) => setActiveTab(tab as any)}
-          onLogout={() => {
-            setProfile(null);
-            setCurrentModeState('customer');
-            setActiveTabState('home');
-            window.history.pushState(null, '', '/');
-          }}
-        />
-      );
     }
 
     if (activeTab === 'partner-signup') {
@@ -1784,9 +1698,12 @@ If you have any billing questions, or if your refund is delayed, please email us
             initialTab="jobs"
             onLogout={() => {
               setProfile(null);
-              setCurrentModeState('customer');
-              setActiveTabState('home');
-              window.history.pushState(null, '', '/');
+              setCurrentModeState('partner');
+              setActiveTabState('partner');
+              localStorage.setItem('zomindia_last_active_tab', 'partner');
+              if (typeof window !== 'undefined') {
+                window.history.pushState(null, '', '/partner');
+              }
             }}
           />
         );
@@ -1850,7 +1767,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         phoneNumber: authUser.phoneNumber || '',
         mobile: authUser.phoneNumber || '',
         role: authUser.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
-        walletBalance: 0,
+        walletBalance: 101,
         displayName: authUser.displayName || (authUser.phoneNumber ? `Customer (${authUser.phoneNumber.slice(-4)})` : 'Customer'),
         fullName: authUser.displayName || 'Customer',
         email: authUser.email || '',
@@ -1905,7 +1822,7 @@ If you have any billing questions, or if your refund is delayed, please email us
         phoneNumber: authUser.phoneNumber || '',
         mobile: authUser.phoneNumber || '',
         role: authUser.email?.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ? 'admin' : 'customer',
-        walletBalance: 0,
+        walletBalance: 101,
         displayName: authUser.displayName || (authUser.phoneNumber ? `Customer (${authUser.phoneNumber.slice(-4)})` : 'Customer'),
         fullName: authUser.displayName || 'Customer',
         email: authUser.email || '',
@@ -2158,21 +2075,11 @@ If you have any billing questions, or if your refund is delayed, please email us
                 />
               </motion.div>
 
-              {/* Mobile Greeting starting cleanly right after the logo container */}
-              {(profile || user || auth.currentUser) && (
-                <div className="flex md:hidden items-center select-none min-w-0">
-                  <span className="bg-sky-50/80 border border-sky-100/90 px-2 py-1 rounded-xl shadow-xs inline-flex items-center min-w-0">
-                    <span className="text-xs font-semibold text-slate-800 max-w-[110px] sm:max-w-[180px] truncate block">
-                      नमस्ते, {profile?.displayName || profile?.fullName || user?.displayName || 'Customer'}
-                    </span>
-                  </span>
-                </div>
-              )}
             </div>
 
             {renderNavigation()}
 
-            <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
               {(profile || user || auth.currentUser) ? (
                 <>
                   {/* Desktop Only: Standalone Bell Icon */}
@@ -2188,7 +2095,7 @@ If you have any billing questions, or if your refund is delayed, please email us
                   </motion.button>
 
                   {/* Desktop Only Trigger & Direct Profile Navigation */}
-                  <div className="hidden md:flex items-center gap-3 relative">
+                  <div className="hidden md:flex items-center gap-3 ml-2.5 sm:ml-4 relative">
                     <button
                       onClick={() => {
                         setActiveTab('profile');
@@ -2197,16 +2104,19 @@ If you have any billing questions, or if your refund is delayed, please email us
                       className="flex items-center gap-2.5 select-none py-1.5 px-2.5 hover:bg-slate-50/80 rounded-2xl transition-all cursor-pointer"
                       id="nav-green-greeting"
                     >
-                      <div className="flex flex-col text-right items-end min-w-0">
-                        <span className="text-xs font-semibold text-slate-800 max-w-[110px] sm:max-w-[180px] truncate block" id="portal-header-greeter">
-                          नमस्ते, {profile?.displayName || profile?.fullName || user?.displayName || 'Customer'}
+                      <div className="flex flex-col items-start justify-center leading-none" id="portal-header-greeter">
+                        <span className="text-[10px] font-medium text-slate-400 leading-tight">
+                          नमस्ते,
+                        </span>
+                        <span className="text-[10px] font-extrabold text-slate-600 truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
+                          {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
                         </span>
                         <span 
                           onClick={(e) => {
                             e.stopPropagation();
                             setIsCitySelectorOpen(true);
                           }}
-                          className="text-slate-400 hover:text-emerald-600 active:scale-95 text-[10px] font-black tracking-widest leading-none mt-1.5 uppercase pr-1 flex items-center gap-0.5 justify-end cursor-pointer transition-all duration-200"
+                          className="text-slate-600 hover:text-emerald-600 active:scale-95 text-[10px] font-extrabold tracking-widest leading-none mt-1 uppercase flex items-center gap-0.5 cursor-pointer transition-all duration-200"
                           title="Click to change city"
                         >
                           📍 INDORE
@@ -2223,8 +2133,18 @@ If you have any billing questions, or if your refund is delayed, please email us
                     </button>
                   </div>
 
-                  {/* Mobile Only: Top Row far-right compact Indore city pill and Avatar direct profile trigger */}
-                  <div className="flex md:hidden items-center gap-1.5 select-none shrink-0">
+                  {/* Mobile Only: Greeting grouped directly adjacent to Indore city pill and Avatar */}
+                  <div className="flex md:hidden items-center gap-2.5 ml-2.5 sm:ml-4 select-none min-w-0">
+                    {/* Greeting Stack */}
+                    <div className="flex flex-col items-start justify-center leading-none min-w-0">
+                      <span className="text-[10px] font-medium text-slate-400 leading-tight">
+                        नमस्ते,
+                      </span>
+                      <span className="text-[9px] font-extrabold text-slate-600 truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
+                        {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
+                      </span>
+                    </div>
+
                     <button
                       onClick={() => setIsCitySelectorOpen(true)}
                       className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[9px] px-1.5 py-1 rounded-xl cursor-pointer hover:bg-slate-200 active:scale-95 transition-all shrink-0"
@@ -2543,107 +2463,6 @@ If you have any billing questions, or if your refund is delayed, please email us
         />
       )}
       <OfflineSyncIndicator />
-
-
-
-
-
-      {/* Dynamic Ecosystem Hot-Update Premium Modal Overlay across Platforms */}
-      <AnimatePresence>
-        {systemUpdate && (
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/20 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={{ type: "spring", duration: 0.5 }}
-              className="relative w-full max-w-lg bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 text-center shadow-2xl text-slate-900 overflow-hidden"
-            >
-              {/* Skip button on top right */}
-              {updateProgress === null && (
-                <button
-                  onClick={handleSkipUpdate}
-                  className="absolute top-5 right-5 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-full transition-all border-0 cursor-pointer"
-                  title="Skip update"
-                >
-                  <X size={16} />
-                </button>
-              )}
-
-              {/* Decorative background grid and glow */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="relative space-y-6">
-                {/* Visual Icon Refresh */}
-                <div className="relative w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
-                  <RefreshCw size={28} className="animate-spin text-blue-600" style={{ animationDuration: '4s' }} />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1.5 leading-none">
-                      <Sparkles size={12} className="animate-pulse" />
-                      New Update
-                    </span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 font-sans">
-                    Update Available
-                  </h3>
-                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 mt-3 max-w-sm mx-auto text-center">
-                    <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider block font-sans">
-                      What's New
-                    </p>
-                    <p className="text-sm text-slate-800 font-medium leading-relaxed font-sans">
-                      {systemUpdate.reason ? systemUpdate.reason.replace("Ecosystem Hard-Sync: ", "") : "We've made some improvements to give you a better service experience."}
-                    </p>
-                  </div>
-                </div>
-
-                {updateProgress !== null ? (
-                  /* Loading Patch Execution bar */
-                  <div className="space-y-4 max-w-sm mx-auto">
-                    <div className="flex justify-between items-center text-xs font-semibold text-slate-600 font-sans">
-                      <span className="flex items-center gap-1.5 animate-pulse">
-                        <Download size={12} className="text-blue-600 font-bold" />
-                        {updateStep}
-                      </span>
-                      <span className="text-blue-600 font-bold">{updateProgress}%</span>
-                    </div>
-
-                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-blue-600 via-blue-700 to-emerald-500 rounded-full"
-                        style={{ width: `${updateProgress}%` }}
-                        transition={{ ease: "easeInOut" }}
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium animate-pulse font-sans">
-                      Applying changes, please wait...
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto pt-2">
-                    <button
-                      onClick={handleStartUpdateProgress}
-                      className="flex-1 bg-orange-500 text-white hover:bg-orange-600 font-semibold py-3.5 px-6 rounded-2xl text-xs active:scale-98 transition-all hover:scale-102 flex items-center justify-center gap-2 cursor-pointer border-0 shadow-md shadow-orange-500/20"
-                    >
-                      <RefreshCw size={13} className="animate-spin" style={{ animationDuration: '4s' }} />
-                      Update Now
-                    </button>
-
-                    <button
-                      onClick={handleSkipUpdate}
-                      className="px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-2xl text-xs border border-slate-200 transition-all cursor-pointer"
-                    >
-                      Skip For Now
-                    </button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Dynamic Universal Feedback Toast */}
       <AnimatePresence>

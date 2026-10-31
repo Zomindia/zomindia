@@ -11,7 +11,7 @@ import {
   Zap,
   TicketPercent,
   ShieldAlert, 
-  Lock
+  User
 } from 'lucide-react';
 import { UserProfile, PartnerProfile, Booking, Service, PartnerApplication } from '../types';
 import { auth, db } from '../lib/firebase';
@@ -204,7 +204,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     if (onLogout) {
       onLogout();
     } else {
-      window.location.href = '/';
+      window.location.href = '/partner';
     }
   };
 
@@ -331,8 +331,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                   status: (pData.status || "active") as any,
                   availabilityStatus: pData.availabilityStatus || uData?.availabilityStatus || prev?.availabilityStatus || "Available",
                   bio: pData.bio || prev?.bio || "",
-                  categories: pData.categories || prev?.categories || [],
-                  skills: pData.skills || prev?.skills || [],
+                  categories: (pData.categories || prev?.categories || []).filter((c: string) => !/tv|television|microwave|oven|plumb|tap/i.test(String(c))),
+                  skills: (pData.skills || prev?.skills || []).filter((c: string) => !/tv|television|microwave|oven|plumb|tap/i.test(String(c))),
                   city: pData.city || prev?.city || "Indore",
                   phone: pData.phone || prev?.phone || "",
                   email: pData.email || prev?.email || "",
@@ -358,8 +358,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
                     status: 'pending',
                     availabilityStatus: pData.availabilityStatus || uData?.availabilityStatus || 'Available',
                     bio: pData.bio || '',
-                    categories: pData.categories || [],
-                    skills: pData.skills || [],
+                    categories: (pData.categories || []).filter((c: string) => !/tv|television|microwave|oven|plumb|tap/i.test(String(c))),
+                    skills: (pData.skills || []).filter((c: string) => !/tv|television|microwave|oven|plumb|tap/i.test(String(c))),
                     city: pData.city || 'Indore',
                     phone: pData.phone || '',
                     email: pData.email || '',
@@ -644,10 +644,11 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
             partner={partner}
             profile={profile}
             onNavigate={navigateWithTarget}
-            onLogout={onLogout || (() => { window.location.href = '/'; })}
+            onLogout={onLogout || (() => { window.location.href = '/partner'; })}
             bookings={bookings}
             services={services}
             users={users}
+            initialSection={(targetBookingId as any) || null}
           />
         );
       case 'notifications':
@@ -699,6 +700,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
     { id: 'jobs', icon: Briefcase, label: 'Jobs' },
     { id: 'amc-leads', icon: Zap, label: 'AMC Leads' },
     { id: 'offers', icon: TicketPercent, label: 'Offers' },
+    { id: 'settings', icon: User, label: 'Account' },
   ];
 
   if (loading) {
@@ -758,75 +760,6 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   // SCENARIO C (Approved)
   return (
     <div className="min-h-[100dvh] bg-slate-50 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-slate-200 pb-20">
-      <style>{`
-        /* Hide the duplicate KYC banner card completely if rendered */
-        .min-h-\\[100dvh\\] .bg-amber-500.text-slate-950.p-4.rounded-3xl {
-          display: none !important;
-        }
-
-        /* Shrink PartnerHome general container padding and spacing */
-        .min-h-\\[100dvh\\] .p-6.space-y-8 {
-          padding: 1rem !important;
-          gap: 1rem !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        
-        /* Adjust spacing of space-y-8 children */
-        .min-h-\\[100dvh\\] .p-6.space-y-8 > * {
-          margin-top: 0 !important;
-          margin-bottom: 0 !important;
-        }
-
-        /* Shrink Welcome header */
-        .min-h-\\[100dvh\\] h2.text-2xl {
-          font-size: 1.125rem !important; /* text-lg */
-          line-height: 1.25rem !important;
-        }
-        
-        .min-h-\\[100dvh\\] .text-\\[11px\\].text-slate-400 {
-          font-size: 9px !important;
-          margin-top: 2px !important;
-        }
-
-        /* Compact Stats cards: Side-by-side neat layout */
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 {
-          gap: 0.5rem !important; /* gap-2 */
-          display: grid !important;
-          grid-template-cols: repeat(2, minmax(0, 1fr)) !important;
-        }
-
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 > div {
-          padding: 0.75rem !important; /* p-3 */
-          border-radius: 1rem !important; /* rounded-2xl */
-        }
-
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .w-10.h-10 {
-          width: 2rem !important;
-          height: 2rem !important;
-          margin-bottom: 0.5rem !important;
-          border-radius: 0.5rem !important;
-        }
-        
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .w-10.h-10 svg {
-          width: 1rem !important;
-          height: 1rem !important;
-        }
-
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .pt-4 {
-          padding-top: 0.5rem !important;
-          margin-top: 0.25rem !important;
-        }
-
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .text-3xl {
-          font-size: 1.25rem !important; /* text-xl */
-          line-height: 1.75rem !important;
-        }
-        
-        .min-h-\\[100dvh\\] section.grid.grid-cols-2.gap-4 .text-\\[10px\\] {
-          font-size: 8px !important;
-        }
-      `}</style>
       {/* Sticky Countdown Banner */}
       {kycStatus === 'pending' && (
         <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 flex items-center justify-between text-left relative z-50 shadow-md">

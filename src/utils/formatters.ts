@@ -1,5 +1,6 @@
 export * from './formatTime';
 export {
+  isPurgedCategoryOrService,
   isValidCustomerService,
   sanitizeCatalogText,
   DEFAULT_CATEGORIES,
@@ -13,3 +14,4 @@ export {
   isWashingMachineService,
   healFirestoreCatalogIfNeeded,
 } from '../data/services';
+

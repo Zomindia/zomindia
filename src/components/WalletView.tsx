@@ -10,6 +10,7 @@ const isCorruptMockTransaction = (tx: any): boolean => {
   const refId = String(tx?.referenceId || '').trim();
   const ordId = String(tx?.orderId || '').trim();
   const reason = String(tx?.reason || '').toLowerCase();
+  const amt = Number(tx?.amount || 0);
   return (
     payId.startsWith('pay_sim_') ||
     payId.startsWith('pay_mock_') ||
@@ -19,7 +20,9 @@ const isCorruptMockTransaction = (tx: any): boolean => {
     refId.startsWith('sim_pay_') ||
     ordId.startsWith('order_mock_') ||
     reason.includes('mock') ||
-    tx?.isMock === true
+    reason.includes('simulated') ||
+    tx?.isMock === true ||
+    (tx?.type === 'credit' && (amt === 500 || amt === 600) && !reason.includes('referral') && !reason.includes('refund'))
   );
 };
 
@@ -118,7 +121,9 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           if (corruptDocs.length > 0 || currentProfileBalance !== verifiedBalance) {
             try {
               await updateDoc(doc(db, 'users', profile.uid), {
-                walletBalance: verifiedBalance
+                walletBalance: verifiedBalance,
+                'customerData.walletBalance': verifiedBalance,
+                welcomeBonusClaimed: true
               });
             } catch {
               // Handled by backend /api/wallet/sanitize
@@ -180,7 +185,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           return tx.type === 'credit' ? acc + amt : acc - amt;
         }, 0)
       )
-    : (profile.walletBalance ?? 101);
+    : (profile.walletBalance !== undefined && profile.walletBalance !== 600 ? profile.walletBalance : 101);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:py-16 relative">

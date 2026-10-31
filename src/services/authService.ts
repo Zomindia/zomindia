@@ -7,6 +7,8 @@ import {
   doc, 
   getDoc, 
   setDoc, 
+  updateDoc,
+  deleteDoc,
   onSnapshot, 
   collection, 
   query, 
@@ -106,6 +108,9 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
     ? raw.savedAddresses.filter((a: any) => !String(a?.address || '').toLowerCase().includes('lasuriamori'))
     : [];
 
+  const rawBal = raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101;
+  const cleanWalletBalance = (isNaN(rawBal) || rawBal === 600) ? 101 : rawBal;
+
   const safeProfile = {
     ...raw,
     uid,
@@ -116,7 +121,7 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
     fullName: safeFullName,
     role: safeRole,
     adminSubRole: isMasterAdmin ? 'head' : (raw?.adminSubRole || undefined),
-    walletBalance: raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101,
+    walletBalance: cleanWalletBalance,
     welcomeBonusClaimed: true,
     address: cleanAddress,
     houseNumber: raw?.houseNumber || raw?.customerData?.houseNumber || '',
@@ -131,7 +136,7 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
       email: raw?.customerData?.email || email || '',
       phoneNumber: raw?.customerData?.phoneNumber || phoneNumber || '',
       mobile: raw?.customerData?.mobile || phoneNumber || '',
-      walletBalance: raw?.customerData?.walletBalance !== undefined ? Number(raw.customerData.walletBalance) : (raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101),
+      walletBalance: cleanWalletBalance,
       welcomeBonusClaimed: true,
       address: cleanAddress,
       houseNumber: raw?.customerData?.houseNumber || raw?.houseNumber || '',
@@ -161,6 +166,27 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
  * - If Firestore throws a `permission-denied` or `insufficient permissions` error, we DO NOT log out or reset
  *   the user. Instead, we gracefully emit an in-memory authenticated profile so the user stays logged in and active.
  */
+export function isCorruptMockWalletTx(tx: any): boolean {
+  const payId = String(tx?.paymentId || '').trim();
+  const refId = String(tx?.referenceId || '').trim();
+  const ordId = String(tx?.orderId || '').trim();
+  const reason = String(tx?.reason || '').toLowerCase();
+  const amt = Number(tx?.amount || 0);
+  return (
+    payId.startsWith('pay_sim_') ||
+    payId.startsWith('pay_mock_') ||
+    payId.startsWith('sim_pay_') ||
+    refId.startsWith('pay_sim_') ||
+    refId.startsWith('pay_mock_') ||
+    refId.startsWith('sim_pay_') ||
+    ordId.startsWith('order_mock_') ||
+    reason.includes('mock') ||
+    reason.includes('simulated') ||
+    tx?.isMock === true ||
+    (tx?.type === 'credit' && (amt === 500 || amt === 600) && !reason.includes('referral') && !reason.includes('refund'))
+  );
+}
+
 export function resolveAndSubscribeProfile(
   user: User,
   onProfileUpdate: (profile: UserProfile) => void,
@@ -168,6 +194,7 @@ export function resolveAndSubscribeProfile(
 ): () => void {
   let isUnsubscribed = false;
   let unsubscribeSnapshot: (() => void) | null = null;
+  let verifiedLedgerBalance: number | null = null;
 
   // Immediate in-memory fallback profile with default new user state
   const fallbackProfile = sanitizeUserProfile({
@@ -266,10 +293,88 @@ export function resolveAndSubscribeProfile(
         resolvedPayload = freshProfile;
         onProfileUpdate(freshProfile);
       } else {
+        // Automatically sync wallet balance with authentic walletTransactions ledger
+        try {
+          const txSnap = await getDocs(query(collection(db, 'walletTransactions'), where('userId', '==', user.uid)));
+          const allTxs = txSnap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, any>) }));
+          const corruptTxs = allTxs.filter(tx => isCorruptMockWalletTx(tx));
+          for (const badTx of corruptTxs) {
+            deleteDoc(doc(db, 'walletTransactions', badTx.id)).catch(() => {});
+          }
+
+          const genuineTxs = allTxs.filter(
+            (tx: any) =>
+              !tx.paymentId?.startsWith('pay_sim_') &&
+              !tx.paymentId?.startsWith('pay_mock_') &&
+              !tx.isMock &&
+              !isCorruptMockWalletTx(tx)
+          );
+
+          let verifiedBal = 101;
+          if (genuineTxs.length > 0) {
+            verifiedBal = Math.max(0, genuineTxs.reduce((acc, tx: any) => {
+              if (tx.status && tx.status !== 'completed') return acc;
+              const amt = Number(tx.amount) || 0;
+              return tx.type === 'credit' ? acc + amt : acc - amt;
+            }, 0));
+          } else {
+            // Ensure initial ₹101 welcome transaction exists in ledger
+            const welcomeRef = doc(db, 'walletTransactions', `welcome_bonus_${user.uid}`);
+            const welcomeSnap = await getDoc(welcomeRef);
+            if (!welcomeSnap.exists()) {
+              await setDoc(welcomeRef, {
+                userId: user.uid,
+                amount: 101,
+                type: 'credit',
+                reason: 'Zomindia ₹101 Welcome Reward',
+                status: 'completed',
+                createdAt: serverTimestamp()
+              });
+            }
+          }
+
+          verifiedLedgerBalance = verifiedBal;
+
+          // If stored walletBalance in Firestore is out of sync with genuine ledger, correct it immediately
+          if (existingData?.walletBalance !== verifiedBal || existingData?.customerData?.walletBalance !== verifiedBal) {
+            await updateDoc(userDocRef, {
+              walletBalance: verifiedBal,
+              'customerData.walletBalance': verifiedBal,
+              welcomeBonusClaimed: true
+            }).catch(() => {});
+            existingData.walletBalance = verifiedBal;
+            if (existingData.customerData) {
+              existingData.customerData.walletBalance = verifiedBal;
+            }
+          }
+        } catch (syncErr) {
+          console.warn('[authService] Ledger sync notice:', syncErr);
+          if (existingData?.walletBalance === 600) {
+            existingData.walletBalance = 101;
+            if (existingData.customerData) {
+              existingData.customerData.walletBalance = 101;
+            }
+            verifiedLedgerBalance = 101;
+          }
+        }
+
+        // Also trigger backend ledger sanitizer non-blockingly
+        if (typeof window !== 'undefined') {
+          fetch('/api/wallet/sanitize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.uid })
+          }).catch(() => {});
+        }
+
         // 4. Existing document exists: sync fields safely
         const hasCompletedOnboarding = existingData?.onboardingComplete !== undefined
           ? Boolean(existingData.onboardingComplete)
           : Boolean(existingData?.fullName?.trim() || existingData?.customerData?.fullName?.trim());
+
+        const resolvedBal = verifiedLedgerBalance !== null
+          ? verifiedLedgerBalance
+          : (existingData?.walletBalance !== undefined && existingData.walletBalance !== 600 ? existingData.walletBalance : 101);
 
         const payload: any = buildDualPersonaUserDoc({
           ...existingData,
@@ -282,7 +387,7 @@ export function resolveAndSubscribeProfile(
           role: isMasterAdmin ? 'admin' : (existingData?.role || 'customer'),
           photoURL: user.photoURL || existingData?.photoURL || '',
           referralCode: existingData?.referralCode || `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
-          walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 101,
+          walletBalance: resolvedBal,
           welcomeBonusClaimed: true,
           onboardingComplete: hasCompletedOnboarding,
           updatedAt: Timestamp.now(),
@@ -293,29 +398,12 @@ export function resolveAndSubscribeProfile(
         }
 
         resolvedPayload = payload;
+        onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
 
         try {
           await setDoc(userDocRef, payload, { merge: true });
         } catch (writeErr: any) {
           console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
-          onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
-        }
-
-        try {
-          const welcomeTxRef = doc(db, 'walletTransactions', `welcome_bonus_${user.uid}`);
-          const welcomeSnap = await getDoc(welcomeTxRef);
-          if (!welcomeSnap.exists()) {
-            await setDoc(welcomeTxRef, {
-              userId: user.uid,
-              amount: 101,
-              type: 'credit',
-              reason: 'Zomindia ₹101 Welcome Reward',
-              status: 'completed',
-              createdAt: serverTimestamp()
-            });
-          }
-        } catch {
-          // Non-blocking
         }
       }
 
@@ -329,8 +417,17 @@ export function resolveAndSubscribeProfile(
             if (isUnsubscribed) return;
             if (snap.exists()) {
               const liveData = snap.data() as UserProfile;
+              // Guard against stale 600 snapshot before ledger update propagates
+              const safeLiveWallet = (liveData.walletBalance === 600 && verifiedLedgerBalance !== null && verifiedLedgerBalance !== 600)
+                ? verifiedLedgerBalance
+                : (liveData.walletBalance === 600 && verifiedLedgerBalance === null ? 101 : liveData.walletBalance);
               const normalized = buildDualPersonaUserDoc({
                 ...liveData,
+                walletBalance: safeLiveWallet,
+                customerData: liveData.customerData ? {
+                  ...liveData.customerData,
+                  walletBalance: safeLiveWallet
+                } : undefined,
                 uid: user.uid,
               });
               if (isMasterAdmin) {

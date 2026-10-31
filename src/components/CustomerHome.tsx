@@ -24,6 +24,7 @@ import {
 import { handleFirestoreError, OperationType } from "../lib/firestore-errors";
 import { fuzzyMatch } from "../utils/search";
 import {
+  isPurgedCategoryOrService,
   isValidCustomerService,
   sanitizeCatalogText,
   DEFAULT_CATEGORIES,
@@ -37,7 +38,6 @@ import {
 } from "../utils/formatters";
 import ZomatoPageEndMarker from "./ZomatoPageEndMarker";
 import { motion, AnimatePresence } from "motion/react";
-import PWAUpdateRegister from "./PWAUpdateRegister";
 import BookingModal from "./BookingModal";
 import { BrandedButtonSpinner } from "./LoadingIndicator";
 import {
@@ -46,7 +46,6 @@ import {
 } from "./HomeSkeletons";
 import ServiceCard from "./ServiceCard";
 import {
-  Wrench,
   Sparkles,
   Plug,
   PaintBucket,
@@ -66,7 +65,6 @@ import {
   Check,
   Plus,
   Scissors,
-  Tv,
   Hammer,
   RotateCcw,
   PhoneCall,
@@ -109,7 +107,7 @@ const CONSOLIDATED_OFFERS = [
     id: "fixit250",
     tag: "Appliance Care",
     title: "Guaranteed Flat ₹250 Off",
-    desc: "Fix washing machines, refrigerators, microwaves & RO water purifiers",
+    desc: "Fix washing machines, refrigerators & RO water purifiers",
     code: "FIXIT250",
     discount: "FLAT ₹250",
   },
@@ -136,14 +134,8 @@ export const formatCategoryShortLabel = (name: string): string => {
   if (lower.includes("electronic")) {
     return "Electronics";
   }
-  if (lower.includes("tv") || lower.includes("television") || lower.includes("audio")) {
-    return "TV & Audio";
-  }
   if (lower.includes("electric")) {
     return "Electrician";
-  }
-  if (lower.includes("plumb") || lower.includes("tap")) {
-    return "Plumbing & Taps";
   }
   if (lower.includes("clean") || lower.includes("sanitiz")) {
     return "Cleaning";
@@ -159,9 +151,6 @@ export const formatCategoryShortLabel = (name: string): string => {
   }
   if (lower.includes("geyser") || lower.includes("water heater")) {
     return "Geyser Repair";
-  }
-  if (lower.includes("microwave") || lower.includes("oven")) {
-    return "Microwave / Oven";
   }
   if (lower.includes("chimney")) {
     return "Chimney";
@@ -224,8 +213,8 @@ export const getCategoryTileStyle = (categoryName: string): { bg: string; text: 
     };
   }
 
-  // • TV & Electronics: bg-indigo-100 text-indigo-600
-  if (name.includes("tv") || name.includes("television") || name.includes("electronic") || name.includes("audio")) {
+  // • Electronics: bg-indigo-100 text-indigo-600
+  if (name.includes("electronic")) {
     return {
       bg: "bg-indigo-100",
       text: "text-indigo-600",
@@ -251,16 +240,6 @@ export const getCategoryTileStyle = (categoryName: string): { bg: string; text: 
       text: "text-rose-600",
       border: "border-rose-200/70",
       hoverBg: "group-hover:bg-rose-200/80",
-    };
-  }
-
-  // Plumbing: bg-blue-100 text-blue-600
-  if (name.includes("plumb") || name.includes("pipe") || name.includes("leak")) {
-    return {
-      bg: "bg-blue-100",
-      text: "text-blue-600",
-      border: "border-blue-200/70",
-      hoverBg: "group-hover:bg-blue-200/80",
     };
   }
 
@@ -310,9 +289,7 @@ export const resolveCategoryIcon = (iconName?: string, catName?: string): any =>
   if (iconLower === "droplets" || nameLower.includes("ro") || nameLower.includes("purifier") || nameLower.includes("water")) return Droplets;
   if (iconLower === "rotateccw" || nameLower.includes("washing")) return RotateCcw;
   if (iconLower === "zap" || nameLower.includes("fridge") || nameLower.includes("refrigerat")) return Zap;
-  if (iconLower === "tv" || nameLower.includes("tv") || nameLower.includes("television") || nameLower.includes("electronic") || nameLower.includes("audio")) return Tv;
-  if (iconLower === "plug" || nameLower.includes("electric")) return Plug;
-  if (iconLower === "wrench" || nameLower.includes("plumb")) return Wrench;
+  if (iconLower === "plug" || nameLower.includes("electric") || nameLower.includes("electronic")) return Plug;
   if (iconLower === "brush" || iconLower === "paintbucket" || nameLower.includes("paint")) return PaintBucket;
   if (iconLower === "scissors" || nameLower.includes("beauty") || nameLower.includes("salon")) return Scissors;
   if (iconLower === "smartphone" || nameLower.includes("phone")) return Smartphone;
@@ -330,7 +307,7 @@ export const resolveBadge = (cat: any): string => {
   if (name.includes('ac') || name.includes('cooling')) return 'TRENDING';
   if (name.includes('fridge') || name.includes('refrigerator')) return 'INSTANT';
   if (name.includes('washing') || name.includes('laundry')) return 'TRENDING';
-  if (name.includes('electric') || name.includes('plumb')) return 'FAST';
+  if (name.includes('electric')) return 'FAST';
 
   // Fallback for any newly added category in the future:
   return 'POPULAR';
@@ -380,11 +357,9 @@ const getCategoryType = (
   if (
     name.includes("repair") ||
     name.includes("appliance") ||
-    name.includes("wrench") ||
     name.includes("ac ") ||
     name.includes("phone") ||
     name.includes("electrician") ||
-    name.includes("plumb") ||
     name.includes("wiring") ||
     name.includes("switch") ||
     name.includes("device") ||
@@ -392,7 +367,6 @@ const getCategoryType = (
     name.includes("purifier") ||
     name.includes("geyser") ||
     name.includes("heater") ||
-    name.includes("tv") ||
     name.includes("refrigerat") ||
     name.includes("fan") ||
     name.includes("machine")
@@ -437,9 +411,33 @@ export default function CustomerHome({
 
   useEffect(() => {
     if (initialCategoryId && allCategories.length > 0) {
+      if (isPurgedCategoryOrService(initialCategoryId)) {
+        const fallbackCat =
+          allCategories.find(
+            (c) =>
+              c.id === "ac" ||
+              c.name.toLowerCase().includes("ac") ||
+              c.name.toLowerCase().includes("clean")
+          ) ||
+          allCategories[0] ||
+          null;
+        setSelectedCategory(fallbackCat);
+        return;
+      }
       const cat = allCategories.find((c) => c.id === initialCategoryId);
       if (cat) {
         setSelectedCategory(cat);
+      } else {
+        const fallbackCat =
+          allCategories.find(
+            (c) =>
+              c.id === "ac" ||
+              c.name.toLowerCase().includes("ac") ||
+              c.name.toLowerCase().includes("clean")
+          ) ||
+          allCategories[0] ||
+          null;
+        setSelectedCategory(fallbackCat);
       }
     } else if (!initialCategoryId && allCategories.length > 0) {
       setSelectedCategory(null);
@@ -1520,7 +1518,7 @@ export default function CustomerHome({
                 type="text"
                 inputMode="text"
                 enterKeyHint="search"
-                placeholder="Search AC, RO, Fridge, TV..."
+                placeholder="Search AC, RO, Fridge, Washing Machine..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 w-full min-w-0 py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium truncate"
@@ -1618,7 +1616,7 @@ export default function CustomerHome({
                   <div className="p-6 text-center">
                     <p className="text-sm font-semibold text-slate-600 mb-2">No services matching "{searchQuery}"</p>
                     <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                      {['AC Service', 'RO Purifier', 'Washing Machine', 'Refrigerator', 'TV Repair'].map((chip) => (
+                      {['AC Service', 'RO Purifier', 'Washing Machine', 'Refrigerator', 'Electronics'].map((chip) => (
                         <button
                           key={chip}
                           type="button"
@@ -2866,7 +2864,6 @@ export default function CustomerHome({
         </div>
       )}
       <ZomatoPageEndMarker pageName="Zomindia Home" isDark={false} />
-      <PWAUpdateRegister />
     </div>
   );
 }

@@ -162,10 +162,8 @@ export default function OffersView({
     { id: 'wm-2', category: 'Washing Machine', service: 'Semi-Automatic Spin/Wash Diagnostics', customerPrice: 399, partnerPayout: 319, duration: '35 mins' },
     { id: 'fridge-1', category: 'Refrigerator', service: 'Double Door Refrigerator Repair & Gas Charge', customerPrice: 599, partnerPayout: 479, duration: '50 mins' },
     { id: 'fridge-2', category: 'Refrigerator', service: 'Single Door Refrigerator Inspection & Thermostat', customerPrice: 449, partnerPayout: 359, duration: '35 mins' },
-    { id: 'micro-1', category: 'Microwave', service: 'Microwave Diagnostics & Heating Repair', customerPrice: 349, partnerPayout: 279, duration: '30 mins' },
     { id: 'geyser-1', category: 'Geyser', service: 'Geyser Descaling & Element Replacement', customerPrice: 399, partnerPayout: 319, duration: '40 mins' },
     { id: 'elec-1', category: 'Electrician', service: 'Switchboard / MCB Repair & Installation', customerPrice: 249, partnerPayout: 199, duration: '25 mins' },
-    { id: 'plumb-1', category: 'Plumber', service: 'Tap / Pipe Leakage & Valve Repair', customerPrice: 249, partnerPayout: 199, duration: '30 mins' },
     { id: 'visit-1', category: 'General', service: 'Standard Minimum Doorstep Inspection / Visit', customerPrice: 195, partnerPayout: 156, duration: '20 mins' },
   ], []);
 

@@ -37,7 +37,6 @@ const CATEGORY_DEFAULT_BANNERS: Record<string, string> = {
   ro: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=1200&q=80',
   fridge: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1200&q=80',
   washing: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&w=1200&q=80',
-  tv: 'https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=1200&q=80',
 };
 
 const getFallbackBanner = (name: string): string => {
@@ -46,7 +45,6 @@ const getFallbackBanner = (name: string): string => {
   if (lower.includes('ro') || lower.includes('water') || lower.includes('purif')) return CATEGORY_DEFAULT_BANNERS.ro;
   if (lower.includes('fridge') || lower.includes('refrigerat')) return CATEGORY_DEFAULT_BANNERS.fridge;
   if (lower.includes('wash') || lower.includes('laundry')) return CATEGORY_DEFAULT_BANNERS.washing;
-  if (lower.includes('tv') || lower.includes('televis')) return CATEGORY_DEFAULT_BANNERS.tv;
   return CATEGORY_DEFAULT_BANNERS.ac;
 };
 

@@ -32,7 +32,7 @@ export async function seedDatabase() {
     } else {
       const currentCats = catsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
       const currentSvcs = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      await healFirestoreCatalogIfNeeded(currentSvcs, currentCats);
+      await healFirestoreCatalogIfNeeded(currentCats, currentSvcs);
     }
 
     // Seed Promotions

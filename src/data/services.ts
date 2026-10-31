@@ -1,6 +1,39 @@
 import { Category, Service } from '../types';
 import { db } from '../lib/firebase';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+
+/**
+ * Strictly identifies purged categories and services:
+ * - "TV & Audio" (tv, tv-audio, tv_audio, television-audio, tv repair)
+ * - "Microwave oven" (microwave, microwave-oven, microwave_repair, oven)
+ * - "Plumbing & tap" (plumbing-tap, plumbing_tap, plumbing, plumber, tap)
+ */
+export const isPurgedCategoryOrService = (textOrId?: string | null): boolean => {
+  if (!textOrId) return false;
+  const lower = String(textOrId).toLowerCase().trim();
+  if (!lower) return false;
+  return (
+    lower === 'tv' ||
+    lower === 'tv-audio' ||
+    lower === 'tv_audio' ||
+    lower === 'television-audio' ||
+    lower === 'cat_plumbing' ||
+    lower.includes('tv & audio') ||
+    lower.includes('tv repair') ||
+    lower.includes('television') ||
+    lower.includes('smart tv') ||
+    lower.includes('led/lcd tv') ||
+    lower.includes('microwave') ||
+    lower.includes('oven') ||
+    lower === 'plumbing' ||
+    lower === 'plumbing-tap' ||
+    lower === 'plumbing_tap' ||
+    lower.includes('plumbing') ||
+    lower.includes('plumber') ||
+    lower.includes('tap, mixer') ||
+    lower.includes('plumbing & tap')
+  );
+};
 
 /**
  * Sanitizes catalog titles, category headers, and descriptions to fix known typos:
@@ -58,24 +91,6 @@ export const DEFAULT_CATEGORIES: Category[] = [
     name: 'Electronics Repair & Service',
     icon: 'Plug',
     description: 'Inverter, wiring, switchboard & appliance care',
-  },
-  {
-    id: 'tv',
-    name: 'TV Repair',
-    icon: 'Tv',
-    description: 'LED, QLED & Smart TV display and motherboard fix',
-  },
-  {
-    id: 'microwave',
-    name: 'Microwave / Oven',
-    icon: 'Zap',
-    description: 'Magnetron, touch panel & heating repair at doorstep',
-  },
-  {
-    id: 'plumbing',
-    name: 'Plumbing & Taps',
-    icon: 'Wrench',
-    description: 'Leakage fix, tap mixer, flush tank & motor fitting',
   },
 ];
 
@@ -157,32 +172,18 @@ export const DEFAULT_SERVICES: Service[] = [
     reviewCount: 124,
     reviewsCount: 124,
   },
-  {
-    id: 'microwave-oven-repair',
-    categoryId: 'microwave',
-    name: 'Microwave & Oven Repair',
-    description: 'Heating issue, magnetron, diode, turntable motor & touch keypad repair.',
-    basePrice: 249,
-    duration: '45 mins',
-    rating: 4.8,
-    reviewCount: 89,
-    reviewsCount: 89,
-  },
-  {
-    id: 'plumbing-taps-service',
-    categoryId: 'plumbing',
-    name: 'Tap, Mixer & Pipe Leakage Repair',
-    description: 'Quick doorstep fix for leaking taps, concealed valves, flush tanks & washbasins.',
-    basePrice: 199,
-    duration: '30-45 mins',
-    rating: 4.8,
-    reviewCount: 156,
-    reviewsCount: 156,
-  },
 ];
 
 export const isValidCustomerService = (s: Partial<Service> | null | undefined): boolean => {
   if (!s || !s.name) return false;
+  if (
+    isPurgedCategoryOrService(s.id) ||
+    isPurgedCategoryOrService(s.name) ||
+    isPurgedCategoryOrService(s.categoryId) ||
+    isPurgedCategoryOrService((s as any).category)
+  ) {
+    return false;
+  }
   const nameLower = s.name.toLowerCase().trim();
   const price = Number(s.basePrice ?? (s as any).discountedPrice ?? (s as any).price) || 0;
   if (nameLower.length === 0) return false;
@@ -195,7 +196,7 @@ export const isValidCustomerService = (s: Partial<Service> | null | undefined): 
 };
 
 /**
- * Helper to identify canonical category key (ac, washing, fridge, ro, electronics, tv, microwave, plumbing, etc.)
+ * Helper to identify canonical category key (ac, washing, fridge, ro, electronics, etc.)
  */
 export const getCanonicalCategoryKey = (nameOrId?: string): string => {
   const lower = sanitizeCatalogText(nameOrId).toLowerCase();
@@ -204,9 +205,6 @@ export const getCanonicalCategoryKey = (nameOrId?: string): string => {
   if (lower.includes('washing') || lower.includes('laundry')) return 'washing';
   if (lower.includes('ac ') || lower === 'ac' || lower.includes('air condition') || lower.includes('window ac') || lower.includes('split ac')) return 'ac';
   if (lower.includes('ro ') || lower === 'ro' || lower.includes('purifier') || lower.includes('water purifier')) return 'ro';
-  if (lower.includes('microwave') || lower.includes('oven')) return 'microwave';
-  if (lower.includes('plumb') || lower.includes('tap') || lower.includes('pipe')) return 'plumbing';
-  if (lower.includes('tv') || lower.includes('television')) return 'tv';
   if (lower.includes('electronic') || lower.includes('electric')) return 'electronics';
   if (lower.includes('clean')) return 'cleaning';
   if (lower.includes('phone') || lower.includes('mobile')) return 'phone';
@@ -215,17 +213,23 @@ export const getCanonicalCategoryKey = (nameOrId?: string): string => {
 
 /**
  * Normalizes categories from Firestore:
+ * - Purges "TV & Audio", "Microwave oven", and "Plumbing & tap"
  * - Fixes spelling typos ("Electronics Repair and servcie" -> "Electronics Repair & Service")
  * - Deduplicates categories with identical canonical keys
  * - Ensures "Refrigerator (Fridge) Service & Repair" exists
- * - Supplements up to 8 balanced categories (adding 'Microwave / Oven' and 'Plumbing & Taps' if missing)
- *   so the Top Category Grid has a clean 2x4 (8 items) layout without orphan rows.
  */
 export const normalizeCategories = (rawCategories: Category[], ensureBalancedGrid = true): Category[] => {
   const seenKeys = new Map<string, Category>();
 
   for (const cat of rawCategories) {
     if (!cat || !cat.name) continue;
+    if (
+      isPurgedCategoryOrService(cat.id) ||
+      isPurgedCategoryOrService(cat.name) ||
+      isPurgedCategoryOrService(cat.description)
+    ) {
+      continue;
+    }
     const rawNameLower = cat.name.toLowerCase().trim();
     if (rawNameLower.includes('test') || rawNameLower.includes('dummy') || rawNameLower.includes('chek')) {
       continue;
@@ -505,9 +509,17 @@ export const healFirestoreCatalogIfNeeded = async (
       }
     }
 
-    // 2. Fix category typos in Firestore
+    // 2. Purge deprecated categories & fix category typos in Firestore
     for (const cat of rawCategories) {
       if (!cat?.id || !cat?.name) continue;
+      if (isPurgedCategoryOrService(cat.id) || isPurgedCategoryOrService(cat.name)) {
+        try {
+          await deleteDoc(doc(db, 'categories', cat.id));
+        } catch {
+          // Ignore permission notice for non-admin
+        }
+        continue;
+      }
       const cleanedName = sanitizeCatalogText(cat.name);
       if (cleanedName !== cat.name) {
         try {
@@ -518,10 +530,23 @@ export const healFirestoreCatalogIfNeeded = async (
       }
     }
 
-    // 3. Fix service typos, misplaced Fridge service, and RO Repair 0.5 rating in Firestore
+    // 3. Purge deprecated services & fix service typos, misplaced Fridge service, and RO Repair 0.5 rating in Firestore
     for (const svc of rawServices) {
       if (!svc?.id) continue;
       const rawName = svc.name || svc.title || '';
+      if (
+        isPurgedCategoryOrService(svc.id) ||
+        isPurgedCategoryOrService(rawName) ||
+        isPurgedCategoryOrService(svc.categoryId) ||
+        isPurgedCategoryOrService((svc as any).category)
+      ) {
+        try {
+          await deleteDoc(doc(db, 'services', svc.id));
+        } catch {
+          // Ignore permission notice for non-admin
+        }
+        continue;
+      }
       const cleanedName = sanitizeCatalogText(rawName);
       const updates: Record<string, any> = {};
 

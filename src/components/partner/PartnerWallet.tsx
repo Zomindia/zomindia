@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Wallet, 
   TrendingUp, 
   ArrowDownLeft, 
-  Zap, 
   Star, 
   X,
   AlertTriangle,
   Clock,
   CreditCard,
-  Building,
   CheckCircle2,
   Calendar,
-  Lock
+  Lock,
+  ShieldCheck,
+  Receipt,
+  Building2
 } from 'lucide-react';
 import { PartnerProfile, EarningsHistory, Booking, UserProfile } from '../../types';
 import { collection, query, orderBy, onSnapshot, addDoc, Timestamp } from 'firebase/firestore';
@@ -107,21 +108,110 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
     isGracePeriodExpired = Date.now() > targetMs;
   }
 
-  // Completed bookings net 80% partner share
-  const completedNetEarnings = bookings
-    .filter(b => b.status === 'completed')
-    .reduce((sum, b) => {
-      const amount = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
-      return sum + (isNaN(amount) ? 0 : Math.round(amount * 0.80));
-    }, 0);
+  // Derive transparent itemized ledger transactions with 20% Platform Fee + 18% GST on Fee
+  const displayTransactions = useMemo(() => {
+    const completedList = bookings.filter(b => b.status === 'completed' || b.status === 'finalized');
+    if (completedList.length > 0) {
+      return completedList.map(b => {
+        const gross = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 770);
+        const platformFee = Math.round(gross * 0.20); // 20% Platform Fee (e.g. ₹154)
+        const gstOnFee = Math.round(platformFee * 0.18); // 18% GST on Fee (e.g. ₹28)
+        const totalDeduction = platformFee + gstOnFee; // Total Deduction (e.g. ₹182)
+        const netPayout = gross - totalDeduction; // Net Partner Share (e.g. ₹588)
+        const dateStr =
+          b.completedAt?.toDate?.()?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) ||
+          b.updatedAt?.toDate?.()?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) ||
+          'Today';
 
-  // Net withdrawable earnings strictly calculated from completed jobs (80% partner share) and verified partner totalEarnings
-  const rawEarnings = Math.max(
-    0,
-    Number(
-      (partner?.totalEarnings && partner.totalEarnings > 0 ? partner.totalEarnings : completedNetEarnings) ?? 0
-    )
-  );
+        return {
+          id: b.id,
+          title: b.serviceName || 'Home Service',
+          bookingId: b.id.slice(-6).toUpperCase(),
+          grossAmount: gross,
+          platformFee,
+          gstOnFee,
+          totalDeduction,
+          netAmount: netPayout,
+          type: 'credit' as const,
+          date: dateStr,
+          paymentMode: (b as any).paymentMode || (b.paymentMethod === 'cash' ? 'Cash' : 'Online')
+        };
+      });
+    }
+
+    if (history && history.length > 0) {
+      return history.map(item => {
+        const rawAmt = Number(item.amount || (item as any).grossAmount || 770);
+        const gross = (item as any).grossAmount
+          ? Number((item as any).grossAmount)
+          : (rawAmt > 0 ? Math.round(rawAmt / 0.80) : 770);
+        const platformFee = Math.round(gross * 0.20);
+        const gstOnFee = Math.round(platformFee * 0.18);
+        const totalDeduction = platformFee + gstOnFee;
+        const netPayout = gross - totalDeduction;
+        const dateStr =
+          item.createdAt?.toDate?.()?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) ||
+          'Today';
+
+        return {
+          id: item.id,
+          title: item.reason || item.description || 'Home Service',
+          bookingId: ((item as any).bookingId || item.id).slice(-6).toUpperCase(),
+          grossAmount: gross,
+          platformFee,
+          gstOnFee,
+          totalDeduction,
+          netAmount: netPayout,
+          type: 'credit' as const,
+          date: dateStr,
+          paymentMode: (item as any).paymentMode || 'Online'
+        };
+      });
+    }
+
+    return [];
+  }, [history, bookings]);
+
+  // Completed bookings net partner share after 20% Platform Fee + 18% GST on Fee
+  const completedNetEarnings = useMemo(() => {
+    return bookings
+      .filter(b => b.status === 'completed' || b.status === 'finalized')
+      .reduce((sum, b) => {
+        const gross = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+        if (isNaN(gross) || gross <= 0) return sum;
+        const platformFee = Math.round(gross * 0.20);
+        const gstOnFee = Math.round(platformFee * 0.18);
+        const netShare = gross - (platformFee + gstOnFee);
+        return sum + Math.max(0, netShare);
+      }, 0);
+  }, [bookings]);
+
+  const ledgerNetSum = useMemo(() => {
+    return displayTransactions.reduce((sum, tx) => sum + Math.max(0, Number(tx.netAmount || 0)), 0);
+  }, [displayTransactions]);
+
+  // Net withdrawable earnings strictly calculated after platform fee and GST deductions
+  const rawEarnings = useMemo(() => {
+    if (completedNetEarnings > 0) return completedNetEarnings;
+    if (ledgerNetSum > 0) return ledgerNetSum;
+    if (typeof partner?.walletBalance === 'number' && partner.walletBalance > 0) return partner.walletBalance;
+    if (partner?.totalEarnings && partner.totalEarnings > 0) {
+      const gross = Math.round(partner.totalEarnings / 0.80);
+      const fee = Math.round(gross * 0.20);
+      const gst = Math.round(fee * 0.18);
+      return Math.max(0, gross - (fee + gst));
+    }
+    return 0;
+  }, [completedNetEarnings, ledgerNetSum, partner?.walletBalance, partner?.totalEarnings]);
+
+  const totalGrossVolume = useMemo(() => {
+    return displayTransactions.reduce((sum, tx) => sum + Number(tx.grossAmount || 0), 0);
+  }, [displayTransactions]);
+
+  const totalPlatformCutSum = useMemo(() => {
+    return displayTransactions.reduce((sum, tx) => sum + Number(tx.totalDeduction || 0), 0);
+  }, [displayTransactions]);
+
   const unsettledCash = Math.max(0, Number(partner?.unsettledCashInHand || 0));
 
   // Time since last cash collection
@@ -160,7 +250,7 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         status: 'pending',
         createdAt: Timestamp.now()
       });
-      notify('Withdrawal request submitted successfully! Admin will process this soon.', 'success');
+      notify('Withdrawal request submitted! Admin will process your bank payout shortly.', 'success');
       setShowWithdraw(false);
       setWithdrawAmount('');
     } catch (err) {
@@ -184,7 +274,6 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         return;
       }
 
-      // 1. Create order
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,7 +341,7 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
             }
 
             const resJson = await clearRes.json();
-            notify(`Success! ₹${amt} deposited. 80% share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`, 'success');
+            notify(`Success! ₹${amt} deposited. Net share (₹${resJson.creditedEarnings}) added to your withdrawable earnings!`, 'success');
             setShowDigitalClearModal(false);
             setDigitalClearAmount('');
           } catch (vErr: any) {
@@ -278,10 +367,10 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
   };
 
   return (
-    <div className="p-6 space-y-6 relative">
+    <div className="p-4 sm:p-6 space-y-5 max-w-3xl mx-auto pb-28">
       {bannerMessage && (
         <div
-          className={`px-4 py-3 rounded-2xl text-xs font-bold shadow-lg ${
+          className={`px-4 py-3 rounded-2xl text-xs font-bold shadow-md ${
             bannerMessage.type === 'error'
               ? 'bg-rose-600 text-white'
               : 'bg-emerald-600 text-white'
@@ -290,140 +379,254 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
           {bannerMessage.text}
         </div>
       )}
+
       {/* 1. PROMINENT RED ALERT CARD (When cash is owed) */}
       {unsettledCash > 0 && (
-        <section className="bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 rounded-3xl p-6 text-white shadow-xl shadow-rose-600/20 relative overflow-hidden">
-          <div className="relative z-10 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-md">
-                  <AlertTriangle size={20} className="animate-pulse" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-rose-100">COD Cash Remittance Alert</span>
-                  <h4 className="text-xl font-black italic tracking-tight">Cash Owed to Office: ₹{unsettledCash.toLocaleString()}</h4>
-                </div>
+        <section className="bg-rose-50 border border-rose-200 rounded-3xl p-5 text-slate-900 shadow-xs space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-rose-600 text-white rounded-2xl flex items-center justify-center shrink-0">
+                <AlertTriangle size={18} />
               </div>
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-black/20 rounded-full text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm">
-                <Clock size={12} />
-                <span>Urgent Clearance</span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-rose-700">COD Cash Remittance Alert</p>
+                <h4 className="text-base sm:text-lg font-black text-slate-900">Cash Owed to Office: ₹{unsettledCash.toLocaleString('en-IN')}</h4>
               </div>
             </div>
-
-            <div className="bg-black/20 border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 backdrop-blur-sm">
-              <div className="space-y-0.5">
-                <p className="text-xs font-black uppercase tracking-wider text-rose-100">Mandatory Deadline:</p>
-                <p className="text-sm font-black text-white">Today evening or tomorrow morning by 11:00 AM.</p>
-                <p className="text-[11px] text-rose-100/90 font-medium">Deposit physical cash at Zomindia office counter to unlock your 80% share.</p>
-              </div>
-
-              {/* Emergency Digital Clearance Option */}
-              <button 
-                onClick={() => {
-                  setDigitalClearAmount(String(unsettledCash));
-                  setShowDigitalClearModal(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 bg-white text-rose-700 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-rose-50 active:scale-95 transition-all shadow-lg shrink-0"
-              >
-                <CreditCard size={15} />
-                Deposit Cash Digitally via UPI/Razorpay
-              </button>
-            </div>
+            <span className="text-[10px] font-bold text-rose-700 flex items-center gap-1 shrink-0">
+              <Clock size={12} /> Urgent Clearance
+            </span>
           </div>
-          <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="bg-white border border-rose-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Deadline: Today evening or tomorrow by 11:00 AM</p>
+              <p className="text-[11px] text-slate-600">Deposit physical cash at the Zomindia office or clear digitally via UPI/Razorpay.</p>
+            </div>
+
+            <button 
+              onClick={() => {
+                setDigitalClearAmount(String(unsettledCash));
+                setShowDigitalClearModal(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition-all shrink-0 cursor-pointer"
+            >
+              <CreditCard size={14} />
+              <span>Deposit Cash Digitally</span>
+            </button>
+          </div>
         </section>
       )}
 
       {/* 2. OVERDUE BLOCKING WARNING BANNER */}
       {isOverdueBlocked && (
-        <section className="bg-amber-500/10 border-2 border-amber-500/40 rounded-3xl p-5 flex items-center gap-4 text-amber-900 shadow-sm">
-          <div className="p-3 bg-amber-500 text-white rounded-2xl shrink-0 shadow-md shadow-amber-500/30">
-            <Lock size={20} />
+        <section className="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex items-center gap-3.5 text-amber-950 shadow-2xs">
+          <div className="p-2.5 bg-amber-500 text-white rounded-xl shrink-0">
+            <Lock size={18} />
           </div>
-          <div className="space-y-0.5">
-            <h5 className="text-xs font-black uppercase tracking-wider text-amber-700">Account Action Restricted</h5>
-            <p className="text-sm font-bold text-amber-950">
-              Job assignments paused. Please deposit collected cash at Zomindia office to resume receiving bookings.
+          <div>
+            <h5 className="text-xs font-black uppercase tracking-wider text-amber-800">Account Action Restricted</h5>
+            <p className="text-xs font-semibold text-amber-900 mt-0.5">
+              Job assignments paused. Please settle collected cash to resume receiving bookings.
             </p>
           </div>
         </section>
       )}
 
-      {/* 3. PAYOUT POLICY BANNER */}
-      <section className="bg-slate-50 border border-slate-200/80 rounded-2xl px-5 py-3.5 flex items-center gap-3 text-slate-700 shadow-sm">
-        <Calendar size={18} className="text-blue-600 shrink-0" />
-        <p className="text-xs font-bold leading-relaxed">
-          <span className="font-black text-slate-900 uppercase tracking-wide mr-1.5">Payout Policy:</span>
-          20% Platform Fee • 80% Direct Technician Payout. Withdrawals are processed Monday to Friday. Weekend requests are scheduled for Monday payout.
+      {/* 3. CLEAN LIGHT-THEMED URBAN COMPANY / ZOMATO PARTNER PASSBOOK HERO */}
+      <section className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+              <Wallet size={15} className="text-emerald-600" />
+              <span>Partner Payout Passbook</span>
+              <span aria-hidden="true">·</span>
+              <span className="text-emerald-700">Live Ledger</span>
+            </div>
+            <p className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              ₹{rawEarnings.toLocaleString('en-IN')}
+            </p>
+            <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+              <TrendingUp size={13} className="text-emerald-600" />
+              <span>Net withdrawable balance after 20% platform fee & 18% GST on fee</span>
+            </p>
+          </div>
+
+          <div className="text-right hidden sm:block">
+            <span className="text-[11px] font-bold text-slate-400 block">Loyalty Credits</span>
+            <span className="text-sm font-black text-amber-600 flex items-center justify-end gap-1 mt-0.5">
+              <Star size={13} className="fill-amber-500 text-amber-500" />
+              {partner?.rewardCredits || 0} Pts
+            </span>
+          </div>
+        </div>
+
+        {/* Summary Metrics Row */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
+            <span className="text-[10px] font-bold text-slate-500 block">Gross Value</span>
+            <span className="text-sm sm:text-base font-black text-slate-900 mt-0.5 block">
+              ₹{totalGrossVolume.toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
+            <span className="text-[10px] font-bold text-slate-500 block">Fee + GST Cut</span>
+            <span className="text-sm sm:text-base font-black text-rose-600 mt-0.5 block">
+              -₹{totalPlatformCutSum.toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-3">
+            <span className="text-[10px] font-bold text-emerald-800 block">Net Credited</span>
+            <span className="text-sm sm:text-base font-black text-emerald-700 mt-0.5 block">
+              +₹{rawEarnings.toLocaleString('en-IN')}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+          {isGracePeriodExpired || isOverdueBlocked ? (
+            <button 
+              disabled
+              className="flex-1 bg-slate-100 text-slate-400 border border-slate-200 py-3 px-4 rounded-2xl text-xs font-bold uppercase tracking-wider cursor-not-allowed"
+              title={isOverdueBlocked ? "Clear overdue cash liability first" : "KYC submission required"}
+            >
+              Withdraw {isOverdueBlocked ? '(Cash Overdue)' : '(KYC Required)'}
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                if (partner?.approvalStatus === 'pending') {
+                  window.dispatchEvent(new CustomEvent('show-partner-toast', { 
+                    detail: { message: 'Action locked. Waiting for Admin approval.' } 
+                  }));
+                  return;
+                }
+                setShowWithdraw(true);
+              }}
+              className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-3.5 px-5 rounded-2xl text-xs font-black uppercase tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+            >
+              <Building2 size={15} />
+              <span>Request Bank Payout</span>
+            </button>
+          )}
+
+          {unsettledCash > 0 && (
+            <button 
+              onClick={() => {
+                setDigitalClearAmount(String(unsettledCash));
+                setShowDigitalClearModal(true);
+              }}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 px-5 rounded-2xl text-xs font-black uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+            >
+              Clear Cash (₹{unsettledCash.toLocaleString('en-IN')})
+            </button>
+          )}
+        </div>
+
+        {isGracePeriodExpired && (
+          <p className="text-[11px] text-amber-700 font-bold text-center">
+            KYC verification is required to unlock bank payouts.
+          </p>
+        )}
+      </section>
+
+      {/* 4. TRANSPARENT PAYOUT POLICY NOTE */}
+      <section className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 flex items-start gap-2.5 text-slate-600">
+        <ShieldCheck size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+        <p className="text-xs font-medium leading-relaxed">
+          <span className="font-bold text-slate-900">Transparent Payout Math:</span> 20% Platform Fee + 18% Govt GST on Platform Fee. Direct bank settlements are processed Monday to Friday.
         </p>
       </section>
 
-      {/* Main Wallet Card */}
-      <section className="bg-blue-700 rounded-[40px] p-8 sm:p-10 text-white relative overflow-hidden shadow-2xl">
-         <div className="relative z-10">
-            <div className="flex items-center justify-between mb-8">
-               <div className="flex items-center gap-2 opacity-75">
-                  <Wallet size={18} />
-                  <span className="text-[11px] font-black uppercase tracking-[0.2em]">Net Withdrawable Earnings</span>
-               </div>
-               <span className="text-[10px] font-bold bg-white/10 px-3 py-1 rounded-full uppercase tracking-wider">
-                 Live Ledger
-               </span>
-            </div>
-            
-            <p className="text-4xl sm:text-5xl font-black italic tracking-tighter mb-2">₹{rawEarnings.toLocaleString()}</p>
-            <div className="flex items-center gap-2 text-emerald-300">
-               <TrendingUp size={14} />
-               <span className="text-[10px] font-black uppercase tracking-widest">Available for Bank Payout</span>
-            </div>
+      {/* 5. ITEMIZED PASSBOOK LEDGER TRANSACTIONS */}
+      <section className="space-y-3.5">
+        <div className="flex justify-between items-center px-1">
+          <div>
+            <h3 className="text-sm font-black text-slate-900">Itemized Passbook Ledger</h3>
+            <p className="text-[11px] text-slate-500">Complete job-by-job payout & GST breakdown</p>
+          </div>
+          <span className="text-xs font-bold text-slate-500">
+            {displayTransactions.length} {displayTransactions.length === 1 ? 'Entry' : 'Entries'}
+          </span>
+        </div>
 
-            <div className="mt-8 flex flex-col gap-2">
-               <div className="flex gap-4">
-                  {isGracePeriodExpired || isOverdueBlocked ? (
-                    <button 
-                      disabled
-                      className="flex-1 bg-slate-400 text-slate-100 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed opacity-70"
-                      title={isOverdueBlocked ? "Clear overdue cash liability first" : "KYC submission required"}
-                    >
-                       Withdraw {isOverdueBlocked ? '(Blocked)' : '(Locked)'}
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => {
-                        if (partner?.approvalStatus === 'pending') {
-                          window.dispatchEvent(new CustomEvent('show-partner-toast', { 
-                            detail: { message: 'Action locked. Waiting for Admin approval.' } 
-                          }));
-                          return;
-                        }
-                        setShowWithdraw(true);
-                      }}
-                      className="flex-1 bg-white text-slate-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-700/40 active:scale-95 transition-all"
-                    >
-                       Request Payout
-                    </button>
-                  )}
-                  {unsettledCash > 0 && (
-                    <button 
-                      onClick={() => {
-                        setDigitalClearAmount(String(unsettledCash));
-                        setShowDigitalClearModal(true);
-                      }}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg"
-                    >
-                       Clear Cash (₹{unsettledCash})
-                    </button>
-                  )}
-               </div>
-               
-               {isGracePeriodExpired && (
-                 <p className="text-[9px] text-amber-300 font-extrabold mt-2 text-center uppercase tracking-wider">
-                   KYC submission required to unlock payouts.
-                 </p>
-               )}
-            </div>
-         </div>
-         <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+        {loading ? (
+          <div className="p-8 text-center bg-white border border-slate-200/80 rounded-3xl">
+            <p className="text-xs font-bold text-slate-400">Loading passbook ledger...</p>
+          </div>
+        ) : displayTransactions.length === 0 ? (
+          <div className="p-10 text-center bg-white border border-slate-200/80 rounded-3xl space-y-2">
+            <Receipt size={24} className="text-slate-300 mx-auto" />
+            <p className="text-sm font-bold text-slate-700">No completed job payouts yet</p>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto">
+              Once you complete doorstep service bookings, your itemized gross, platform fee, GST, and net payout breakdown will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {displayTransactions.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5"
+              >
+                {/* Card Top Header */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <ArrowDownLeft size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-black text-slate-900 truncate">
+                        {item.title}
+                      </h4>
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 mt-0.5">
+                        <span>Order #{item.bookingId}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{item.date}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{item.paymentMode}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="text-base font-black text-emerald-700 block">
+                      +₹{item.netAmount.toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      Net Credited
+                    </span>
+                  </div>
+                </div>
+
+                {/* Itemized Breakdown Box */}
+                <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-3.5 space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center text-slate-700 font-semibold">
+                    <span>Customer Paid (Gross)</span>
+                    <span className="font-bold text-slate-900">₹{item.grossAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span>Platform Fee (20%)</span>
+                    <span className="font-semibold text-rose-600">-₹{item.platformFee.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span>Govt GST on Fee (18%)</span>
+                    <span className="font-semibold text-rose-600">-₹{item.gstOnFee.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600 font-semibold pt-1 border-t border-slate-200/70">
+                    <span>Total Platform Cut</span>
+                    <span className="font-bold text-rose-600">-₹{item.totalDeduction.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-800 font-black pt-1.5 border-t border-slate-200">
+                    <span>Net Credited to Wallet</span>
+                    <span className="text-sm text-emerald-700">+₹{item.netAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Emergency Digital Clearance Modal */}
@@ -431,46 +634,58 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         {showDigitalClearModal && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50 flex flex-col items-center justify-end sm:justify-center backdrop-blur-sm p-4"
+            className="fixed inset-0 bg-slate-900/50 z-50 flex flex-col items-center justify-end sm:justify-center backdrop-blur-xs p-4"
           >
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              className="bg-white w-full sm:w-[480px] rounded-t-[36px] sm:rounded-[36px] p-7 shadow-2xl relative"
+              className="bg-white w-full sm:w-[460px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl relative border border-slate-100"
             >
               <button 
                 onClick={() => setShowDigitalClearModal(false)}
-                className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
+                className="absolute top-5 right-5 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                <X size={20} className="text-slate-500" />
+                <X size={18} className="text-slate-600" />
               </button>
               
-              <div className="flex items-center gap-2 mb-2">
-                <CreditCard className="text-blue-600" size={24} />
-                <h3 className="text-xl font-black text-slate-900 italic">Remote Cash Clearance</h3>
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <CreditCard className="text-blue-600" size={20} />
+                <h3 className="text-lg font-black text-slate-900">Remote Cash Clearance</h3>
               </div>
-              <p className="text-xs text-slate-500 mb-6 font-medium">
-                Cannot visit the office today? Settle your collected customer cash instantly via UPI, Cards, or NetBanking.
+              <p className="text-xs text-slate-500 mb-5">
+                Settle your collected customer cash instantly via UPI, Cards, or NetBanking.
               </p>
               
-              <div className="space-y-5">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex justify-between text-xs font-bold text-slate-600">
-                    <span>Total Cash Liability:</span>
-                    <span className="text-rose-600 font-black">₹{unsettledCash.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-slate-600">
-                    <span>Platform Commission (20%):</span>
-                    <span className="text-slate-900 font-black">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.20).toLocaleString()}</span>
-                  </div>
-                  <div className="h-[1px] bg-slate-200 my-1" />
-                  <div className="flex justify-between text-xs font-bold text-emerald-700">
-                    <span>Your Credited Share (80%):</span>
-                    <span className="font-black text-sm">₹{Math.round(Number(digitalClearAmount || unsettledCash) * 0.80).toLocaleString()}</span>
-                  </div>
-                </div>
+              <div className="space-y-4">
+                {(() => {
+                  const grossAmt = Number(digitalClearAmount || unsettledCash || 0);
+                  const feeAmt = Math.round(grossAmt * 0.20);
+                  const gstAmt = Math.round(feeAmt * 0.18);
+                  const cutAmt = feeAmt + gstAmt;
+                  const netAmt = Math.max(0, grossAmt - cutAmt);
+                  return (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+                      <div className="flex justify-between font-semibold text-slate-700">
+                        <span>Customer Paid (Gross Cash):</span>
+                        <span className="text-slate-900 font-bold">₹{grossAmt.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Platform Fee (20%):</span>
+                        <span className="text-rose-600 font-semibold">-₹{feeAmt.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Govt GST on Fee (18%):</span>
+                        <span className="text-rose-600 font-semibold">-₹{gstAmt.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-emerald-800 pt-2 border-t border-slate-200">
+                        <span>Net Credited to Wallet:</span>
+                        <span className="text-emerald-700">+₹{netAmt.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                     Deposit Amount (₹)
                   </label>
                   <input 
@@ -479,30 +694,21 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
                     min={1}
                     value={digitalClearAmount}
                     onChange={e => setDigitalClearAmount(e.target.value)}
-                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-xl font-black text-slate-900 focus:border-blue-700 focus:ring-4 focus:ring-blue-700/5 outline-none transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-lg font-black text-slate-900 focus:border-blue-600 outline-none transition-all"
                     placeholder="Enter deposit amount"
                   />
-                  <div className="flex gap-2 mt-2">
-                    <button 
-                      type="button" 
-                      onClick={() => setDigitalClearAmount(String(unsettledCash))}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-700"
-                    >
-                      Clear Full Amount (₹{unsettledCash})
-                    </button>
-                  </div>
                 </div>
                 
                 <button 
                   onClick={handleDigitalCashClearance}
                   disabled={clearingDigital || !digitalClearAmount || Number(digitalClearAmount) <= 0}
-                  className="w-full bg-blue-700 hover:bg-blue-800 text-white py-4 rounded-2xl font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-blue-700/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {clearingDigital ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <CheckCircle2 size={18} />
+                      <CheckCircle2 size={16} />
                       <span>Proceed to Pay via Razorpay</span>
                     </>
                   )}
@@ -518,44 +724,46 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
         {showWithdraw && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50 flex flex-col items-center justify-end sm:justify-center backdrop-blur-sm p-4"
+            className="fixed inset-0 bg-slate-900/50 z-50 flex flex-col items-center justify-end sm:justify-center backdrop-blur-xs p-4"
           >
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              className="bg-white w-full sm:w-[480px] rounded-t-[40px] sm:rounded-[40px] p-8 shadow-2xl relative"
+              className="bg-white w-full sm:w-[440px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl relative border border-slate-100"
             >
               <button 
                 onClick={() => setShowWithdraw(false)}
-                className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
+                className="absolute top-5 right-5 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                <X size={20} className="text-slate-500" />
+                <X size={18} className="text-slate-600" />
               </button>
               
-              <h3 className="text-2xl font-black text-slate-900 mb-2 italic">Request Withdrawal</h3>
-              <p className="text-xs text-slate-500 mb-6 font-medium">
-                Withdrawals are transferred directly to your verified bank account.
+              <h3 className="text-lg font-black text-slate-900 mb-1">Request Bank Payout</h3>
+              <p className="text-xs text-slate-500 mb-5">
+                Withdrawals are transferred directly to your verified bank / UPI account.
               </p>
               
-              <form onSubmit={handleWithdraw} className="space-y-6">
+              <form onSubmit={handleWithdraw} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Amount to withdraw (₹)</label>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Amount to withdraw (₹)
+                  </label>
                   <input 
                     type="number"
                     max={rawEarnings}
                     value={withdrawAmount}
                     onChange={e => setWithdrawAmount(e.target.value)}
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 text-xl font-bold focus:border-blue-700 focus:ring-4 focus:ring-blue-700/5 outline-none transition-all placeholder:text-slate-300"
-                    placeholder="0.00"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-lg font-black text-slate-900 focus:border-slate-900 outline-none transition-all placeholder:text-slate-300"
+                    placeholder="0"
                     required
                   />
-                  <div className="mt-2 space-y-1 ml-1">
-                    <p className="text-xs font-bold text-slate-600">Net Withdrawable Limit: ₹{rawEarnings.toLocaleString()}</p>
-                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-1.5">
+                    Net Withdrawable Limit: <span className="font-bold text-slate-900">₹{rawEarnings.toLocaleString('en-IN')}</span>
+                  </p>
                 </div>
                 
                 <button 
                   type="submit"
-                  className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-800 active:scale-95 transition-all shadow-xl shadow-blue-700/20"
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                 >
                   Confirm Payout Request
                 </button>
@@ -564,80 +772,6 @@ export default function PartnerWallet({ partner, profile, bookings = [] }: Props
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Rewards Overview */}
-      <section className="bg-amber-500 rounded-[32px] p-7 text-white flex justify-between items-center shadow-xl shadow-amber-500/10 active:scale-98 transition-transform">
-         <div>
-            <p className="text-[9px] font-black uppercase tracking-widest opacity-75 mb-1">Loyalty Credits</p>
-            <p className="text-2xl font-black italic">{partner?.rewardCredits || '0'} Points</p>
-         </div>
-         <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
-            <Star fill="currentColor" size={24} />
-         </div>
-      </section>
-
-      {/* Transaction History */}
-      <section className="space-y-4">
-         <div className="flex justify-between items-center px-1">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Financial Ledger History</h3>
-         </div>
-
-         <div className="space-y-3">
-            {history.length === 0 ? (
-               <div className="p-12 text-center bg-white border border-slate-100 rounded-[36px] border-dashed">
-                  <p className="text-sm font-black italic text-slate-300">No transactions recorded yet.</p>
-               </div>
-            ) : (
-               history.map((item) => (
-                  <div key={item.id} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center group active:scale-98 transition-transform shadow-sm">
-                     <div className="flex items-center gap-3.5 min-w-0">
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
-                          item.type === 'booking_earning_online' || item.type === 'booking_earning' ? 'bg-blue-700 text-white shadow-md' : 
-                          item.type === 'office_cash_deposit' ? 'bg-emerald-600 text-white shadow-md' :
-                          item.type === 'booking_earning_cash' ? 'bg-amber-100 text-amber-700' :
-                          item.type === 'reward_credit' ? 'bg-amber-100 text-amber-600' : 
-                          'bg-slate-100 text-slate-600'
-                        }`}>
-                           {item.type === 'office_cash_deposit' ? <Building size={18} /> :
-                            item.type === 'reward_credit' ? <Star size={18} /> :
-                            <ArrowDownLeft size={18} />}
-                        </div>
-                        <div className="min-w-0">
-                           <div className="flex items-center gap-2">
-                             <p className="text-sm font-black text-slate-900 leading-tight italic truncate">{item.reason || item.description || 'Transaction'}</p>
-                           </div>
-                           <div className="flex items-center gap-2 mt-1">
-                             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                               {item.createdAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) || 'Recent'}
-                             </span>
-                             {item.status === 'pending_cash_clearance' && (
-                               <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                 Pending Office Clearance
-                                </span>
-                             )}
-                             {item.status === 'cleared' && (
-                               <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                 Cleared
-                                </span>
-                             )}
-                           </div>
-                        </div>
-                     </div>
-                     <div className="text-right flex-shrink-0 ml-3">
-                        {item.amount > 0 && (
-                          <p className={`text-base font-black italic ${item.status === 'pending_cash_clearance' ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {item.status === 'pending_cash_clearance' ? `₹${item.amount}` : `+₹${item.amount}`}
-                          </p>
-                        )}
-                        {item.credits && item.credits > 0 ? (
-                          <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">+{item.credits} Pts</p>
-                        ) : null}
-                     </div>
-                  </div>
-               ))
-            )}
-         </div>
-      </section>
     </div>
   );
 }

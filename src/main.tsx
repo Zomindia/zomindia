@@ -159,23 +159,19 @@ if ('serviceWorker' in navigator) {
     }
   } else {
     window.addEventListener('load', () => {
-      // Record if there was already an active controller when the page loaded
-      const hadPreviousController = Boolean(navigator.serviceWorker.controller);
-
       navigator.serviceWorker.register('/sw.js')
         .then((reg) => {
           console.log('[PWA] Service Worker registered with scope:', reg.scope);
 
-          // Check for updates gracefully
+          // Check for updates silently in the background
           reg.addEventListener('updatefound', () => {
             const installingWorker = reg.installing;
             if (installingWorker) {
               installingWorker.addEventListener('statechange', () => {
-                // If new worker is installed and we already had an active controller,
-                // notify the user/app or dispatch custom update event without forced immediate reload
-                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  console.log('[PWA] A new version is available.');
-                  window.dispatchEvent(new CustomEvent('pwa-update-available'));
+                if (installingWorker.state === 'installed') {
+                  if (reg.waiting) {
+                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                  }
                 }
               });
             }
@@ -184,16 +180,6 @@ if ('serviceWorker' in navigator) {
         .catch((err) => {
           console.warn('[PWA] Service Worker registration notice:', err);
         });
-
-      // Guard controllerchange: Only reload if a PREVIOUS controller was already active before this session.
-      // This strictly prevents the initial install / first page load from reloading the page.
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (hadPreviousController && !refreshing) {
-          refreshing = true;
-          window.location.reload();
-        }
-      });
     });
   }
 }

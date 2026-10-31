@@ -49,7 +49,7 @@ const translations: Record<Language, Translations> = {
   English: {
     appName: "zomindia",
     subtitle: "Premium Professional Home Services on Demand",
-    searchPlaceholder: "Search for AC service, cleaning, painters, plumbers...",
+    searchPlaceholder: "Search for AC service, RO purifier, refrigerator, washing machine...",
     bookNow: "Book Now",
     bookings: "My Bookings",
     profile: "Profile Settings",
@@ -89,14 +89,13 @@ const translations: Record<Language, Translations> = {
       "appliances": "AC & Appliance Repair",
       "carpentry": "Carpentry & Repairs",
       "electrical": "Electrician Services",
-      "plumbing": "Professional Plumbing",
       "painting": "Home Painting & Decorating"
     }
   },
   Hindi: {
     appName: "ज़ोमइंडिया",
     subtitle: "मांग पर प्रीमियम पेशेवर गृह सेवाएं",
-    searchPlaceholder: "एसी सर्विस, सफाई, पेंटर, प्लंबर खोजें...",
+    searchPlaceholder: "एसी सर्विस, आरओ प्यूरीफायर, फ्रिज, वाशिंग मशीन खोजें...",
     bookNow: "अभी बुक करें",
     bookings: "मेरी बुकिंग",
     profile: "प्रोफ़ाइल सेटिंग्स",
@@ -136,14 +135,13 @@ const translations: Record<Language, Translations> = {
       "appliances": "एसी और उपकरण मरम्मत",
       "carpentry": "बढ़ईगीरी और मरम्मत",
       "electrical": "इलेक्ट्रीशियन सेवाएं",
-      "plumbing": "व्यावसायिक प्लंबिंग",
       "painting": "घर की पेंटिंग और सजावट"
     }
   },
   Marathi: {
     appName: "झोमइंडिया",
     subtitle: "मागणीनुसार प्रीमियम व्यावसायिक घरगुती सेवा",
-    searchPlaceholder: "एसी सर्व्हिस, साफसफाई, पेंटर, प्लंबर शोधा...",
+    searchPlaceholder: "एसी सर्व्हिस, आरओ प्युरीफायर, फ्रिज, वॉशिंग मशीन शोधा...",
     bookNow: "आता बुक करा",
     bookings: "माझ्या बुकिंग्स",
     profile: "प्रोफाइल सेटिंग्ज",
@@ -183,14 +181,13 @@ const translations: Record<Language, Translations> = {
       "appliances": "एसी आणि उपकरणे दुरुस्ती",
       "carpentry": "सुतारकाम आणि दुरुस्ती",
       "electrical": "इलेक्ट्रीशियन सेवा",
-      "plumbing": "व्यावसायिक प्लंबिंग",
       "painting": "घरची पेंटिंग आणि सजावट"
     }
   },
   Tamil: {
     appName: "ஜோம்இந்தியா",
     subtitle: "தேவையின் பேரில் பிரீமியம் தொழில்முறை வீட்டு சேவைகள்",
-    searchPlaceholder: "ஏசி சேவை, துப்புரவு, பெயிண்டர்கள், பிளம்பர்கள் தேடுக...",
+    searchPlaceholder: "ஏசி சேவை, ஆர்ஓ, குளிர்சாதனப் பெட்டி, வாஷிங் மெஷின் தேடுக...",
     bookNow: "இப்போது பதிவு செய்க",
     bookings: "என் பதிவுகள்",
     profile: "சுயவிவர அமைப்புகள்",
@@ -230,7 +227,6 @@ const translations: Record<Language, Translations> = {
       "appliances": "ஏசி மற்றும் வீட்டு உபயோக சாதனங்கள் பழுதுபார்ப்பு",
       "carpentry": "தச்சன் வேலை மற்றும் பழுதுபார்ப்பு",
       "electrical": "மின்சார சேவைகள்",
-      "plumbing": "தொழில்முறை பிளம்பிங்",
       "painting": "வீட்டு வண்ணம் பூசுதல் & அலங்காரம்"
     }
   }

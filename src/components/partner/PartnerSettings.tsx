@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
@@ -7,16 +7,22 @@ import {
   ChevronRight, 
   Camera, 
   Check,
-  X,
   AlertCircle,
   Briefcase,
   Zap,
   Wallet,
-  Bot,
   LogOut,
   ArrowLeft,
   HelpCircle,
-  Star
+  Star,
+  User,
+  CreditCard,
+  Phone,
+  MapPin,
+  Building2,
+  FileText,
+  Headphones,
+  CheckCircle2
 } from 'lucide-react';
 import { PartnerProfile, UserProfile, Category, Booking, Service, Review } from '../../types';
 import { LogoIcon } from '../BrandLogo';
@@ -26,24 +32,41 @@ import { signOutUser } from '../../services/authService';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-errors';
 import AdminUpload from '../AdminUpload';
 import { sendNotification } from '../../lib/notifications';
-import { normalizeCategories } from '../../utils/formatters';
+import { normalizeCategories, DEFAULT_CATEGORIES, isPurgedCategoryOrService } from '../../utils/formatters';
+
+export type PartnerSettingsSection = 'profile' | 'bank' | 'kyc' | 'earnings' | 'skills' | 'faq' | 'performance' | null;
 
 interface Props {
   partner: PartnerProfile | null;
   profile: UserProfile;
-  onNavigate: (tab: any) => void;
+  onNavigate: (tab: any, targetId?: string | null) => void;
   onLogout?: () => void;
   bookings?: Booking[];
   services?: Service[];
   users?: UserProfile[];
+  initialSection?: PartnerSettingsSection;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DEFAULT_HOURS = DAYS.map(day => ({ day, startTime: '09:00', endTime: '18:00', enabled: true }));
 
-export default function PartnerSettings({ partner, profile, onNavigate, onLogout, bookings = [], services = [], users = [] }: Props) {
-  const [activeSub, setActiveSub] = useState<'kyc' | 'earnings' | 'skills' | 'faq' | 'performance' | null>(null);
+export default function PartnerSettings({
+  partner,
+  profile,
+  onNavigate,
+  onLogout,
+  bookings = [],
+  services = [],
+  initialSection = null
+}: Props) {
+  const [activeSub, setActiveSub] = useState<PartnerSettingsSection>(initialSection);
   const [openFaq, setOpenFaq] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSection !== undefined) {
+      setActiveSub(initialSection);
+    }
+  }, [initialSection]);
 
   const [partnerReviews, setPartnerReviews] = useState<Review[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -106,8 +129,8 @@ export default function PartnerSettings({ partner, profile, onNavigate, onLogout
     };
   }, [partner?.id, partner?.userId, profile.uid]);
 
-  const handleSelectSub = (sub: 'kyc' | 'earnings' | 'skills' | 'faq' | 'performance' | null) => {
-    setActiveSub(sub);
+  const handleOpenSection = (section: PartnerSettingsSection) => {
+    setActiveSub(section);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -120,16 +143,15 @@ export default function PartnerSettings({ partner, profile, onNavigate, onLogout
     if (onLogout) {
       onLogout();
     } else {
-      window.location.href = '/';
+      window.location.href = '/partner';
     }
   };
 
-  const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
     const uid = auth.currentUser?.uid || profile.uid;
-    return localStorage.getItem(`partner_avatar_${uid}`) || profile.photoURL || '';
+    return localStorage.getItem(`partner_avatar_${uid}`) || profile.photoURL || (partner as any)?.photoURL || '';
   });
 
   useEffect(() => {
@@ -150,69 +172,45 @@ export default function PartnerSettings({ partner, profile, onNavigate, onLogout
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Instantly display a local Base64 preview inside the avatar for offline/instant feedback
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64Url = reader.result as string;
         const uid = auth.currentUser?.uid || profile.uid;
+        const targetPartnerId = partner?.id || (profile as any)?.partnerId || uid;
 
-        // Update local PWA state instantly
         setAvatarUrl(base64Url);
         setEditForm(prev => ({ ...prev, photoURL: base64Url }));
         localStorage.setItem(`partner_avatar_${uid}`, base64Url);
         window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: base64Url } }));
 
-        // Trigger background cloud upload
         setUploadingAvatar(true);
         try {
           const storageRef = ref(storage, `partners/${uid}/avatar.jpg`);
-          
           const snapshot = await uploadBytes(storageRef, file);
           const downloadUrl = await getDownloadURL(snapshot.ref);
 
-          // Update states with real remote download URL
           setAvatarUrl(downloadUrl);
           setEditForm(prev => ({ ...prev, photoURL: downloadUrl }));
-          localStorage.removeItem(`partner_avatar_${uid}`); // Clean up local cache since it is now in the cloud!
+          localStorage.removeItem(`partner_avatar_${uid}`);
 
-          // Update Firestore 'users' collection (real URL is short and fits security rules)
-          try {
-            await updateDoc(doc(db, 'users', uid), {
-              photoURL: downloadUrl
-            });
-          } catch (userDocErr) {
-            console.warn("Could not update users collection with cloud URL:", userDocErr);
-          }
+          await updateDoc(doc(db, 'users', uid), {
+            photoURL: downloadUrl,
+            "partnerData.photoURL": downloadUrl
+          }).catch(() => {});
 
-          // Update Firestore 'partners' collection if exists
-          if (partner?.id) {
-            try {
-              await updateDoc(doc(db, 'partners', partner.id), {
-                photoURL: downloadUrl
-              });
-            } catch (partnerDocErr) {
-              console.warn("Could not update partners collection with cloud URL:", partnerDocErr);
-            }
-          }
-
-          // Update Firestore 'providers' collection
-          try {
-            await setDoc(doc(db, 'providers', uid), {
+          if (targetPartnerId) {
+            await setDoc(doc(db, 'partners', targetPartnerId), {
               photoURL: downloadUrl,
               updatedAt: Timestamp.now()
-            }, { merge: true });
-          } catch (providersErr) {
-            console.warn("Could not update providers collection with cloud URL:", providersErr);
+            }, { merge: true }).catch(() => {});
           }
 
-          // Dispatch event with final URL
           window.dispatchEvent(new CustomEvent('partner-avatar-updated', { detail: { photoURL: downloadUrl } }));
-          console.log("Profile picture successfully uploaded and saved to cloud.");
-        } catch (uploadErr: any) {
-          console.warn("Firebase Storage is unavailable, falling back to local persistent PWA storage:", uploadErr);
-          // Gracefully persist in localStorage instead of cluttering Firestore with huge base64 strings
-          // that would violate security rules (size <= 1000). This keeps everything fully functional!
+          window.dispatchEvent(new CustomEvent('show-partner-toast', { detail: { message: 'Profile photo updated!' } }));
+        } catch (uploadErr) {
+          console.warn("Firebase Storage fallback to local persistent avatar:", uploadErr);
+          window.dispatchEvent(new CustomEvent('show-partner-toast', { detail: { message: 'Profile photo saved locally!' } }));
         } finally {
           setUploadingAvatar(false);
         }
@@ -222,889 +220,1369 @@ export default function PartnerSettings({ partner, profile, onNavigate, onLogout
       console.error("FileReader failed:", readerErr);
     }
   };
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
+
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [loading, setLoading] = useState(false);
-  
-  // KYC custom fields state
-  const [kycIdUrl, setKycIdUrl] = useState(partner?.kycDocuments?.[0]?.url || '');
-  const [kycAddressUrl, setKycAddressUrl] = useState(partner?.kycDocuments?.[1]?.url || '');
-  const [kycSubmitSuccess, setKycSubmitSuccess] = useState(false);
-  const [kycLoading, setKycLoading] = useState(false);
+
+  // Extract existing bank details from partner or user profile
+  const existingBank = (partner as any)?.bankDetails || (profile as any)?.bankDetails || (profile as any)?.partnerData?.bankDetails || {};
+  const existingUpi = existingBank.upiId || (partner as any)?.upiId || (profile as any)?.upiId || (profile as any)?.partnerData?.upiId || '';
 
   const [editForm, setEditForm] = useState({
-    displayName: profile.displayName,
-    photoURL: profile.photoURL || '',
-    bio: partner?.bio || '',
-    selectedCategories: partner?.categories || [],
+    displayName: profile.displayName || (partner as any)?.name || '',
+    phoneNumber: profile.phoneNumber || profile.mobile || (partner as any)?.phone || '',
+    city: (partner as any)?.city || (profile as any)?.city || 'Indore',
+    photoURL: profile.photoURL || (partner as any)?.photoURL || '',
+    bio: partner?.bio || (profile as any)?.partnerData?.bio || '',
+    selectedCategories: (partner?.categories || (profile as any)?.partnerData?.categories || []).filter(
+      (c: string) => !isPurgedCategoryOrService(c)
+    ),
     workingHours: partner?.workingHours || DEFAULT_HOURS
   });
 
+  const [bankForm, setBankForm] = useState({
+    upiId: existingUpi,
+    accountHolder: existingBank.accountHolder || profile.displayName || '',
+    accountNumber: existingBank.accountNumber || '',
+    ifscCode: existingBank.ifscCode || '',
+    bankName: existingBank.bankName || ''
+  });
+
+  // KYC state
+  const [aadhaarNumber, setAadhaarNumber] = useState<string>(
+    (partner as any)?.aadhaarNumber || (profile as any)?.aadhaarNumber || (profile as any)?.partnerData?.aadhaarNumber || ''
+  );
+  const [panNumber, setPanNumber] = useState<string>(
+    (partner as any)?.panNumber || (profile as any)?.panNumber || (profile as any)?.partnerData?.panNumber || ''
+  );
+  const [kycIdUrl, setKycIdUrl] = useState<string>(
+    partner?.kycDocuments?.[0]?.url || (profile as any)?.partnerData?.kycDocuments?.[0]?.url || ''
+  );
+  const [kycAddressUrl, setKycAddressUrl] = useState<string>(
+    partner?.kycDocuments?.[1]?.url || (profile as any)?.partnerData?.kycDocuments?.[1]?.url || ''
+  );
+  const [kycLoading, setKycLoading] = useState(false);
+
+  useEffect(() => {
+    setEditForm(prev => ({
+      ...prev,
+      displayName: profile.displayName || (partner as any)?.name || prev.displayName,
+      phoneNumber: profile.phoneNumber || profile.mobile || (partner as any)?.phone || prev.phoneNumber,
+      city: (partner as any)?.city || (profile as any)?.city || prev.city || 'Indore',
+      photoURL: profile.photoURL || (partner as any)?.photoURL || prev.photoURL,
+      bio: partner?.bio || (profile as any)?.partnerData?.bio || prev.bio,
+      selectedCategories: partner?.categories?.length
+        ? partner.categories.filter((c: string) => !isPurgedCategoryOrService(c))
+        : prev.selectedCategories.filter((c: string) => !isPurgedCategoryOrService(c)),
+      workingHours: partner?.workingHours?.length ? partner.workingHours : prev.workingHours
+    }));
+
+    const latestBank = (partner as any)?.bankDetails || (profile as any)?.bankDetails || (profile as any)?.partnerData?.bankDetails || {};
+    const latestUpi = latestBank.upiId || (partner as any)?.upiId || (profile as any)?.upiId || (profile as any)?.partnerData?.upiId || '';
+    setBankForm(prev => ({
+      upiId: latestUpi || prev.upiId,
+      accountHolder: latestBank.accountHolder || prev.accountHolder || profile.displayName || '',
+      accountNumber: latestBank.accountNumber || prev.accountNumber,
+      ifscCode: latestBank.ifscCode || prev.ifscCode,
+      bankName: latestBank.bankName || prev.bankName
+    }));
+  }, [partner, profile]);
+
   useEffect(() => {
     const fetchCategories = async () => {
-      const snap = await getDocs(collection(db, 'categories'));
-      const rawCategories = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-      setCategories(normalizeCategories(rawCategories));
+      try {
+        const snap = await getDocs(collection(db, 'categories'));
+        const rawCategories = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+        const normalized = normalizeCategories(rawCategories);
+        if (normalized.length > 0) {
+          setCategories(normalized);
+        }
+      } catch (err) {
+        console.warn("Using default categories in PartnerSettings:", err);
+      }
     };
     fetchCategories();
   }, []);
 
-  const handleSave = async () => {
-    if (!partner) return;
+  const hasLinkedBankOrUpi = Boolean(
+    bankForm.upiId?.trim() || (bankForm.accountNumber?.trim() && bankForm.ifscCode?.trim())
+  );
+
+  const isKycVerified = Boolean(
+    partner?.isVerified ||
+    partner?.kycStatus === 'verified' ||
+    (partner as any)?.kycStatus === 'approved' ||
+    (profile as any)?.kycStatus === 'verified' ||
+    (profile as any)?.kycStatus === 'approved'
+  );
+
+  const handleSaveProfile = async () => {
+    const activeUid = auth.currentUser?.uid || profile.uid;
+    const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
+    if (!activeUid) return;
+
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', profile.uid), {
-        displayName: editForm.displayName,
-        fullName: editForm.displayName,
-        photoURL: editForm.photoURL
-      });
-      await updateDoc(doc(db, 'partners', partner.id), {
-        bio: editForm.bio,
-        categories: editForm.selectedCategories,
-        workingHours: editForm.workingHours,
+      const cleanName = editForm.displayName.trim() || profile.displayName || 'Verified Partner';
+      const cleanPhone = editForm.phoneNumber.trim();
+      const cleanCity = editForm.city.trim() || 'Indore';
+      const cleanBio = editForm.bio.trim();
+      const cleanPhoto = editForm.photoURL && !editForm.photoURL.startsWith('data:image') ? editForm.photoURL : (profile.photoURL || '');
+
+      // 1. Sync to users collection (read by Admin & Customer)
+      await setDoc(doc(db, 'users', activeUid), {
+        displayName: cleanName,
+        fullName: cleanName,
+        phoneNumber: cleanPhone,
+        mobile: cleanPhone,
+        city: cleanCity,
+        ...(cleanPhoto ? { photoURL: cleanPhoto } : {}),
+        partnerData: {
+          ...((profile as any)?.partnerData || {}),
+          name: cleanName,
+          fullName: cleanName,
+          phone: cleanPhone,
+          phoneNumber: cleanPhone,
+          city: cleanCity,
+          bio: cleanBio,
+          ...(cleanPhoto ? { photoURL: cleanPhoto } : {}),
+          updatedAt: Timestamp.now()
+        },
         updatedAt: Timestamp.now()
-      });
-      setIsEditing(false);
+      }, { merge: true });
+
+      // 2. Sync to partners collection (read by Admin & Live Dispatch)
+      if (targetPartnerId) {
+        await setDoc(doc(db, 'partners', targetPartnerId), {
+          userId: activeUid,
+          uid: activeUid,
+          name: cleanName,
+          fullName: cleanName,
+          displayName: cleanName,
+          phone: cleanPhone,
+          phoneNumber: cleanPhone,
+          city: cleanCity,
+          bio: cleanBio,
+          ...(cleanPhoto ? { photoURL: cleanPhoto } : {}),
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+      }
+
+      // 3. Sync active customer bookings so Customer Booking Card & Live Tracking reflect updated partner details immediately
+      const activeBookings = bookings.filter(b =>
+        (b.partnerId === activeUid || b.partnerId === targetPartnerId) &&
+        ['assigned', 'confirmed', 'on_the_way', 'arrived', 'in_progress'].includes(b.status)
+      );
+      for (const b of activeBookings) {
+        await updateDoc(doc(db, 'bookings', b.id), {
+          partnerName: cleanName,
+          ...(cleanPhone ? { partnerPhone: cleanPhone } : {}),
+          ...(cleanPhoto ? { partnerPhoto: cleanPhoto } : {}),
+          updatedAt: Timestamp.now()
+        }).catch(() => {});
+      }
+
+      window.dispatchEvent(new CustomEvent('show-partner-toast', {
+        detail: { message: 'Personal details saved & synced!' }
+      }));
       setActiveSub(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'profile');
+      handleFirestoreError(err, OperationType.UPDATE, 'users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveBankDetails = async () => {
+    const activeUid = auth.currentUser?.uid || profile.uid;
+    const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
+    if (!activeUid) return;
+
+    const cleanUpi = bankForm.upiId.trim();
+    const cleanAcc = bankForm.accountNumber.trim();
+    const cleanIfsc = bankForm.ifscCode.trim().toUpperCase();
+    const cleanHolder = bankForm.accountHolder.trim() || editForm.displayName || profile.displayName;
+    const cleanBankName = bankForm.bankName.trim();
+
+    if (!cleanUpi && (!cleanAcc || !cleanIfsc)) {
+      window.dispatchEvent(new CustomEvent('show-partner-toast', {
+        detail: { message: 'Please enter a valid UPI ID or Bank Account + IFSC.' }
+      }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const bankPayload = {
+        upiId: cleanUpi,
+        accountHolder: cleanHolder,
+        accountNumber: cleanAcc,
+        ifscCode: cleanIfsc,
+        bankName: cleanBankName,
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'users', activeUid), {
+        upiId: cleanUpi,
+        bankDetails: bankPayload,
+        "partnerData.upiId": cleanUpi,
+        "partnerData.bankDetails": bankPayload,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+
+      if (targetPartnerId) {
+        await setDoc(doc(db, 'partners', targetPartnerId), {
+          userId: activeUid,
+          upiId: cleanUpi,
+          bankDetails: bankPayload,
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+      }
+
+      window.dispatchEvent(new CustomEvent('show-partner-toast', {
+        detail: { message: 'Bank & UPI payout details saved!' }
+      }));
+      setActiveSub(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'partners');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSkillsAndSchedule = async () => {
+    const activeUid = auth.currentUser?.uid || profile.uid;
+    const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
+    if (!activeUid) return;
+
+    setLoading(true);
+    const cleanedSkills = editForm.selectedCategories.filter(
+      (c: string) => !isPurgedCategoryOrService(c)
+    );
+    try {
+      await setDoc(doc(db, 'users', activeUid), {
+        categories: cleanedSkills,
+        skills: cleanedSkills,
+        "partnerData.categories": cleanedSkills,
+        "partnerData.skills": cleanedSkills,
+        "partnerData.workingHours": editForm.workingHours,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+
+      if (targetPartnerId) {
+        await setDoc(doc(db, 'partners', targetPartnerId), {
+          userId: activeUid,
+          categories: cleanedSkills,
+          skills: cleanedSkills,
+          workingHours: editForm.workingHours,
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+      }
+
+      window.dispatchEvent(new CustomEvent('show-partner-toast', {
+        detail: { message: 'Service skills & schedule updated!' }
+      }));
+      setActiveSub(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'partners');
     } finally {
       setLoading(false);
     }
   };
 
   const handleKYCSubmit = async () => {
-    if (!partner) return;
+    const activeUid = auth.currentUser?.uid || profile.uid;
+    const targetPartnerId = partner?.id || (profile as any)?.partnerId || activeUid;
+    if (!activeUid) return;
+
     setKycLoading(true);
     try {
-      await updateDoc(doc(db, 'partners', partner.id), {
-        kycStatus: 'pending',
-        kycDocuments: [
-          { type: 'Identity Proof', url: kycIdUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926', status: 'pending' },
-          { type: 'Address Proof', url: kycAddressUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926', status: 'pending' }
-        ],
+      const docsList = [
+        ...(kycIdUrl ? [{ type: 'Identity Proof', url: kycIdUrl, status: 'pending' as const }] : []),
+        ...(kycAddressUrl ? [{ type: 'Address Proof', url: kycAddressUrl, status: 'pending' as const }] : [])
+      ];
+
+      const kycPayload: Record<string, any> = {
+        aadhaarNumber: aadhaarNumber.trim(),
+        panNumber: panNumber.trim().toUpperCase(),
+        ...(docsList.length > 0 ? { kycDocuments: docsList } : {}),
+        ...(!isKycVerified ? { kycStatus: 'pending' } : {}),
         updatedAt: Timestamp.now()
-      });
-      
-      // Notify partner
+      };
+
+      if (targetPartnerId) {
+        await setDoc(doc(db, 'partners', targetPartnerId), kycPayload, { merge: true });
+      }
+
+      await setDoc(doc(db, 'users', activeUid), {
+        ...kycPayload,
+        "partnerData.aadhaarNumber": aadhaarNumber.trim(),
+        "partnerData.panNumber": panNumber.trim().toUpperCase(),
+        ...(docsList.length > 0 ? { "partnerData.kycDocuments": docsList } : {}),
+      }, { merge: true });
+
       await sendNotification(
         profile.uid,
-        'Identity Documents Uploaded!',
-        'We have received your profile details. Checking usually takes 4 to 8 hours.',
+        'Identity Details Updated',
+        'Your KYC & verification records have been synced with the Indore operations desk.',
         'promotional'
-      );
-      
-      // Notify Admin
+      ).catch(() => {});
+
       await sendNotification(
         'sarthakwebtech@gmail.com',
-        'New Partner KYC Submitted',
-        `Partner ${profile.displayName} (${profile.email}) uploaded KYC documents. Approval needed.`,
+        'Partner KYC Updated',
+        `Partner ${editForm.displayName || profile.displayName} updated KYC verification details.`,
         'promotional'
-      );
-      
-      setKycSubmitSuccess(true);
-      setTimeout(() => {
-        setIsKYCModalOpen(false);
-        setActiveSub(null);
-        setKycSubmitSuccess(false);
-      }, 2500);
+      ).catch(() => {});
+
+      window.dispatchEvent(new CustomEvent('show-partner-toast', {
+        detail: { message: 'KYC verification details submitted!' }
+      }));
+      setActiveSub(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `partners/${partner.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `partners/${targetPartnerId}`);
     } finally {
       setKycLoading(false);
     }
   };
 
+  const completedBookings = bookings.filter(b =>
+    (b.partnerId === profile.uid || b.partnerId === partner?.id) &&
+    ['completed', 'finalized'].includes(b.status)
+  );
+  const totalNetEarned = completedBookings.reduce((sum, b) => {
+    const gross = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+    if (isNaN(gross) || gross <= 0) return sum;
+    const platformFee = Math.round(gross * 0.20);
+    const gstOnFee = Math.round(platformFee * 0.18);
+    return sum + Math.max(0, gross - (platformFee + gstOnFee));
+  }, 0);
+  const syncedPartnerBalance = totalNetEarned > 0 ? totalNetEarned : (partner?.walletBalance ?? 0);
+
   return (
-    <div className="p-6 space-y-8 pb-32">
+    <div className="p-4 sm:p-6 space-y-5 pb-28 max-w-xl mx-auto">
       {activeSub !== null && (
         <button 
-          onClick={() => handleSelectSub(null)}
-          className="mb-6 inline-flex items-center gap-2 text-xs font-black uppercase text-blue-700 bg-blue-50/75 hover:bg-blue-100/75 px-4 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+          onClick={() => handleOpenSection(null)}
+          className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-700 bg-white hover:bg-slate-100 border border-slate-200/80 px-3.5 py-2 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs"
         >
           <ArrowLeft size={14} />
-          <span>← Back to Menu</span>
+          <span>Back to Account</span>
         </button>
       )}
 
       {activeSub === null && (
         <>
-          {/* Profile Header */}
-          <section className="flex items-center gap-6">
-             <div 
-               onClick={handleAvatarClick} 
-               className="relative group italic cursor-pointer transition-all hover:scale-105 active:scale-95"
-               title="Click to change profile picture"
-             >
-                <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner flex items-center justify-center relative">
-                   {uploadingAvatar && (
-                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10 rounded-full">
-                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                     </div>
-                   )}
-                   <img src={(avatarUrl || profile.photoURL) && !(avatarUrl || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (avatarUrl || profile.photoURL) : LogoIcon} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
-                   <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider rounded-full z-20">
-                     Change
-                   </div>
-                </div>
-                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-700 border-4 border-slate-50 rounded-full flex items-center justify-center text-white">
-                   <Check size={12} />
-                </div>
-             </div>
-             <div>
-                <h2 className="text-2xl font-black text-slate-900 leading-tight">{profile.displayName}</h2>
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Verified Partner</p>
-             </div>
-             <input 
-               type="file" 
-               accept="image/*" 
-               capture="user"
-               id="camera-input" 
-               ref={fileInputRef} 
-               style={{ display: 'none' }} 
-               onChange={handleAvatarChange} 
-             />
-          </section>
-
-          {/* KYC Status Banner */}
-          <section className={`p-6 rounded-[32px] border ${partner?.isVerified ? 'bg-emerald-50 border-emerald-200' : partner?.kycStatus === 'pending' ? 'bg-indigo-50/50 border-indigo-200' : partner?.kycStatus === 'rejected' ? 'bg-rose-50/50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
-             <div className="flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                   <div className={`p-3 rounded-2xl ${partner?.isVerified ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : partner?.kycStatus === 'pending' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : partner?.kycStatus === 'rejected' ? 'bg-rose-500 text-white shadow-lg shadow-rose-200' : 'bg-amber-500 text-white shadow-lg shadow-amber-200'}`}>
-                       {partner?.isVerified ? <ShieldCheck size={20} /> : <AlertCircle size={20} />}
-                   </div>
-                   <div>
-                      <h4 className="text-sm font-bold text-slate-900">
-                        {partner?.isVerified ? 'Verified Partner' : partner?.kycStatus === 'pending' ? 'Checking your details' : partner?.kycStatus === 'rejected' ? 'Identity Check Rejected' : 'Verification Required'}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">
-                        {partner?.isVerified ? 'Active & ready for bookings' : partner?.kycStatus === 'pending' ? 'Waiting for admin approval' : partner?.kycStatus === 'rejected' ? 'Please upload correct documents' : 'Some features are locked'}
-                      </p>
-                   </div>
-                </div>
-                {!partner?.isVerified && (
-                   <button 
-                     onClick={() => handleSelectSub('kyc')}
-                     className={`px-4 py-2 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl ${partner?.kycStatus === 'pending' ? 'bg-indigo-600 shadow-indigo-500/20' : partner?.kycStatus === 'rejected' ? 'bg-rose-600 shadow-rose-500/20' : 'bg-amber-500 shadow-amber-500/20'}`}
-                   >
-                     {partner?.kycStatus === 'pending' ? 'Review Docs' : 'Verify Now'}
-                   </button>
-                )}
-             </div>
-             {partner?.kycStatus === 'rejected' && partner?.kycRejectReason && (
-                <div className="mt-4 p-4 bg-rose-50/50 rounded-2xl border border-rose-100/50 flex gap-3 text-rose-800 animate-fade-in">
-                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                   <div className="text-left">
-                      <p className="text-[9px] font-black uppercase tracking-wider mb-0.5">Disapproval Reason:</p>
-                      <p className="text-[11px] font-bold leading-normal">{partner.kycRejectReason}</p>
-                   </div>
-                </div>
-             )}
-          </section>
-
-          {/* Symmetrical Security Credentials Channels */}
-          <section className="bg-white p-6 rounded-[32px] border border-slate-100/80 space-y-4">
-             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Authentication Channels</h4>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Email Card */}
-                <div className="bg-slate-50/60 border border-slate-100/60 p-4 rounded-2xl flex flex-col justify-between min-h-[82px]">
-                   <div className="flex items-center justify-between">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Email Address</span>
-                      {(() => {
-                        const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
-                        const isGoogleOrEmail = auth.currentUser?.providerData.some(p => p.providerId === 'google.com' || p.providerId === 'password') || (!!auth.currentUser?.email && !auth.currentUser?.phoneNumber);
-                        
-                        if (isMobileOTP && !auth.currentUser?.emailVerified) {
-                           return <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1">Not Verified ⚠️</span>;
-                        } else if (isGoogleOrEmail || auth.currentUser?.emailVerified) {
-                           return <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10} /> Verified ✓</span>;
-                        } else {
-                           return <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider">Not Verified ⚠️</span>;
-                        }
-                      })()}
-                   </div>
-                   <p className="text-xs font-semibold text-slate-700 mt-2 truncate">{profile?.email || 'N/A'}</p>
-                </div>
-
-                {/* Mobile Card */}
-                <div className="bg-slate-50/60 border border-slate-100/60 p-4 rounded-2xl flex flex-col justify-between min-h-[82px]">
-                   <div className="flex items-center justify-between">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Registered Mobile</span>
-                      {(() => {
-                        const isMobileOTP = auth.currentUser?.providerData.some(p => p.providerId === 'phone') || (!!auth.currentUser?.phoneNumber && !auth.currentUser?.email);
-                        const hasVerifiedPhone = !!auth.currentUser?.phoneNumber || !!profile?.phoneNumberVerified;
-                        
-                        if (isMobileOTP || hasVerifiedPhone) {
-                           return <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10} /> Verified ✓</span>;
-                        } else {
-                           return <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1">Not Verified ⚠️</span>;
-                        }
-                      })()}
-                   </div>
-                   <p className="text-xs font-semibold text-slate-700 mt-2">
-                      {profile?.phoneNumber ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}` : 'N/A'}
-                   </p>
-                </div>
-             </div>
-          </section>
-
-          {/* Navigation Options */}
-          <section className="space-y-3">
-             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 mb-4">Account Settings</h3>
-             
-             {[
-               { icon: Star, label: 'Ratings & Quality Performance', value: `${Number(partner?.averageRating || partner?.rating || 4.9).toFixed(1)} ★ (${partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0})`, onClick: () => handleSelectSub('performance') },
-               { icon: Wallet, label: 'Partner Wallet & Payouts', value: `₹${profile.walletBalance || 0}`, onClick: () => handleSelectSub('earnings') },
-               { icon: Briefcase, label: 'Service Skills & Schedule', value: `${partner?.categories.length || 0} active`, onClick: () => handleSelectSub('skills') },
-               { icon: HelpCircle, label: 'Help & FAQ Desk', value: 'Onboarding & Pay', onClick: () => handleSelectSub('faq') },
-               { icon: Bot, label: '🤖 AI Support Assistant', value: 'Online Assistance', onClick: () => window.dispatchEvent(new CustomEvent('toggle-ai-chat', { detail: { open: true } })) },
-             ].map((opt, idx) => (
-               <button 
-                 key={idx}
-                 onClick={opt.onClick}
-                 className="w-full bg-white p-5 rounded-[28px] border border-slate-50 flex justify-between items-center active:scale-98 transition-transform group"
-               >
-                  <div className="flex items-center gap-4">
-                     <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center group-hover:bg-blue-700 group-hover:text-white transition-colors">
-                        <opt.icon size={18} />
-                     </div>
-                     <span className="font-bold text-slate-900 text-sm italic">{opt.label}</span>
+          {/* Sleek Partner Identity Header Card */}
+          <section className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div 
+                onClick={handleAvatarClick} 
+                className="relative group cursor-pointer transition-transform active:scale-95 shrink-0"
+                title="Tap to update profile photo"
+              >
+                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border-2 border-emerald-500 shadow-xs flex items-center justify-center relative">
+                  {uploadingAvatar && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <img
+                    src={(avatarUrl || profile.photoURL) && !(avatarUrl || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (avatarUrl || profile.photoURL) : LogoIcon}
+                    referrerPolicy="no-referrer"
+                    alt={editForm.displayName || profile.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                    <Camera size={16} />
                   </div>
-                  <div className="flex items-center gap-3">
-                     <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{opt.value}</span>
-                     <ChevronRight size={16} className="text-slate-300" />
-                  </div>
-               </button>
-             ))}
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-600 border-2 border-white rounded-full flex items-center justify-center text-white shadow-xs">
+                  <Check size={11} strokeWidth={3} />
+                </div>
+              </div>
 
-             <button 
-               onClick={handlePartnerLogout}
-               className="w-full bg-rose-50/50 p-5 rounded-[28px] border border-rose-100 flex justify-between items-center active:scale-98 transition-all group mt-2 cursor-pointer"
-             >
-                <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-md shadow-rose-200 group-hover:scale-105 transition-transform">
-                      <LogOut size={16} />
-                   </div>
-                   <span className="font-extrabold text-rose-600 text-sm italic">Log Out of App</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight truncate">
+                    {editForm.displayName || profile.displayName || 'Zomindia Partner'}
+                  </h2>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80">
+                    <Star size={10} className="fill-amber-500 text-amber-500" />
+                    {Number(partner?.averageRating || partner?.rating || 4.9).toFixed(1)}
+                  </span>
                 </div>
-                <div className="flex items-center gap-3">
-                   <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">End Session</span>
-                   <ChevronRight size={16} className="text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+                <p className="text-xs font-medium text-slate-500 truncate mt-0.5">
+                  {editForm.phoneNumber ? `+91 ${editForm.phoneNumber.replace(/^\+91\s*/, '')}` : (profile.email || 'Indore Hub Partner')}
+                </p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    ID: PRO-{(profile.uid || '').slice(0, 6).toUpperCase()}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-[10px] font-bold text-blue-600">
+                    {editForm.city || 'Indore'} Hub
+                  </span>
                 </div>
-             </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleOpenSection('profile')}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold transition-colors shrink-0 cursor-pointer active:scale-95"
+            >
+              Edit
+            </button>
+
+            <input 
+              type="file" 
+              accept="image/*" 
+              ref={fileInputRef} 
+              className="hidden" 
+              onChange={handleAvatarChange} 
+            />
           </section>
+
+          {/* Compact KYC Alert Banner if not yet verified */}
+          {!isKycVerified && (
+            <section className={`p-4 rounded-3xl border flex items-center justify-between gap-3 ${
+              partner?.kycStatus === 'rejected'
+                ? 'bg-rose-50/70 border-rose-200'
+                : 'bg-amber-50/80 border-amber-200'
+            }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                  partner?.kycStatus === 'rejected' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'
+                }`}>
+                  <AlertCircle size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs font-black text-slate-900">
+                    {partner?.kycStatus === 'rejected' ? 'KYC Document Needs Attention' : 'KYC Verification Pending'}
+                  </h4>
+                  <p className="text-[11px] text-slate-600 truncate">
+                    {partner?.kycRejectReason || 'Complete Aadhaar & PAN check for uninterrupted payouts'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleOpenSection('kyc')}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shrink-0 cursor-pointer active:scale-95"
+              >
+                Verify
+              </button>
+            </section>
+          )}
+
+          {/* Redesigned Account & Preferences Card (Sleek Zomato/Swiggy Partner Standard) */}
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Card Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 tracking-tight">Account & Preferences</h3>
+                <p className="text-[11px] font-medium text-slate-500">Manage your profile, payouts & documents</p>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Active Partner
+              </span>
+            </div>
+
+            {/* Interactive Options List */}
+            <div className="divide-y divide-slate-100/80">
+              {/* 1. Personal Details */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('profile')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <User size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900">Personal Details</p>
+                    <p className="text-[11px] text-slate-500 truncate">Name, mobile & display picture</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 2. Bank & Payout Details */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('bank')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <CreditCard size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Bank & Payout Details</p>
+                      {hasLinkedBankOrUpi ? (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                          ✓ Linked
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                          Add UPI / Bank
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {bankForm.upiId ? `UPI: ${bankForm.upiId}` : 'UPI ID & settlement bank account'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 3. Identity & Verification (KYC) */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('kyc')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Identity & Verification</p>
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                        isKycVerified
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {isKycVerified ? '✓ Verified' : 'Pending'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">Aadhaar, PAN & KYC documents</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 4. Service Skills & Schedule */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('skills')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Briefcase size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Service Skills & Schedule</p>
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                        {editForm.selectedCategories.length || 1} Active
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">Trade categories & working hours</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 5. Partner Wallet & Earnings Ledger */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('earnings')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Wallet size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Earnings & Payout Passbook</p>
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700">
+                        ₹{syncedPartnerBalance.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">Completed job payouts & passbook ledger</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 6. Ratings & Quality Performance */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('performance')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Star size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900">Ratings & Quality Scorecard</p>
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                        {Number(partner?.averageRating || partner?.rating || 4.9).toFixed(1)} ★
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">Customer reviews & 4-pillar quality scores</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* 7. Help & Support Desk */}
+              <button
+                type="button"
+                onClick={() => handleOpenSection('faq')}
+                className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 active:bg-slate-100/60 transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <HelpCircle size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900">Partner Help & Support</p>
+                    <p className="text-[11px] text-slate-500 truncate">FAQs & 24/7 Indore dispatch helpline</p>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+            </div>
+          </div>
+
+          {/* Sign Out Card */}
+          <button 
+            type="button"
+            onClick={handlePartnerLogout}
+            className="w-full bg-white hover:bg-rose-50/60 px-5 py-4 rounded-3xl border border-rose-100 flex justify-between items-center active:scale-98 transition-all group cursor-pointer shadow-2xs"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                <LogOut size={18} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-rose-600 text-xs">Log Out of Partner App</p>
+                <p className="text-[11px] text-slate-400">Safely end your current session</p>
+              </div>
+            </div>
+            <ChevronRight size={16} className="text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+          </button>
         </>
       )}
 
-      {activeSub === 'kyc' && (
+      {/* SUB-VIEW 1: PERSONAL DETAILS ('profile') */}
+      {activeSub === 'profile' && (
         <motion.div
-          key="sub-kyc"
+          key="sub-profile"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
         >
-          <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6">
-            <div className="border-b border-sidebar pb-4">
-              <h3 className="text-xl font-black italic text-slate-900">KYC Verification</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Symmetrical Verification Status Bench</p>
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Personal Details</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Synced in real time with Admin & Customer bookings</p>
             </div>
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <User size={18} />
+            </div>
+          </div>
 
-            {/* Verified Email & Phone Credentials */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150 flex flex-col justify-between">
-                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Email Channel</span>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs font-semibold text-slate-800 truncate max-w-[150px]">{profile?.email || 'N/A'}</span>
-                  <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0"><ShieldCheck size={10} /> Verified ✓</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150 flex flex-col justify-between">
-                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Registered Mobile</span>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs font-semibold text-slate-800">{profile?.phoneNumber ? `+91 •••••• ${profile.phoneNumber.replace('+91', '').slice(-4)}` : 'N/A'}</span>
-                  <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0"><ShieldCheck size={10} /> Verified ✓</span>
-                </div>
+          {/* Avatar Upload Row */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4">
+            <div
+              onClick={handleAvatarClick}
+              className="w-16 h-16 rounded-2xl overflow-hidden bg-white border-2 border-emerald-500 shrink-0 relative group cursor-pointer"
+            >
+              <img
+                src={(editForm.photoURL || avatarUrl || profile.photoURL) && !(editForm.photoURL || avatarUrl || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (editForm.photoURL || avatarUrl || profile.photoURL) : LogoIcon}
+                referrerPolicy="no-referrer"
+                alt=""
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={14} />
               </div>
             </div>
+            <div className="flex-1 min-w-0">
+              <h5 className="text-xs font-bold text-slate-900">Display Picture</h5>
+              <p className="text-[11px] text-slate-500 mt-0.5">Shown to customers on their booking card when you are assigned.</p>
+              <button
+                type="button"
+                onClick={handleAvatarClick}
+                className="mt-2 px-3 py-1.5 bg-white hover:bg-slate-100 text-blue-700 border border-slate-200 rounded-xl text-[11px] font-bold transition-colors cursor-pointer"
+              >
+                {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
+              </button>
+            </div>
+          </div>
 
-            {/* Profile Photo Uploader */}
-            <div className="p-5 bg-blue-50/40 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center gap-5">
-              <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 border-2 border-[#22c55e] shadow-inner shrink-0 relative group">
-                <img src={(editForm.photoURL || profile.photoURL) && !(editForm.photoURL || profile.photoURL)?.includes('googleusercontent.com/image_collection') ? (editForm.photoURL || profile.photoURL) : LogoIcon} referrerPolicy="no-referrer" alt="" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Camera size={14} />
-                </div>
-              </div>
-              <div className="flex-1 space-y-2">
-                <h5 className="text-xs font-extrabold text-slate-950">Partner Identity Photo</h5>
-                <p className="text-[10px] text-slate-400 font-medium">Add a clear profile photo (no sunglasses/caps) so customers can recognize you.</p>
-                <AdminUpload 
-                  label="Upload New Photo"
-                  onUpload={(url) => setEditForm({ ...editForm, photoURL: url })}
-                  value={editForm.photoURL}
-                  type="image"
-                  accept=".jpg,.jpeg,.png"
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Full Name</label>
+              <div className="relative">
+                <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={editForm.displayName}
+                  onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
+                  placeholder="Enter your full name"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none transition-colors"
                 />
               </div>
             </div>
 
-            {/* Government IDs */}
-            <div className={`p-6 rounded-[28px] border flex flex-col justify-between md:flex-row md:items-center gap-4 ${partner?.isVerified ? 'bg-emerald-50/50 border-emerald-200 text-emerald-900' : 'bg-amber-50/50 border-amber-200 text-amber-900'}`}>
-              <div>
-                <h4 className="text-sm font-extrabold flex items-center gap-1.5 leading-none">
-                  <ShieldCheck size={16} />
-                  {partner?.isVerified ? 'Government Documents Verified ✓' : 'Add Identity Documents'}
-                </h4>
-                <p className="text-[10px] opacity-75 mt-1.5 font-semibold">We verify your Aadhaar/PAN Card to keep the platform 100% safe.</p>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Registered Mobile Number</label>
+              <div className="relative">
+                <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="tel"
+                  value={editForm.phoneNumber}
+                  onChange={(e) => setEditForm({ ...editForm, phoneNumber: e.target.value })}
+                  placeholder="+91 9876543210"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none transition-colors"
+                />
               </div>
-              {!partner?.isVerified && (
-                <button
-                  onClick={() => setIsKYCModalOpen(true)}
-                  className="px-4 py-2.5 bg-blue-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl shrink-0"
-                >
-                  Configure Docs
-                </button>
-              )}
             </div>
 
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Primary Hub / City</label>
+              <div className="relative">
+                <MapPin size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={editForm.city}
+                  onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                  placeholder="Indore"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Professional Summary / Bio</label>
+              <textarea
+                rows={3}
+                value={editForm.bio}
+                onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
+                placeholder="e.g. 6+ years experience in RO, AC & Refrigerator repair in Indore..."
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none transition-colors"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={loading}
+            className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md active:scale-98 transition-all cursor-pointer"
+          >
+            {loading ? 'Saving & Syncing...' : 'Save Personal Details'}
+          </button>
+        </motion.div>
+      )}
+
+      {/* SUB-VIEW 2: BANK & PAYOUT DETAILS ('bank') */}
+      {activeSub === 'bank' && (
+        <motion.div
+          key="sub-bank"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
+        >
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Bank & Payout Details</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Configure your UPI ID & bank account for direct 80% payouts</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CreditCard size={18} />
+            </div>
+          </div>
+
+          {/* Instant UPI Configuration */}
+          <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">Instant UPI Settlement (Recommended)</span>
+              {bankForm.upiId && (
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">Active</span>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">Primary UPI ID (GPay / PhonePe / Paytm)</label>
+              <input
+                type="text"
+                value={bankForm.upiId}
+                onChange={(e) => setBankForm({ ...bankForm, upiId: e.target.value })}
+                placeholder="e.g. 9876543210@ybl or name@okaxis"
+                className="w-full px-3.5 py-3 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:border-emerald-600 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Direct Bank Transfer (NEFT / IMPS) */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Bank Account Details (NEFT / IMPS)</h4>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Account Holder Name</label>
+              <input
+                type="text"
+                value={bankForm.accountHolder}
+                onChange={(e) => setBankForm({ ...bankForm, accountHolder: e.target.value })}
+                placeholder="Name as per bank passbook"
+                className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Account Number</label>
+                <input
+                  type="text"
+                  value={bankForm.accountNumber}
+                  onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })}
+                  placeholder="Enter account number"
+                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">IFSC Code</label>
+                <input
+                  type="text"
+                  value={bankForm.ifscCode}
+                  onChange={(e) => setBankForm({ ...bankForm, ifscCode: e.target.value.toUpperCase() })}
+                  placeholder="e.g. SBIN0001234"
+                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Bank Name</label>
+              <div className="relative">
+                <Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={bankForm.bankName}
+                  onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })}
+                  placeholder="e.g. State Bank of India, HDFC Bank"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
-              onClick={handleSave}
+              type="button"
+              onClick={handleSaveBankDetails}
               disabled={loading}
-              className="w-full bg-[#050CA6] text-white py-4.5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-xl hover:bg-opacity-90 active:scale-95 transition-all text-center flex items-center justify-center gap-2"
+              className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md active:scale-98 transition-all cursor-pointer"
             >
-              {loading ? 'Updating Credentials...' : 'Save & Propagate Photo'}
+              {loading ? 'Saving Payout Info...' : 'Save Payout Details'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('wallet')}
+              className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Wallet size={15} />
+              <span>Open Passbook</span>
             </button>
           </div>
         </motion.div>
       )}
 
-      {activeSub === 'earnings' && (
+      {/* SUB-VIEW 3: IDENTITY & VERIFICATION ('kyc') */}
+      {activeSub === 'kyc' && (
         <motion.div
-          key="sub-earnings"
+          key="sub-kyc"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
         >
-          <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6">
-            <div className="border-b border-sidebar pb-4">
-              <h3 className="text-xl font-black italic text-slate-900">My Earnings</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Earnings, Pending Payments & Payout History</p>
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Identity & Verification (KYC)</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Government ID & address verification for Indore technicians</p>
+            </div>
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+              isKycVerified
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border border-amber-200'
+            }`}>
+              {isKycVerified ? '✓ Verified' : 'Verification Pending'}
+            </span>
+          </div>
+
+          {/* Aadhaar & PAN Numbers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Aadhaar Card Number</label>
+              <div className="relative">
+                <FileText size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  maxLength={14}
+                  value={aadhaarNumber}
+                  onChange={(e) => setAadhaarNumber(e.target.value)}
+                  placeholder="XXXX XXXX XXXX"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
             </div>
 
-            {/* Quick Metrics display */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-5 bg-emerald-50 border border-emerald-150 rounded-[24px]">
-                <p className="text-[9px] uppercase tracking-wider text-emerald-700 font-black">Total Earned</p>
-                <p className="text-3xl font-black text-emerald-950 mt-2 font-display">₹{(() => {
-                  const completed = bookings.filter(b => b.partnerId === profile.uid && ['completed', 'finalized'].includes(b.status));
-                  return completed.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-                })().toLocaleString()}</p>
-                <p className="text-[8px] mt-1 font-bold text-emerald-600 uppercase tracking-wider">Completed Duties</p>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">PAN Card Number</label>
+              <div className="relative">
+                <FileText size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  maxLength={10}
+                  value={panNumber}
+                  onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                  placeholder="ABCDE1234F"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                />
               </div>
-
-              <div className="p-5 bg-amber-50 border border-amber-150 rounded-[24px]">
-                <p className="text-[9px] uppercase tracking-wider text-amber-700 font-black">Pending Payments</p>
-                <p className="text-3xl font-black text-amber-950 mt-2 font-display">₹{(() => {
-                  const pending = bookings.filter(b => b.partnerId === profile.uid && ['payment_pending', 'completed'].includes(b.status) && b.paymentStatus !== 'paid');
-                  const val = pending.reduce((sum, b) => sum + (b.totalPrice || 0), 0) * 0.80; // Net partner payout after platform split
-                  return Math.round(val);
-                })().toLocaleString()}</p>
-                <p className="text-[8px] mt-1 font-bold text-amber-600 uppercase tracking-wider">In Settlement Queue</p>
-              </div>
-            </div>
-
-            {/* Service History Segment */}
-            <div className="space-y-4">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Duty & Service History</h4>
-              {(() => {
-                const myHistory = bookings.filter(b => b.partnerId === profile.uid);
-                if (myHistory.length === 0) {
-                  return (
-                    <div className="p-8 text-center text-xs text-slate-400 font-bold italic bg-slate-50 border border-slate-100 rounded-2xl">
-                      No customer bookings found in the history ledger.
-                    </div>
-                  );
-                }
-                return (
-                  <div className="space-y-3">
-                    {myHistory.map(b => {
-                      const svc = services.find(s => s.id === b.serviceId);
-                      return (
-                        <div key={b.id} className="p-4 bg-slate-50 border border-slate-100/80 rounded-2xl flex justify-between items-center hover:bg-slate-100/50 transition-colors">
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-800 text-sm truncate italic">{svc?.name || 'Technical Service'}</p>
-                            <p className="text-[9px] text-slate-400 mt-1 uppercase font-semibold">
-                              Booking: #{b.id.slice(0, 8).toUpperCase()} · {b.scheduledAt?.toDate?.()?.toLocaleDateString() || 'N/A'}
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <p className="font-mono text-sm font-black text-slate-900">₹{b.totalPrice}</p>
-                            <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md mt-1 inline-block ${
-                              b.status === 'completed' || b.status === 'finalized' ? 'bg-emerald-50 text-emerald-700' :
-                              b.status === 'cancelled' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
-                            }`}>{b.status}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
             </div>
           </div>
-        </motion.div>
-      )}
 
-      {activeSub === 'faq' && (
-        <motion.div
-          key="sub-faq"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
-        >
-          <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6">
-            <div className="border-b border-sidebar pb-4">
-              <h3 className="text-xl font-black italic text-slate-900">Partner Help Desk</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Frequently Asked Questions & Support Rules</p>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                { q: "How do I withdraw my earnings?", a: "Your earnings are transferred directly using the bank account or UPI information configured in your payouts channel. Payouts are parsed and processed daily at 8:00 PM IST." },
-                { q: "What is the platform service fee?", a: "zomindia only charges a standard 20% booking brokerage fee to support platform hosting, map coordinates billing, cloud syncing, and emergency technician insurance." },
-                { q: "How to handle a customer dispute?", a: "If there is a dispute or if customers request out-of-scope manual labor, do not proceed. Contact our live AI support or dial the administrator hotline immediately." },
-                { q: "Why is my KYC document rejected?", a: "Documents are usually rejected for blurry photographs, mismatched Aadhaar/PAN names, or expired address proof certificates. Re-upload a clean scan under the KYC sub-page." }
-              ].map((item, idx) => (
-                <div key={idx} className="bg-slate-50 border border-slate-100/60 rounded-2xl p-4 text-left">
-                  <header 
-                    onClick={() => setOpenFaq(openFaq === item.q ? null : item.q)}
-                    className="flex justify-between items-center cursor-pointer font-bold text-slate-900 text-sm italic"
-                  >
-                    <span>{item.q}</span>
-                    <ChevronRight size={16} className={`text-slate-400 transform transition-transform ${openFaq === item.q ? 'rotate-90' : ''}`} />
-                  </header>
-                  {openFaq === item.q && (
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed mt-2 pt-2 border-t border-slate-200/40 animate-fade-in">{item.a}</p>
-                  )}
+          {/* Document Uploads */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Identity Document (Aadhaar / PAN / Driving License)</label>
+              <AdminUpload 
+                label="Upload Identity Proof"
+                onUpload={(url) => setKycIdUrl(url)}
+                value={kycIdUrl}
+                type="file"
+                accept=".jpg,.jpeg,.png,.pdf"
+              />
+              {kycIdUrl && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200">
+                  <CheckCircle2 size={12} />
+                  <span>Identity Proof Attached</span>
                 </div>
-              ))}
+              )}
             </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Address Proof (Aadhaar Back / Utility Bill)</label>
+              <AdminUpload 
+                label="Upload Address Proof"
+                onUpload={(url) => setKycAddressUrl(url)}
+                value={kycAddressUrl}
+                type="file"
+                accept=".jpg,.jpeg,.png,.pdf"
+              />
+              {kycAddressUrl && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200">
+                  <CheckCircle2 size={12} />
+                  <span>Address Proof Attached</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleKYCSubmit}
+              disabled={kycLoading}
+              className="flex-1 py-3.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md active:scale-98 transition-all cursor-pointer"
+            >
+              {kycLoading ? 'Submitting KYC...' : 'Save & Submit KYC'}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-kyc-modal'))}
+              className="px-4 py-3.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-2xl font-bold text-xs transition-all cursor-pointer"
+            >
+              Full KYC Wizard
+            </button>
           </div>
         </motion.div>
       )}
 
+      {/* SUB-VIEW 4: SERVICE SKILLS & SCHEDULE ('skills') */}
       {activeSub === 'skills' && (
         <motion.div
           key="sub-skills"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
         >
-          <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6">
-            <div className="border-b border-sidebar pb-4">
-              <h3 className="text-xl font-black italic text-slate-900">Service Specializations</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Update your professional active categories</p>
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Service Skills & Schedule</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Select your active repair categories & weekly duty hours</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Briefcase size={18} />
+            </div>
+          </div>
+
+          {/* Specializations Grid */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">Active Trade Categories</h4>
+            <div className="grid grid-cols-2 gap-2.5">
+              {categories.map(cat => {
+                const isSelected = editForm.selectedCategories.includes(cat.id) || editForm.selectedCategories.includes(cat.name);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      const current = editForm.selectedCategories;
+                      const next = isSelected
+                        ? current.filter(id => id !== cat.id && id !== cat.name)
+                        : [...current, cat.id];
+                      setEditForm({ ...editForm, selectedCategories: next });
+                    }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-700 border-blue-700 text-white shadow-xs'
+                        : 'bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="text-xs font-bold leading-snug line-clamp-2">{cat.name}</span>
+                    {isSelected && <Check size={14} className="text-emerald-300 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Weekly Schedule */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">Weekly Shift Timings</h4>
+            <div className="space-y-2.5">
+              {editForm.workingHours.map((wh, idx) => (
+                <div key={wh.day} className="p-3.5 bg-slate-50 border border-slate-200/70 rounded-2xl flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-900">{wh.day}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = [...editForm.workingHours];
+                        next[idx] = { ...next[idx], enabled: !next[idx].enabled };
+                        setEditForm({ ...editForm, workingHours: next });
+                      }}
+                      className={`w-11 h-6 rounded-full p-0.5 transition-colors cursor-pointer ${
+                        wh.enabled ? 'bg-emerald-600' : 'bg-slate-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 bg-white rounded-full transition-transform shadow-2xs ${
+                        wh.enabled ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                  {wh.enabled && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={wh.startTime}
+                        onChange={(e) => {
+                          const next = [...editForm.workingHours];
+                          next[idx] = { ...next[idx], startTime: e.target.value };
+                          setEditForm({ ...editForm, workingHours: next });
+                        }}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                      />
+                      <span className="text-xs text-slate-400 font-bold">to</span>
+                      <input
+                        type="time"
+                        value={wh.endTime}
+                        onChange={(e) => {
+                          const next = [...editForm.workingHours];
+                          next[idx] = { ...next[idx], endTime: e.target.value };
+                          setEditForm({ ...editForm, workingHours: next });
+                        }}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveSkillsAndSchedule}
+            disabled={loading}
+            className="w-full py-3.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md active:scale-98 transition-all cursor-pointer"
+          >
+            {loading ? 'Updating Schedule...' : 'Save Skills & Schedule'}
+          </button>
+        </motion.div>
+      )}
+
+      {/* SUB-VIEW 5: EARNINGS & PASSBOOK LEDGER ('earnings') */}
+      {activeSub === 'earnings' && (
+        <motion.div
+          key="sub-earnings"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
+        >
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Earnings & Payout Summary</h3>
+              <p className="text-xs text-slate-500 mt-0.5">80% direct partner take-home on every completed service</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('wallet')}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Full Wallet →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5">
+            <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-2xl">
+              <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-black">Net Earned (After Fee & GST)</p>
+              <p className="text-2xl font-black text-emerald-950 mt-1">
+                ₹{totalNetEarned.toLocaleString('en-IN')}
+              </p>
+              <p className="text-[10px] mt-1 font-semibold text-emerald-700">
+                {completedBookings.length} Completed Jobs
+              </p>
             </div>
 
-            <div className="space-y-4">
-              <p className="text-xs text-slate-500 font-medium">Click the button below to update your operational calendar hours and active service skill categories.</p>
+            <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-2xl">
+              <p className="text-[10px] uppercase tracking-wider text-amber-800 font-black">Wallet Balance</p>
+              <p className="text-2xl font-black text-amber-950 mt-1">
+                ₹{syncedPartnerBalance.toLocaleString('en-IN')}
+              </p>
               <button
-                onClick={() => setIsEditing(true)}
-                className="w-full bg-[#050CA6] text-white py-4.5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-opacity-95 shadow-lg active:scale-95 transition-all text-center flex items-center justify-center gap-2"
+                type="button"
+                onClick={() => handleOpenSection('bank')}
+                className="text-[10px] mt-1 font-bold text-amber-800 underline cursor-pointer"
               >
-                Launch Professional Config
+                {hasLinkedBankOrUpi ? '✓ Payout Account Linked' : 'Link UPI / Bank →'}
               </button>
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Recent Job Ledger</h4>
+            {(() => {
+              const myHistory = bookings.filter(b => b.partnerId === profile.uid || b.partnerId === partner?.id);
+              if (myHistory.length === 0) {
+                return (
+                  <div className="p-6 text-center text-xs text-slate-400 font-semibold bg-slate-50 border border-slate-100 rounded-2xl">
+                    Completed bookings and payouts will appear here automatically.
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2.5">
+                  {myHistory.slice(0, 15).map(b => {
+                    const svc = services.find(s => s.id === b.serviceId);
+                    const bill = Number(b.totalPrice ?? (b as any).finalPrice ?? (b as any).basePrice ?? 0);
+                    const fee = Math.round(bill * 0.20);
+                    const gst = Math.round(fee * 0.18);
+                    const netPayout = Math.max(0, bill - (fee + gst));
+                    return (
+                      <div key={b.id} className="p-3.5 bg-slate-50 border border-slate-200/70 rounded-2xl flex justify-between items-center">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-xs truncate">
+                            {svc?.name || b.serviceName || 'Technical Service'}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            #{b.id.slice(-6).toUpperCase()} • {b.scheduledAt?.toDate?.()?.toLocaleDateString() || 'Indore'}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 ml-3">
+                          <p className="text-xs font-black text-emerald-700">₹{netPayout} Net</p>
+                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded mt-0.5 inline-block ${
+                            b.status === 'completed' || b.status === 'finalized'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : b.status === 'cancelled'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {b.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </motion.div>
       )}
 
+      {/* SUB-VIEW 6: RATINGS & QUALITY SCORECARD ('performance') */}
       {activeSub === 'performance' && (
         <motion.div
           key="sub-performance"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
         >
-          <div className="bg-white rounded-[32px] border border-slate-100 p-6 space-y-6">
-            <div className="border-b border-slate-100 pb-4">
-              <h3 className="text-xl font-black italic text-slate-900">Partner Performance & Ratings</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Real-time aggregate scores & customer feedback</p>
-            </div>
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-base font-black text-slate-900 tracking-tight">Ratings & Quality Scorecard</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Real-time customer feedback & 4-pillar service quality</p>
+          </div>
 
-            {/* Overall Rating Hero Card */}
-            <div className="bg-gradient-to-br from-blue-700 to-indigo-800 rounded-[28px] p-6 text-white shadow-xl shadow-blue-700/15 flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="text-center sm:text-left space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Overall Rating Score</span>
-                <div className="flex items-baseline justify-center sm:justify-start gap-2">
-                  <span className="text-4xl sm:text-5xl font-black tracking-tight italic">{Number(partner?.averageRating || partner?.rating || 4.9).toFixed(1)}</span>
-                  <span className="text-sm font-bold text-blue-200">/ 5.0</span>
-                </div>
-                <div className="flex items-center justify-center sm:justify-start gap-1 text-amber-300 pt-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star 
-                      key={star} 
-                      size={18} 
-                      fill={star <= Math.round(Number(partner?.averageRating || partner?.rating || 5)) ? "currentColor" : "none"} 
-                      className={star <= Math.round(Number(partner?.averageRating || partner?.rating || 5)) ? "text-amber-300" : "text-white/30"}
-                    />
-                  ))}
-                </div>
+          <div className="bg-gradient-to-br from-blue-700 to-indigo-800 rounded-3xl p-5 text-white shadow-md flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-200">Overall Rating</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-black tracking-tight">
+                  {Number(partner?.averageRating || partner?.rating || 4.9).toFixed(1)}
+                </span>
+                <span className="text-xs font-bold text-blue-200">/ 5.0</span>
               </div>
-
-              <div className="bg-white/10 border border-white/15 rounded-2xl p-4 text-center sm:text-right shrink-0">
-                <p className="text-2xl font-black">{partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0}</p>
-                <p className="text-[10px] uppercase font-bold tracking-wider text-blue-200 mt-0.5">Verified Reviews</p>
-                <p className="text-[9px] text-emerald-300 font-bold mt-1">✓ 100% Verified Customers</p>
+              <div className="flex items-center gap-1 text-amber-300 pt-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star 
+                    key={star} 
+                    size={15} 
+                    fill={star <= Math.round(Number(partner?.averageRating || partner?.rating || 5)) ? "currentColor" : "none"} 
+                  />
+                ))}
               </div>
             </div>
 
-            {/* 4-Tier Criteria Quality Breakdown */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Quality Breakdown</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                  <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Hygiene & Kit</p>
-                  <p className="text-lg font-black text-slate-900 mt-1 flex items-center gap-1">
-                    <Star size={14} className="text-amber-500 fill-amber-500" />
-                    {partner?.feedbackScores?.hygiene ? Number(partner.feedbackScores.hygiene).toFixed(1) : '4.9'}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                  <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Safety & SOPs</p>
-                  <p className="text-lg font-black text-slate-900 mt-1 flex items-center gap-1">
-                    <Star size={14} className="text-amber-500 fill-amber-500" />
-                    {partner?.feedbackScores?.safety ? Number(partner.feedbackScores.safety).toFixed(1) : '5.0'}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                  <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Service Skill</p>
-                  <p className="text-lg font-black text-slate-900 mt-1 flex items-center gap-1">
-                    <Star size={14} className="text-amber-500 fill-amber-500" />
-                    {partner?.feedbackScores?.process ? Number(partner.feedbackScores.process).toFixed(1) : '4.8'}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                  <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">App Experience</p>
-                  <p className="text-lg font-black text-slate-900 mt-1 flex items-center gap-1">
-                    <Star size={14} className="text-amber-500 fill-amber-500" />
-                    {partner?.feedbackScores?.appExperience ? Number(partner.feedbackScores.appExperience).toFixed(1) : '4.9'}
-                  </p>
-                </div>
-              </div>
+            <div className="bg-white/10 border border-white/15 rounded-2xl p-3.5 text-right shrink-0">
+              <p className="text-xl font-black">{partner?.totalReviews || partner?.reviewCount || partnerReviews.length || 0}</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-blue-200">Verified Reviews</p>
             </div>
+          </div>
 
-            {/* Real-time Customer Reviews List */}
-            <div className="space-y-4 pt-2">
-              <div className="flex justify-between items-center pl-1">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Customer Feedback Ledger</h4>
-                <span className="text-[10px] font-bold text-slate-500">{partnerReviews.length} total entries</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500">Hygiene & Kit</p>
+              <p className="text-base font-black text-slate-900 mt-1 flex items-center gap-1">
+                <Star size={13} className="text-amber-500 fill-amber-500" />
+                {partner?.feedbackScores?.hygiene ? Number(partner.feedbackScores.hygiene).toFixed(1) : '4.9'}
+              </p>
+            </div>
+            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500">Safety & SOPs</p>
+              <p className="text-base font-black text-slate-900 mt-1 flex items-center gap-1">
+                <Star size={13} className="text-amber-500 fill-amber-500" />
+                {partner?.feedbackScores?.safety ? Number(partner.feedbackScores.safety).toFixed(1) : '5.0'}
+              </p>
+            </div>
+            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500">Service Skill</p>
+              <p className="text-base font-black text-slate-900 mt-1 flex items-center gap-1">
+                <Star size={13} className="text-amber-500 fill-amber-500" />
+                {partner?.feedbackScores?.process ? Number(partner.feedbackScores.process).toFixed(1) : '4.8'}
+              </p>
+            </div>
+            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500">Punctuality</p>
+              <p className="text-base font-black text-slate-900 mt-1 flex items-center gap-1">
+                <Star size={13} className="text-amber-500 fill-amber-500" />
+                {partner?.feedbackScores?.appExperience ? Number(partner.feedbackScores.appExperience).toFixed(1) : '4.9'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Customer Reviews ({partnerReviews.length})</h4>
+            {loadingReviews ? (
+              <div className="p-6 text-center text-xs text-slate-400 font-bold animate-pulse">
+                Loading verified reviews...
               </div>
-
-              {loadingReviews ? (
-                <div className="p-8 text-center text-xs text-slate-400 font-bold animate-pulse">
-                  Syncing customer reviews in real-time...
-                </div>
-              ) : partnerReviews.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-400 font-bold italic bg-slate-50 border border-slate-100 rounded-2xl">
-                  No written feedback received yet. High rating reviews from completed bookings will populate here automatically.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {partnerReviews.map((rev) => {
-                    const revDate = rev.createdAt?.toDate ? rev.createdAt.toDate() : (rev.createdAt ? new Date(rev.createdAt) : new Date());
-                    const formattedDate = revDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-                    
-                    return (
-                      <div key={rev.id} className="p-4 sm:p-5 bg-slate-50/80 rounded-2xl border border-slate-100 space-y-3">
-                        <div className="flex justify-between items-start gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-blue-700 text-white font-black text-xs flex items-center justify-center">
-                              {(rev.customerName || 'C')[0].toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-xs font-black text-slate-900 leading-tight">
-                                {rev.customerName || 'Verified Customer'}
-                              </p>
-                              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                                {rev.serviceName ? `${rev.serviceName} • ` : ''}{formattedDate}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 bg-amber-100/70 border border-amber-200 text-amber-900 px-2.5 py-1 rounded-xl shrink-0">
-                            <Star size={12} className="text-amber-500 fill-amber-500" />
-                            <span className="text-xs font-black">{rev.rating || 5}.0</span>
-                          </div>
-                        </div>
-
-                        {rev.feedbackScores && typeof rev.feedbackScores === 'object' && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {rev.feedbackScores.hygiene !== undefined && (
-                              <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                                Hygiene: {rev.feedbackScores.hygiene}★
-                              </span>
-                            )}
-                            {rev.feedbackScores.safety !== undefined && (
-                              <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                                Safety: {rev.feedbackScores.safety}★
-                              </span>
-                            )}
-                            {(rev.feedbackScores.process !== undefined || rev.feedbackScores.partner !== undefined) && (
-                              <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                                Process: {rev.feedbackScores.process ?? rev.feedbackScores.partner}★
-                              </span>
-                            )}
-                            {rev.feedbackScores.appExperience !== undefined && (
-                              <span className="text-[9px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200/60">
-                                App: {rev.feedbackScores.appExperience}★
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {(rev.reviewText || rev.comment || rev.review) && (
-                          <p className="text-xs text-slate-700 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-100 italic">
-                            "{rev.reviewText || rev.comment || rev.review}"
-                          </p>
-                        )}
+            ) : partnerReviews.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50 border border-slate-100 rounded-2xl">
+                Customer reviews from your completed jobs will appear here automatically.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {partnerReviews.map((rev) => {
+                  const revDate = rev.createdAt?.toDate ? rev.createdAt.toDate() : (rev.createdAt ? new Date(rev.createdAt) : new Date());
+                  const formattedDate = revDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                  return (
+                    <div key={rev.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-900">{rev.customerName || 'Verified Customer'}</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-900 rounded-lg text-[10px] font-black">
+                          <Star size={10} className="fill-amber-500 text-amber-500" />
+                          {rev.rating || 5}.0
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      <p className="text-[10px] text-slate-400">{formattedDate}</p>
+                      {(rev.reviewText || rev.comment || rev.review) && (
+                        <p className="text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-slate-100">
+                          "{rev.reviewText || rev.comment || rev.review}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </motion.div>
       )}
 
-      {/* Full Screen Editing Layer */}
-      <AnimatePresence>
-         {isEditing && (
-           <div className="fixed inset-0 z-[100] bg-white pt-safe overflow-y-auto no-scrollbar">
-              <header className="sticky top-0 bg-white/80 backdrop-blur-md px-6 py-6 border-b border-slate-100 flex justify-between items-center z-10">
-                 <div>
-                    <h3 className="text-xl font-bold italic">Professional Config</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Update your work profile</p>
-                 </div>
-                 <button onClick={() => setIsEditing(false)} className="p-2 bg-slate-100 rounded-full"><X size={20} /></button>
-              </header>
-
-              <div className="p-8 space-y-10 pb-32">
-                 {/* Basic Info */}
-                 <div className="space-y-4">
-                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Identity Info</h4>
-                    <div className="space-y-4">
-                       <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 ml-1">Profile Name</label>
-                          <input 
-                            type="text" 
-                            className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold text-sm"
-                            value={editForm.displayName}
-                            onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-                          />
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* Skills */}
-                 <div className="space-y-4">
-                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Specializations</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                       {categories.map(cat => (
-                         <button 
-                           key={cat.id}
-                           onClick={() => {
-                             const current = editForm.selectedCategories;
-                             const next = current.includes(cat.id) ? current.filter(id => id !== cat.id) : [...current, cat.id];
-                             setEditForm({ ...editForm, selectedCategories: next });
-                           }}
-                           className={`p-4 rounded-2xl border text-left transition-all ${
-                             editForm.selectedCategories.includes(cat.id) 
-                               ? 'bg-blue-700 border-blue-700 text-white shadow-lg' 
-                               : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'
-                           }`}
-                         >
-                            <p className="text-xs font-black uppercase tracking-tighter italic leading-tight">{cat.name}</p>
-                            {editForm.selectedCategories.includes(cat.id) && <Check size={14} className="mt-2 text-emerald-400" />}
-                         </button>
-                       ))}
-                    </div>
-                 </div>
-
-                 {/* Working Hours */}
-                 <div className="space-y-4">
-                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Calendar Availabilty</h4>
-                    <div className="space-y-3">
-                        {editForm.workingHours.map((wh, idx) => (
-                           <div key={wh.day} className="p-4 bg-slate-50 rounded-2xl flex flex-col gap-4">
-                              <div className="flex justify-between items-center">
-                                 <span className="text-xs font-bold text-slate-900">{wh.day}</span>
-                                 <div 
-                                   onClick={() => {
-                                      const next = [...editForm.workingHours];
-                                      next[idx].enabled = !next[idx].enabled;
-                                      setEditForm({ ...editForm, workingHours: next });
-                                   }}
-                                   className={`w-12 h-6 rounded-full p-1 transition-all ${wh.enabled ? 'bg-blue-700' : 'bg-slate-200'}`}
-                                 >
-                                    <div className={`w-4 h-4 bg-white rounded-full transition-transform ${wh.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                                 </div>
-                              </div>
-                              {wh.enabled && (
-                                <div className="flex gap-4 items-center">
-                                   <input 
-                                     type="time" 
-                                     className="flex-1 bg-white border-none rounded-xl p-3 text-xs font-black"
-                                     value={wh.startTime}
-                                     onChange={(e) => {
-                                        const next = [...editForm.workingHours];
-                                        next[idx].startTime = e.target.value;
-                                        setEditForm({ ...editForm, workingHours: next });
-                                     }}
-                                   />
-                                   <Zap size={14} className="text-slate-200" />
-                                   <input 
-                                     type="time" 
-                                     className="flex-1 bg-white border-none rounded-xl p-3 text-xs font-black"
-                                     value={wh.endTime}
-                                     onChange={(e) => {
-                                        const next = [...editForm.workingHours];
-                                        next[idx].endTime = e.target.value;
-                                        setEditForm({ ...editForm, workingHours: next });
-                                     }}
-                                   />
-                                </div>
-                              )}
-                           </div>
-                        ))}
-                    </div>
-                 </div>
-              </div>
-
-              <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-slate-100 flex justify-center max-w-md mx-auto">
-                 <button 
-                   disabled={loading || editForm.selectedCategories.length === 0}
-                   onClick={handleSave}
-                   className="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl active:scale-95 transition-all"
-                 >
-                    {loading ? 'Propagating Changes...' : 'Validate & Update'}
-                 </button>
-              </div>
-           </div>
-         )}
-      </AnimatePresence>
-
-      {/* KYC Submit and Verification Modal */}
-      <AnimatePresence>
-         {isKYCModalOpen && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[120] bg-slate-900/80 backdrop-blur-md flex flex-col justify-end sm:justify-center items-center p-4 overflow-y-auto"
+      {/* SUB-VIEW 7: HELP & SUPPORT DESK ('faq') */}
+      {activeSub === 'faq' && (
+        <motion.div
+          key="sub-faq"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-6 shadow-xs"
+        >
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Partner Help & Support Desk</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Indore operations dispatch support & payout rules</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-partner-support'))}
+              className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
-               <motion.div 
-                 initial={{ y: '100%' }} 
-                 animate={{ y: 0 }} 
-                 exit={{ y: '100%' }}
-                 className="bg-white w-full max-w-md rounded-t-[48px] sm:rounded-[48px] p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
-               >
-                  <button 
-                    onClick={() => setIsKYCModalOpen(false)} 
-                    className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-full transition-all"
-                  >
-                     <X size={20} />
-                  </button>
+              <Headphones size={14} />
+              <span>Call Helpline</span>
+            </button>
+          </div>
 
-                  <div className="mb-6 shrink-0 mt-2">
-                     <h3 className="text-2xl font-black italic text-slate-900 leading-none">Confirm Identity</h3>
-                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">
-                       {partner?.kycStatus === 'pending' ? 'Documents Under Active Check' : 'Secure Identity Upload'}
-                     </p>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto space-y-6 pr-1 no-scrollbar pb-6">
-                     {kycSubmitSuccess ? (
-                        <div className="p-10 text-center space-y-4">
-                           <div className="w-16 h-16 bg-emerald-500 text-white rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/20">
-                              <ShieldCheck size={36} />
-                           </div>
-                           <h4 className="text-lg font-black italic">Uploaded Successfully!</h4>
-                           <p className="text-xs text-slate-500 font-bold tracking-tight">Your documents have been submitted. Our team will review them soon.</p>
-                        </div>
-                     ) : (
-                        <>
-                           <div className="space-y-2 flex-1">
-                              {partner?.kycStatus === 'pending' && (
-                                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-3 text-blue-800 shrink-0 mb-4 animate-fade-in">
-                                    <Clock size={16} className="shrink-0 mt-0.5" />
-                                    <span className="text-xs font-bold leading-normal">
-                                      Your application is currently pending and visible to administrators. Uploading new documents will refresh your file queue.
-                                    </span>
-                                 </div>
-                              )}
-                              
-                              <div className="space-y-4">
-                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Identity proof (PAN / Aadhaar / DL)</label>
-                                    <AdminUpload 
-                                      label="Drop or Select Identity Document"
-                                      onUpload={(url) => setKycIdUrl(url)}
-                                      value={kycIdUrl}
-                                      type="file"
-                                      accept=".jpg,.jpeg,.png,.pdf"
-                                    />
-                                    {kycIdUrl && (
-                                       <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl max-w-max border border-emerald-100">
-                                          <Check size={12} strokeWidth={3} />
-                                          <span className="text-[9px] font-bold uppercase tracking-wider">Identity Document Loaded</span>
-                                       </div>
-                                    )}
-                                 </div>
-
-                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Address Proof (Utility Bill / Land Agreement)</label>
-                                    <AdminUpload 
-                                      label="Drop or Select Address Document"
-                                      onUpload={(url) => setKycAddressUrl(url)}
-                                      value={kycAddressUrl}
-                                      type="file"
-                                      accept=".jpg,.jpeg,.png,.pdf"
-                                    />
-                                    {kycAddressUrl && (
-                                       <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl max-w-max border border-emerald-100">
-                                          <Check size={12} strokeWidth={3} />
-                                          <span className="text-[9px] font-bold uppercase tracking-wider">Address Document Loaded</span>
-                                       </div>
-                                    )}
-                                 </div>
-                              </div>
-                           </div>
-                        </>
-                     )}
-                  </div>
-
-                  {!kycSubmitSuccess && (
-                     <div className="pt-4 border-t border-slate-100 shrink-0">
-                        <button
-                          disabled={kycLoading || !kycIdUrl || !kycAddressUrl}
-                          onClick={handleKYCSubmit}
-                          className="w-full bg-blue-700 disabled:opacity-50 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                        >
-                           {kycLoading ? (
-                             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                           ) : (
-                             'Submit for Approval'
-                           )}
-                        </button>
-                     </div>
-                  )}
-               </motion.div>
-            </motion.div>
-         )}
-      </AnimatePresence>
+          <div className="space-y-2.5">
+            {[
+              { q: "How do I receive my job earnings?", a: "Your 80% net partner share is settled directly to the UPI ID or Bank Account saved under 'Bank & Payout Details'. Daily settlements are processed at 8:00 PM IST." },
+              { q: "What is the platform commission split?", a: "Zomindia retains a flat 20% platform fee to cover customer acquisition, Indore dispatch routing, and partner accident insurance. You keep 80% of every bill." },
+              { q: "How do I update my service categories or timings?", a: "Open 'Service Skills & Schedule' in Account & Preferences to enable/disable trade categories or adjust your shift timings." },
+              { q: "What if a customer is unreachable at the doorstep?", a: "Use the 'Call Customer' button on your active job card. If unreachable after 3 attempts, tap the Help button in the top bar to alert Indore Dispatch." }
+            ].map((item, idx) => (
+              <div key={idx} className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 text-left">
+                <button
+                  type="button"
+                  onClick={() => setOpenFaq(openFaq === item.q ? null : item.q)}
+                  className="w-full flex justify-between items-center cursor-pointer font-bold text-slate-900 text-xs text-left"
+                >
+                  <span>{item.q}</span>
+                  <ChevronRight size={15} className={`text-slate-400 transition-transform shrink-0 ${openFaq === item.q ? 'rotate-90' : ''}`} />
+                </button>
+                {openFaq === item.q && (
+                  <p className="text-xs text-slate-600 leading-relaxed mt-2.5 pt-2.5 border-t border-slate-200/60">
+                    {item.a}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

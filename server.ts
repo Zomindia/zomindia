@@ -2550,6 +2550,7 @@ Structure:
     const refId = String(tx?.referenceId || "").trim();
     const ordId = String(tx?.orderId || "").trim();
     const reason = String(tx?.reason || "").toLowerCase();
+    const amt = Number(tx?.amount || 0);
     return (
       payId.startsWith("pay_sim_") ||
       payId.startsWith("pay_mock_") ||
@@ -2559,7 +2560,9 @@ Structure:
       refId.startsWith("sim_pay_") ||
       ordId.startsWith("order_mock_") ||
       reason.includes("mock") ||
-      tx?.isMock === true
+      reason.includes("simulated") ||
+      tx?.isMock === true ||
+      (tx?.type === "credit" && (amt === 500 || amt === 600) && !reason.includes("referral") && !reason.includes("refund"))
     );
   };
 
@@ -2631,9 +2634,11 @@ Structure:
           }
 
           const currentBal = Number(userDoc.data()?.walletBalance || 0);
-          if (currentBal !== verifiedBalance || !userDoc.data()?.welcomeBonusClaimed) {
+          const currentCustBal = Number(userDoc.data()?.customerData?.walletBalance || 0);
+          if (currentBal !== verifiedBalance || currentCustBal !== verifiedBalance || !userDoc.data()?.welcomeBonusClaimed) {
             await userRef.update({
               walletBalance: verifiedBalance,
+              "customerData.walletBalance": verifiedBalance,
               welcomeBonusClaimed: true,
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });

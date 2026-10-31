@@ -23,10 +23,10 @@ export const getCategoryBadgeClass = (categoryName?: string) => {
   if (lower.includes('clean') || lower.includes('wash') || lower.includes('maid') || lower.includes('pest')) {
     return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70';
   }
-  if (lower.includes('electr') || lower.includes('wire') || lower.includes('power') || lower.includes('light') || lower.includes('microwave') || lower.includes('oven')) {
+  if (lower.includes('electr') || lower.includes('wire') || lower.includes('power') || lower.includes('light')) {
     return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/70';
   }
-  if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('water') || lower.includes('ro') || lower.includes('leak') || lower.includes('tap')) {
+  if (lower.includes('water') || lower.includes('ro') || lower.includes('purif')) {
     return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200/70';
   }
   return 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200/60';

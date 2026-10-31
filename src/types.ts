@@ -239,6 +239,7 @@ export interface PartnerProfile {
   ref2Relation?: string;
   ref2Aadhaar?: string;
   kycDocuments?: KYCDocument[];
+  walletBalance?: number;
   totalEarnings?: number;
   rewardCredits?: number;
   workingHours?: WorkingHours[];
