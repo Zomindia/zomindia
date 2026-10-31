@@ -32,7 +32,7 @@ interface DoorstepPinPickerModalProps {
   }) => void;
 }
 
-const DEFAULT_INDORE_CENTER = { lat: 22.7533, lng: 75.8937 };
+const DEFAULT_INDORE_CENTER = { lat: 22.7196, lng: 75.8577 };
 
 // Inner controller that responds to programmatic pan/zoom once per explicit target change
 function MapPanController({
@@ -78,7 +78,8 @@ export default function DoorstepPinPickerModal({
   } | null>(null);
 
   // Address text state
-  const [detectedAddress, setDetectedAddress] = useState<string>(initialAddress || 'Locating doorstep...');
+  const [detectedAddress, setDetectedAddress] = useState<string>(initialAddress || 'Palasia / City Center, Indore');
+  const [detectedPostcode, setDetectedPostcode] = useState<string>('');
   const [houseNumber, setHouseNumber] = useState<string>(initialHouseNumber);
   const [addressTag, setAddressTag] = useState<'Home' | 'Work' | 'Other'>(initialTag);
 
@@ -139,10 +140,16 @@ export default function DoorstepPinPickerModal({
           readable = result.area || result.fullAddress;
         }
 
+        const cleanPostcode = (result.postcode || '').trim();
+        setDetectedPostcode(cleanPostcode);
+        if (cleanPostcode && !readable.includes(cleanPostcode)) {
+          readable = `${readable} (PIN: ${cleanPostcode})`;
+        }
+
         setDetectedAddress(readable);
       } catch (err) {
         if (currentRequestId === requestIdRef.current) {
-          setDetectedAddress(`Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+          setDetectedAddress('Palasia / City Center, Indore');
         }
       } finally {
         if (currentRequestId === requestIdRef.current) {
@@ -158,10 +165,15 @@ export default function DoorstepPinPickerModal({
     }
   }, []);
 
-  // Re-center helper with smooth map pan
+  // Re-center helper with smooth map pan and native OS GPS prompt
   const locateDeviceGPS = useCallback(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGeoNotice('Geolocation is not supported on this device.');
+      const fallbackCenter = { lat: 22.7196, lng: 75.8577 };
+      latestCoordsRef.current = fallbackCenter;
+      setCurrentCoords(fallbackCenter);
+      setProgrammaticTarget({ center: fallbackCenter, zoom: 15 });
+      setIsLocatingDevice(false);
+      runReverseGeocode(fallbackCenter.lat, fallbackCenter.lng, true);
       return;
     }
 
@@ -170,44 +182,45 @@ export default function DoorstepPinPickerModal({
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const lat = Number(pos.coords.latitude);
-        const lng = Number(pos.coords.longitude);
-        const newCoords = { lat, lng };
-        latestCoordsRef.current = newCoords;
-        setCurrentCoords(newCoords);
-        setProgrammaticTarget({ center: newCoords, zoom: 17 });
+        const userCoords = { lat: Number(pos.coords.latitude), lng: Number(pos.coords.longitude) };
+        latestCoordsRef.current = userCoords;
+        setCurrentCoords(userCoords);
+        setProgrammaticTarget({ center: userCoords, zoom: 18 }); // Immediate doorstep zoom
         setIsLocatingDevice(false);
-        runReverseGeocode(lat, lng, true);
+        setGeoNotice(null);
+        runReverseGeocode(userCoords.lat, userCoords.lng, true);
       },
       (err) => {
-        console.warn('[DoorstepMap] Geolocation error:', err);
-        let msg = 'Could not access device GPS. Showing default area.';
-        if (err.code === 1) {
-          msg = 'Location permission was denied. Drag the map to pinpoint your doorstep.';
-        }
-        setGeoNotice(msg);
+        console.warn('[DoorstepMap] Geolocation fallback:', err);
+        // ONLY fallback silently if permission is explicitly denied or GPS fails
+        const fallbackCenter = { lat: 22.7196, lng: 75.8577 };
+        latestCoordsRef.current = fallbackCenter;
+        setCurrentCoords(fallbackCenter);
+        setProgrammaticTarget({ center: fallbackCenter, zoom: 15 });
         setIsLocatingDevice(false);
+        runReverseGeocode(fallbackCenter.lat, fallbackCenter.lng, true);
       },
       {
         enableHighAccuracy: true,
-        timeout: 9000,
-        maximumAge: 10000,
+        timeout: 8000,
+        maximumAge: 0,
       }
     );
   }, [runReverseGeocode]);
 
   // Initialize modal state ONLY when transitioning from closed -> open
-  // This prevents state updates during pin drop from resetting coordinates or reverting micro-locality
+  // When initialCoords === null, immediately trigger locateDeviceGPS() without panning to any city center first
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       wasOpenRef.current = true;
       setHouseNumber(initialHouseNumber || '');
       setAddressTag(initialTag || 'Home');
+      setGeoNotice(null);
 
       if (initialCoords && typeof initialCoords.lat === 'number' && typeof initialCoords.lng === 'number') {
         latestCoordsRef.current = initialCoords;
         setCurrentCoords(initialCoords);
-        setProgrammaticTarget({ center: initialCoords, zoom: 17 });
+        setProgrammaticTarget({ center: initialCoords, zoom: 18 });
         if (initialAddress && initialAddress.trim().length > 0) {
           setDetectedAddress(initialAddress);
         }
@@ -260,7 +273,7 @@ export default function DoorstepPinPickerModal({
 
   const handleConfirm = () => {
     const cleanHouse = houseNumber.trim();
-    const cleanDetected = detectedAddress.trim() || 'Doorstep Location, Indore';
+    const cleanDetected = detectedAddress.trim() || 'Palasia / City Center, Indore';
     const full = [cleanHouse, cleanDetected].filter(Boolean).join(', ');
     onConfirm({
       coords: latestCoordsRef.current || currentCoords,
@@ -309,7 +322,7 @@ export default function DoorstepPinPickerModal({
                   Pin Your Doorstep Location
                 </h3>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Drag the map to place the pin directly on your entrance
+                  Drag the map to place the needle directly on your entrance
                 </p>
               </div>
             </div>
@@ -323,20 +336,20 @@ export default function DoorstepPinPickerModal({
             </button>
           </div>
 
-          {/* Notice banner if GPS error */}
-          {geoNotice && (
-            <div className="bg-amber-50 border-b border-amber-200 text-amber-800 py-1.5 px-4 text-xs font-medium flex items-center justify-between">
+          {/* Subtle notice banner if GPS fallback active */}
+          {geoNotice && !isLocatingDevice && (
+            <div className="bg-slate-50 border-b border-slate-200 text-slate-700 py-1.5 px-4 text-xs font-medium flex items-center justify-between">
               <span className="flex items-center gap-1.5">
-                <AlertCircle size={13} className="text-amber-600 shrink-0" />
+                <AlertCircle size={13} className="text-blue-600 shrink-0" />
                 <span>{geoNotice}</span>
               </span>
-              <button onClick={() => setGeoNotice(null)} className="p-0.5 hover:bg-amber-100 rounded text-amber-700">
+              <button onClick={() => setGeoNotice(null)} className="p-0.5 hover:bg-slate-200 rounded text-slate-500">
                 <X size={12} />
               </button>
             </div>
           )}
 
-          {/* 2. Interactive Map Container (Responsive min-height 280px - 340px) */}
+          {/* 2. Interactive Map Container (Responsive min-height 280px - 320px) */}
           <div className="relative w-full h-[280px] sm:h-[320px] bg-slate-100 overflow-hidden select-none">
             <Map
               defaultCenter={currentCoords}
@@ -355,46 +368,49 @@ export default function DoorstepPinPickerModal({
               <MapPanController target={programmaticTarget} onPanComplete={clearProgrammaticTarget} />
             </Map>
 
-            {/* FIXED CENTER ANIMATED PIN (Zomato / Blinkit style) */}
+            {/* PRECISION NEEDLE CROSSHAIR PIN (1-Meter Pinpoint Accuracy) */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
-              <div className="relative flex flex-col items-center">
-                {/* Floating Tooltip Pill */}
-                <div
-                  className={`mb-1 px-2.5 py-1 rounded-full bg-slate-900/90 backdrop-blur-xs text-white text-[10px] font-bold shadow-lg flex items-center gap-1 transition-all duration-200 ${
-                    isDragging ? '-translate-y-2 scale-105' : 'translate-y-0 scale-100'
-                  }`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Doorstep Pin</span>
-                </div>
+              {/* Crosshair Base Dot fixed at exact viewport center */}
+              <div className="relative flex items-center justify-center w-[6px] h-[6px] rounded-full border border-slate-900/80 bg-white/90 shadow-xs">
+                <div className="w-[2px] h-[2px] rounded-full bg-red-600" />
 
-                {/* Animated Pin Marker with tip anchored to the ground */}
+                {/* Precision Needle Pin anchored directly above the 2px center dot */}
                 <div
-                  className={`transition-transform duration-200 origin-bottom ${
-                    isDragging ? '-translate-y-2 scale-110' : 'translate-y-0 scale-100'
+                  className={`absolute bottom-1/2 left-1/2 -translate-x-1/2 flex flex-col items-center transition-transform duration-150 ease-out origin-bottom ${
+                    isDragging ? '-translate-y-2.5 scale-105' : 'translate-y-0 scale-100'
                   }`}
                 >
+                  {/* Sleek Tooltip Pill */}
+                  <div className="mb-0.5 px-2 py-0.5 rounded-full bg-slate-900/90 backdrop-blur-xs text-white text-[9px] font-bold shadow-md flex items-center gap-1 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>Doorstep</span>
+                  </div>
+
+                  {/* Sharp-Tipped Precision Needle SVG */}
                   <svg
-                    width="38"
-                    height="48"
-                    viewBox="0 0 38 48"
+                    width="24"
+                    height="36"
+                    viewBox="0 0 24 36"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
-                    className="drop-shadow-xl"
+                    className="drop-shadow-md"
                   >
+                    {/* Crisp red teardrop head */}
                     <path
-                      d="M19 0C8.50659 0 0 8.50659 0 19C0 31.5 16.5 46.5 18.25 47.75C18.7 48.08 19.3 48.08 19.75 47.75C21.5 46.5 38 31.5 38 19C38 8.50659 29.4934 0 19 0Z"
+                      d="M12 1C6.47715 1 2 5.47715 2 11C2 16.25 9.5 23.5 11.4 25.3C11.73 25.62 12.27 25.62 12.6 25.3C14.5 23.5 22 16.25 22 11C22 5.47715 17.5228 1 12 1Z"
                       fill="#EF4444"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.5"
                     />
-                    <circle cx="19" cy="18" r="8" fill="white" />
-                    <circle cx="19" cy="18" r="4.5" fill="#EF4444" />
+                    {/* Inner target ring */}
+                    <circle cx="12" cy="11" r="4" fill="#FFFFFF" />
+                    <circle cx="12" cy="11" r="1.75" fill="#EF4444" />
+                    {/* Ultra-sharp needle shaft tapering to exact 1px tip at (12, 36) */}
+                    <path
+                      d="M11.1 24.5L12 36L12.9 24.5H11.1Z"
+                      fill="#B91C1C"
+                    />
                   </svg>
-                </div>
-
-                {/* Ground Shadow & Pulsing Radar Ring underneath the tip */}
-                <div className="relative -mt-1 flex items-center justify-center">
-                  <div className="w-3.5 h-1.5 bg-slate-900/40 rounded-full blur-[0.5px]" />
-                  <div className="absolute w-8 h-3 border-2 border-red-500/40 rounded-full animate-ping" />
                 </div>
               </div>
             </div>
@@ -416,10 +432,15 @@ export default function DoorstepPinPickerModal({
               </button>
             </div>
 
-            {/* Live Dragging / Geocoding Status Chip (Top Left) */}
+            {/* Live Locating / Geocoding / Coordinate Status Chip (Top Left) */}
             <div className="absolute top-3 left-3 z-20">
               <div className="px-2.5 py-1 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md text-[10px] font-bold text-slate-700 flex items-center gap-1.5">
-                {isGeocoding ? (
+                {isLocatingDevice ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin text-blue-600" />
+                    <span>📡 Detecting doorstep GPS...</span>
+                  </>
+                ) : isGeocoding ? (
                   <>
                     <Loader2 size={11} className="animate-spin text-blue-600" />
                     <span>Resolving address...</span>
@@ -428,7 +449,7 @@ export default function DoorstepPinPickerModal({
                   <>
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span>
-                      GPS locked: {currentCoords.lat.toFixed(4)}, {currentCoords.lng.toFixed(4)}
+                      GPS Locked • {currentCoords.lat.toFixed(4)}°N, {currentCoords.lng.toFixed(4)}°E
                     </span>
                   </>
                 )}
@@ -443,13 +464,20 @@ export default function DoorstepPinPickerModal({
           >
             {/* Detected Address Summary Bar */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                   Detected Area / Street
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
-                  {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {detectedPostcode && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      PIN: {detectedPostcode}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-mono text-slate-500">
+                    GPS Locked • {currentCoords.lat.toFixed(4)}°N, {currentCoords.lng.toFixed(4)}°E
+                  </span>
+                </div>
               </div>
               <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug break-words">
                 {detectedAddress}

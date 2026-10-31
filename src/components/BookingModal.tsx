@@ -103,6 +103,8 @@ const INDORE_QUICK_LOCALITIES = [
   'Annapurna'
 ] as const;
 
+export const DEFAULT_INDORE_CENTER = { lat: 22.7196, lng: 75.8577 };
+
 export const LOCALITY_COORDS: Record<string, { lat: number; lng: number }> = {
   'Vijay Nagar': { lat: 22.7533, lng: 75.8937 },
   'Palasia': { lat: 22.7244, lng: 75.8839 },
@@ -199,9 +201,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   });
 
   const cachedSelectedLocation = typeof window !== 'undefined' ? (localStorage.getItem('zomindia_selected_location') || '') : '';
-  const initialRawAddress = savedState?.address || userSavedAddresses[0]?.address || profile?.address || profile?.customerData?.address || cachedSelectedLocation || 'Lasuriamori, Indore';
+  const initialRawAddress = savedState?.address || userSavedAddresses[0]?.address || profile?.address || profile?.customerData?.address || cachedSelectedLocation || 'Palasia / City Center, Indore';
   const initialAddress = (!initialRawAddress || isBroadIndoreName(initialRawAddress))
-    ? 'Lasuriamori, Indore'
+    ? 'Palasia / City Center, Indore'
     : initialRawAddress;
 
   const [address, setAddress] = useState<string>(initialAddress);
@@ -225,7 +227,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         return coords;
       }
     }
-    return { lat: 22.7533, lng: 75.8937 };
+    return DEFAULT_INDORE_CENTER;
   }, [savedState, userSavedAddresses, initialAddress]);
 
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(initialCustomerCoords);
@@ -753,7 +755,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     }
 
     const activeUid = auth.currentUser.uid;
-    const fullAddress = [houseNumber.trim(), address.trim()].filter(Boolean).join(', ') || 'Lasuriamori, Indore';
+    const fullAddress = [houseNumber.trim(), address.trim()].filter(Boolean).join(', ') || 'Palasia / City Center, Indore';
 
     // Partner auto-assignment
     let assignedPartnerId: string | null = null;
@@ -802,12 +804,13 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         scheduledSlot: scheduledSlotStr,
         address: fullAddress,
         houseNumber: houseNumber.trim(),
-        lat: customerCoords?.lat ?? 22.7533,
-        lng: customerCoords?.lng ?? 75.8937,
+        lat: customerCoords?.lat ?? DEFAULT_INDORE_CENTER.lat,
+        lng: customerCoords?.lng ?? DEFAULT_INDORE_CENTER.lng,
         customerLocation: {
-          lat: customerCoords?.lat ?? 22.7533,
-          lng: customerCoords?.lng ?? 75.8937
+          lat: customerCoords?.lat ?? DEFAULT_INDORE_CENTER.lat,
+          lng: customerCoords?.lng ?? DEFAULT_INDORE_CENTER.lng
         },
+        isDoorstepLocked: Boolean(isDoorstepLocked),
         totalPrice: finalPayable,
         originalBillValue: service.basePrice,
         paidAmount: isOnlineConfirmed ? (onlinePaymentData?.amount || finalPayable) : 0,
@@ -893,7 +896,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
     if (parts.length > 0) {
       return parts.join(', ');
     }
-    return 'Lasuriamori, Indore';
+    return 'Palasia / City Center, Indore';
   }, [houseNumber, address]);
 
   const isCustomDate = date !== todayKey && date !== tomorrowKey;
@@ -1081,6 +1084,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           onClick={() => {
                             playNotificationPop();
                             setAddress(loc);
+                            setIsDoorstepLocked(false);
                             if (LOCALITY_COORDS[loc]) {
                               setCustomerCoords(LOCALITY_COORDS[loc]);
                             }
@@ -1459,8 +1463,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       <DoorstepPinPickerModal
         isOpen={showMapPickerModal}
         onClose={() => setShowMapPickerModal(false)}
-        initialCoords={customerCoords}
-        initialAddress={address}
+        initialCoords={isDoorstepLocked && customerCoords ? customerCoords : null}
+        initialAddress={isDoorstepLocked ? address : ''}
         initialHouseNumber={houseNumber}
         initialTag={addressTag}
         onConfirm={handleConfirmDoorstep}

@@ -77,11 +77,6 @@ export function calculateHaversineDistance(
   return R * c;
 }
 
-function isLegacyRajwadaCoord(lat?: number | null, lng?: number | null): boolean {
-  if (typeof lat !== "number" || typeof lng !== "number") return false;
-  return Math.abs(lat - 22.7196) < 0.0015 && Math.abs(lng - 75.8577) < 0.0015;
-}
-
 function isGenericVijayNagarDefault(lat?: number | null, lng?: number | null): boolean {
   if (typeof lat !== "number" || typeof lng !== "number") return false;
   return Math.abs(lat - 22.7533) < 0.0005 && Math.abs(lng - 75.8937) < 0.0005;
@@ -94,10 +89,7 @@ function matchLevel2MicroLocality(addressStr: string): { lat: number; lng: numbe
   if (normalized.includes("anil nagar") || normalized.includes("barfani dham")) {
     return { lat: 22.7482, lng: 75.8978 };
   }
-  if (
-    normalized.includes("manoj nayar nagar") ||
-    normalized.includes("singapore township")
-  ) {
+  if (normalized.includes("manoj nayar nagar")) {
     return { lat: 22.7915, lng: 75.8932 };
   }
   if (normalized.includes("mahalaxmi nagar")) {
@@ -125,7 +117,7 @@ function matchLevel1MacroLocality(addressStr: string): { lat: number; lng: numbe
 /**
  * Resolves customer doorstep coordinates using strict Level-1 / Level-2 hierarchy:
  * 1. Priority 1 (Exact Coords): customerLocation -> coords -> explicit props -> booking.lat/lng
- * 2. Priority 2 (Level-2 Micro-Locality Fallback): Anil Nagar / Barfani Dham, Manoj Nayar Nagar / Singapore Township, Mahalaxmi Nagar, Scheme 78 / Scheme 54
+ * 2. Priority 2 (Level-2 Micro-Locality Fallback): Anil Nagar / Barfani Dham, Manoj Nayar Nagar, Mahalaxmi Nagar, Scheme 78 / Scheme 54
  * 3. Priority 3 (Level-1 Macro-Locality Fallback): Vijay Nagar, Palasia
  */
 export function resolveDoorstepCoords(
@@ -162,8 +154,7 @@ export function resolveDoorstepCoords(
       !isNaN(lat) &&
       !isNaN(lng) &&
       lat !== 0 &&
-      lng !== 0 &&
-      !isLegacyRajwadaCoord(lat, lng)
+      lng !== 0
     ) {
       if (isGenericVijayNagarDefault(lat, lng) && level2Match) {
         return level2Match;
@@ -175,7 +166,7 @@ export function resolveDoorstepCoords(
   if (level2Match) return level2Match;
   if (level1Match) return level1Match;
 
-  return { lat: 22.7482, lng: 75.8978 };
+  return { lat: 22.7196, lng: 75.8577 };
 }
 
 /**
@@ -191,7 +182,6 @@ export function isValidPartnerGps(
   const lat = Number(candidate.lat);
   const lng = Number(candidate.lng);
   if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return false;
-  if (isLegacyRajwadaCoord(lat, lng)) return false;
 
   const distKm = calculateHaversineDistance({ lat, lng }, destCoords);
   const normalizedStatus = (status || "on_the_way").toLowerCase();
@@ -409,19 +399,21 @@ function SplitMapCanvas({
         </div>
       </AdvancedMarker>
 
-      {/* Partner Vehicle Marker */}
+      {/* Compact 28px Partner Vehicle Marker with Minimal Ring & Heading Arrow */}
       <AdvancedMarker position={partnerLocation}>
         <div className="relative flex flex-col items-center select-none cursor-pointer">
-          <div
-            className="relative w-12 h-12 rounded-full bg-white shadow-2xl border-2 border-blue-600 flex items-center justify-center text-2xl transition-transform duration-500 ease-out"
-            style={{
-              transform: `rotate(${Math.round(effectiveBearing)}deg)`,
-            }}
-          >
-            <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-blue-600" />
-            <span className="text-xl leading-none select-none">🛵</span>
+          <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
+            <div
+              className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-transform duration-500 ease-out"
+              style={{
+                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
+              }}
+            >
+              <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
+              <span className="text-xs leading-none select-none">🛵</span>
+            </div>
           </div>
-          <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
+          <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
             Technician
           </div>
         </div>

@@ -264,21 +264,23 @@ function MapCanvas({
         </div>
       </AdvancedMarker>
 
-      {/* Partner Vehicle Marker */}
+      {/* Compact 28px Partner Vehicle Marker with Minimal Ring & Heading Arrow */}
       <AdvancedMarker position={partnerLocation}>
         <div className="relative flex flex-col items-center select-none cursor-pointer">
-          <div
-            className="relative w-11 h-11 rounded-full bg-emerald-500 shadow-xl border-2 border-white ring-4 ring-emerald-500/20 flex items-center justify-center text-xl transition-all duration-700 ease-out"
-            style={{
-              transform: `rotate(${Math.round(effectiveBearing)}deg)`,
-            }}
-            title={`Bearing: ${Math.round(effectiveBearing)}°`}
-          >
-            <div className="absolute -top-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-emerald-800" />
-            <span className="text-lg leading-none select-none">🛵</span>
+          <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
+            <div
+              className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-all duration-700 ease-out"
+              style={{
+                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
+              }}
+              title={`Bearing: ${Math.round(effectiveBearing)}°`}
+            >
+              <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
+              <span className="text-xs leading-none select-none">🛵</span>
+            </div>
           </div>
           {!isMini && (
-            <div className="mt-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
+            <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
               Live Pro
             </div>
           )}

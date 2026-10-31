@@ -28,7 +28,6 @@ export interface ReverseGeocodeResult {
  * Maps raw revenue village names to popular Indore residential area names.
  */
 export const INDORE_TOWNSHIP_ALIASES: Record<string, string> = {
-  'kelod hala': 'Singapore Township',
   'talawali chanda': 'Talawali Chanda',
   'pipliya kumar': 'Mahalaxmi Nagar',
   'nipania': 'Nipania',
@@ -120,16 +119,9 @@ export function parseNominatimPayload(data: any, lat: number, lng: number): Reve
       ? resolveIndoreTownshipAlias(microLocal) || microLocal
       : '';
 
-  // Only apply macro township alias (like Kelod Hala -> Singapore Township) if micro isn't already a specific colony,
-  // or if macro is a standard ward like Lasudia Mori -> Lasudiya Mori
   let macro = '';
   if (macroLocal && !isBroadIndoreName(macroLocal)) {
-    const lowerMacro = macroLocal.toLowerCase();
-    if (micro && lowerMacro.includes('kelod')) {
-      macro = 'Kelod Hala';
-    } else {
-      macro = resolveIndoreTownshipAlias(macroLocal) || macroLocal;
-    }
+    macro = resolveIndoreTownshipAlias(macroLocal) || macroLocal;
   }
 
   // INVERT PRECEDENCE (NEVER LET LEVEL-1 ECLIPSE LEVEL-2):
@@ -141,8 +133,9 @@ export function parseNominatimPayload(data: any, lat: number, lng: number): Reve
 
   const city = (a.city || a.town || 'Indore').trim();
   const postcode = (a.postcode || '').trim();
+  const formattedPostcode = postcode ? `PIN: ${postcode}` : '';
 
-  const rawTokens = [premise, road, colony, city, postcode].filter(Boolean);
+  const rawTokens = [premise, road, colony, city, formattedPostcode].filter(Boolean);
   if (rawTokens.length === 0) return null;
 
   const seen = new Set<string>();
@@ -269,17 +262,7 @@ export async function reverseGeocodeWithGoogle(
         const rawMacro = (sublocalityLevel1 || sublocalityGeneral || '').trim();
 
         const micro = rawMicro ? resolveIndoreTownshipAlias(rawMicro) || rawMicro : '';
-
-        let macro = '';
-        if (rawMacro) {
-          const lowerMacro = rawMacro.toLowerCase();
-          // Do not let "Kelod Hala" alias to "Singapore Township" when a distinct micro-colony (e.g. Manoj Nayar Nagar) is present
-          if (micro && lowerMacro.includes('kelod')) {
-            macro = '';
-          } else {
-            macro = resolveIndoreTownshipAlias(rawMacro) || rawMacro;
-          }
-        }
+        const macro = rawMacro ? resolveIndoreTownshipAlias(rawMacro) || rawMacro : '';
 
         // INVERT PRECEDENCE (NEVER LET LEVEL-1 ECLIPSE LEVEL-2):
         const colony = micro
@@ -289,6 +272,7 @@ export async function reverseGeocodeWithGoogle(
           : macro || road;
 
         const city = locality || 'Indore';
+        const formattedPostalCode = postalCode ? `PIN: ${postalCode}` : '';
 
         let area = colony;
         if (area && !area.toLowerCase().includes(city.toLowerCase())) {
@@ -297,7 +281,7 @@ export async function reverseGeocodeWithGoogle(
           area = road ? `${road}, ${city}` : results[0]?.formatted_address || city;
         }
 
-        const tokens = [premise, road, colony, city, postalCode].filter(Boolean);
+        const tokens = [premise, road, colony, city, formattedPostalCode].filter(Boolean);
         const seen = new Set<string>();
         const cleanTokens: string[] = [];
         for (const t of tokens) {

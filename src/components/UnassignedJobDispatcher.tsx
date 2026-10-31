@@ -196,8 +196,8 @@ export default function UnassignedJobDispatcher({
     const currentService = selectedBooking ? services.find(s => s.id === selectedBooking.serviceId) : null;
     const targetCatId = currentService?.categoryId;
 
-    const bLat = typeof selectedBooking?.lat === 'number' ? selectedBooking.lat : 22.7196;
-    const bLng = typeof selectedBooking?.lng === 'number' ? selectedBooking.lng : 75.8577;
+    const bLat = typeof selectedBooking?.lat === 'number' ? selectedBooking.lat : (typeof (selectedBooking as any)?.customerLocation?.lat === 'number' ? (selectedBooking as any).customerLocation.lat : 22.7196);
+    const bLng = typeof selectedBooking?.lng === 'number' ? selectedBooking.lng : (typeof (selectedBooking as any)?.customerLocation?.lng === 'number' ? (selectedBooking as any).customerLocation.lng : 75.8577);
 
     const listWithDistance = partners.map((p) => {
       const pLat = typeof p.lat === 'number' && !isNaN(p.lat) 
@@ -531,7 +531,7 @@ export default function UnassignedJobDispatcher({
                   const service = services.find(s => s.id === booking.serviceId);
                   const custName = (booking as any).customerName || (booking as any).customerData?.fullName || "Valued Customer";
                   const custPhone = (booking as any).customerPhone || (booking as any).customerData?.mobile || (booking as any).customerData?.phoneNumber || "N/A";
-                  const locality = getDisplayLocality(booking.address, booking.lat, booking.lng);
+                  const locality = getDisplayLocality(booking.address, booking.lat || (booking as any).customerLocation?.lat, booking.lng || (booking as any).customerLocation?.lng);
                   const timeElapsed = formatTimeAgo(booking.createdAt || (booking as any).createdAtTimestamp);
                   const assignedPartner = partners.find(p => p.userId === booking.partnerId || p.id === booking.partnerId);
 

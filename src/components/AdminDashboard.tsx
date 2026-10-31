@@ -3939,9 +3939,9 @@ function BookingRow({
               Live Dispatch Channel
             </span>
           </div>
-          {booking.lat && booking.lng ? (
+          {(booking.lat || (booking as any).customerLocation?.lat) && (booking.lng || (booking as any).customerLocation?.lng) ? (
             <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 text-[9px] font-bold font-mono">
-              🎯 {booking.lat.toFixed(5)}, {booking.lng.toFixed(5)}
+              🎯 {Number(booking.lat || (booking as any).customerLocation?.lat).toFixed(5)}, {Number(booking.lng || (booking as any).customerLocation?.lng).toFixed(5)}
             </div>
           ) : (
             <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md border border-amber-100 text-[9px] font-black uppercase tracking-wider font-mono">
@@ -3965,7 +3965,7 @@ function BookingRow({
               Geocoding Integrity
             </span>
             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-              {booking.lat && booking.lng ? (
+              {(booking.lat || (booking as any).customerLocation?.lat) && (booking.lng || (booking as any).customerLocation?.lng) ? (
                 <>
                   <span className="px-2 py-0.5 bg-blue-50/70 text-blue-700 rounded-md text-[8.5px] font-black uppercase border border-blue-100/50 font-mono">
                     GPS PIN DETECTED
@@ -4051,12 +4051,12 @@ function BookingRow({
             <div className="flex-1 flex flex-col items-center text-center relative z-10">
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                  booking.lat && booking.lng
+                  (booking.lat || (booking as any).customerLocation?.lat) && (booking.lng || (booking as any).customerLocation?.lng)
                     ? "bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20"
                     : "bg-amber-50 border-amber-300 text-amber-700"
                 }`}
               >
-                {booking.lat ? (
+                {booking.lat || (booking as any).customerLocation?.lat ? (
                   <MapPin size={14} strokeWidth={2.5} />
                 ) : (
                   <AlertCircle size={14} />
@@ -4064,13 +4064,13 @@ function BookingRow({
               </div>
               <span
                 className={`text-[9.5px] font-black uppercase tracking-wider mt-2 font-mono ${
-                  booking.lat ? "text-emerald-700" : "text-amber-700"
+                  booking.lat || (booking as any).customerLocation?.lat ? "text-emerald-700" : "text-amber-700"
                 }`}
               >
                 2. Geocoded
               </span>
               <p className="text-[8.5px] text-slate-400 font-semibold max-w-[120px] mt-0.5 leading-tight">
-                {booking.lat ? "GPS pin match" : "Manual entry"}
+                {booking.lat || (booking as any).customerLocation?.lat ? "GPS pin match" : "Manual entry"}
               </p>
             </div>
 

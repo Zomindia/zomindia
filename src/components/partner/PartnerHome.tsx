@@ -586,11 +586,7 @@ export default function PartnerHome({
                   <span className="truncate">Call Customer 📞</span>
                 </a>
                 <a
-                  href={
-                    currentJob.lat && currentJob.lng
-                      ? `https://www.google.com/maps/dir/?api=1&destination=${currentJob.lat},${currentJob.lng}&travelmode=two_wheeler`
-                      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentJob.address || 'Indore')}`
-                  }
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${currentJob.lat || (currentJob as any).customerLocation?.lat || 22.7196},${currentJob.lng || (currentJob as any).customerLocation?.lng || 75.8577}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-800 font-black text-[11px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
@@ -855,7 +851,7 @@ export default function PartnerHome({
                 {/* Quick Actions: Open in Google Maps & Call Customer */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentJob.address || 'Indore')}`}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${currentJob.lat || (currentJob as any).customerLocation?.lat || 22.7196},${currentJob.lng || (currentJob as any).customerLocation?.lng || 75.8577}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="py-3 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black text-[10px] uppercase tracking-wider rounded-2xl border border-blue-200/80 flex items-center justify-center gap-1.5 transition-all active:scale-95 text-center cursor-pointer"
