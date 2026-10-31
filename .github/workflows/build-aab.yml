@@ -51,10 +51,10 @@ jobs:
             fi
           fi
 
-      - name: Build Release AAB & APK (v8.0 / code 8)
+      - name: Build Release AAB & APK (v9.0 / code 9)
         run: |
-          sed -i 's/versionCode [0-9]\+/versionCode 8/' android/app/build.gradle
-          sed -i 's/versionName ".*"/versionName "8.0"/' android/app/build.gradle
+          sed -i 's/versionCode [0-9]\+/versionCode 9/' android/app/build.gradle
+          sed -i 's/versionName ".*"/versionName "9.0"/' android/app/build.gradle
           cd android
           ./gradlew bundleRelease assembleRelease assembleDebug --stacktrace
 

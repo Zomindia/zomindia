@@ -1,0 +1,19 @@
+{
+  "packageId": "com.zomindia.twa",
+  "host": "zomindia.com",
+  "name": "Zomindia",
+  "launcherName": "Zomindia",
+  "display": "standalone",
+  "themeColor": "#0a2540",
+  "navigationColor": "#ffffff",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://zomindia.com/pwa-512x512.png",
+  "appVersionName": "9.0",
+  "appVersion": "9.0.0",
+  "appVersionCode": 9,
+  "version": "9.0.0",
+  "minSdkVersion": 24,
+  "orientation": "portrait"
+}

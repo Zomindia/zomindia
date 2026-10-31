@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.zomindia.partner'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.zomindia.partner"
+        minSdk 24
+        compileSdk 36
+        targetSdk 36
+        versionCode 25
+        versionName "2.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../partner-release.keystore")
+            storePassword "zomindia123"
+            keyAlias "partner"
+            keyPassword "zomindia123"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

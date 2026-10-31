@@ -1,6 +1,7 @@
 {
   "name": "Zomindia - Home Services & Repair",
   "short_name": "Zomindia",
+  "version": "9.0.0",
   "description": "On-Demand Home Appliance Repair & Services in Indore",
   "start_url": "/",
   "display": "standalone",
