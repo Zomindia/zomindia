@@ -12,7 +12,8 @@ import {
   query, 
   where, 
   getDocs, 
-  Timestamp 
+  Timestamp,
+  serverTimestamp
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
@@ -109,7 +110,8 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
     fullName: safeFullName,
     role: safeRole,
     adminSubRole: isMasterAdmin ? 'head' : (raw?.adminSubRole || undefined),
-    walletBalance: Number(raw?.walletBalance) || 0,
+    walletBalance: raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101,
+    welcomeBonusClaimed: true,
     savedAddresses: Array.isArray(raw?.savedAddresses) ? raw.savedAddresses : [],
     addresses: Array.isArray(raw?.addresses) ? raw.addresses : [],
     bookings: Array.isArray(raw?.bookings) ? raw.bookings : [],
@@ -120,7 +122,8 @@ export function sanitizeUserProfile(raw: any, fallbackUser?: User | null): UserP
       email: raw?.customerData?.email || email || '',
       phoneNumber: raw?.customerData?.phoneNumber || phoneNumber || '',
       mobile: raw?.customerData?.mobile || phoneNumber || '',
-      walletBalance: Number(raw?.customerData?.walletBalance) || Number(raw?.walletBalance) || 0,
+      walletBalance: raw?.customerData?.walletBalance !== undefined ? Number(raw.customerData.walletBalance) : (raw?.walletBalance !== undefined ? Number(raw.walletBalance) : 101),
+      welcomeBonusClaimed: true,
       address: raw?.customerData?.address || '',
       gender: raw?.customerData?.gender || '',
       languagePreference: raw?.customerData?.languagePreference || 'English',
@@ -165,7 +168,8 @@ export function resolveAndSubscribeProfile(
     displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
     fullName: user.displayName || '',
     role: 'customer',
-    walletBalance: 0,
+    walletBalance: 101,
+    welcomeBonusClaimed: true,
     savedAddresses: [],
     addresses: [],
     bookings: [],
@@ -244,7 +248,8 @@ export function resolveAndSubscribeProfile(
           fullName: '',
           displayName: user.displayName || (user.phoneNumber ? `Customer (${user.phoneNumber.slice(-4)})` : 'Customer'),
           onboardingComplete: false,
-          walletBalance: 100,
+          walletBalance: 101,
+          welcomeBonusClaimed: true,
           createdAt: Timestamp.now(),
         }, user);
         resolvedPayload = freshProfile;
@@ -266,7 +271,8 @@ export function resolveAndSubscribeProfile(
           role: isMasterAdmin ? 'admin' : (existingData?.role || 'customer'),
           photoURL: user.photoURL || existingData?.photoURL || '',
           referralCode: existingData?.referralCode || `ZOM${user.uid.slice(0, 6).toUpperCase()}`,
-          walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 100,
+          walletBalance: existingData?.walletBalance !== undefined ? existingData.walletBalance : 101,
+          welcomeBonusClaimed: true,
           onboardingComplete: hasCompletedOnboarding,
           updatedAt: Timestamp.now(),
         });
@@ -282,6 +288,23 @@ export function resolveAndSubscribeProfile(
         } catch (writeErr: any) {
           console.warn('[resolveAndSubscribeProfile] Notice writing profile to user.uid:', writeErr?.message || writeErr);
           onProfileUpdate(sanitizeUserProfile({ ...payload, uid: user.uid }, user));
+        }
+
+        try {
+          const welcomeTxRef = doc(db, 'walletTransactions', `welcome_bonus_${user.uid}`);
+          const welcomeSnap = await getDoc(welcomeTxRef);
+          if (!welcomeSnap.exists()) {
+            await setDoc(welcomeTxRef, {
+              userId: user.uid,
+              amount: 101,
+              type: 'credit',
+              reason: 'Zomindia ₹101 Welcome Reward',
+              status: 'completed',
+              createdAt: serverTimestamp()
+            });
+          }
+        } catch {
+          // Non-blocking
         }
       }
 

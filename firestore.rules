@@ -88,6 +88,7 @@ service cloud.firestore {
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 2000)) &&
              (!('walletBalance' in data) || (data.walletBalance is number)) &&
+             (!('welcomeBonusClaimed' in data) || (data.welcomeBonusClaimed is bool)) &&
              (!('notificationPreferences' in data) || (data.notificationPreferences is map)) &&
              (!('gender' in data) || (data.gender is string || data.gender == null)) &&
              (!('languagePreference' in data) || (data.languagePreference is string || data.languagePreference == null)) &&
@@ -401,7 +402,7 @@ service cloud.firestore {
                 'displayName', 'fullName', 'email', 'phoneNumber', 'phoneNumberVerified', 'photoURL', 'address', 'bio', 
                 'notificationPreferences', 'updatedAt', 'gender', 'languagePreference', 
                 'houseType', 'bhkSize', 'preferredTimeSlot', 'secondaryPhone', 'onboardingComplete',
-                'currentMode', 'customerData', 'partnerData', 'isPartner'
+                'currentMode', 'customerData', 'partnerData', 'isPartner', 'welcomeBonusClaimed'
               ])) ||
               ('email' in request.auth.token && request.auth.token.email.lower() == 'sarthakwebtech@gmail.com') ||
               ('email_address' in request.auth.token && request.auth.token.email_address.lower() == 'sarthakwebtech@gmail.com') ||

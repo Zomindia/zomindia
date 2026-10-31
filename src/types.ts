@@ -37,6 +37,7 @@ export interface UserProfile {
   city?: string;
   bio?: string;
   walletBalance?: number;
+  welcomeBonusClaimed?: boolean;
   referralCode?: string;
   referredBy?: string;
   referralCreditPending?: boolean;
@@ -83,6 +84,7 @@ export interface UserProfile {
     phoneNumber?: string;
     mobile?: string;
     walletBalance?: number;
+    welcomeBonusClaimed?: boolean;
     address?: string;
     gender?: string;
     languagePreference?: string;

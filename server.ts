@@ -2598,6 +2598,7 @@ Structure:
       for (const uid of affectedUserIds) {
         const userTxSnap = await db.collection("walletTransactions").where("userId", "==", uid).get();
         let verifiedBalance = 0;
+        let genuineCount = 0;
         for (const txDoc of userTxSnap.docs) {
           const tx = txDoc.data() || {};
           if (isCorruptMockTxData(tx)) {
@@ -2605,19 +2606,35 @@ Structure:
             deletedCount++;
             continue;
           }
+          genuineCount++;
           if (tx.status && tx.status !== "completed") continue;
           const amt = Number(tx.amount) || 0;
           verifiedBalance += tx.type === "credit" ? amt : -amt;
         }
-        verifiedBalance = Math.max(0, verifiedBalance);
 
         const userRef = db.collection("users").doc(uid);
         const userDoc = await userRef.get();
         if (userDoc.exists) {
+          if (genuineCount === 0) {
+            const welcomeTxRef = db.collection("walletTransactions").doc(`welcome_bonus_${uid}`);
+            await welcomeTxRef.set({
+              userId: uid,
+              amount: 101,
+              type: "credit",
+              reason: "Zomindia ₹101 Welcome Reward",
+              status: "completed",
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            verifiedBalance = 101;
+          } else {
+            verifiedBalance = Math.max(0, verifiedBalance);
+          }
+
           const currentBal = Number(userDoc.data()?.walletBalance || 0);
-          if (currentBal !== verifiedBalance) {
+          if (currentBal !== verifiedBalance || !userDoc.data()?.welcomeBonusClaimed) {
             await userRef.update({
               walletBalance: verifiedBalance,
+              welcomeBonusClaimed: true,
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             updatedUsers++;
@@ -2645,132 +2662,11 @@ Structure:
     }
   });
 
-  app.post("/api/add-funds", async (req, res) => {
-    try {
-      const {
-        amount,
-        userId,
-        razorpay_payment_id,
-        razorpay_order_id,
-        razorpay_signature
-      } = req.body || {};
-
-      const numAmount = Number(amount);
-      if (!numAmount || isNaN(numAmount) || numAmount <= 0 || !userId) {
-        return res.status(400).json({ success: false, error: "Missing or invalid parameters" });
-      }
-
-      if (!RAZORPAY_KEY_SECRET) {
-        return res.status(400).json({
-          success: false,
-          error: "Payment gateway secret missing on server. Top-up rejected."
-        });
-      }
-
-      if (
-        !razorpay_order_id ||
-        !razorpay_payment_id ||
-        !razorpay_signature ||
-        String(razorpay_order_id).startsWith("order_mock_") ||
-        String(razorpay_payment_id).startsWith("pay_sim_") ||
-        String(razorpay_payment_id).startsWith("pay_mock_") ||
-        String(razorpay_payment_id).startsWith("sim_pay_") ||
-        razorpay_signature === "mock_signature"
-      ) {
-        return res.status(400).json({
-          success: false,
-          error: "Payment verification failed: Invalid cryptographic signature"
-        });
-      }
-
-      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-      const expectedSignature = crypto
-        .createHmac("sha256", RAZORPAY_KEY_SECRET)
-        .update(body)
-        .digest("hex");
-
-      if (expectedSignature !== razorpay_signature) {
-        return res.status(400).json({
-          success: false,
-          error: "Payment verification failed: Invalid cryptographic signature"
-        });
-      }
-
-      if (!db) {
-        return res.status(400).json({
-          success: false,
-          error: "Database service unavailable. Top-up rejected."
-        });
-      }
-
-      // Check for duplicate replay attacks before updating balance
-      const existingPaymentSnap = await db
-        .collection("walletTransactions")
-        .where("paymentId", "==", razorpay_payment_id)
-        .limit(1)
-        .get();
-
-      if (!existingPaymentSnap.empty) {
-        return res.status(409).json({
-          success: false,
-          error: "Duplicate payment ID: Transaction has already been processed"
-        });
-      }
-
-      const existingRefSnap = await db
-        .collection("walletTransactions")
-        .where("referenceId", "==", razorpay_payment_id)
-        .limit(1)
-        .get();
-
-      if (!existingRefSnap.empty) {
-        return res.status(409).json({
-          success: false,
-          error: "Duplicate payment reference: Transaction has already been processed"
-        });
-      }
-
-      const userRef = db.collection("users").doc(userId);
-      const userDoc = await userRef.get();
-      if (!userDoc.exists) {
-        return res.status(404).json({ success: false, error: "User not found" });
-      }
-
-      const currentBalance = Number(userDoc.data()?.walletBalance || 0);
-      const newBalance = currentBalance + numAmount;
-
-      const batch = db.batch();
-
-      // Atomically increment user's walletBalance
-      batch.update(userRef, {
-        walletBalance: admin.firestore.FieldValue.increment(numAmount),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      // Write immutable record to walletTransactions
-      const txRef = db.collection("walletTransactions").doc();
-      batch.set(txRef, {
-        userId,
-        amount: numAmount,
-        type: "credit",
-        reason: "Wallet Top-up via Razorpay",
-        paymentId: razorpay_payment_id,
-        referenceId: razorpay_payment_id,
-        orderId: razorpay_order_id,
-        status: "completed",
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      await batch.commit();
-
-      return res.json({ success: true, newBalance, paymentId: razorpay_payment_id });
-    } catch (err: any) {
-      console.error("Add funds error:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Payment verification failed"
-      });
-    }
+  app.post("/api/add-funds", async (_req, res) => {
+    return res.status(400).json({
+      success: false,
+      error: "Direct wallet top-up is disabled. Zomindia wallet operates on promotional credits only."
+    });
   });
 
   app.post("/api/apply-referral", async (req, res) => {

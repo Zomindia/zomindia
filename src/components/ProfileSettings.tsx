@@ -213,11 +213,6 @@ export default function ProfileSettings({
     "email",
   );
 
-  // Wallet Top-up parameters
-  const [customTopupAmount, setCustomTopupAmount] = useState("");
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [topupSuccess, setTopupSuccess] = useState(false);
-
   // Copy status
   const [copiedCode, setCopiedCode] = useState(false);
 
@@ -958,32 +953,6 @@ export default function ProfileSettings({
     }
   };
 
-  const handleAddWalletCash = async (val: number) => {
-    setWalletLoading(true);
-    setTopupSuccess(false);
-    try {
-      const currentVal = profile.walletBalance ?? 0;
-      const newVal = currentVal + val;
-
-      await updateDoc(doc(db, "users", profile.uid), {
-        walletBalance: newVal,
-      });
-
-      onUpdate({
-        ...profile,
-        walletBalance: newVal,
-      });
-
-      setTopupSuccess(true);
-      setCustomTopupAmount("");
-      setTimeout(() => setTopupSuccess(false), 2000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setWalletLoading(false);
-    }
-  };
-
   const handleEmailVerify = async () => {
     if (!auth.currentUser) return;
     setEmailLoading(true);
@@ -1342,7 +1311,7 @@ export default function ProfileSettings({
                     Wallet
                   </span>
                   <span className="text-xs font-black text-slate-900 leading-tight">
-                    ₹{profile.walletBalance ?? 100}
+                    ₹{profile.walletBalance ?? 101}
                   </span>
                 </button>
 
@@ -1486,7 +1455,7 @@ export default function ProfileSettings({
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                      ₹{profile.walletBalance ?? 100}
+                      ₹{profile.walletBalance ?? 101}
                     </span>
                     <ChevronRight size={15} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </div>
@@ -2132,7 +2101,7 @@ export default function ProfileSettings({
                 </motion.div>
               )}
 
-              {/* VIEW 2: zomindia Wallet ( Load Cash & Coupons ) */}
+              {/* VIEW 2: zomindia Wallet ( Promotional Credits & Coupons ) */}
               {activeSub === "wallet" && (
                 <motion.div
                   key="wallet"
@@ -2159,7 +2128,7 @@ export default function ProfileSettings({
                           Active Funds
                         </span>
                         <p className="text-2xl font-black text-[#050CA6] mt-2">
-                          ₹{profile.walletBalance ?? 100}
+                          ₹{profile.walletBalance ?? 101}
                         </p>
                       </div>
                       <span className="text-[8px] text-neutral-400 font-bold mt-4 block">
@@ -2167,49 +2136,25 @@ export default function ProfileSettings({
                       </span>
                     </div>
 
-                    {/* Add funds interface */}
-                    <div className="md:col-span-2 bg-neutral-50 p-5 rounded-2xl border border-neutral-100 flex flex-col justify-between">
+                    {/* Promotional Welcome Reward card */}
+                    <div className="md:col-span-2 bg-gradient-to-br from-emerald-50/80 to-blue-50/60 p-5 rounded-2xl border border-emerald-200/70 flex flex-col justify-between">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
-                          Instant Load Test Credits (₹)
-                        </span>
-                        <div className="flex gap-2 mt-3 mb-2">
-                          <button
-                            onClick={() => handleAddWalletCash(100)}
-                            disabled={walletLoading}
-                            className="flex-1 py-1.5 bg-white border border-neutral-200 hover:border-[#050CA6] rounded-lg text-xs font-extrabold text-neutral-700 transition-all active:scale-95"
-                          >
-                            + ₹100
-                          </button>
-                          <button
-                            onClick={() => handleAddWalletCash(500)}
-                            disabled={walletLoading}
-                            className="flex-1 py-1.5 bg-white border border-neutral-200 hover:border-[#050CA6] rounded-lg text-xs font-extrabold text-neutral-700 transition-all active:scale-95"
-                          >
-                            + ₹500
-                          </button>
-                          <button
-                            onClick={() => handleAddWalletCash(1000)}
-                            disabled={walletLoading}
-                            className="flex-1 py-1.5 bg-white border border-neutral-200 hover:border-[#050CA6] rounded-lg text-xs font-extrabold text-neutral-700 transition-all active:scale-95"
-                          >
-                            + ₹1000
-                          </button>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <h4 className="text-sm font-black text-slate-900">
+                            ₹101 Welcome Reward Active
+                          </h4>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider border border-emerald-200">
+                            <CheckCircle2 size={10} /> 100% Verified Zomindia Reward
+                          </span>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-[10px] text-emerald-600 font-bold mt-2">
-                        {topupSuccess && (
-                          <p className="animate-bounce flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Successfully credited to
-                            your Wallet!
-                          </p>
-                        )}
+                        <p className="text-xs text-slate-600 font-medium mt-2 leading-relaxed">
+                          Automatically applied as a discount on your doorstep service bookings across Indore. No manual recharges required.
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Simulated Recent Wallet Actions for realism and compliance */}
+                  {/* Recent Wallet Actions */}
                   <div className="pt-4 border-t border-neutral-100">
                     <span className="text-[10px] uppercase font-black text-neutral-400 tracking-wider block mb-3">
                       Transaction History
@@ -2219,28 +2164,14 @@ export default function ProfileSettings({
                       <div className="flex justify-between items-center p-3.5 bg-neutral-50/70 border border-neutral-100 rounded-xl text-xs">
                         <div>
                           <p className="font-extrabold text-neutral-800">
-                            Welcome Onboarding Bonus
+                            Zomindia ₹101 Welcome Reward
                           </p>
                           <p className="text-[10px] text-neutral-400">
                             Credited automatically upon profile registration
                           </p>
                         </div>
                         <span className="text-emerald-600 font-black">
-                          + ₹100
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center p-3.5 bg-neutral-50/70 border border-neutral-100 rounded-xl text-xs">
-                        <div>
-                          <p className="font-extrabold text-[#050CA6]">
-                            Direct checkout rebate
-                          </p>
-                          <p className="text-[10px] text-neutral-400">
-                            Seasonal voucher applied successfully
-                          </p>
-                        </div>
-                        <span className="text-emerald-600 font-black">
-                          + ₹50
+                          + ₹101
                         </span>
                       </div>
                     </div>

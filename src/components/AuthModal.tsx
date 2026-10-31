@@ -11,7 +11,7 @@ import {
 import { getFriendlyAuthErrorMessage } from '../services/authService';
 import { auth, db } from '../lib/firebase';
 import { clearRecaptchaInstance, getOrCreateRecaptchaVerifier } from '../lib/recaptcha';
-import { doc, setDoc, Timestamp, getDoc, query, where, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, getDoc, query, where, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import { buildDualPersonaUserDoc } from '../lib/user-schema';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrandedButtonSpinner } from './LoadingIndicator';
@@ -76,7 +76,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
   const [timer, setTimer] = useState(0);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [verifiedUid, setVerifiedUid] = useState<string | null>(initialData?.uid || null);
-  const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(100);
+  const [walletJoiningBonus, setWalletJoiningBonus] = useState<number>(101);
 
   useEffect(() => {
     let isMounted = true;
@@ -86,14 +86,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
         const snap = await getDoc(docRef);
         if (isMounted && snap.exists()) {
           const val = snap.data().walletJoiningBonus;
-          if (typeof val === 'number') {
-            setWalletJoiningBonus(val);
+          if (typeof val === 'number' && val > 0) {
+            setWalletJoiningBonus(101);
           }
         }
       } catch (err: any) {
-        // Safe default fallback (e.g. ₹100 or default bonus) without intrusive warning logs
+        // Safe default fallback (₹101 welcome bonus) without intrusive warning logs
         if (isMounted) {
-          setWalletJoiningBonus(100);
+          setWalletJoiningBonus(101);
         }
       }
     };
@@ -579,8 +579,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           }
         };
         if (existingData?.walletBalance === undefined) {
-          updatePayload.walletBalance = walletJoiningBonus;
+          updatePayload.walletBalance = 101;
         }
+        updatePayload.welcomeBonusClaimed = true;
         if (isSarthakEmail) {
           updatePayload.role = 'admin';
           updatePayload.adminSubRole = 'head';
@@ -609,7 +610,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
           referralCode: `ZOM${activeUid.slice(-6).toUpperCase()}`,
-          walletBalance: walletJoiningBonus, // Dynamic Onboarding welcome credit!
+          walletBalance: 101,
+          welcomeBonusClaimed: true,
           onboardingComplete: true,
           savedAddresses: [],
           addresses: [],
@@ -619,7 +621,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
             email: email.trim(),
             phoneNumber: formattedPhone,
             mobile: formattedPhone,
-            walletBalance: walletJoiningBonus,
+            walletBalance: 101,
+            welcomeBonusClaimed: true,
           },
           notificationPreferences: {
             bookingUpdates: true,
@@ -639,6 +642,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView, ini
           setLoading(false);
           return;
         }
+      }
+
+      // Ensure immutable ₹101 Welcome Reward transaction entry exists in walletTransactions
+      try {
+        const welcomeTxRef = doc(db, 'walletTransactions', `welcome_bonus_${activeUid}`);
+        const welcomeSnap = await getDoc(welcomeTxRef);
+        if (!welcomeSnap.exists()) {
+          await setDoc(welcomeTxRef, {
+            userId: activeUid,
+            amount: 101,
+            type: 'credit',
+            reason: 'Zomindia ₹101 Welcome Reward',
+            status: 'completed',
+            createdAt: serverTimestamp()
+          });
+        }
+      } catch (txErr) {
+        // Non-blocking fallback
       }
 
       setView('success-transition');

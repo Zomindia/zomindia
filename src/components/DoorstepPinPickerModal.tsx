@@ -437,7 +437,10 @@ export default function DoorstepPinPickerModal({
           </div>
 
           {/* 3. Doorstep Details & Confirmation Sheet */}
-          <div className="p-4 sm:p-5 space-y-3.5 bg-white overflow-y-auto">
+          <div
+            className="flex-1 min-h-0 p-4 sm:p-5 space-y-3.5 bg-white overflow-y-auto overscroll-contain touch-pan-y"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+          >
             {/* Detected Address Summary Bar */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
               <div className="flex items-center justify-between">

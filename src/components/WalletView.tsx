@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, deleteDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, WalletTransaction } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -23,30 +23,8 @@ const isCorruptMockTransaction = (tx: any): boolean => {
   );
 };
 
-const loadRazorpayScript = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    if (typeof (window as any).Razorpay === 'function') {
-      resolve(true);
-      return;
-    }
-    const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(true));
-      existingScript.addEventListener('error', () => resolve(false));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
-
 export default function WalletView({ profile, setActiveTab }: { profile: UserProfile, setActiveTab?: (tab: any) => void }) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [topupAmount, setTopupAmount] = useState('');
-  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -107,6 +85,26 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
             }
           }
 
+          if (genuineDocs.length === 0 && profile.uid) {
+            try {
+              const welcomeRef = doc(db, 'walletTransactions', `welcome_bonus_${profile.uid}`);
+              const welcomeSnap = await getDoc(welcomeRef);
+              if (!welcomeSnap.exists()) {
+                await setDoc(welcomeRef, {
+                  userId: profile.uid,
+                  amount: 101,
+                  type: 'credit',
+                  reason: 'Zomindia ₹101 Welcome Reward',
+                  status: 'completed',
+                  createdAt: serverTimestamp()
+                });
+              }
+            } catch {
+              // Handled by backend /api/wallet/sanitize if already exists
+            }
+            return;
+          }
+
           const verifiedBalance = Math.max(
             0,
             genuineDocs.reduce((acc, tx) => {
@@ -117,7 +115,7 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
           );
 
           const currentProfileBalance = Number(profile.walletBalance || 0);
-          if (corruptDocs.length > 0 || (genuineDocs.length === 0 && currentProfileBalance > 0) || currentProfileBalance !== verifiedBalance) {
+          if (corruptDocs.length > 0 || currentProfileBalance !== verifiedBalance) {
             try {
               await updateDoc(doc(db, 'users', profile.uid), {
                 walletBalance: verifiedBalance
@@ -139,135 +137,6 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
       if (typeof unsubscribe === "function") unsubscribe();
     };
   }, [profile.uid, profile.walletBalance]);
-
-  const handleTopup = async () => {
-    const amount = Number(topupAmount);
-    if (isNaN(amount) || amount < 100) {
-      displayMessage("Minimum topup is ₹100", true);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // 1. Create Razorpay order via backend
-      const receiptId = `wallet_${profile.uid.slice(0, 8)}_${Date.now()}`;
-      const orderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amount,
-          currency: 'INR',
-          receipt: receiptId,
-          customerName: profile.fullName || 'Customer',
-          customerPhone: profile.mobile || profile.phoneNumber || '',
-          customerEmail: profile.email || '',
-          serviceName: 'Wallet Top-up'
-        })
-      });
-
-      const orderData = await orderRes.json().catch(() => ({}));
-      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || orderData?.keyId;
-      const isRealKey = Boolean(
-        clientKey &&
-        !String(clientKey).includes('placeholder') &&
-        String(clientKey).startsWith('rzp_') &&
-        !orderData?.isMock &&
-        orderData?.orderId &&
-        !String(orderData.orderId).startsWith('order_mock_')
-      );
-
-      if (!orderRes.ok || !orderData?.success || !isRealKey) {
-        displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
-        setLoading(false);
-        return;
-      }
-
-      const sdkLoaded = await loadRazorpayScript();
-      const RazorpayConstructor = (window as any).Razorpay;
-      if (!sdkLoaded || typeof RazorpayConstructor !== 'function') {
-        displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
-        setLoading(false);
-        return;
-      }
-
-      // Function to post verified payment details to /api/add-funds
-      const submitVerification = async (verifyPayload: {
-        razorpay_order_id: string;
-        razorpay_payment_id: string;
-        razorpay_signature: string;
-        paymentId: string;
-      }) => {
-        const addFundsRes = await fetch('/api/add-funds', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: profile.uid,
-            amount: amount,
-            ...verifyPayload
-          })
-        });
-        const addFundsData = await addFundsRes.json().catch(() => ({}));
-        if (addFundsRes.ok && addFundsData.success) {
-          setTopupAmount('');
-          displayMessage("Wallet recharged successfully via Razorpay!");
-        } else {
-          displayMessage("Failed to credit wallet: " + (addFundsData.error || "Verification issue"), true);
-        }
-      };
-
-      const options = {
-        key: clientKey,
-        amount: orderData.amount || Math.round(amount * 100),
-        currency: 'INR',
-        name: 'Zomindia Wallet Recharge',
-        description: `Add ₹${amount} to Wallet Balance`,
-        order_id: orderData.orderId,
-        handler: async function (response: any) {
-          try {
-            if (!response?.razorpay_order_id || !response?.razorpay_payment_id || !response?.razorpay_signature) {
-              displayMessage("Payment verification failed: Incomplete gateway signature.", true);
-              return;
-            }
-            await submitVerification({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              paymentId: response.razorpay_payment_id
-            });
-          } catch (verErr: any) {
-            displayMessage("Error processing verified payment: " + verErr.message, true);
-          } finally {
-            setLoading(false);
-          }
-        },
-        prefill: {
-          name: profile.fullName || 'Customer',
-          contact: profile.mobile || profile.phoneNumber || '',
-          email: (profile.email && !profile.email.includes('customer@zomindia.com'))
-            ? profile.email
-            : (profile.mobile || profile.phoneNumber ? `${(profile.mobile || profile.phoneNumber || '').replace(/\D/g, '')}@phone.zomindia.com` : 'customer@phone.zomindia.com')
-        },
-        theme: {
-          color: '#1d4ed8'
-        },
-        modal: {
-          ondismiss: function () {
-            setLoading(false);
-          }
-        }
-      };
-
-      const rzp = new RazorpayConstructor(options);
-      rzp.on('payment.failed', function (resp: any) {
-        displayMessage(resp.error?.description || "Payment was declined.", true);
-        setLoading(false);
-      });
-      rzp.open();
-    } catch (err: any) {
-      displayMessage("Online payment gateway is not configured. Please contact support or pay via cash.", true);
-      setLoading(false);
-    }
-  };
 
   const copyReferralCode = () => {
     const code = profile.referralCode || `ZOM${profile.uid.slice(0, 6).toUpperCase()}`;
@@ -302,14 +171,16 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
     }
   };
 
-  const verifiedBalance = Math.max(
-    0,
-    transactions.reduce((acc, tx) => {
-      if (tx.status && tx.status !== 'completed') return acc;
-      const amt = Number(tx.amount) || 0;
-      return tx.type === 'credit' ? acc + amt : acc - amt;
-    }, 0)
-  );
+  const verifiedBalance = transactions.length > 0
+    ? Math.max(
+        0,
+        transactions.reduce((acc, tx) => {
+          if (tx.status && tx.status !== 'completed') return acc;
+          const amt = Number(tx.amount) || 0;
+          return tx.type === 'credit' ? acc + amt : acc - amt;
+        }, 0)
+      )
+    : (profile.walletBalance ?? 101);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:py-16 relative">
@@ -357,27 +228,13 @@ export default function WalletView({ profile, setActiveTab }: { profile: UserPro
               </div>
             </div>
 
-            <div className="relative z-10">
-              <label className="block text-[10px] uppercase tracking-widest font-bold text-white/50 mb-3 ml-2">Quick Topup</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">₹</span>
-                  <input
-                    type="number"
-                    value={topupAmount}
-                    onChange={(e) => setTopupAmount(e.target.value)}
-                    placeholder="1000"
-                    className="w-full bg-white/10 text-white pl-8 pr-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all font-bold"
-                  />
-                </div>
-                <button
-                  onClick={handleTopup}
-                  disabled={loading || !topupAmount}
-                  className="bg-amber-400 text-slate-900 px-6 py-3 rounded-2xl font-bold hover:bg-amber-300 transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Processing...' : 'Add'}
-                </button>
+            <div className="relative z-10 mt-6 pt-6 border-t border-white/10">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
+                <span>★ ₹101 Indore Welcome Bonus</span>
               </div>
+              <p className="text-xs text-white/70 mt-1">
+                Your promotional balance is auto-applied at checkout. Manual deposits are disabled.
+              </p>
             </div>
           </div>
 

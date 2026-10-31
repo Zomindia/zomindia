@@ -1,12 +1,14 @@
 import { UserProfile } from "../types";
 
 export function buildDualPersonaUserDoc(profile: Partial<UserProfile> & { uid: string }) {
+  const resolvedWalletBalance = profile.walletBalance !== undefined ? profile.walletBalance : 101;
   const customerData = {
     fullName: profile.fullName || profile.displayName || "User",
     email: profile.email || "",
     phoneNumber: profile.phoneNumber || "",
     mobile: profile.mobile || profile.phoneNumber || "",
-    walletBalance: profile.walletBalance !== undefined ? profile.walletBalance : 100,
+    walletBalance: resolvedWalletBalance,
+    welcomeBonusClaimed: true,
     address: profile.address || "",
     gender: profile.gender || "",
     languagePreference: profile.languagePreference || "English",
@@ -33,6 +35,8 @@ export function buildDualPersonaUserDoc(profile: Partial<UserProfile> & { uid: s
 
     return {
       ...profile,
+      walletBalance: resolvedWalletBalance,
+      welcomeBonusClaimed: true,
       isPartner: true,
       currentMode: profile.currentMode || 'partner',
       customerData,
@@ -42,6 +46,8 @@ export function buildDualPersonaUserDoc(profile: Partial<UserProfile> & { uid: s
     const { partnerData, ...rest } = profile;
     return {
       ...rest,
+      walletBalance: resolvedWalletBalance,
+      welcomeBonusClaimed: true,
       isPartner: false,
       currentMode: profile.currentMode || 'customer',
       customerData

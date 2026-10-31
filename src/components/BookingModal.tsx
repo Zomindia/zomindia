@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   collection, 
   Timestamp, 
@@ -889,87 +890,85 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
   const isCustomDate = date !== todayKey && date !== tomorrowKey;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      {/* Dark backdrop */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={handleModalClose}
-        className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs cursor-pointer" 
-      />
-
-      {/* COMPACT ZERO-SCROLL 3-CLICK CHECKOUT SHEET */}
-      <motion.div 
-        initial={{ opacity: 0, y: '100%' }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+  const modalContent = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={handleModalClose}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+    >
+      {/* COMPACT 3-STEP CHECKOUT SHEET */}
+      <div
         onClick={(e) => e.stopPropagation()}
-        className="relative bg-white w-full max-w-lg rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-hidden flex flex-col z-10 border border-slate-100 max-h-[94vh]"
+        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden"
       >
-        {/* Mobile Drag Indicator */}
-        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-2 sm:hidden" />
+        {/* A. STICKY HEADER & ITEM PREVIEW */}
+        <div className="sticky top-0 bg-white z-10 border-b border-slate-100 shrink-0">
+          {/* Mobile Drag Indicator */}
+          <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-2 sm:hidden" />
 
-        {/* Global Error Banner */}
-        {error && (
-          <div className="bg-rose-50 border-b border-rose-200 text-rose-800 py-2 px-4 text-xs font-medium flex justify-between items-center shrink-0">
-            <span className="flex items-center gap-1.5">
-              <AlertCircle size={14} className="text-rose-600 shrink-0" />
-              <span>{error}</span>
-            </span>
-            <button onClick={() => setError(null)} className="p-1 hover:bg-rose-100 rounded text-rose-700 cursor-pointer">
-              <X size={13} />
+          {/* Global Error Banner */}
+          {error && (
+            <div className="bg-rose-50 border-b border-rose-200 text-rose-800 py-2 px-4 text-xs font-medium flex justify-between items-center">
+              <span className="flex items-center gap-1.5">
+                <AlertCircle size={14} className="text-rose-600 shrink-0" />
+                <span>{error}</span>
+              </span>
+              <button onClick={() => setError(null)} className="p-1 hover:bg-rose-100 rounded text-rose-700 cursor-pointer">
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
+          <div className="px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-100">
+                ⚡
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900 tracking-tight truncate">
+                    {service.name || 'Split AC Service'}
+                  </h3>
+                  {service.priceListPDF && (
+                    <a 
+                      href={service.priceListPDF} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                      title="View Price List"
+                    >
+                      <FileText size={13} />
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-0.5">
+                  <span className="font-bold text-slate-900 font-mono">₹{service.basePrice}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="flex items-center gap-1 text-slate-600">
+                    <Clock size={11} className="text-slate-400" />
+                    <span>{service.duration || '2 Hours'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              type="button"
+              onClick={handleModalClose} 
+              className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-2"
+              title="Close Checkout"
+            >
+              <X size={15} />
             </button>
           </div>
-        )}
-
-        {/* A. HEADER & ITEM PREVIEW */}
-        <div className="px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-100">
-              ⚡
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900 tracking-tight truncate">
-                  {service.name || 'Split AC Service'}
-                </h3>
-                {service.priceListPDF && (
-                  <a 
-                    href={service.priceListPDF} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
-                    title="View Price List"
-                  >
-                    <FileText size={13} />
-                  </a>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-0.5">
-                <span className="font-bold text-slate-900 font-mono">₹{service.basePrice}</span>
-                <span className="text-slate-300">•</span>
-                <span className="flex items-center gap-1 text-slate-600">
-                  <Clock size={11} className="text-slate-400" />
-                  <span>{service.duration || '2 Hours'}</span>
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <button 
-            onClick={handleModalClose} 
-            className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-2"
-            title="Close Checkout"
-          >
-            <X size={15} />
-          </button>
         </div>
 
-        {/* MAIN BODY: COMPACT STACK WITHOUT VERTICAL FATIGUE */}
-        <div className="p-3.5 sm:p-4 space-y-3 overflow-y-auto no-scrollbar">
+        {/* MAIN BODY: SCROLLABLE BOOKING STEPS CONTENT */}
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 touch-pan-y"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+        >
 
           {/* B. SINGLE-ROW SMART ADDRESS PILL */}
           <div className="space-y-1.5">
@@ -1377,7 +1376,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         </div>
 
         {/* F. STICKY BOTTOM CTA BAR */}
-        <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-white/95 backdrop-blur-md shrink-0 flex items-center gap-3">
+        <div className="sticky bottom-0 bg-white z-10 border-t border-slate-200 p-4 shrink-0 flex items-center gap-3">
           <div className="shrink-0 text-left">
             <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Total Payable</span>
             <div className="flex items-baseline gap-1.5">
@@ -1388,8 +1387,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             </div>
           </div>
 
-          <motion.button
-            whileTap={{ scale: 0.98 }}
+          <button
+            type="button"
             disabled={loading}
             onClick={handlePrimaryCheckoutClick}
             className="flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm tracking-wide transition-all duration-150 shadow-md hover:brightness-105 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
@@ -1406,9 +1405,9 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             ) : (
               <>Book Service • Pay After Service →</>
             )}
-          </motion.button>
+          </button>
         </div>
-      </motion.div>
+      </div>
 
       {/* Auth Modal if user needs to sign in */}
       <AuthModal
@@ -1436,4 +1435,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
       />
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 }

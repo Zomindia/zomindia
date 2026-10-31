@@ -44,6 +44,14 @@ export function usePullToRefresh({
         return;
       }
 
+      // Do not trigger pull-to-refresh when scrolling inside modals or nested scroll containers
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[role="dialog"], [aria-modal="true"], .overscroll-contain')) {
+        startYRef.current = null;
+        isPullingRef.current = false;
+        return;
+      }
+
       const touch = e.touches[0];
       if (!touch) return;
 

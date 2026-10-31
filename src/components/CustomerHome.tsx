@@ -1443,19 +1443,17 @@ export default function CustomerHome({
           {/* Urban Company-Style View Details Bottom Sheet / Modal */}
           {viewDetailsModalService && (
             <div 
-              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-28 sm:pb-0 bg-slate-900/60 backdrop-blur-xs"
+              role="dialog"
+              aria-modal="true"
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
               onClick={() => setViewDetailsModalService(null)}
             >
-              <motion.div
-                initial={{ opacity: 0, y: 100 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 100 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              <div
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col overflow-hidden relative"
+                className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden"
               >
-                {/* Fixed Top Header */}
-                <div className="flex items-start justify-between gap-4 p-5 sm:p-6 pb-4 border-b border-slate-100 shrink-0">
+                {/* Sticky Top Header */}
+                <div className="sticky top-0 bg-white z-10 flex items-start justify-between gap-4 p-5 sm:p-6 pb-4 border-b border-slate-100 shrink-0">
                   <div className="flex-1">
                     <h3 className="text-xl font-black text-slate-900 leading-tight">
                       {viewDetailsModalService.name}
@@ -1480,7 +1478,10 @@ export default function CustomerHome({
                 </div>
 
                 {/* Scrollable Content Body with smooth overscroll */}
-                <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
+                <div
+                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 touch-pan-y"
+                  style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                >
                   {viewDetailsModalService.imageURL && (
                     <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shrink-0">
                       <img
@@ -1522,7 +1523,7 @@ export default function CustomerHome({
                 </div>
 
                 {/* Sticky / Floating Bottom CTA Action Row - Always 100% visible and clickable */}
-                <div className="sticky bottom-0 z-30 bg-white/98 backdrop-blur-md px-5 py-3.5 sm:px-6 sm:py-4 border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center justify-between gap-4 shrink-0 rounded-b-none sm:rounded-b-3xl">
+                <div className="sticky bottom-0 bg-white z-10 border-t border-slate-100 p-4 flex items-center justify-between gap-4 shrink-0">
                   <div>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                       Price
@@ -1547,7 +1548,7 @@ export default function CustomerHome({
                     Book Now
                   </button>
                 </div>
-              </motion.div>
+              </div>
             </div>
           )}
         </AnimatePresence>
@@ -1727,13 +1728,7 @@ export default function CustomerHome({
       {isScrolled && <div className="h-14 sm:h-16 w-full shrink-0" aria-hidden="true" />}
 
       {/* Main Container */}
-      <motion.div
-        layout="position"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 mt-2.5 sm:mt-3 pb-4 sm:pb-6 relative z-10"
-      >
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 mt-2.5 sm:mt-3 pb-4 sm:pb-6 relative z-10">
         {/* Categories Grid */}
         <motion.section
           layout="position"
@@ -2598,7 +2593,10 @@ export default function CustomerHome({
                 </div>
 
                 {/* Step Carousel Body */}
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 flex flex-col justify-center min-h-[265px]">
+                <div
+                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 touch-pan-y"
+                  style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                >
                   <AnimatePresence mode="wait">
                     {popupWizardStep === 1 && (
                       <motion.div
@@ -2889,7 +2887,7 @@ export default function CustomerHome({
             </div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </div>
 
       {/* Sleek Floating Bottom Pill (Swiggy / Zomato Style) */}
       {hasActiveBooking && !isPillDismissed && activeBooking && (
