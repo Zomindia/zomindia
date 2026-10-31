@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart3, 
@@ -30,6 +30,7 @@ import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, Timestamp
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { useLocationTracking } from '../hooks/useLocationTracking';
 import { signOutUser } from '../services/authService';
+import { playPartnerBookingAlert, stopPartnerBookingAlert, playNotificationPop } from '../services/soundService';
 
 interface Props {
   profile: UserProfile;
@@ -68,6 +69,8 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   const [showPendingAlert, setShowPendingAlert] = useState<boolean>(false);
   const [showKycForm, setShowKycForm] = useState<boolean>(false);
   const [countdownText, setCountdownText] = useState<string>("");
+  const knownActiveBookingIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedInitialBookingsRef = useRef<boolean>(false);
 
   // Active global background service that periodic/live updates coordinate markers in firebase
   const { lastSyncedAt, isTrackingActive } = useLocationTracking(partner?.id, bookings, partner?.availabilityStatus);
@@ -205,6 +208,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
   };
 
   const navigateWithTarget = (screen: any, targetId: string | null = null) => {
+    playNotificationPop();
     if (screen === 'logout' || screen === 'exit') {
       handlePartnerLogout();
       return;
@@ -437,6 +441,24 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
               const timeB = (b.scheduledAt as any)?.seconds || (b.createdAt as any)?.seconds || 0;
               return timeB - timeA;
             });
+
+            // Detect newly assigned incoming active orders and trigger Partner Booking Alert Siren
+            const incomingActiveIds = matchedBookings
+              .filter(b => ['assigned', 'confirmed', 'pending_acceptance', 'on_the_way'].includes((b.status || '').toLowerCase()))
+              .map(b => b.id);
+
+            if (hasLoadedInitialBookingsRef.current) {
+              const hasNewIncomingOrder = incomingActiveIds.some(
+                id => !knownActiveBookingIdsRef.current.has(id)
+              );
+              if (hasNewIncomingOrder) {
+                playPartnerBookingAlert({ repeat: true, maxRepeats: 2, intervalMs: 2200 });
+              }
+            } else {
+              hasLoadedInitialBookingsRef.current = true;
+            }
+            knownActiveBookingIdsRef.current = new Set(incomingActiveIds);
+
             setBookings(matchedBookings);
           },
           (err) => {
@@ -446,6 +468,7 @@ export default function PartnerApp({ profile, initialTab = 'home', targetBooking
         );
 
         return () => {
+          stopPartnerBookingAlert();
           if (typeof unsubAll === "function") unsubAll();
         };
     };

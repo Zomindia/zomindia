@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import { reverseGeocode, isBroadIndoreName } from '../utils/reverseGeocode';
 import DoorstepPinPickerModal from './DoorstepPinPickerModal';
+import { playOrderSuccessSound, playNotificationPop } from '../services/soundService';
+import BookingSuccessAnimation from './animations/BookingSuccessAnimation';
 
 export interface PaymentSuccessData {
   txnId: string;
@@ -260,6 +262,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
   // Loading & error
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmedBookingId, setConfirmedBookingId] = useState<string | null>(null);
 
   // Submissions & Idempotency Refs
   const isSubmittingRef = useRef<boolean>(false);
@@ -861,14 +864,19 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         localStorage.removeItem('activeCoupon');
       } catch (e) {}
 
-      // Show user-friendly toast if available
-      if (typeof (window as any).__showToast === 'function') {
-        (window as any).__showToast(`Booking confirmed for ${service.name}! Tracking service pro in real-time.`);
-      }
+      // Trigger harmonious dual-tone celebration chime
+      playOrderSuccessSound();
 
-      // ECOSYSTEM STATE SYNC: Immediately close drawer and trigger active booking tracker / navigation
-      handleModalClose();
-      onSuccess(bookingId);
+      // Show celebration checkmark + confetti animation briefly before transitioning to tracker
+      setConfirmedBookingId(bookingId);
+      setTimeout(() => {
+        // Show user-friendly toast if available
+        if (typeof (window as any).__showToast === 'function') {
+          (window as any).__showToast(`Booking confirmed for ${service.name}! Tracking service pro in real-time.`);
+        }
+        handleModalClose();
+        onSuccess(bookingId);
+      }, 1500);
 
     } catch (err: any) {
       console.error("Booking submission error:", err);
@@ -902,6 +910,20 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden"
       >
+        {confirmedBookingId ? (
+          <BookingSuccessAnimation
+            title="Booking Confirmed!"
+            subtitle="We have locked your slot and are assigning a verified Indore professional."
+            serviceName={service.name}
+            bookingId={confirmedBookingId}
+            onComplete={() => {
+              const id = confirmedBookingId;
+              handleModalClose();
+              onSuccess(id);
+            }}
+          />
+        ) : (
+          <>
         {/* A. STICKY HEADER & ITEM PREVIEW */}
         <div className="sticky top-0 bg-white z-10 border-b border-slate-100 shrink-0">
           {/* Mobile Drag Indicator */}
@@ -1057,6 +1079,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                           key={loc}
                           type="button"
                           onClick={() => {
+                            playNotificationPop();
                             setAddress(loc);
                             if (LOCALITY_COORDS[loc]) {
                               setCustomerCoords(LOCALITY_COORDS[loc]);
@@ -1103,7 +1126,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
-                onClick={() => setDate(todayKey)}
+                onClick={() => {
+                  playNotificationPop();
+                  setDate(todayKey);
+                }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center border cursor-pointer ${
                   date === todayKey
                     ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
@@ -1115,7 +1141,10 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
 
               <button
                 type="button"
-                onClick={() => setDate(tomorrowKey)}
+                onClick={() => {
+                  playNotificationPop();
+                  setDate(tomorrowKey);
+                }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center border cursor-pointer ${
                   date === tomorrowKey
                     ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
@@ -1175,6 +1204,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
                     disabled={isExpired}
                     onClick={() => {
                       if (!isExpired) {
+                        playNotificationPop();
                         setTime(slot.value);
                         setError(null);
                       }
@@ -1407,6 +1437,8 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
             )}
           </button>
         </div>
+          </>
+        )}
       </div>
 
       {/* Auth Modal if user needs to sign in */}

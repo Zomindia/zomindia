@@ -16,6 +16,7 @@ import { TrackingModal } from "./tracking/TrackingModal";
 import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CORPORATE_LANDLINE_GATEWAY } from "../lib/telephony";
 import { getCancellationSecondsRemaining } from "../utils/cancellation";
+import SearchingPartnerAnimation from "./animations/SearchingPartnerAnimation";
 
 export interface CustomerBookingCardProps {
   booking: Booking;
@@ -508,9 +509,7 @@ export function CustomerBookingCard({
           <>
             {/* Searching / Pending Pro Match State */}
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-                <Sparkles size={16} className="animate-pulse" />
-              </div>
+              <SearchingPartnerAnimation variant="compact" />
               <div className="min-w-0">
                 <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight">
                   Matching Verified Pro...

@@ -38,6 +38,9 @@ import PartnerTrackingMap from "./PartnerTrackingMap";
 import { CustomerPaymentScanner } from "./CustomerPaymentScanner";
 import { CustomerBookingCard } from "./CustomerBookingCard";
 import CancellationModal from "./CancellationModal";
+import BookingSuccessAnimation from "./animations/BookingSuccessAnimation";
+import SearchingPartnerAnimation from "./animations/SearchingPartnerAnimation";
+import EmptyStateIllustration from "./animations/EmptyStateIllustration";
 import {
   formatCategoryShortLabel,
   getCategoryTileStyle,
@@ -2106,23 +2109,13 @@ export default function CustomerDashboard({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white rounded-[32px] p-6 sm:p-10 max-w-sm w-full text-center shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)]"
+              className="bg-white rounded-[32px] max-w-sm w-full text-center shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] overflow-hidden"
             >
-              <div className="w-16 h-16 bg-blue-700 text-white rounded-[24px] flex items-center justify-center mx-auto mb-6 shadow-xl">
-                <CheckCircle2 size={32} />
-              </div>
-              <h3 className="text-xl font-display font-bold text-slate-900 italic mb-2">
-                Confirmed
-              </h3>
-              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-8">
-                {showSuccessModal}
-              </p>
-              <button
-                onClick={() => setShowSuccessModal(null)}
-                className="w-full bg-blue-700 text-white py-4 rounded-xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-800 transition-all shadow-lg active:scale-95"
-              >
-                Acknowledge
-              </button>
+              <BookingSuccessAnimation
+                title="Confirmed"
+                subtitle={showSuccessModal}
+                onComplete={() => setShowSuccessModal(null)}
+              />
             </motion.div>
           </motion.div>
         )}
@@ -2182,14 +2175,14 @@ export default function CustomerDashboard({
           </div>
         </motion.div>
       ) : (
-        <div className="bg-white border-2 border-dashed border-slate-200/80 rounded-[32px] p-8 text-center mb-10 flex flex-col items-center justify-center py-12 max-w-7xl mx-auto shadow-2xs">
-          <Calendar size={32} className="text-slate-300 mb-3" />
-          <p className="text-sm font-extrabold text-slate-600">
-            No active bookings right now.
-          </p>
-          <p className="text-xs text-slate-400 mt-1 font-medium">
-            Your upcoming and in-progress appointments will appear here with live tracking.
-          </p>
+        <div className="mb-10">
+          <EmptyStateIllustration
+            type="bookings"
+            title="No active bookings right now."
+            subtitle="Your upcoming and in-progress appointments will appear here with live tracking."
+            actionLabel={setActiveTab ? "Explore Home Services" : undefined}
+            onAction={setActiveTab ? () => setActiveTab("home") : undefined}
+          />
         </div>
       )}
 
@@ -2526,18 +2519,7 @@ export default function CustomerDashboard({
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-slate-50 border border-dashed border-slate-200 p-6 rounded-2xl text-left">
-                          <div className="inline-flex w-10 h-10 rounded-xl bg-blue-50 items-center justify-center text-blue-600 mb-3 animate-pulse">
-                            <Sparkles size={18} />
-                          </div>
-                          <h5 className="font-bold text-slate-800 leading-tight">
-                            Finding the best technician for you
-                          </h5>
-                          <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                            We are matching your request with active, verified
-                            experts nearby. Your booking schedule is secured.
-                          </p>
-                        </div>
+                        <SearchingPartnerAnimation variant="default" locality="Indore" />
                       )}
                     </div>
 
@@ -3398,12 +3380,11 @@ export default function CustomerDashboard({
           </div>
 
           {filteredPastBookings.length === 0 && (
-            <div className="py-20 text-center bg-slate-50 border border-dashed border-slate-100 rounded-[32px] mt-6">
-              <Search size={28} className="mx-auto text-slate-300 mb-3" />
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                No past matching service history found
-              </p>
-            </div>
+            <EmptyStateIllustration
+              type="history"
+              title="No past matching service history found"
+              subtitle="Completed and archived doorstep appointments will be listed here."
+            />
           )}
 
           {filteredPastBookings.length > 4 &&

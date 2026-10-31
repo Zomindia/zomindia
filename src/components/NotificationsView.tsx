@@ -33,6 +33,8 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { LoadingScreen } from './LoadingIndicator';
 import { formatNotificationTime } from '../utils/formatTime';
 import { NotificationItem as Notification } from '../types';
+import EmptyStateIllustration from './animations/EmptyStateIllustration';
+import { playNotificationPop } from '../services/soundService';
 
 type FilterCategory = 'all' | 'unread' | 'bookings' | 'payments' | 'offers';
 
@@ -470,7 +472,10 @@ export default function NotificationsView({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setFilter(tab.id)}
+                onClick={() => {
+                  playNotificationPop();
+                  setFilter(tab.id);
+                }}
                 className={`px-4 py-2 rounded-2xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
                   isSelected
                     ? `${tab.activeGradient} ${tab.activeShadow} ${tab.activeRing} scale-[1.02]`
@@ -492,69 +497,33 @@ export default function NotificationsView({
         {/* Notification Cards List or Vibrant Empty State */}
         <div className="space-y-3.5">
           {filteredNotifications.length === 0 ? (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="bg-white/95 backdrop-blur-md rounded-3xl p-8 sm:p-12 border border-indigo-100/80 shadow-lg shadow-indigo-100/40 text-center space-y-4 max-w-lg mx-auto relative overflow-hidden"
-            >
-              {/* Background ambient decorative glow */}
-              <div className="absolute -right-12 -top-12 w-36 h-36 bg-indigo-200/30 rounded-full blur-2xl pointer-events-none" />
-              <div className="absolute -left-12 -bottom-12 w-36 h-36 bg-sky-200/30 rounded-full blur-2xl pointer-events-none" />
-
-              <div className="relative">
-                <div className="w-18 h-18 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-white rounded-3xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-200/70 ring-4 ring-white">
-                  {filter === 'all' ? (
-                    <Bell size={32} className="animate-bounce" />
-                  ) : filter === 'unread' ? (
-                    <CheckCircle2 size={32} />
-                  ) : filter === 'bookings' ? (
-                    <PackagePlus size={32} />
-                  ) : filter === 'payments' ? (
-                    <CreditCard size={32} />
-                  ) : (
-                    <Sparkles size={32} />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                  {filter === 'unread' 
-                    ? 'All Caught Up! 🎉' 
-                    : filter === 'bookings'
-                    ? 'No Booking Alerts Yet'
-                    : filter === 'payments'
-                    ? 'No Payment Alerts'
-                    : filter === 'offers'
-                    ? 'No Active Offers Here'
-                    : 'Your Inbox is Sparkling Clean! ✨'}
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-600 font-medium max-w-xs mx-auto mt-1.5 leading-relaxed">
-                  {filter === 'unread' 
-                    ? 'You have read all your notifications. Stay tuned for real-time service updates!'
-                    : filter === 'bookings'
-                    ? 'When you schedule an AC repair, electrician, or cleaning job, updates appear right here.'
-                    : filter === 'payments'
-                    ? 'Your instant payment receipts, invoices and cashback rewards will appear here.'
-                    : filter === 'offers'
-                    ? 'Check back soon for exclusive seasonal discounts and coupon drops!'
-                    : 'We will notify you immediately when your technician is on the way or your service is updated.'}
-                </p>
-              </div>
-
-              {filter !== 'all' && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setFilter('all')}
-                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-200 transition-all cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <span>View All Notifications ({notifications.length})</span>
-                    <ArrowRight size={13} />
-                  </button>
-                </div>
-              )}
-            </motion.div>
+            <EmptyStateIllustration
+              type="notifications"
+              title={
+                filter === 'unread'
+                  ? 'All Caught Up! 🎉'
+                  : filter === 'bookings'
+                  ? 'No Booking Alerts Yet'
+                  : filter === 'payments'
+                  ? 'No Payment Alerts'
+                  : filter === 'offers'
+                  ? 'No Active Offers Here'
+                  : 'Your Inbox is Sparkling Clean! ✨'
+              }
+              subtitle={
+                filter === 'unread'
+                  ? 'You have read all your notifications. Stay tuned for real-time service updates!'
+                  : filter === 'bookings'
+                  ? 'When you schedule an AC repair, electrician, or cleaning job, updates appear right here.'
+                  : filter === 'payments'
+                  ? 'Your instant payment receipts, invoices and cashback rewards will appear here.'
+                  : filter === 'offers'
+                  ? 'Check back soon for exclusive seasonal discounts and coupon drops!'
+                  : 'We will notify you immediately when your technician is on the way or your service is updated.'
+              }
+              actionLabel={filter !== 'all' ? `View All Notifications (${notifications.length})` : undefined}
+              onAction={filter !== 'all' ? () => setFilter('all') : undefined}
+            />
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredNotifications.map((n) => {

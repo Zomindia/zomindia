@@ -158,6 +158,7 @@ export default defineConfig(({ mode }) => {
         'use-sync-external-store'
       ],
     },
+    assetsInclude: ['**/*.mp3', '**/*.wav', '**/*.woff2', '**/*.ttf'],
     build: {
       outDir: 'dist',
       emptyOutDir: true,
