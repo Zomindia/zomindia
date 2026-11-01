@@ -3316,6 +3316,16 @@ Structure:
     app.use(express.static(distPath));
     app.get('*all', (req, res) => {
       const targetHtml = existsSync(distIndexHtml) ? distIndexHtml : rootIndexHtml;
+      if (req.path.toLowerCase().startsWith('/partner')) {
+        try {
+          let htmlContent = readFileSync(targetHtml, "utf-8");
+          htmlContent = htmlContent
+            .replace(/href="\/manifest\.(json|webmanifest)"/g, 'href="/partner-manifest.json"')
+            .replace(/name="theme-color"\s+content="#0a2540"/g, 'name="theme-color" content="#059669"');
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.status(200).send(htmlContent);
+        } catch {}
+      }
       res.sendFile(targetHtml, (err) => {
         if (err && !res.headersSent) {
           res.status(200).send(readFileSync(rootIndexHtml, "utf-8"));

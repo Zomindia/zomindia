@@ -639,6 +639,19 @@ export default function App() {
         }
       }
       localStorage.setItem('zomindia_last_active_tab', activeTab);
+
+      const isPartnerView =
+        activeTab === 'partner' ||
+        activeTab === 'partner-signup' ||
+        window.location.pathname.toLowerCase().startsWith('/partner');
+      const manifestEl = document.querySelector('link[rel="manifest"]');
+      if (manifestEl) {
+        manifestEl.setAttribute('href', isPartnerView ? '/partner-manifest.json' : '/manifest.json');
+      }
+      const themeEl = document.querySelector('meta[name="theme-color"]');
+      if (themeEl) {
+        themeEl.setAttribute('content', isPartnerView ? '#059669' : '#0a2540');
+      }
     }
   }, [activeTab]);
 

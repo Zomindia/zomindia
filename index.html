@@ -37,10 +37,24 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ZomIndia" />
     
-    <link rel="manifest" href="/manifest.json" />
+    <link id="app-manifest" rel="manifest" href="/manifest.json" />
     <meta name="msapplication-TileImage" content="/pwa-512x512.png?v=2" />
     <meta name="msapplication-TileColor" content="#0a2540" />
-    <meta name="theme-color" content="#0a2540" />
+    <meta id="app-theme-color" name="theme-color" content="#0a2540" />
+    <script>
+      (function () {
+        try {
+          var path = (window.location.pathname || "").toLowerCase();
+          var hash = (window.location.hash || "").toLowerCase();
+          if (path.indexOf("/partner") === 0 || hash.indexOf("partner") !== -1) {
+            var manifestLink = document.getElementById("app-manifest") || document.querySelector('link[rel="manifest"]');
+            if (manifestLink) manifestLink.setAttribute("href", "/partner-manifest.json");
+            var themeMeta = document.getElementById("app-theme-color") || document.querySelector('meta[name="theme-color"]');
+            if (themeMeta) themeMeta.setAttribute("content", "#059669");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="google-site-verification" content="m0n1UWPv2WgIuqpu8tjyTQgTORGFZZ9Z0V0etKvlPNQ" />
 
     <!-- Schema Markup for Google Search Logo & Brand Recognition -->

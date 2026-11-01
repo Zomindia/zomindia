@@ -143,7 +143,17 @@ jobs:
           }
           EOF
 
-          # 7. Create AndroidManifest.xml (Loads https://zomindia.com/partner)
+          # 7. Create strings.xml & AndroidManifest.xml (Loads https://zomindia.com/partner with Digital Asset Links)
+          mkdir -p app/src/main/res/values
+          cat << 'EOF' > app/src/main/res/values/strings.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="asset_statements">
+                  [{\"include\": \"https://zomindia.com/.well-known/assetlinks.json\"}]
+              </string>
+          </resources>
+          EOF
+
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -159,6 +169,10 @@ jobs:
                   android:icon="@drawable/ic_launcher"
                   android:label="Zomindia Partner"
                   android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+                  <meta-data
+                      android:name="asset_statements"
+                      android:resource="@string/asset_statements" />
 
                   <activity
                       android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
