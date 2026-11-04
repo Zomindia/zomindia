@@ -298,8 +298,8 @@ export function resolveAndSubscribeProfile(
           const txSnap = await getDocs(query(collection(db, 'walletTransactions'), where('userId', '==', user.uid)));
           const allTxs = txSnap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, any>) }));
           const corruptTxs = allTxs.filter(tx => isCorruptMockWalletTx(tx));
-          for (const badTx of corruptTxs) {
-            deleteDoc(doc(db, 'walletTransactions', badTx.id)).catch(() => {});
+          if (corruptTxs.length > 0) {
+            console.warn(`[authService] Filtered ${corruptTxs.length} invalid wallet transaction(s) in memory.`);
           }
 
           const genuineTxs = allTxs.filter(

@@ -2117,18 +2117,22 @@ If you have any billing questions, or if your refund is delayed, please email us
                       id="nav-green-greeting"
                     >
                       <div className="flex flex-col items-start justify-center leading-none" id="portal-header-greeter">
-                        <span className="text-[10px] font-medium text-slate-400 leading-tight">
-                          नमस्ते,
-                        </span>
-                        <span className="text-[10px] font-extrabold text-slate-600 truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
-                          {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
-                        </span>
+                        {activeTab !== 'profile' && (
+                          <>
+                            <span className="text-slate-500 text-xs font-medium leading-tight">
+                              नमस्ते,
+                            </span>
+                            <span className="text-emerald-600 font-bold text-xs truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
+                              {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
+                            </span>
+                          </>
+                        )}
                         <span 
                           onClick={(e) => {
                             e.stopPropagation();
                             setIsCitySelectorOpen(true);
                           }}
-                          className="text-slate-600 hover:text-emerald-600 active:scale-95 text-[10px] font-extrabold tracking-widest leading-none mt-1 uppercase flex items-center gap-0.5 cursor-pointer transition-all duration-200"
+                          className={`text-slate-600 hover:text-emerald-600 active:scale-95 text-[10px] font-extrabold tracking-widest leading-none ${activeTab !== 'profile' ? 'mt-1' : ''} uppercase flex items-center gap-0.5 cursor-pointer transition-all duration-200`}
                           title="Click to change city"
                         >
                           📍 INDORE
@@ -2147,15 +2151,17 @@ If you have any billing questions, or if your refund is delayed, please email us
 
                   {/* Mobile Only: Greeting grouped directly adjacent to Indore city pill and Avatar */}
                   <div className="flex md:hidden items-center gap-2.5 ml-2.5 sm:ml-4 select-none min-w-0">
-                    {/* Greeting Stack */}
-                    <div className="flex flex-col items-start justify-center leading-none min-w-0">
-                      <span className="text-[10px] font-medium text-slate-400 leading-tight">
-                        नमस्ते,
-                      </span>
-                      <span className="text-[9px] font-extrabold text-slate-600 truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
-                        {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
-                      </span>
-                    </div>
+                    {/* Greeting Stack - Hidden on Profile screen */}
+                    {activeTab !== 'profile' && (
+                      <div className="flex flex-col items-start justify-center leading-none min-w-0">
+                        <span className="text-slate-500 text-[10px] sm:text-xs font-medium leading-tight">
+                          नमस्ते,
+                        </span>
+                        <span className="text-emerald-600 font-bold text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-[160px] leading-tight mt-0.5">
+                          {profile?.displayName || profile?.fullName || profile?.customerData?.fullName || user?.displayName || "User"}
+                        </span>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => setIsCitySelectorOpen(true)}

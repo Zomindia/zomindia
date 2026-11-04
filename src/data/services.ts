@@ -1,5 +1,5 @@
 import { Category, Service } from '../types';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 /**
@@ -486,6 +486,13 @@ export const healFirestoreCatalogIfNeeded = async (
   rawCategories: Array<Category & Record<string, any>>,
   rawServices: Array<Partial<Service> & Record<string, any>>
 ): Promise<void> => {
+  const currentUser = auth.currentUser;
+  const isAdmin =
+    Boolean(currentUser?.email) &&
+    (currentUser!.email!.toLowerCase().trim() === 'sarthakwebtech@gmail.com' ||
+      currentUser!.email!.toLowerCase().trim() === 'sarthak.webtech@gmail.com');
+  if (!isAdmin) return;
+
   if (hasAttemptedCatalogHeal) return;
   hasAttemptedCatalogHeal = true;
 

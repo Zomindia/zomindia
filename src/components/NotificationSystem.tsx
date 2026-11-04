@@ -98,16 +98,28 @@ export default function NotificationSystem({ onNavigate }: Props) {
       collection(db, 'notifications'),
       where('userId', '==', user.uid),
       where('read', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(5)
+      limit(10)
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
       if (!isMounted) return;
-      const newNotifications = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as any));
+      const newNotifications = snap.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as any))
+        .sort((a, b) => {
+          const timeB =
+            b.createdAt?.toMillis?.() ||
+            (typeof b.createdAt?.seconds === 'number' ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime()) ||
+            0;
+          const timeA =
+            a.createdAt?.toMillis?.() ||
+            (typeof a.createdAt?.seconds === 'number' ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime()) ||
+            0;
+          return timeB - timeA;
+        })
+        .slice(0, 5);
       
       // Filter out notifications we've already seen in this session to avoid double-notifying
       setNotifications(prev => {
@@ -137,7 +149,7 @@ export default function NotificationSystem({ onNavigate }: Props) {
       });
     }, (err) => {
       if (!isMounted) return;
-      if (err.code === 'permission-denied') return;
+      if (err.code === 'permission-denied' || err.code === 'failed-precondition') return;
       handleFirestoreError(err, OperationType.LIST, 'notifications');
     });
 

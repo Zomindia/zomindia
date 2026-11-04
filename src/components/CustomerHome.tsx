@@ -11,7 +11,7 @@ import {
   Timestamp,
   addDoc,
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { LogoIcon } from "./BrandLogo";
 import {
   Category,
@@ -114,6 +114,15 @@ const CONSOLIDATED_OFFERS = [
 ];
 
 const SAMPLE_CATEGORIES: Category[] = DEFAULT_CATEGORIES;
+
+const SEARCH_PHRASES = [
+  "Search 'Split AC Jet Servicing'...",
+  "Search 'Washing machine repair in Vijay Nagar'...",
+  "Search 'RO Purifier filter replacement'...",
+  "Search 'Double door fridge cooling repair'...",
+  "Search 'Deep home cleaning in Indore'...",
+  "Search 'Window AC gas refilling'...",
+];
 
 export const formatCategoryShortLabel = (name: string): string => {
   if (!name) return "";
@@ -444,6 +453,45 @@ export default function CustomerHome({
     }
   }, [initialCategoryId, allCategories]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState(SEARCH_PHRASES[0]);
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [isDeletingPhrase, setIsDeletingPhrase] = useState(false);
+
+  useEffect(() => {
+    if (searchQuery.trim().length > 0 || isSearchFocused) {
+      return;
+    }
+
+    const currentFullPhrase = SEARCH_PHRASES[phraseIndex % SEARCH_PHRASES.length];
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    if (!isDeletingPhrase && animatedPlaceholder === currentFullPhrase) {
+      timeoutId = setTimeout(() => {
+        setIsDeletingPhrase(true);
+      }, 1800);
+    } else if (isDeletingPhrase && animatedPlaceholder === "Search '") {
+      setIsDeletingPhrase(false);
+      setPhraseIndex((prev) => (prev + 1) % SEARCH_PHRASES.length);
+    } else if (isDeletingPhrase && animatedPlaceholder.length === 0) {
+      setIsDeletingPhrase(false);
+      setPhraseIndex((prev) => (prev + 1) % SEARCH_PHRASES.length);
+    } else {
+      const nextText = isDeletingPhrase
+        ? currentFullPhrase.slice(0, Math.max(0, animatedPlaceholder.length - 1))
+        : currentFullPhrase.slice(0, animatedPlaceholder.length + 1);
+
+      const speed = isDeletingPhrase ? 28 : 55;
+      timeoutId = setTimeout(() => {
+        setAnimatedPlaceholder(nextText);
+      }, speed);
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [animatedPlaceholder, isDeletingPhrase, phraseIndex, searchQuery, isSearchFocused]);
+
   const [categoryTypeTab, setCategoryTypeTab] = useState<
     "All" | "Home" | "Professional" | "Repair"
   >("All");
@@ -504,9 +552,8 @@ export default function CustomerHome({
 
   const hasActiveBooking = Boolean(
     activeBooking &&
-      ["assigned", "on_the_way", "arrived", "in_progress"].includes(
-        (activeBooking.status || "").toLowerCase()
-      )
+      Boolean(activeBooking.partnerId || (activeBooking as any).assignedPartnerId) &&
+      (activeBooking.status || "").toLowerCase() === "on_the_way"
   );
   const isPillVisible = hasActiveBooking && !isPillDismissed;
 
@@ -626,19 +673,29 @@ export default function CustomerHome({
           const partnerData = partnerDoc.data();
           const userDoc = await getDoc(doc(db, "users", partnerData.userId));
           const userData = userDoc.data();
-          setBookingPartner({
-            name:
-              userData?.displayName ||
-              partnerData.companyName ||
-              "Amit Singh",
-            id: activeBooking.partnerId,
-            phone:
-              userData?.phoneNumber ||
-              userData?.mobile ||
-              partnerData?.phoneNumber ||
-              (activeBooking as any).partnerPhone ||
-              "",
-          });
+          const resolvedPartnerName =
+            userData?.displayName ||
+            userData?.fullName ||
+            partnerData.companyName ||
+            partnerData.fullName ||
+            (activeBooking as any).partnerName ||
+            "";
+          if (resolvedPartnerName) {
+            setBookingPartner({
+              name: resolvedPartnerName,
+              id: activeBooking.partnerId,
+              phone:
+                userData?.phoneNumber ||
+                userData?.mobile ||
+                partnerData?.phoneNumber ||
+                (activeBooking as any).partnerPhone ||
+                "",
+            });
+          } else {
+            setBookingPartner(null);
+          }
+        } else {
+          setBookingPartner(null);
         }
       } catch (e) {
         console.error("Error fetching booking partner:", e);
@@ -675,12 +732,6 @@ export default function CustomerHome({
 
     const processBookings = () => {
       if (!isMounted) return;
-      const pillStatuses = [
-        "assigned",
-        "on_the_way",
-        "arrived",
-        "in_progress",
-      ];
       const allDocs = Array.from(bookingsMap.values());
       allDocs.sort((a, b) => {
         const timeA = a.createdAt?.seconds || 0;
@@ -688,8 +739,10 @@ export default function CustomerHome({
         return timeB - timeA;
       });
 
-      const activePillBooking = allDocs.find((b) =>
-        pillStatuses.includes((b.status || "").toLowerCase())
+      const activePillBooking = allDocs.find(
+        (b) =>
+          (b.status || "").toLowerCase() === "on_the_way" &&
+          Boolean(b.partnerId || (b as any).assignedPartnerId)
       );
       setActiveBooking(activePillBooking || null);
     };
@@ -830,10 +883,24 @@ export default function CustomerHome({
     );
     setAllServices(normalized);
 
-    if (rawFirestoreCategories.length > 0 || rawFirestoreServices.length > 0) {
+    const currentEmail = (
+      auth.currentUser?.email ||
+      profile?.email ||
+      ""
+    )
+      .toLowerCase()
+      .trim();
+    const isAdminUser =
+      currentEmail === "sarthakwebtech@gmail.com" ||
+      profile?.role === "admin";
+
+    if (
+      isAdminUser &&
+      (rawFirestoreCategories.length > 0 || rawFirestoreServices.length > 0)
+    ) {
       healFirestoreCatalogIfNeeded(rawFirestoreCategories, rawFirestoreServices);
     }
-  }, [rawFirestoreServices, rawFirestoreCategories, allCategories]);
+  }, [rawFirestoreServices, rawFirestoreCategories, allCategories, profile?.email, profile?.role]);
 
   useEffect(() => {
     const handlePullRefresh = async () => {
@@ -1518,8 +1585,10 @@ export default function CustomerHome({
                 type="text"
                 inputMode="text"
                 enterKeyHint="search"
-                placeholder="Search AC, RO, Fridge, Washing Machine..."
+                placeholder={searchQuery ? "" : animatedPlaceholder}
                 value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 w-full min-w-0 py-2 bg-transparent focus:outline-none text-slate-800 font-bold text-xs sm:text-base placeholder:text-slate-400 placeholder:font-medium truncate"
               />
@@ -2778,8 +2847,13 @@ export default function CustomerHome({
         </AnimatePresence>
       </div>
 
-      {/* Sleek Floating Bottom Pill (Swiggy / Zomato Style) */}
-      {hasActiveBooking && !isPillDismissed && activeBooking && (
+      {/* Sleek Floating Bottom Pill (Swiggy / Zomato Style) - Only for live 'on_the_way' bookings with an authentic partner */}
+      {hasActiveBooking &&
+        !isPillDismissed &&
+        activeBooking &&
+        (activeBooking.status || "").toLowerCase() === "on_the_way" &&
+        Boolean(activeBooking.partnerId || (activeBooking as any).assignedPartnerId) &&
+        Boolean(bookingPartner?.name || (activeBooking as any).partnerName) && (
         <div className="fixed bottom-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-40 mx-auto pointer-events-none">
           <div className="pointer-events-auto bg-white/80 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/10 rounded-2xl p-3 flex items-center justify-between gap-2.5 transition-all animate-in slide-in-from-bottom duration-300">
             {/* Left Section: Live Status & Partner Info */}
@@ -2788,15 +2862,7 @@ export default function CustomerHome({
               className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
             >
               <div className="relative w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                <span className="text-base leading-none select-none">
-                  {activeBooking.status === "on_the_way"
-                    ? "🛵"
-                    : activeBooking.status === "arrived"
-                      ? "📍"
-                      : activeBooking.status === "in_progress"
-                        ? "🔧"
-                        : "👨‍🔧"}
-                </span>
+                <span className="text-base leading-none select-none">🛵</span>
                 <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white" />
@@ -2806,24 +2872,19 @@ export default function CustomerHome({
               <div className="min-w-0 flex-1 text-left">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-slate-900 truncate">
-                    {activeBooking.status === "on_the_way"
-                      ? "Partner on the way"
-                      : activeBooking.status === "arrived"
-                        ? "Partner at doorstep"
-                        : activeBooking.status === "in_progress"
-                          ? "Service in progress"
-                          : "Partner assigned"}
+                    Partner on the way
                   </span>
-                  {(activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp) &&
-                    activeBooking.status !== "in_progress" && (
-                      <span className="shrink-0 bg-slate-100 border border-slate-200 text-slate-800 font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-md">
-                        OTP: {activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp}
-                      </span>
-                    )}
+                  {Boolean(activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp) && (
+                    <span className="shrink-0 bg-slate-100 border border-slate-200 text-slate-800 font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-md">
+                      OTP: {activeBooking.serviceOtp || (activeBooking as any).startOtp || (activeBooking as any).otp}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">
-                  {bookingPartner?.name || (activeBooking as any).partnerName || "Amit Singh"} •{" "}
-                  {bookingService?.name || (activeBooking as any).serviceName || "RO Water Purifier Repair"}
+                  {bookingPartner?.name || (activeBooking as any).partnerName}
+                  {(bookingService?.name || (activeBooking as any).serviceName)
+                    ? ` • ${bookingService?.name || (activeBooking as any).serviceName}`
+                    : ""}
                 </p>
               </div>
             </div>
