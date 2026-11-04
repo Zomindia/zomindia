@@ -1373,7 +1373,7 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
     const isCompletionStep = false;
     const finalStatus = 'in_progress';
 
-    // Validate 4-digit Start OTP against booking fields or fallback '6330'
+    // Validate 4-digit Start OTP against authentic booking OTP fields
     const cleanedInput = otpInput.trim();
     const explicitOtp = (
       bookingForOTP?.serviceOtp ||
@@ -1382,11 +1382,8 @@ export default function PartnerJobs({ partner, bookings, initialExpandedBookingI
       (bookingForOTP as any)?.otp ||
       ''
     ).toString().trim();
-    const numericIdOtp = bookingForOTP?.id
-      ? (parseInt(bookingForOTP.id.replace(/\D/g, '').slice(-4), 10) || 6330).toString().padStart(4, '0')
-      : '6330';
 
-    const validOtps = new Set([explicitOtp, numericIdOtp, '6330'].filter(v => v && v.length === 4));
+    const validOtps = new Set([explicitOtp].filter(v => v && v.length === 4));
     const isServiceOtpMatch = validOtps.has(cleanedInput);
 
     if (!isServiceOtpMatch) {

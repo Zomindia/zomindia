@@ -182,7 +182,15 @@ export function CustomerBookingCard({
     rawStatus === "pro_en_route";
   const isAssigned = rawStatus === "assigned" || rawStatus === "confirmed";
 
-  const hasPartner = !!(booking.partnerId || partnerUser);
+  const hasPartner = Boolean(
+    booking.partnerId || (booking as any).assignedPartnerId
+  );
+
+  const canTrackLive =
+    Boolean(booking.partnerId || (booking as any).assignedPartnerId) &&
+    isOnTheWay &&
+    !isCompleted &&
+    !isCancelled;
 
   const isSearchingOrPending =
     !hasPartner &&
@@ -202,19 +210,15 @@ export function CustomerBookingCard({
       rawStatus === "undefined"
     );
 
-  // Dynamic OTP calculation
-  const otp =
+  // Authentic OTP only — no hardcoded "6330" fallback
+  const otp: string | null =
     propOtpCode ||
     booking.serviceOtp ||
     booking.startOTP ||
     (booking as any).startOtp ||
     (booking as any).otp ||
     (booking as any).completionOtp ||
-    (booking.id
-      ? (parseInt(booking.id.replace(/\D/g, "").slice(-4), 10) || 6330)
-          .toString()
-          .padStart(4, "0")
-      : "6330");
+    null;
 
   const isOtpRelevantStatus =
     ["assigned", "confirmed", "on_the_way", "in_progress", "accepted", "arrived"].includes(rawStatus) ||
@@ -233,14 +237,29 @@ export function CustomerBookingCard({
   const scheduleInfo = formatBookingSchedule(booking.scheduledAt || rawDate);
   const slotSubtext = `${scheduleInfo.dateLabel || "Today"}, ${scheduleInfo.timeSlot || rawTime || "01:00 PM – 02:00 PM"} • Booking #${bookingShortCode}`;
 
-  // Technician details
-  const partnerName =
+  // Authentic Technician details — no "Amit Singh" or 4.9 fallbacks
+  const partnerName: string | null =
     partnerUser?.displayName ||
-    (booking as any).partnerName ||
+    partnerUser?.fullName ||
+    partnerDetail?.displayName ||
+    partnerDetail?.fullName ||
+    booking.partnerName ||
+    (booking as any).assignedPartnerName ||
     (booking as any).assignedPartner?.name ||
-    "Amit Singh";
-  const techFirstName = (partnerName || "Amit").split(" ")[0];
-  const partnerRating = partnerDetail?.rating || 4.9;
+    null;
+  const techFirstName = partnerName ? partnerName.split(" ")[0] : null;
+  const rawPartnerRating =
+    partnerDetail?.rating ??
+    (partnerUser as any)?.rating ??
+    (booking as any).partnerRating ??
+    (booking as any).assignedPartner?.rating ??
+    null;
+  const partnerRating: number | null =
+    typeof rawPartnerRating === "number" &&
+    !isNaN(rawPartnerRating) &&
+    rawPartnerRating > 0
+      ? rawPartnerRating
+      : null;
   const partnerPhoto =
     (booking as any).assignedPartner?.profileImage ||
     (booking as any).assignedPartner?.photoURL ||
@@ -354,7 +373,7 @@ export function CustomerBookingCard({
             Connecting Secure Call...
           </h4>
           <p className="text-slate-600 text-[11px] max-w-xs font-medium">
-            Privacy shield active. Connecting safely to {partnerName}.
+            Privacy shield active. Connecting safely to {partnerName || "your technician"}.
           </p>
         </div>
       )}
@@ -393,7 +412,7 @@ export function CustomerBookingCard({
             </span>
           )}
 
-          {hasPartner && isAssigned && (
+          {hasPartner && isAssigned && !isOnTheWay && !isArrived && !isInProgress && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-600 shrink-0" />
               <span>👤 Pro Assigned</span>
@@ -422,116 +441,138 @@ export function CustomerBookingCard({
       </div>
 
       {/* B. Technician & Quick Actions Strip */}
-      <div className="flex items-center justify-between gap-3 pt-1">
+      <div className="flex flex-col gap-2.5 pt-1">
         {hasPartner ? (
           <>
-            {/* Left: Technician Avatar + Name + Rating */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200/80 shrink-0 flex items-center justify-center">
-                {partnerPhoto ? (
-                  <img
-                    src={partnerPhoto}
-                    alt={partnerName}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <span className="font-bold text-slate-600 text-xs uppercase">
-                    {techFirstName.slice(0, 2)}
-                  </span>
-                )}
-              </div>
-              <div className="min-w-0">
-                <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight truncate">
-                  {partnerName}
-                </h4>
-                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 mt-0.5">
-                  <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />
-                  <span>{partnerRating.toFixed(1)} ★ Verified Pro</span>
+            <div className="flex items-center justify-between gap-3">
+              {/* Left: Technician Avatar + Name + Rating */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200/80 shrink-0 flex items-center justify-center">
+                  {partnerPhoto ? (
+                    <img
+                      src={partnerPhoto}
+                      alt={partnerName || "Technician"}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="font-bold text-slate-600 text-xs uppercase">
+                      {(techFirstName || "PR").slice(0, 2)}
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  {partnerName && (
+                    <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight truncate">
+                      {partnerName}
+                    </h4>
+                  )}
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 mt-0.5">
+                    {partnerRating !== null ? (
+                      <>
+                        <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />
+                        <span>{partnerRating.toFixed(1)} ★ Verified Pro</span>
+                      </>
+                    ) : (
+                      <span>Verified Service Professional</span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right: Quick Action Buttons (Call + Track Live) */}
-            <div className="flex items-center gap-2 shrink-0">
-              {!isCompleted && !isCancelled && (
-                <button
-                  type="button"
-                  onClick={handleCallClick}
-                  className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                  title={`Call ${partnerName}`}
-                >
-                  <Phone size={12} className="text-emerald-600" />
-                  <span>Call</span>
-                </button>
-              )}
-
-              {!isCompleted && !isCancelled && (
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreenTrackingOpen(true)}
-                  className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                  title="Track Live"
-                >
-                  <Navigation size={12} />
-                  <span>Track Live →</span>
-                </button>
-              )}
-
-              {isCompleted && (
-                <>
+              {/* Right: Quick Action Buttons (Call + Track Live + Cancel) */}
+              <div className="flex items-center gap-2 shrink-0">
+                {!isCompleted && !isCancelled && (
                   <button
                     type="button"
-                    disabled={isGeneratingInvoice}
-                    onClick={handleDownloadInvoice}
-                    className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Download Bill"
+                    onClick={handleCallClick}
+                    className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    title={partnerName ? `Call ${partnerName}` : "Call Technician"}
                   >
-                    <FileText size={12} className="text-slate-500" />
-                    <span>Bill</span>
+                    <Phone size={12} className="text-emerald-600" />
+                    <span>Call</span>
                   </button>
+                )}
 
-                  {onBookAgain && service && (
+                {Boolean(booking.partnerId || (booking as any).assignedPartnerId) &&
+                  isOnTheWay &&
+                  !isCompleted &&
+                  !isCancelled && (
                     <button
                       type="button"
-                      onClick={() => onBookAgain(service)}
+                      onClick={() => setIsFullscreenTrackingOpen(true)}
                       className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      title="Track Live"
                     >
-                      <RotateCcw size={12} />
-                      <span>Book Again</span>
+                      <Navigation size={12} />
+                      <span>Track Live →</span>
                     </button>
                   )}
-                </>
-              )}
+
+                {!isCompleted && !isCancelled && !isInProgress && (
+                  <button
+                    type="button"
+                    onClick={handleCancelBooking}
+                    className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 transition-all cursor-pointer active:scale-95"
+                    title="Cancel Booking"
+                  >
+                    Cancel
+                  </button>
+                )}
+
+                {isCompleted && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isGeneratingInvoice}
+                      onClick={handleDownloadInvoice}
+                      className="py-1.5 px-3 rounded-full text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="Download Bill"
+                    >
+                      <FileText size={12} className="text-slate-500" />
+                      <span>Bill</span>
+                    </button>
+
+                    {onBookAgain && service && (
+                      <button
+                        type="button"
+                        onClick={() => onBookAgain(service)}
+                        className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Book Again</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Assigned / Confirmed but NOT on_the_way notice */}
+            {isAssigned && !isOnTheWay && !isArrived && !isInProgress && !isCompleted && !isCancelled && (
+              <div className="bg-sky-50/70 border border-sky-100 rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-xs text-sky-900 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+                <span className="truncate">
+                  Technician Assigned: {partnerName || "Verified Technician"} • Starts journey near your slot time
+                </span>
+              </div>
+            )}
           </>
         ) : (
-          <>
-            {/* Searching / Pending Pro Match State */}
+          /* Searching / Pending Pro Match State — Strictly NO Track Live Button */
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <SearchingPartnerAnimation variant="compact" />
-              <div className="min-w-0">
-                <h4 className="font-bold text-xs sm:text-sm text-slate-900 leading-tight">
-                  Matching Verified Pro...
-                </h4>
-                <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
-                  Assigning the nearest technician in your area
+              <div className="min-w-0 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 truncate">
+                  Matching verified technician near you...
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsFullscreenTrackingOpen(true)}
-                className="py-1.5 px-3.5 rounded-full text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                title="Track Live"
-              >
-                <Navigation size={12} />
-                <span>Track Live →</span>
-              </button>
-
-              {!isCompleted && !isCancelled && (
+            {!isCompleted && !isCancelled && (
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={handleCancelBooking}
@@ -540,14 +581,14 @@ export function CustomerBookingCard({
                 >
                   Cancel
                 </button>
-              )}
-            </div>
-          </>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Live Mini Map Preview for Active Partner Bookings */}
-      {hasPartner && !isCompleted && !isCancelled && (isOnTheWay || isAssigned || isArrived || isInProgress) && (
+      {/* Live Mini Map Preview ONLY when partner is assigned and on_the_way */}
+      {canTrackLive && (
         <PartnerTrackingMap
           variant="mini"
           heightClassName="h-40 sm:h-44"
@@ -564,7 +605,7 @@ export function CustomerBookingCard({
       )}
 
       {/* C. Sleek Human OTP Pill */}
-      {showServiceOtpBadge && (
+      {showServiceOtpBadge && otp && (
         <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
             <span className="text-sm">🔒</span>
@@ -574,7 +615,7 @@ export function CustomerBookingCard({
             </span>
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            Share this code with {techFirstName} once he arrives at your doorstep.
+            Share this code with {techFirstName || "your technician"} once he arrives at your doorstep.
           </p>
         </div>
       )}

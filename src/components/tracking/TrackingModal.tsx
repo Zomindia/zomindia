@@ -204,22 +204,6 @@ export function isValidPartnerGps(
   return true;
 }
 
-/**
- * Computes realistic road-grid approach coordinate (~1.4 km from customer's Level-2 doorstep)
- * when hardware GPS is absent in web preview.
- */
-export function getApproachCoordsFromDoorstep(destCoords: {
-  lat: number;
-  lng: number;
-}): { lat: number; lng: number; heading: number | null } {
-  // ~1.4 km road distance along Indore urban grid (e.g. { lat: destCoords.lat - 0.009, lng: destCoords.lng - 0.007 })
-  return {
-    lat: Number((destCoords.lat - 0.0078).toFixed(6)),
-    lng: Number((destCoords.lng - 0.006).toFixed(6)),
-    heading: null,
-  };
-}
-
 function computeBearing(
   start: { lat: number; lng: number },
   end: { lat: number; lng: number }
@@ -273,7 +257,13 @@ function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) 
   const polylineRef = useRef<google.maps.Polyline | null>(null);
 
   useEffect(() => {
-    if (!map || !mapsLib || path.length < 2) return;
+    if (!map || !mapsLib || path.length < 2) {
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+      return;
+    }
 
     if (!polylineRef.current) {
       polylineRef.current = new mapsLib.Polyline({
@@ -298,9 +288,9 @@ function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) 
 }
 
 interface SplitMapCanvasProps {
-  partnerLocation: { lat: number; lng: number; heading?: number | null };
+  partnerLocation: { lat: number; lng: number; heading?: number | null } | null;
   destCoords: { lat: number; lng: number };
-  onRouteUpdate?: (eta: string, distance: string) => void;
+  onRouteUpdate?: (eta: string | null, distance: string | null) => void;
 }
 
 function SplitMapCanvas({
@@ -317,13 +307,21 @@ function SplitMapCanvas({
     onRouteUpdateRef.current = onRouteUpdate;
   }, [onRouteUpdate]);
 
-  const pLat = partnerLocation.lat;
-  const pLng = partnerLocation.lng;
+  const pLat = partnerLocation?.lat ?? null;
+  const pLng = partnerLocation?.lng ?? null;
   const dLat = destCoords.lat;
   const dLng = destCoords.lng;
 
-  // Authentic road distance & bike transit time calculation
+  // Authentic road distance & bike transit time calculation ONLY when verified partnerLocation exists
   useEffect(() => {
+    if (pLat === null || pLng === null) {
+      setRoutePath([]);
+      if (onRouteUpdateRef.current) {
+        onRouteUpdateRef.current(null, null);
+      }
+      return;
+    }
+
     const origin = { lat: pLat, lng: pLng };
     const destination = { lat: dLat, lng: dLng };
 
@@ -354,9 +352,18 @@ function SplitMapCanvas({
     });
   }, [map]);
 
-  // Automatically frame BOTH 🛵 Technician and 🏠 Doorstep markers with 60px padding
+  // Automatically frame markers when partnerLocation is present, or center on doorstep
   useEffect(() => {
     if (!map || typeof google === "undefined") return;
+
+    if (!partnerLocation) {
+      const centerKey = `doorstep_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
+      if (lastFitBoundsKeyRef.current === centerKey) return;
+      lastFitBoundsKeyRef.current = centerKey;
+      map.setCenter(destCoords);
+      map.setZoom(15);
+      return;
+    }
 
     const boundsKey = `${partnerLocation.lat.toFixed(4)},${partnerLocation.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
     if (lastFitBoundsKeyRef.current === boundsKey) return;
@@ -372,6 +379,7 @@ function SplitMapCanvas({
   }, [map, partnerLocation, destCoords, routePath]);
 
   const effectiveBearing = useMemo(() => {
+    if (!partnerLocation) return 0;
     if (
       typeof partnerLocation.heading === "number" &&
       !isNaN(partnerLocation.heading) &&
@@ -392,7 +400,7 @@ function SplitMapCanvas({
 
   return (
     <>
-      <RoutePolyline path={routePath} />
+      {partnerLocation && routePath.length >= 2 && <RoutePolyline path={routePath} />}
 
       {/* Customer Doorstep Marker */}
       <AdvancedMarker position={destCoords}>
@@ -406,25 +414,27 @@ function SplitMapCanvas({
         </div>
       </AdvancedMarker>
 
-      {/* Compact 28px Partner Vehicle Marker with Minimal Ring & Heading Arrow */}
-      <AdvancedMarker position={partnerLocation}>
-        <div className="relative flex flex-col items-center select-none cursor-pointer">
-          <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
-            <div
-              className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-transform duration-500 ease-out"
-              style={{
-                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
-              }}
-            >
-              <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
-              <span className="text-xs leading-none select-none">🛵</span>
+      {/* Authentic Partner Vehicle Marker — Rendered ONLY when partnerLocation is present */}
+      {partnerLocation && (
+        <AdvancedMarker position={partnerLocation}>
+          <div className="relative flex flex-col items-center select-none cursor-pointer">
+            <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
+              <div
+                className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-transform duration-500 ease-out"
+                style={{
+                  transform: `rotate(${Math.round(effectiveBearing)}deg)`,
+                }}
+              >
+                <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
+                <span className="text-xs leading-none select-none">🛵</span>
+              </div>
+            </div>
+            <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+              Technician
             </div>
           </div>
-          <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-            Technician
-          </div>
-        </div>
-      </AdvancedMarker>
+        </AdvancedMarker>
+      )}
     </>
   );
 }
@@ -445,8 +455,8 @@ export function TrackingModal({
   onChatPartner,
 }: TrackingModalProps) {
   const [liveBooking, setLiveBooking] = useState<Booking>(booking);
-  const [eta, setEta] = useState<string>("~4 mins");
-  const [distance, setDistance] = useState<string>("1.4 km");
+  const [eta, setEta] = useState<string | null>(null);
+  const [distance, setDistance] = useState<string | null>(null);
   const [partnerDoc, setPartnerDoc] = useState<PartnerProfile | null>(null);
   const [partnerProfile, setPartnerProfile] = useState<PartnerProfile | null>(null);
 
@@ -484,7 +494,11 @@ export function TrackingModal({
     (liveBooking as any).assignedPartnerId;
 
   useEffect(() => {
-    if (!activePartnerId) return;
+    if (!activePartnerId) {
+      setPartnerDoc(null);
+      setPartnerProfile(null);
+      return;
+    }
     let isMounted = true;
 
     const unsubPartnerDoc = onSnapshot(
@@ -523,9 +537,25 @@ export function TrackingModal({
     );
   }, [liveBooking, customerLat, customerLng, bookingLocation, destinationAddress]);
 
-  // Resolve Authentic Partner GPS or Realistic Approach (~1.4 km from doorstep)
-  const partnerLocation = useMemo(() => {
-    const rawStatus = (liveBooking.status || "on_the_way").toLowerCase();
+  const rawStatus = (liveBooking.status || "pending").toLowerCase();
+
+  // Resolve Authentic Partner GPS ONLY — returns null if no verified partner coordinates exist in Firestore
+  const partnerLocation = useMemo((): {
+    lat: number;
+    lng: number;
+    heading: number | null;
+  } | null => {
+    const isTripActive = [
+      "on_the_way",
+      "in_transit",
+      "pro_en_route",
+      "arrived",
+      "in_progress",
+    ].includes(rawStatus);
+
+    if (!activePartnerId || !isTripActive) {
+      return null;
+    }
 
     // Priority 1: Real-time booking.partnerLocation
     const bookingLoc =
@@ -561,22 +591,32 @@ export function TrackingModal({
       };
     }
 
-    // Priority 3: Realistic approach point ~1.4 km from customer's Level-2 doorstep
-    return getApproachCoordsFromDoorstep(destCoords);
-  }, [liveBooking.partnerLocation, liveBooking.status, partnerDoc, partnerProfile, destCoords]);
+    return null;
+  }, [
+    activePartnerId,
+    liveBooking.partnerLocation,
+    (liveBooking as any).expertLocation,
+    rawStatus,
+    partnerDoc,
+    partnerProfile,
+    destCoords,
+  ]);
 
-  const handleRouteUpdate = useCallback((newEta: string, newDist: string) => {
-    setEta(newEta);
-    setDistance(newDist);
-  }, []);
+  const handleRouteUpdate = useCallback(
+    (newEta: string | null, newDist: string | null) => {
+      setEta(newEta);
+      setDistance(newDist);
+    },
+    []
+  );
 
-  const partnerName =
+  const partnerName: string | null =
     liveBooking.partnerName ||
     (liveBooking as any).assignedPartnerName ||
     partnerUser?.displayName ||
     partnerDoc?.displayName ||
     partnerProfile?.displayName ||
-    "Amit Singh";
+    null;
 
   const partnerPhone =
     liveBooking.partnerPhone ||
@@ -595,24 +635,27 @@ export function TrackingModal({
     (partnerProfile as any)?.avatar ||
     "";
 
-  const partnerRating =
-    (partnerDoc as any)?.rating ||
-    (partnerProfile as any)?.rating ||
-    (partnerUser as any)?.rating ||
-    4.9;
+  const rawPartnerRating =
+    (partnerDoc as any)?.rating ??
+    (partnerProfile as any)?.rating ??
+    (partnerUser as any)?.rating ??
+    (liveBooking as any).partnerRating ??
+    null;
 
-  const displayOtp =
+  const partnerRating: number | null =
+    typeof rawPartnerRating === "number" &&
+    !isNaN(rawPartnerRating) &&
+    rawPartnerRating > 0
+      ? rawPartnerRating
+      : null;
+
+  const displayOtp: string | null =
     liveBooking.serviceOtp ||
     liveBooking.startOTP ||
     (liveBooking as any).startOtp ||
     (liveBooking as any).otp ||
-    (liveBooking.id
-      ? (parseInt(liveBooking.id.replace(/\D/g, "").slice(-4), 10) || 6330)
-          .toString()
-          .padStart(4, "0")
-      : "6330");
+    null;
 
-  const rawStatus = (liveBooking.status || "").toLowerCase();
   const isCompleted = ["completed", "finalized"].includes(rawStatus);
   const isCancelled = rawStatus === "cancelled";
   const showOtpBadge =
@@ -623,12 +666,17 @@ export function TrackingModal({
     Boolean(displayOtp);
 
   const statusLabel = useMemo(() => {
+    if (rawStatus === "pending") return "Searching for Nearby Partner";
+    if (rawStatus === "assigned" || rawStatus === "confirmed") {
+      return "Technician Assigned • Awaiting Departure";
+    }
     if (rawStatus === "on_the_way") return "🛵 Technician is on the way";
     if (rawStatus === "arrived") return "📍 Technician has arrived at doorstep";
     if (rawStatus === "in_progress") return "⚡ Service in progress";
-    if (rawStatus === "assigned") return "🛵 Technician assigned & on the way";
-    return "🛵 Technician en-route";
-  }, [rawStatus]);
+    if (isCompleted) return "✓ Service completed";
+    if (isCancelled) return "✕ Booking cancelled";
+    return "Awaiting Live Status Update";
+  }, [rawStatus, isCompleted, isCancelled]);
 
   const handleCall = () => {
     if (onCallPartner) {
@@ -684,6 +732,17 @@ export function TrackingModal({
               </button>
             </div>
 
+            {!partnerLocation && (
+              <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-none">
+                <div className="bg-slate-900/90 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-lg border border-slate-700/80 flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  <p className="text-xs font-semibold leading-snug">
+                    Waiting for technician to start trip. Live GPS will broadcast as soon as the partner is en-route.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <Map
               defaultCenter={destCoords}
               defaultZoom={14}
@@ -711,18 +770,26 @@ export function TrackingModal({
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
                 <span>{statusLabel}</span>
               </div>
-              <div className="text-right">
-                <span className="text-xs sm:text-sm font-black text-slate-900 block">
-                  {distance} away • {eta}
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold block">
-                  Live GPS Route
-                </span>
-              </div>
+              {partnerLocation && distance && eta ? (
+                <div className="text-right">
+                  <span className="text-xs sm:text-sm font-black text-slate-900 block">
+                    {distance} away • {eta}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold block">
+                    Live GPS Route
+                  </span>
+                </div>
+              ) : (
+                <div className="text-right">
+                  <span className="text-[11px] font-bold text-slate-500 block">
+                    Awaiting Live GPS
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 2. Prominent Start OTP Badge on Tracking Screen */}
-            {showOtpBadge && (
+            {showOtpBadge && displayOtp && (
               <div className="my-2 p-2.5 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-between gap-2 shadow-2xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black shrink-0">
@@ -745,12 +812,12 @@ export function TrackingModal({
                   {partnerAvatar ? (
                     <img
                       src={partnerAvatar}
-                      alt={partnerName}
+                      alt={partnerName || "Technician"}
                       className="w-12 h-12 rounded-2xl object-cover border border-slate-200 shadow-xs"
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-700 to-blue-500 text-white font-black text-base flex items-center justify-center shadow-xs">
-                      {partnerName.charAt(0).toUpperCase()}
+                      {(partnerName || "P").charAt(0).toUpperCase()}
                     </div>
                   )}
                   <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
@@ -759,12 +826,14 @@ export function TrackingModal({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <h4 className="text-sm font-black text-slate-900 truncate">
-                      {partnerName}
+                      {partnerName || "Assigned Technician"}
                     </h4>
-                    <span className="inline-flex items-center gap-0.5 text-xs font-black text-amber-500">
-                      <Star size={12} className="fill-amber-400 stroke-amber-400" />
-                      {Number(partnerRating).toFixed(1)}
-                    </span>
+                    {partnerRating !== null && (
+                      <span className="inline-flex items-center gap-0.5 text-xs font-black text-amber-500">
+                        <Star size={12} className="fill-amber-400 stroke-amber-400" />
+                        {Number(partnerRating).toFixed(1)}
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] font-bold text-slate-500 truncate">
                     {serviceName || liveBooking.serviceName || "Certified Professional"}

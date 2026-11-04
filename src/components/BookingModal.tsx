@@ -675,13 +675,22 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         orderData = null;
       }
 
-      const clientKey = (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
-      const effectiveKey =
-        orderData?.keyId && !String(orderData.keyId).includes('placeholder')
-          ? orderData.keyId
-          : clientKey && !String(clientKey).includes('placeholder')
-          ? clientKey
-          : FALLBACK_KEY;
+      const rawClientKey = String((import.meta as any).env?.VITE_RAZORPAY_KEY_ID || '').trim();
+      const validClientKey =
+        rawClientKey &&
+        !rawClientKey.includes('placeholder') &&
+        !rawClientKey.startsWith('rzp_test_Sx2') &&
+        !rawClientKey.startsWith('rzp_test_Tox')
+          ? rawClientKey
+          : '';
+      const validServerKey =
+        orderData?.keyId &&
+        !String(orderData.keyId).includes('placeholder') &&
+        !String(orderData.keyId).startsWith('rzp_test_Sx2') &&
+        !String(orderData.keyId).startsWith('rzp_test_Tox')
+          ? String(orderData.keyId).trim()
+          : '';
+      const effectiveKey = validServerKey || validClientKey || FALLBACK_KEY;
 
       const options: Record<string, any> = {
         key: effectiveKey,
@@ -865,7 +874,7 @@ export default function BookingModal({ service, profile, onClose, onSuccess }: P
         issueDetails: service.name,
         visitationFee: service.basePrice,
         partnerId: assignedPartnerId,
-        status: isOnlineConfirmed ? "confirmed" : (assignedPartnerId ? "pending_acceptance" : "pending"), 
+        status: assignedPartnerId ? "assigned" : "pending",
         paymentStatus: resolvedPaymentStatus,
         scheduledAt: Timestamp.fromDate(isNaN(scheduledAtDate.getTime()) ? new Date() : scheduledAtDate),
         scheduledSlot: scheduledSlotStr,

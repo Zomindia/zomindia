@@ -117,7 +117,11 @@ export function useLocationTracking(
                   updatedAt: Timestamp.now(),
                 }).catch(() => {});
 
+                const gpsTrackingStatuses = ['on_the_way', 'arrived', 'in_progress'];
                 for (const activeB of currentActiveBookings) {
+                  if (!gpsTrackingStatuses.includes((activeB.status || '').toLowerCase())) {
+                    continue;
+                  }
                   await updateDoc(doc(db, 'bookings', activeB.id), {
                     partnerLocation: {
                       lat: latitude,

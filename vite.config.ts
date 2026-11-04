@@ -45,7 +45,9 @@ function patchFirestorePlugin(): Plugin {
 export default defineConfig(({ mode }) => {
   dotenv.config({ override: true });
   const env = loadEnv(mode, '.', '');
-  const resolvedRazorpayKeyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || env.VITE_RAZORPAY_KEY_ID || '').trim();
+  const rawRazorpayKeyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || env.VITE_RAZORPAY_KEY_ID || '').replace(/^["']|["']$/g, '').trim();
+  const isRevokedTestKey = rawRazorpayKeyId.startsWith('rzp_test_Sx2') || rawRazorpayKeyId.startsWith('rzp_test_Tox');
+  const resolvedRazorpayKeyId = (!rawRazorpayKeyId || isRevokedTestKey) ? 'rzp_test_TtEKda956Cny9Q' : rawRazorpayKeyId;
 
   return {
     plugins: [

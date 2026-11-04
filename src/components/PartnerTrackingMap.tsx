@@ -14,7 +14,6 @@ import {
   calculateHaversineDistance,
   resolveDoorstepCoords,
   isValidPartnerGps,
-  getApproachCoordsFromDoorstep,
 } from "./tracking/TrackingModal";
 import {
   Phone,
@@ -47,9 +46,9 @@ export interface PartnerTrackingMapProps {
 }
 
 interface MapCanvasProps {
-  partnerLocation: { lat: number; lng: number; heading?: number | null };
+  partnerLocation: { lat: number; lng: number; heading?: number | null } | null;
   destCoords: { lat: number; lng: number };
-  onRouteUpdate?: (eta: string, distance: string) => void;
+  onRouteUpdate?: (eta: string | null, distance: string | null) => void;
   isMini?: boolean;
 }
 
@@ -134,7 +133,13 @@ function RoutePolyline({ path }: { path: Array<{ lat: number; lng: number }> }) 
   const polylineRef = useRef<google.maps.Polyline | null>(null);
 
   useEffect(() => {
-    if (!map || !mapsLib || path.length < 2) return;
+    if (!map || !mapsLib || path.length < 2) {
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+      return;
+    }
 
     if (!polylineRef.current) {
       polylineRef.current = new mapsLib.Polyline({
@@ -173,13 +178,21 @@ function MapCanvas({
     onRouteUpdateRef.current = onRouteUpdate;
   }, [onRouteUpdate]);
 
-  const pLat = partnerLocation.lat;
-  const pLng = partnerLocation.lng;
+  const pLat = partnerLocation?.lat ?? null;
+  const pLng = partnerLocation?.lng ?? null;
   const dLat = destCoords.lat;
   const dLng = destCoords.lng;
 
-  // Authentic road distance & bike transit time
+  // Authentic road distance & bike transit time ONLY when verified partnerLocation exists
   useEffect(() => {
+    if (pLat === null || pLng === null) {
+      setRoutePath([]);
+      if (onRouteUpdateRef.current) {
+        onRouteUpdateRef.current(null, null);
+      }
+      return;
+    }
+
     const origin = { lat: pLat, lng: pLng };
     const destination = { lat: dLat, lng: dLng };
 
@@ -210,9 +223,18 @@ function MapCanvas({
     });
   }, [map, isMini]);
 
-  // Automatically frame BOTH 🛵 Technician and 🏠 Doorstep markers with 60px padding
+  // Automatically frame markers when partnerLocation is present, or center on doorstep
   useEffect(() => {
     if (!map || typeof google === "undefined") return;
+
+    if (!partnerLocation) {
+      const centerKey = `doorstep_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
+      if (lastFitBoundsKeyRef.current === centerKey) return;
+      lastFitBoundsKeyRef.current = centerKey;
+      map.setCenter(destCoords);
+      map.setZoom(15);
+      return;
+    }
 
     const boundsKey = `${partnerLocation.lat.toFixed(4)},${partnerLocation.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`;
     if (lastFitBoundsKeyRef.current === boundsKey) return;
@@ -228,6 +250,7 @@ function MapCanvas({
   }, [map, partnerLocation, destCoords, routePath]);
 
   const effectiveBearing = useMemo(() => {
+    if (!partnerLocation) return 0;
     if (
       typeof partnerLocation.heading === "number" &&
       !isNaN(partnerLocation.heading) &&
@@ -248,7 +271,7 @@ function MapCanvas({
 
   return (
     <>
-      <RoutePolyline path={routePath} />
+      {partnerLocation && routePath.length >= 2 && <RoutePolyline path={routePath} />}
 
       {/* Customer Doorstep Marker */}
       <AdvancedMarker position={destCoords}>
@@ -264,28 +287,30 @@ function MapCanvas({
         </div>
       </AdvancedMarker>
 
-      {/* Compact 28px Partner Vehicle Marker with Minimal Ring & Heading Arrow */}
-      <AdvancedMarker position={partnerLocation}>
-        <div className="relative flex flex-col items-center select-none cursor-pointer">
-          <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
-            <div
-              className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-all duration-700 ease-out"
-              style={{
-                transform: `rotate(${Math.round(effectiveBearing)}deg)`,
-              }}
-              title={`Bearing: ${Math.round(effectiveBearing)}°`}
-            >
-              <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
-              <span className="text-xs leading-none select-none">🛵</span>
+      {/* Authentic Partner Vehicle Marker — Rendered ONLY when partnerLocation is present */}
+      {partnerLocation && (
+        <AdvancedMarker position={partnerLocation}>
+          <div className="relative flex flex-col items-center select-none cursor-pointer">
+            <div className="relative flex items-center justify-center w-[30px] h-[30px] rounded-full bg-blue-500/15">
+              <div
+                className="relative w-7 h-7 rounded-full bg-white shadow-md border-2 border-[#0a2540] flex items-center justify-center transition-all duration-700 ease-out"
+                style={{
+                  transform: `rotate(${Math.round(effectiveBearing)}deg)`,
+                }}
+                title={`Bearing: ${Math.round(effectiveBearing)}°`}
+              >
+                <div className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-[#0a2540]" />
+                <span className="text-xs leading-none select-none">🛵</span>
+              </div>
             </div>
+            {!isMini && (
+              <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                Live Pro
+              </div>
+            )}
           </div>
-          {!isMini && (
-            <div className="mt-0.5 bg-slate-900 text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-              Live Pro
-            </div>
-          )}
-        </div>
-      </AdvancedMarker>
+        </AdvancedMarker>
+      )}
     </>
   );
 }
@@ -313,8 +338,8 @@ export default function PartnerTrackingMap({
   const [liveBookingData, setLiveBookingData] = useState<any>(booking || null);
   const [partnerInfo, setPartnerInfo] = useState<PartnerProfile | null>(null);
   const [userInfo, setUserInfo] = useState<UserProfile | null>(null);
-  const [eta, setEta] = useState<string>("~4 mins");
-  const [distance, setDistance] = useState<string>("1.4 km");
+  const [eta, setEta] = useState<string | null>(null);
+  const [distance, setDistance] = useState<string | null>(null);
 
   const isMini = variant === "mini";
 
@@ -324,10 +349,13 @@ export default function PartnerTrackingMap({
     }
   }, [booking]);
 
-  const handleRouteUpdate = useCallback((newEta: string, newDist: string) => {
-    setEta((prev) => (prev !== newEta ? newEta : prev));
-    setDistance((prev) => (prev !== newDist ? newDist : prev));
-  }, []);
+  const handleRouteUpdate = useCallback(
+    (newEta: string | null, newDist: string | null) => {
+      setEta((prev) => (prev !== newEta ? newEta : prev));
+      setDistance((prev) => (prev !== newDist ? newDist : prev));
+    },
+    []
+  );
 
   // Firestore real-time coordinate synchronization
   useEffect(() => {
@@ -389,10 +417,25 @@ export default function PartnerTrackingMap({
     );
   }, [liveBookingData, booking, customerLat, customerLng, bookingLocation, destinationAddress]);
 
-  // 2. Resolve Authentic Partner GPS or Realistic Approach (~1.4 km from doorstep)
-  const partnerLocation = useMemo(() => {
+  // 2. Resolve Authentic Partner GPS ONLY — returns null when no verified GPS coordinates are present
+  const partnerLocation = useMemo((): {
+    lat: number;
+    lng: number;
+    heading: number | null;
+  } | null => {
     const activeBooking = liveBookingData || booking;
-    const rawStatus = (activeBooking?.status || "on_the_way").toLowerCase();
+    const rawStatus = (activeBooking?.status || "pending").toLowerCase();
+    const isTripActive = [
+      "on_the_way",
+      "in_transit",
+      "pro_en_route",
+      "arrived",
+      "in_progress",
+    ].includes(rawStatus);
+
+    if (activeBooking && !isTripActive) {
+      return null;
+    }
 
     // Priority 1: Real-time Firestore booking.partnerLocation
     const bookingLoc =
@@ -445,8 +488,7 @@ export default function PartnerTrackingMap({
       };
     }
 
-    // Priority 3: Realistic approach point ~1.4 km from customer's Level-2 doorstep
-    return getApproachCoordsFromDoorstep(destCoords);
+    return null;
   }, [
     liveBookingData,
     booking,
@@ -458,17 +500,29 @@ export default function PartnerTrackingMap({
     destCoords,
   ]);
 
-  const partnerName =
+  const partnerName: string | null =
     userInfo?.displayName ||
     userInfo?.fullName ||
     partnerInfo?.displayName ||
     partnerInfo?.fullName ||
     liveBookingData?.partnerName ||
     booking?.partnerName ||
-    "Amit Singh";
-  const partnerRating = partnerInfo?.rating
-    ? Number(partnerInfo.rating).toFixed(1)
-    : "4.9";
+    null;
+
+  const rawPartnerRating =
+    partnerInfo?.rating ??
+    (userInfo as any)?.rating ??
+    liveBookingData?.partnerRating ??
+    booking?.partnerRating ??
+    null;
+
+  const partnerRating: string | null =
+    typeof rawPartnerRating === "number" &&
+    !isNaN(rawPartnerRating) &&
+    rawPartnerRating > 0
+      ? Number(rawPartnerRating).toFixed(1)
+      : null;
+
   const partnerAvatar =
     userInfo?.photoURL || partnerInfo?.onboardingData?.profileImage;
 
@@ -498,7 +552,10 @@ export default function PartnerTrackingMap({
         ? `${window.location.origin}/?track=${encodeURIComponent(targetBookingId)}`
         : "";
     const shareTitle = `Live Tracking: ${serviceName || "Zomindia Service"}`;
-    const shareText = `Track technician live on Zomindia. ${distance} away • ${eta}`;
+    const shareText =
+      distance && eta
+        ? `Track technician live on Zomindia. ${distance} away • ${eta}`
+        : `Track technician live on Zomindia.`;
 
     if (navigator.share) {
       try {
@@ -541,7 +598,9 @@ export default function PartnerTrackingMap({
     if (typeof (window as any).__openCustomerChat === "function") {
       (window as any).__openCustomerChat(targetBookingId || partnerId);
     } else if (typeof (window as any).__showToast === "function") {
-      (window as any).__showToast(`Opening live chat with ${partnerName}...`);
+      (window as any).__showToast(
+        `Opening live chat with ${partnerName || "your technician"}...`
+      );
     }
   };
 
@@ -582,10 +641,14 @@ export default function PartnerTrackingMap({
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/95 text-slate-800 text-[11px] font-bold shadow-xs border border-slate-200/60 whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                 <span>🛵 On the way</span>
-                <span className="text-slate-300 font-bold">•</span>
-                <span className="text-blue-600 font-extrabold">
-                  {distance ? `${distance} away • ${eta}` : eta}
-                </span>
+                {partnerLocation && distance && eta && (
+                  <>
+                    <span className="text-slate-300 font-bold">•</span>
+                    <span className="text-blue-600 font-extrabold">
+                      {`${distance} away • ${eta}`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -621,18 +684,27 @@ export default function PartnerTrackingMap({
               </div>
             )}
 
-            {/* Full View: Top Floating ETA Pill */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
-              <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/95 text-slate-900 border border-slate-200 shadow-md">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-xs sm:text-sm font-black tracking-tight flex items-center gap-1.5 whitespace-nowrap">
-                  <span className="text-base">🛵</span>
-                  <span>
-                    {distance} away •{" "}
-                    <span className="text-blue-600 font-extrabold">{eta}</span>
+            {/* Full View: Top Floating ETA Pill or Waiting Banner */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[90%]">
+              {partnerLocation && distance && eta ? (
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/95 text-slate-900 border border-slate-200 shadow-md">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-xs sm:text-sm font-black tracking-tight flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-base">🛵</span>
+                    <span>
+                      {distance} away •{" "}
+                      <span className="text-blue-600 font-extrabold">{eta}</span>
+                    </span>
                   </span>
-                </span>
-              </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 text-white border border-slate-700/80 shadow-md">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  <span className="text-[11px] sm:text-xs font-semibold leading-snug">
+                    Waiting for technician to start trip. Live GPS will broadcast as soon as the partner is en-route.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Full View: Compact Bottom Floating Action Bar */}
@@ -644,12 +716,12 @@ export default function PartnerTrackingMap({
                       {partnerAvatar ? (
                         <img
                           src={partnerAvatar}
-                          alt={partnerName}
+                          alt={partnerName || "Technician"}
                           className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-xs"
                         />
                       ) : (
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-700 to-blue-500 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                          {partnerName.charAt(0).toUpperCase()}
+                          {(partnerName || "P").charAt(0).toUpperCase()}
                         </div>
                       )}
                       <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
@@ -658,12 +730,14 @@ export default function PartnerTrackingMap({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                          {partnerName}
+                          {partnerName || "Assigned Technician"}
                         </h4>
-                        <span className="inline-flex items-center gap-0.5 text-[11px] font-extrabold text-amber-500">
-                          <Star size={11} className="fill-amber-400 stroke-amber-400" />
-                          {partnerRating}
-                        </span>
+                        {partnerRating !== null && (
+                          <span className="inline-flex items-center gap-0.5 text-[11px] font-extrabold text-amber-500">
+                            <Star size={11} className="fill-amber-400 stroke-amber-400" />
+                            {partnerRating}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] font-bold text-slate-500 truncate">
                         {serviceName ||

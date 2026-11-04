@@ -47,12 +47,9 @@ export function PartnerOtpModal({
 
     const cleanedInput = otpInput.trim();
     const targetOtp = (expectedOtp || "").trim();
-    const derivedNumericOtp = (parseInt(bookingId.replace(/\D/g, "").slice(-4), 10) || 6330)
-      .toString()
-      .padStart(4, "0");
 
     const validOtps = new Set(
-      [targetOtp, derivedNumericOtp, "6330"].filter((v) => v && v.length === 4)
+      [targetOtp].filter((v) => v && v.length === 4)
     );
 
     if (!validOtps.has(cleanedInput)) {

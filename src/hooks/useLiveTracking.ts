@@ -10,7 +10,6 @@ import { Booking } from '../types';
 import {
   resolveDoorstepCoords,
   isValidPartnerGps,
-  getApproachCoordsFromDoorstep,
   calculateHaversineDistance,
 } from '../components/tracking/TrackingModal';
 
@@ -56,24 +55,37 @@ export function useLiveTracking(bookingId: string | undefined): LiveTrackingStat
 
         const data = { id: docSnap.id, ...docSnap.data() } as Booking;
         const destCoords = resolveDoorstepCoords(data);
+        const rawStatus = (data.status || 'pending').toLowerCase();
+        const isTripActive = [
+          'on_the_way',
+          'in_transit',
+          'pro_en_route',
+          'arrived',
+          'in_progress',
+        ].includes(rawStatus);
         const rawCandidate = data.partnerLocation || (data as any).expertLocation || null;
 
-        const resolvedPartnerLoc = isValidPartnerGps(rawCandidate, destCoords, data.status)
-          ? { lat: Number(rawCandidate.lat), lng: Number(rawCandidate.lng) }
-          : getApproachCoordsFromDoorstep(destCoords);
+        const resolvedPartnerLoc =
+          isTripActive && isValidPartnerGps(rawCandidate, destCoords, data.status)
+            ? { lat: Number(rawCandidate.lat), lng: Number(rawCandidate.lng) }
+            : null;
 
-        const straightKm = calculateHaversineDistance(resolvedPartnerLoc, destCoords);
-        const roadDistanceKm = Number((straightKm * 1.32).toFixed(1));
-        const durationMin = Math.max(1, Math.ceil((roadDistanceKm / 22) * 60));
+        let eta: string | null = null;
+        let distance: string | null = null;
+
+        if (resolvedPartnerLoc) {
+          const straightKm = calculateHaversineDistance(resolvedPartnerLoc, destCoords);
+          const roadDistanceKm = Number((straightKm * 1.32).toFixed(1));
+          const durationMin = Math.max(1, Math.ceil((roadDistanceKm / 22) * 60));
+          eta = `~${durationMin} mins`;
+          distance = `${roadDistanceKm.toFixed(1)} km`;
+        }
 
         setState({
-          partnerLocation: {
-            lat: resolvedPartnerLoc.lat,
-            lng: resolvedPartnerLoc.lng,
-          },
+          partnerLocation: resolvedPartnerLoc,
           status: data.status,
-          eta: `~${durationMin} mins`,
-          distance: `${roadDistanceKm.toFixed(1)} km`,
+          eta,
+          distance,
           partnerName: data.partnerName || (data as any).assignedPartnerName || null,
           partnerPhone: (data as any).partnerPhone || null,
           booking: data,
