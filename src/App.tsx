@@ -95,7 +95,6 @@ const Logo = ({ size = 20, className = "" }: { size?: number, light?: boolean, c
 };
 
 const API_KEY = GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_LIBRARIES: ('places' | 'marker' | 'geometry')[] = ['places', 'marker', 'geometry'];
 
 function isVersionHigher(newVer: string, oldVer: string): boolean {
   const parts1 = newVer.split('.').map(num => parseInt(num, 10) || 0);
@@ -2001,7 +2000,7 @@ If you have any billing questions, or if your refund is delayed, please email us
   const isFullScreenView = activeTab === 'admin' || isPartnerView;
 
   return (
-    <APIProvider apiKey={API_KEY} version="weekly" libraries={GOOGLE_MAPS_LIBRARIES}>
+    <APIProvider apiKey={API_KEY} version="weekly">
       <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} threshold={65} />
       {isFullScreenView ? (
         <div 
