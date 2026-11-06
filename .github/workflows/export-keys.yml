@@ -1,0 +1,33 @@
+name: Export Customer Keystore
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decode Keystore & Extract Credentials
+        env:
+          KEY_DATA: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          ALIAS_NAME: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p output
+          # 1. Base64 se original binary keystore generate karein
+          echo "$KEY_DATA" | base64 -d > output/customer-release.keystore
+          
+          # 2. Text file me password aur alias save karein (artifact zip me aayega)
+          cat << EOF > output/credentials.txt
+          KEYSTORE_PASSWORD=$STORE_PASS
+          KEY_ALIAS=$ALIAS_NAME
+          KEY_PASSWORD=$KEY_PASS
+          EOF
+
+      - name: Upload Keystore & Credentials as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zomindia-customer-keystore
+          path: output/
+          retention-days: 1
